@@ -71,6 +71,6 @@ def test_dashboard_accessible(client):
     content_type = response.headers.get("content-type", "")
     assert "html" in content_type.lower()
 
-    # Check for key elements
+    # Check for key elements (dashboard title or tab names)
     html = response.text
-    assert "Juniper Canopy Monitor" in html or "Training Metrics" in html
+    assert "Juniper Canopy" in html or "Training Metrics" in html

@@ -50,6 +50,7 @@ from config_manager import ConfigManager
 from constants import DashboardConstants, TrainingConstants
 
 from .base_component import BaseComponent
+from .callback_context import get_callback_context
 from .components.dataset_plotter import DatasetPlotter
 from .components.decision_boundary import DecisionBoundary
 from .components.metrics_panel import MetricsPanel
@@ -764,7 +765,7 @@ class DashboardManager:
         )
         def update_button_appearance(button_states):
             """Update button states (disabled/loading) with visual feedback."""
-            self._update_button_appearance_handler(button_states=button_states)
+            return self._update_button_appearance_handler(button_states=button_states)
 
         @self.app.callback(
             Output("button-states", "data", allow_duplicate=True),
@@ -1124,11 +1125,11 @@ class DashboardManager:
         **kwargs,
     ):
         """Handle training control button clicks with debouncing and optimistic UI."""
-        # Accept outputs_list if passed by tests
         outputs_list = kwargs.get("outputs_list")
         self.logger.debug(f"Handling training control button clicks: {outputs_list}")
 
-        trigger = dash.callback_context.triggered_id
+        ctx = get_callback_context()
+        trigger = kwargs.get("trigger") or ctx.get_triggered_id()
         current_time = time.time()
 
         # Debouncing: prevent duplicate clicks within 500ms
@@ -1202,9 +1203,10 @@ class DashboardManager:
             reset_text,
         )
 
-    def _handle_button_timeout_and_acks_handler(self, action=None, n_intervals=None, button_states=None):
+    def _handle_button_timeout_and_acks_handler(self, action=None, n_intervals=None, button_states=None, **kwargs):
         """Re-enable buttons after timeout (5s) or on control acknowledgment."""
-        trigger = dash.callback_context.triggered_id
+        ctx = get_callback_context()
+        trigger = kwargs.get("trigger") or ctx.get_triggered_id()
         action = action if trigger == "training-control-action" else None
         if not button_states:
             return dash.no_update
@@ -1246,9 +1248,10 @@ class DashboardManager:
             self.logger.warning(f"Failed to sync backend params: {e}")
         return dash.no_update
 
-    def _handle_parameter_changes_handler(self, learning_rate=None, max_hidden_units=None):
+    def _handle_parameter_changes_handler(self, learning_rate=None, max_hidden_units=None, **kwargs):
         """Handle parameter input changes and send to backend."""
-        trigger = dash.callback_context.triggered_id
+        ctx = get_callback_context()
+        trigger = kwargs.get("trigger") or ctx.get_triggered_id()
 
         try:
             # Prepare parameter update payload

@@ -344,6 +344,12 @@ def reset_singletons():
                     with contextlib.suppress(Exception):
                         instance.stop()
             DemoMode._instances.clear()
+
+    # Reset callback context adapter
+    with contextlib.suppress(ImportError):
+        from frontend.callback_context import CallbackContextAdapter
+
+        CallbackContextAdapter.reset_instance()
     yield
 
     # Clean up after test
@@ -368,6 +374,62 @@ def reset_singletons():
                     with contextlib.suppress(Exception):
                         instance.stop()
             DemoMode._instances.clear()
+
+
+# Fake backend root fixture for testing CasCor integration
+@pytest.fixture
+def fake_backend_root(tmp_path):
+    """
+    Create a fake CasCor backend directory structure for testing.
+
+    This fixture supports testing against different backend versions and
+    configurations without requiring a real CasCor installation.
+
+    Returns:
+        Path to the fake backend root directory
+    """
+    backend_root = tmp_path / "cascor"
+    src_dir = backend_root / "src"
+    src_dir.mkdir(parents=True)
+
+    # Create minimal cascade_correlation module structure
+    cc_module = src_dir / "cascade_correlation"
+    cc_module.mkdir()
+
+    # Create __init__.py files
+    (cc_module / "__init__.py").write_text("# Fake cascade_correlation module\n")
+
+    # Create fake cascade_correlation.py
+    cc_py = cc_module / "cascade_correlation.py"
+    cc_py.write_text(
+        """
+class CascadeCorrelationNetwork:
+    '''Fake CasCor network for testing'''
+    def __init__(self, config=None):
+        self.config = config
+        self.hidden_units = []
+
+class TrainingResults:
+    '''Fake training results for testing'''
+    def __init__(self):
+        self.metrics = []
+"""
+    )
+
+    # Create fake config module
+    config_module = cc_module / "cascade_correlation_config"
+    config_module.mkdir()
+    (config_module / "__init__.py").write_text("# Fake config module\n")
+    (config_module / "cascade_correlation_config.py").write_text(
+        """
+class CascadeCorrelationConfig:
+    '''Fake CasCor config for testing'''
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+"""
+    )
+
+    return backend_root
 
 
 # Cleanup

@@ -10,15 +10,25 @@ from datetime import datetime
 def test_imports():
     """Test that all required packages can be imported."""
     print("Testing package imports...")
-    packages = ["dash", "fastapi", "plotly", "redis", "torch", "numpy", "pandas", "yaml", "colorama", "psutil"]
+    # Core required packages
+    required_packages = ["dash", "fastapi", "plotly", "torch", "numpy", "yaml", "colorama", "psutil"]
+    # Optional packages (not always installed)
+    optional_packages = ["redis", "pandas"]
 
-    for package in packages:  # sourcery skip: no-loop-in-tests
+    for package in required_packages:  # sourcery skip: no-loop-in-tests
         try:
             __import__(package)
             print(f"  ✓ {package}")
         except ImportError as e:
             print(f"  ✗ {package}: {e}")
             raise AssertionError(f"Failed to import {package}: {e}") from e
+
+    for package in optional_packages:  # sourcery skip: no-loop-in-tests
+        try:
+            __import__(package)
+            print(f"  ✓ {package} (optional)")
+        except ImportError:
+            print(f"  ⊘ {package} (optional, not installed)")
 
     assert True
 
@@ -61,7 +71,7 @@ def test_directories():
     print("\nTesting directory structure...")
     # Get project root (3 levels up from test file)
     project_root = Path(__file__).parent.parent.parent.parent
-    required_dirs = ["conf", "notes", "src", "data", "logs", "images", "utils"]
+    required_dirs = ["conf", "notes", "src", "data", "logs", "images", "util"]
 
     for dir_name in required_dirs:  # sourcery skip: no-loop-in-tests
         dir_path = project_root / dir_name

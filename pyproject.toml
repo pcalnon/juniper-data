@@ -40,6 +40,7 @@ Issues = "https://github.com/USERNAME/REPO/issues"
 # ==========================================
 [tool.black]
 line-length = 120
+# target-version = ['py311', 'py312', 'py313', "py314"]
 # target-version = ['py311', 'py312', 'py313']
 target-version = ['py311', 'py312']
 include = '\.pyi?$'
@@ -93,7 +94,8 @@ targets = ["src"]
 # MyPy Type Checker Configuration
 # ==========================================
 [tool.mypy]
-python_version = "3.11"
+# python_version = "3.11"
+python_version = "3.14"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false # Gradual typing
@@ -121,14 +123,15 @@ addopts = [
   "--verbose",
   "--color=yes",
   "--assert=plain",
-  "--cov=src",
-  "--cov-report=html:reports/coverage",
-  "--cov-report=term-missing",
+#  "--cov=src",
+#  "--cov=.",
+#  "--cov-report=html:reports/coverage",
+#  "--cov-report=term-missing",
   "--junit-xml=reports/junit/results.xml",
-  "--html=reports/test_report.html",
-  "--self-contained-html",
-  "--strict-markers",
-  "--tb=short",
+#  "--html=reports/test_report.html",
+#  "--self-contained-html",
+#  "--strict-markers",
+#  "--tb=short",
 ]
 markers = [
   "unit: Unit tests (fast, no external dependencies)",

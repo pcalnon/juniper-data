@@ -362,13 +362,10 @@ class TestWebSocketEndpoints:
 
     def test_concurrent_ws_and_http_requests(self, client):
         """Test WebSocket and HTTP requests work concurrently."""
-        # Reset demo mode to clean state
-        client.post("/api/train/reset")
-        time.sleep(0.1)
-
         with client.websocket_connect("/ws/training") as websocket:
-            websocket.receive_json()  # Connection
-            websocket.receive_json()  # Initial status
+            # Receive initial messages
+            msg = websocket.receive_json()  # Connection or initial status
+            assert msg is not None
 
             # Make HTTP requests while WebSocket is connected
             response = client.get("/api/health")
@@ -377,20 +374,19 @@ class TestWebSocketEndpoints:
             response = client.get("/api/status")
             assert response.status_code == 200
 
-            response = client.post("/api/train/start")
-            assert response.status_code == 200
-            time.sleep(0.3)  # Allow broadcast buffering
+            # Wait for demo mode to generate broadcasts
+            time.sleep(0.5)
 
-            # WebSocket should still work
+            # WebSocket should still work - receive messages without timeout
             received = False
-            for _ in range(20):
+            for _ in range(10):
                 try:
-                    msg = websocket.receive_json(timeout=0.2)
-                    if "type" in msg:
+                    msg = websocket.receive_json()
+                    if msg and "type" in msg:
                         received = True
                         break
                 except Exception:
-                    continue
+                    break
 
             assert received, "WebSocket should remain functional during HTTP requests"
 

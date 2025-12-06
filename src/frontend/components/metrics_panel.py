@@ -431,11 +431,9 @@ class MetricsPanel(BaseComponent):
         (epochs, losses, phases) = self._parse_metrics(metrics_data=metrics_data)
 
         # Create figure with phase-colored scatter
-        fig = self._create_phase_colored_scatter(fig=go.Figure(), epochs=epochs, phases=phases)
-        fig = self._add_phase_bg_bands(epochs=epochs, phases=phases)
-        (fig, epoch) = self._add_hidden_unit_markers(
-            metrics_data=metrics_data, fig=fig, theme=theme, losses=losses, epochs=epochs
-        )
+        fig = self._create_phase_colored_scatter(fig=go.Figure(), epochs=epochs, losses=losses, phases=phases)
+        fig = self._add_phase_bg_bands(fig=fig, epochs=epochs, phases=phases)
+        (fig, epoch) = self._add_hidden_unit_markers(metrics_data=metrics_data, fig=fig, theme=theme, epochs=epochs)
 
         return fig
 
@@ -462,8 +460,8 @@ class MetricsPanel(BaseComponent):
         return (epochs, losses, phases)
 
     def _create_phase_colored_scatter(
-        self, fig: go.figure = None, epochs: list = None, losses: list = None, phases: list = None
-    ) -> go.figure:
+        self, fig: go.Figure = None, epochs: list = None, losses: list = None, phases: list = None
+    ) -> go.Figure:
         """
         Create phase-colored scatter plot from epochs, losses, and phases.
         """
@@ -479,8 +477,8 @@ class MetricsPanel(BaseComponent):
         return fig
 
     def _output_add_trace(
-        self, fig: go.figure = None, output_epochs: list = None, output_losses: list = None
-    ) -> go.figure:
+        self, fig: go.Figure = None, output_epochs: list = None, output_losses: list = None
+    ) -> go.Figure:
         if output_epochs:
             fig.add_trace(
                 go.Scatter(
@@ -495,8 +493,8 @@ class MetricsPanel(BaseComponent):
         return fig
 
     def _candidate_add_trace(
-        self, fig: go.figure = None, candidate_epochs: list = None, candidate_losses: list = None
-    ) -> go.figure:
+        self, fig: go.Figure = None, candidate_epochs: list = None, candidate_losses: list = None
+    ) -> go.Figure:
         if candidate_epochs:
             fig.add_trace(
                 go.Scatter(
@@ -511,7 +509,7 @@ class MetricsPanel(BaseComponent):
 
         return fig
 
-    def _add_phase_bg_bands(self, fig: go.figure = None, epochs: list = None, phases: list = None) -> go.figure:
+    def _add_phase_bg_bands(self, fig: go.Figure = None, epochs: list = None, phases: list = None) -> go.Figure:
         # Add phase background bands
         current_phase = None
         phase_start = None
@@ -570,14 +568,14 @@ class MetricsPanel(BaseComponent):
 
     def _add_hidden_unit_markers(
         self, metrics_data: List[Dict[str, Any]], fig: go.Figure = None, theme: str = "light", epochs: list = None
-    ) -> tuple(go.Figure, list):
+    ) -> Tuple[go.Figure, list]:
         (fig) = self._hidden_unit_addition_markers(metrics_data=metrics_data, fig=fig, theme=theme)
         fig = self._training_loss_per_time(fig=fig, theme=theme)
         return (fig, epochs)
 
     def _hidden_unit_addition_markers(
         self, metrics_data: List[Dict[str, Any]], fig: go.Figure = None, theme: str = "light"
-    ) -> go.figure:
+    ) -> go.Figure:
         # Add hidden unit addition markers
         for i in range(1, len(metrics_data)):
             prev_hidden = metrics_data[i - 1].get("network_topology", {}).get("hidden_units", 0)
@@ -596,7 +594,7 @@ class MetricsPanel(BaseComponent):
                 )
         return fig
 
-    def _training_loss_per_time(self, fig: go.figure = None, theme: str = "light") -> go.figure:
+    def _training_loss_per_time(self, fig: go.Figure = None, theme: str = "light") -> go.Figure:
         is_dark = theme == "dark"
         fig.update_layout(
             title="Training Loss Over Time",

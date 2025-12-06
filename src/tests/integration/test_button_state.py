@@ -54,8 +54,6 @@ class TestButtonStateIntegration:
         """Test: Click Start → verify single command sent."""
         from unittest.mock import MagicMock
 
-        import dash
-
         from frontend.dashboard_manager import DashboardManager
 
         config = {
@@ -70,45 +68,38 @@ class TestButtonStateIntegration:
         with patch("frontend.dashboard_manager.requests.post") as mock_post:
             mock_post.return_value.status_code = 200
 
-            # Find button callback
-            callback = None
-            for _cb_id, cb in dashboard.app.callback_map.items():
-                if any("start-button" in str(inp) for inp in cb.get("inputs", [])):
-                    callback = cb.get("callback")
-                    break
+            mock_request = MagicMock()
+            mock_request.scheme = "http"
+            mock_request.host = "localhost:8050"
 
-            # Mock callback_context to simulate button click
-            mock_ctx = MagicMock()
-            mock_ctx.triggered_id = "start-button"
-
-            with patch.object(dash.callback_context, "triggered_id", "start-button"):
-                # Execute button click
-                action, button_states = callback(
-                    1,
-                    0,
-                    0,
-                    0,
-                    0,
-                    {"button": None, "timestamp": 0},
-                    {
+            with patch("frontend.dashboard_manager.request", mock_request):
+                action, button_states = dashboard._handle_training_buttons_handler(
+                    start_clicks=1,
+                    pause_clicks=0,
+                    stop_clicks=0,
+                    resume_clicks=0,
+                    reset_clicks=0,
+                    last_click={"button": None, "timestamp": 0},
+                    button_states={
                         "start": {"disabled": False, "loading": False},
                         "pause": {"disabled": False, "loading": False},
                         "stop": {"disabled": False, "loading": False},
                         "resume": {"disabled": False, "loading": False},
                         "reset": {"disabled": False, "loading": False},
                     },
+                    trigger="start-button",
                 )
 
-            # Verify single API call
-            assert mock_post.call_count == 1
+                # Verify single API call
+                assert mock_post.call_count == 1
 
-            # Verify correct endpoint
-            call_args = mock_post.call_args
-            assert "/api/train/start" in str(call_args)
+                # Verify correct endpoint
+                call_args = mock_post.call_args
+                assert "/api/train/start" in str(call_args)
 
     def test_button_re_enables_after_acknowledgment(self):
         """Test: Click → disable → ack received → button re-enabled."""
-        import dash
+        from unittest.mock import MagicMock
 
         from frontend.dashboard_manager import DashboardManager
 
@@ -124,53 +115,48 @@ class TestButtonStateIntegration:
         with patch("frontend.dashboard_manager.requests.post") as mock_post:
             mock_post.return_value.status_code = 200
 
-            # Find callbacks
-            button_callback = None
-            timeout_callback = None
+            mock_request = MagicMock()
+            mock_request.scheme = "http"
+            mock_request.host = "localhost:8050"
 
-            for _cb_id, cb in dashboard.app.callback_map.items():
-                if any("start-button" in str(inp) for inp in cb.get("inputs", [])):
-                    button_callback = cb.get("callback")
-                if "handle_button_timeout_and_acks" in str(cb.get("callback", "")):
-                    timeout_callback = cb.get("callback")
-
-            # Step 1: Click button
-            with patch.object(dash.callback_context, "triggered_id", "start-button"):
-                action, button_states = button_callback(
-                    1,
-                    0,
-                    0,
-                    0,
-                    0,
-                    {"button": None, "timestamp": 0},
-                    {
+            with patch("frontend.dashboard_manager.request", mock_request):
+                action, button_states = dashboard._handle_training_buttons_handler(
+                    start_clicks=1,
+                    pause_clicks=0,
+                    stop_clicks=0,
+                    resume_clicks=0,
+                    reset_clicks=0,
+                    last_click={"button": None, "timestamp": 0},
+                    button_states={
                         "start": {"disabled": False, "loading": False},
                         "pause": {"disabled": False, "loading": False},
                         "stop": {"disabled": False, "loading": False},
                         "resume": {"disabled": False, "loading": False},
                         "reset": {"disabled": False, "loading": False},
                     },
+                    trigger="start-button",
                 )
 
             # Verify disabled
             assert button_states["start"]["disabled"] is True
 
-            # Step 2: Simulate acknowledgment received after 1.5 seconds
-            time.sleep(0.1)  # Small delay to simulate async
+            # Simulate acknowledgment received after 1.5 seconds
             action_with_delay = {"last": "start-button", "ts": time.time() - 1.5, "success": True}
 
-            # Step 3: Timeout handler processes acknowledgment
-            if timeout_callback:
-                with patch.object(dash.callback_context, "triggered_id", "training-control-action"):
-                    new_states = timeout_callback(action_with_delay, 0, button_states)
+            new_states = dashboard._handle_button_timeout_and_acks_handler(
+                action=action_with_delay,
+                n_intervals=0,
+                button_states=button_states,
+                trigger="training-control-action",
+            )
 
-                # Verify re-enabled
-                assert new_states["start"]["disabled"] is False
-                assert new_states["start"]["loading"] is False
+            # Verify re-enabled
+            assert new_states["start"]["disabled"] is False
+            assert new_states["start"]["loading"] is False
 
     def test_rapid_clicks_only_send_one_command(self):
         """Test: Rapid clicks → verify only one command sent."""
-        import dash
+        from unittest.mock import MagicMock
 
         from frontend.dashboard_manager import DashboardManager
 
@@ -186,41 +172,48 @@ class TestButtonStateIntegration:
         with patch("frontend.dashboard_manager.requests.post") as mock_post:
             mock_post.return_value.status_code = 200
 
-            # Find button callback
-            callback = None
-            for _cb_id, cb in dashboard.app.callback_map.items():
-                if any("start-button" in str(inp) for inp in cb.get("inputs", [])):
-                    callback = cb.get("callback")
-                    break
+            mock_request = MagicMock()
+            mock_request.scheme = "http"
+            mock_request.host = "localhost:8050"
 
-            # First click
-            current_time = time.time()
-            with patch.object(dash.callback_context, "triggered_id", "start-button"):
-                action1, states1 = callback(
-                    1,
-                    0,
-                    0,
-                    0,
-                    0,
-                    {"button": None, "timestamp": 0},
-                    {
+            with patch("frontend.dashboard_manager.request", mock_request):
+                current_time = time.time()
+                action1, states1 = dashboard._handle_training_buttons_handler(
+                    start_clicks=1,
+                    pause_clicks=0,
+                    stop_clicks=0,
+                    resume_clicks=0,
+                    reset_clicks=0,
+                    last_click={"button": None, "timestamp": 0},
+                    button_states={
                         "start": {"disabled": False, "loading": False},
                         "pause": {"disabled": False, "loading": False},
                         "stop": {"disabled": False, "loading": False},
                         "resume": {"disabled": False, "loading": False},
                         "reset": {"disabled": False, "loading": False},
                     },
+                    trigger="start-button",
                 )
 
-            # Second click within debounce window (< 500ms)
-            with patch.object(dash.callback_context, "triggered_id", "start-button"):
-                callback(2, 0, 0, 0, 0, {"button": "start-button", "timestamp": current_time}, states1)
+                # Second click within debounce window (< 500ms)
+                dashboard._handle_training_buttons_handler(
+                    start_clicks=2,
+                    pause_clicks=0,
+                    stop_clicks=0,
+                    resume_clicks=0,
+                    reset_clicks=0,
+                    last_click={"button": "start-button", "timestamp": current_time},
+                    button_states=states1,
+                    trigger="start-button",
+                )
 
-            # Only one API call should have been made
-            assert mock_post.call_count == 1
+                # Only one API call should have been made
+                assert mock_post.call_count == 1
 
     def test_loading_indicator_visible(self):
         """Test: Button shows loading indicator when clicked."""
+        from unittest.mock import MagicMock
+
         from frontend.dashboard_manager import DashboardManager
 
         config = {
@@ -235,57 +228,37 @@ class TestButtonStateIntegration:
         with patch("frontend.dashboard_manager.requests.post") as mock_post:
             mock_post.return_value.status_code = 200
 
-            # Find button callbacks
-            button_callback = None
-            appearance_callback = None
+            mock_request = MagicMock()
+            mock_request.scheme = "http"
+            mock_request.host = "localhost:8050"
 
-            for _cb_id, cb in dashboard.app.callback_map.items():
-                if any("start-button" in str(inp) for inp in cb.get("inputs", [])) and any(
-                    "button-states" in str(out) for out in cb.get("outputs", [])
-                ):
-                    button_callback = cb.get("callback")
-                if "update_button_appearance" in str(cb.get("callback", "")):
-                    appearance_callback = cb.get("callback")
-
-            # Click button
-            if button_callback:
-                action, button_states = button_callback(
-                    1,
-                    0,
-                    0,
-                    0,
-                    0,
-                    {"button": None, "timestamp": 0},
-                    {
+            with patch("frontend.dashboard_manager.request", mock_request):
+                action, button_states = dashboard._handle_training_buttons_handler(
+                    start_clicks=1,
+                    pause_clicks=0,
+                    stop_clicks=0,
+                    resume_clicks=0,
+                    reset_clicks=0,
+                    last_click={"button": None, "timestamp": 0},
+                    button_states={
                         "start": {"disabled": False, "loading": False},
                         "pause": {"disabled": False, "loading": False},
                         "stop": {"disabled": False, "loading": False},
                         "resume": {"disabled": False, "loading": False},
                         "reset": {"disabled": False, "loading": False},
                     },
-                    outputs_list=[
-                        {"id": "training-control-action", "property": "data"},
-                        {"id": "button-states", "property": "data"},
-                    ],
+                    trigger="start-button",
                 )
 
-                # Update appearance based on new states
-                if appearance_callback:
-                    result = appearance_callback(button_states)
+            result = dashboard._update_button_appearance_handler(button_states=button_states)
 
-                    # Result is tuple of (disabled, text) for each button
-                    start_disabled, start_text = result[0], result[1]
+            start_disabled, start_text = result[0], result[1]
 
-                    # Verify loading indicator in text
-                    assert (
-                        "⏳" in start_text or "..." in start_text
-                    ), f"Button should show loading indicator, got: {start_text}"
-                    assert start_disabled is True, "Button should be disabled"
+            assert "⏳" in start_text or "..." in start_text, f"Button should show loading indicator, got: {start_text}"
+            assert start_disabled is True, "Button should be disabled"
 
     def test_error_handling_re_enables_button(self):
         """Test: API error → button re-enabled immediately."""
-        import dash
-
         from frontend.dashboard_manager import DashboardManager
 
         config = {
@@ -298,33 +271,24 @@ class TestButtonStateIntegration:
         dashboard = DashboardManager(config)
 
         with patch("frontend.dashboard_manager.requests.post") as mock_post:
-            # Simulate API error
             mock_post.side_effect = Exception("API Error")
 
-            # Find button callback
-            callback = None
-            for _cb_id, cb in dashboard.app.callback_map.items():
-                if any("start-button" in str(inp) for inp in cb.get("inputs", [])):
-                    callback = cb.get("callback")
-                    break
-
-            # Click button
-            with patch.object(dash.callback_context, "triggered_id", "start-button"):
-                action, button_states = callback(
-                    1,
-                    0,
-                    0,
-                    0,
-                    0,
-                    {"button": None, "timestamp": 0},
-                    {
-                        "start": {"disabled": False, "loading": False},
-                        "pause": {"disabled": False, "loading": False},
-                        "stop": {"disabled": False, "loading": False},
-                        "resume": {"disabled": False, "loading": False},
-                        "reset": {"disabled": False, "loading": False},
-                    },
-                )
+            action, button_states = dashboard._handle_training_buttons_handler(
+                start_clicks=1,
+                pause_clicks=0,
+                stop_clicks=0,
+                resume_clicks=0,
+                reset_clicks=0,
+                last_click={"button": None, "timestamp": 0},
+                button_states={
+                    "start": {"disabled": False, "loading": False},
+                    "pause": {"disabled": False, "loading": False},
+                    "stop": {"disabled": False, "loading": False},
+                    "resume": {"disabled": False, "loading": False},
+                    "reset": {"disabled": False, "loading": False},
+                },
+                trigger="start-button",
+            )
 
             # Button should be re-enabled on error
             assert button_states["start"]["disabled"] is False

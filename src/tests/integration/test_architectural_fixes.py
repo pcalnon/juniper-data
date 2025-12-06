@@ -323,19 +323,20 @@ class TestAPIURLDynamicResolution:
         config = {}
         manager = DashboardManager(config)
 
-        # Get source code of _setup_callbacks and _api_url
-        callbacks_source = inspect.getsource(manager._setup_callbacks)
+        # Get source code of _api_url helper
         api_url_source = inspect.getsource(manager._api_url)
-
-        # Verify hard-coded URLs are not present in callbacks
-        assert "http://127.0.0.1:8050" not in callbacks_source  # trunk-ignore(bandit/B101)
 
         # Verify dynamic URL building using request.scheme and request.host (in _api_url helper)
         assert "request.scheme" in api_url_source  # trunk-ignore(bandit/B101)
         assert "request.host" in api_url_source  # trunk-ignore(bandit/B101)
 
-        # Verify callbacks use the _api_url helper
-        assert "_api_url" in callbacks_source  # trunk-ignore(bandit/B101)
+        # Verify handler methods use the _api_url helper (check a sample handler)
+        # _update_status_bar_handler uses _api_url for API calls
+        handler_source = inspect.getsource(manager._update_status_bar_handler)
+        assert "_api_url" in handler_source  # trunk-ignore(bandit/B101)
+
+        # Verify no hardcoded URLs in handler methods
+        assert "http://127.0.0.1:8050" not in handler_source  # trunk-ignore(bandit/B101)
 
 
 class TestConfigurationManagement:

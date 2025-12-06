@@ -6,7 +6,8 @@ Tests path resolution, backend path validation, and import error handling.
 
 # import os
 import sys
-from pathlib import Path
+
+# from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -95,39 +96,46 @@ class TestCascorIntegrationPaths:
         backend_dir = tmp_path / "cascor_from_config"
         backend_dir.mkdir()
 
-        # Mock get_config function
-        mock_config_obj = MagicMock()
-        mock_config_obj.get.return_value = str(backend_dir)
+        with patch.object(CascorIntegration, "_add_backend_to_path"):
+            with patch.object(CascorIntegration, "_import_backend_modules"):
+                self._resolve_backend_path(backend_dir)
 
-        with patch("config_manager.get_config", return_value=mock_config_obj):
-            with patch.object(CascorIntegration, "_add_backend_to_path"):
-                with patch.object(CascorIntegration, "_import_backend_modules"):
-                    result = self._get_backend_path()
-                    # trunk-ignore(bandit/B101)
-                    assert result == backend_dir.resolve()
-
-    def _get_backend_path(self, arg0):
+    def _resolve_backend_path(self, backend_dir):
         integration = CascorIntegration.__new__(CascorIntegration)
         integration.logger = MagicMock()
-        return integration._resolve_backend_path(arg0)
+        integration.config_mgr = MagicMock()
+        integration.config_mgr.config = {"backend": {"cascor_integration": {"backend_path": str(backend_dir)}}}
+        result = integration._resolve_backend_path(None)
+        # trunk-ignore(bandit/B101)
+        assert result == backend_dir.resolve()
+
+    def _get_backend_path(self, backend_path=None):
+        integration = CascorIntegration.__new__(CascorIntegration)
+        integration.logger = MagicMock()
+        integration.config_mgr = MagicMock()
+        integration.config_mgr.config = {"backend": {"cascor_integration": {"backend_path": None}}}
+        return integration._resolve_backend_path(backend_path)
+
+    def _extracted_from_test_import_backend_modules_missing_raises_error_8(self, backend_dir):
+        integration = CascorIntegration.__new__(CascorIntegration)
+        integration.logger = MagicMock()
+        integration.backend_path = backend_dir.resolve()
+        return integration
 
     def test_resolve_backend_path_config_fallback_to_default(self, tmp_path):
-        """Test _resolve_backend_path uses default when config fails."""
-        # Create default backend location relative to test
-        current_file = Path(__file__).resolve()
-        default_backend = current_file.parents[3] / "cascor"
-        # trunk-ignore(bandit/B101)
-        assert default_backend.exists()
+        """Test _resolve_backend_path uses default when config has no path and env var not set."""
+        with patch.object(CascorIntegration, "_add_backend_to_path"):
+            with patch.object(CascorIntegration, "_import_backend_modules"):
+                integration = CascorIntegration.__new__(CascorIntegration)
+                integration.logger = MagicMock()
+                integration.config_mgr = MagicMock()
+                integration.config_mgr.config = {"backend": {"cascor_integration": {"backend_path": None}}}
 
-        with patch("config_manager.get_config", side_effect=Exception("Config error")):
-            with patch.object(CascorIntegration, "_add_backend_to_path"):
-                with patch.object(CascorIntegration, "_import_backend_modules"):
-                    integration = CascorIntegration.__new__(CascorIntegration)
-                    integration.logger = MagicMock()
+                with pytest.raises(FileNotFoundError) as exc_info:
+                    integration._resolve_backend_path(None)
 
-                    # Should use default "../cascor" which will fail to exist
-                    with pytest.raises(FileNotFoundError):
-                        integration._resolve_backend_path(None)
+                # trunk-ignore(bandit/B101)
+                assert "CasCor backend not found" in str(exc_info.value)
 
     def test_add_backend_to_path_success(self, tmp_path):
         """Test _add_backend_to_path adds src directory to sys.path."""

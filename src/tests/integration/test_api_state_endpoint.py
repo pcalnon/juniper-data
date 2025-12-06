@@ -87,8 +87,11 @@ class TestStateEndpoint:
 
         # After initialization, state should have default values
         # Note: In demo mode, some values may be different
-        assert data["status"] in ["Stopped", "Started", "Paused"]
-        assert data["phase"] in ["Idle", "Output", "Candidate", "Inference"]
+        # Status and phase are case-insensitive
+        valid_statuses = ["stopped", "started", "paused", "running"]
+        valid_phases = ["idle", "output", "candidate", "inference"]
+        assert data["status"].lower() in valid_statuses, f"Invalid status: {data['status']}"
+        assert data["phase"].lower() in valid_phases, f"Invalid phase: {data['phase']}"
         assert data["learning_rate"] >= 0.0
         assert data["max_hidden_units"] >= 0
         assert data["current_epoch"] >= 0

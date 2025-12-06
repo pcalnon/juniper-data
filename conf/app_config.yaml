@@ -1,7 +1,7 @@
 ---
 #####################################################################################################################################################################################################
 # Project:       Juniper
-# Prototype:     juniper_canopy:  Monitoring and Diagnostic Frontend for CasCor Neural Network
+# Prototype:     juniper_canopy:  Monitoring and Diagnostics for CasCor NN
 # File Name:     app_config.yaml
 # Author:        Paul Calnon
 # Version:       0.1.4 (0.7.3)
@@ -101,7 +101,7 @@ logging:
       console_level: DEBUG
       file_level: INFO
       interaction_tracking: true
-../../../../conf/test_common_conf.bash
+
     system:
       # console_level: ERROR
       console_level: DEBUG

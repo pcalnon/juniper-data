@@ -39,7 +39,8 @@
 import contextlib
 import logging
 import os
-import traceback
+
+# import traceback
 from pathlib import Path
 from typing import Any, Dict, Optional, TypedDict, Union
 
@@ -201,11 +202,11 @@ class ConfigManager:
             value = self.get(key_path)
 
             if value is None:
-                self.logger.warning(f"Missing required config key {key_path.repr()}, using default: {default_value}")
+                self.logger.warning(f"Missing required config key {key_path!r}, using default: {default_value}")
                 self.set(key_path, default_value)
             elif not isinstance(value, expected_type):
                 self.logger.warning(
-                    f"Invalid type for config key {key_path.repr()}: "
+                    f"Invalid type for config key {key_path!r}: "
                     f"expected {expected_type.__name__}, got {type(value).__name__}, "
                     f"using default: {default_value}"
                 )
@@ -305,7 +306,7 @@ class ConfigManager:
             return param_config
 
         except KeyError as e:
-            raise KeyError(f"Training parameter {param_name.repr()} not found in configuration") from e
+            raise KeyError(f"Training parameter {param_name!r} not found in configuration") from e
 
     def validate_training_param_value(self, param_name: str, value: Union[int, float]) -> bool:
         """
@@ -363,66 +364,80 @@ class ConfigManager:
         Returns:
             True if consistent, False if discrepancies found
         """
+        if constants_class is None:
+            try:
+                from constants import TrainingConstants
+
+                constants_class = TrainingConstants
+            except ImportError:
+                self.logger.warning("Constants module not found, skipping consistency check")
+                return True
 
         if self.skipping_constants_check(constants_class=constants_class):
             return True
 
-        # TODO: Consider Moving into constants
-        constants_keys = list("min", "max", "default")
-        category_names = list("TRAINING_EPOCHS", "LEARNING_RATE", "HIDDEN_UNITS")
+        consistency_mapping = {
+            "epochs": {
+                "min": "MIN_TRAINING_EPOCHS",
+                "max": "MAX_TRAINING_EPOCHS",
+                "default": "DEFAULT_TRAINING_EPOCHS",
+            },
+            "learning_rate": {
+                "min": "MIN_LEARNING_RATE",
+                "max": "MAX_LEARNING_RATE",
+                "default": "DEFAULT_LEARNING_RATE",
+            },
+            "hidden_units": {
+                "min": "MIN_HIDDEN_UNITS",
+                "max": "MAX_HIDDEN_UNITS",
+                "default": "DEFAULT_MAX_HIDDEN_UNITS",
+            },
+        }
 
-        full_name = ""
         consistent = True
-        try:
-            for category in category_names:
-                category_constants = {}
-                for key in constants_keys:
-                    try:
-                        value_name = f"{key.upper()}_{category}"
-                        full_name = f"{constants_class.__name__()}.{value_name}"
-                        # Add row to cat const dict, NOTE: value is tuple with constant name and constant value
-                        category_constants[key] = (full_name, getattr(constants_class, value_name))
-                    except ValueError as e:
-                        self.logger.error(
-                            f"Error building category constants dict for consistency check: Invalid Constant: {full_name}, "
-                            f"exception: {e}\n{traceback.format_exc()}"
+        for param_name, const_attrs in consistency_mapping.items():
+            try:
+                config = self.get_training_param_config(param_name)
+            except KeyError:
+                self.logger.warning(f"Training parameter {param_name!r} not found in configuration, skipping")
+                continue
+
+            for key, const_attr in const_attrs.items():
+                try:
+                    const_value = getattr(constants_class, const_attr)
+                    config_value = config.get(key)
+                    if config_value != const_value:
+                        self.logger.warning(
+                            f"Config {param_name}.{key} ({config_value}) != "
+                            f"{constants_class.__name__}.{const_attr} ({const_value})"
                         )
-                        raise ValueError("Invalid Constant Name preparing for consistency check") from e
-                consistent = consistent and self.check_constants_category(
-                    constants_class=constants_class, constants=category_constants, category=category.lower()
-                )
-        except ValueError as e:
-            self.logger.error(
-                f"Error verifying config constants consistency: category constants dict: {category_constants}, "
-                f"exception: {e}\n{traceback.format_exc()}"
-            )
-            raise ValueError("Failed Constants consistency check") from e
+                        consistent = False
+                except AttributeError:
+                    self.logger.warning(f"Constant {const_attr} not found in {constants_class.__name__}")
+                    consistent = False
+
         return consistent
 
     def skipping_constants_check(self, constants_class: object = None) -> bool:
         try:
-            # constants_class = constants_class or constants.TrainingConstants
-            # from constants import TrainingConstants
-            # from constants import constants.constants_class
-            import importlib
+            if constants_class is None:
+                from constants import TrainingConstants
 
-            importlib.import_module(f"{constants_class.__name__}.{constants_class.__name__}")
-
+                constants_class = TrainingConstants
+            return False
         except ImportError:
             self.logger.warning("Constants module not found, skipping consistency check")
             return True
-        return False
 
     def check_constants_category(
         self, constants_class: object = None, constants: dict = None, category: str = None
     ) -> bool:
-        category = constants_class.__name__()
+        if category is None and constants_class is not None:
+            category = constants_class.__name__
         consistent = True
 
-        # TODO: Not sure which one to use
         config_from_method = self.get_training_param_config(category)
         config_from_self = self.config.get(category, {})
-        # TODO: For now call both
         config = (
             config_from_method or config_from_self if config_from_method != config_from_self else config_from_method
         )

@@ -27,7 +27,7 @@ class TestDashboardManagerInitialization:
         # trunk-ignore(bandit/B101)
         assert manager.config == config
         # trunk-ignore(bandit/B101)
-        assert manager.app is True
+        assert manager.app is not None
         # trunk-ignore(bandit/B101)
         assert isinstance(manager.app, dash.Dash)
         # trunk-ignore(bandit/B101)
@@ -46,13 +46,13 @@ class TestDashboardManagerInitialization:
         manager = DashboardManager(config)
 
         # trunk-ignore(bandit/B101)
-        assert manager.metrics_panel is True
+        assert manager.metrics_panel is not None
         # trunk-ignore(bandit/B101)
-        assert manager.network_visualizer is True
+        assert manager.network_visualizer is not None
         # trunk-ignore(bandit/B101)
-        assert manager.dataset_plotter is True
+        assert manager.dataset_plotter is not None
         # trunk-ignore(bandit/B101)
-        assert manager.decision_boundary is True
+        assert manager.decision_boundary is not None
 
     def test_training_defaults_with_env_vars(self):
         """Test training defaults with environment variable overrides."""

@@ -775,10 +775,25 @@ class DemoMode:
 
         self._update_training_state("running", "Demo mode resumed")
 
-    def _update_training_state(self, arg0, arg1):
-        self._broadcast_status(arg0)
-        self._update_training_state()
-        self.logger.info(arg1)
+    def _update_training_state(
+        self,
+        status_label: Optional[str] = None,
+        log_message: Optional[str] = None,
+    ) -> None:
+        """
+        Update training state and optionally broadcast status and log a message.
+
+        Args:
+            status_label: Optional status string to broadcast via WebSocket
+            log_message: Optional message to log
+        """
+        self._update_training_status()
+
+        if status_label is not None:
+            self._broadcast_status(status_label)
+
+        if log_message:
+            self.logger.info(log_message)
 
     def reset(self) -> Dict[str, Any]:
         """
