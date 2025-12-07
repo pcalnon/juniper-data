@@ -2,7 +2,9 @@
 applyTo: '**'
 ---
 
-# Copilot Instructions for the juniper_canopy prototype, the CasCor Frontend
+# Copilot Instructions for the juniper_canopy prototype
+
+The Juniper Canopy application servers as the CasCor NN Frontend
 
 Provide project context and coding guidelines that AI should follow when generating code, answering questions, or reviewing changes.
 <!-- trunk-ignore-all(prettier) -->
@@ -11,18 +13,21 @@ Provide project context and coding guidelines that AI should follow when generat
 
 This is a prototype for developing a graphical frontend for Cascade Correlation (CasCor) neural networks. The project enables real-time monitoring of training progress, performance statistics, dataset visualization, decision boundaries, and graphical network representation.
 
-Real-time monitoring frontend for Cascade Correlation neural networks. Monitors the CasCor prototype at `../cascor/` with FastAPI backend, Plotly Dash frontend, and WebSocket communication for live training visualization.
+Real-time monitoring frontend for Cascade Correlation neural networks. Monitors the CasCor prototype at `../../JuniperCascor/juniper_cascor` with FastAPI backend, Plotly Dash frontend, and WebSocket communication for live training visualization.
 
 ### Development Environment
+
 - **OS**: Ubuntu Linux with conda environment management
 - **IDE**: VS Code (primary development environment)
 - **Language**: Python-based neural network backend with frontend TBD
 - **Architecture**: Frontend-backend separation for neural network visualization
 
 ### Directory Structure & Conventions
-Follow the strict project organization pattern established in `prompts/prompt_cascor_frontend.md`:
+
+Follow the strict project organization pattern established in `prompts/prompt_juniper_canopy.md`:
 
 ### Architecture Stack (Implemented)
+
 - **Backend**: FastAPI with async/WebSocket support (`src/main.py`)
 - **Frontend**: Plotly Dash for Python-native reactive UI (`src/frontend/dashboard_manager.py`)
 - **Communication**: WebSocket bidirectional + SSE for metrics streaming (`src/communication/websocket_manager.py`)
@@ -31,6 +36,7 @@ Follow the strict project organization pattern established in `prompts/prompt_ca
 - **Logging**: Dual-channel (console/file) with independent log levels (`src/logging/logger.py`)
 
 ### Critical Directory Structure
+
 ```bash
 conf/              # YAML configs, requirements.txt, Docker/conda env files
 data/{samples,testing,training}/  # Datasets with subdirectories
@@ -45,12 +51,13 @@ src/               # All source code
     frontend/        # Dashboard manager, base component, components/
     logging/         # Multi-level logging framework
     tests/           # Unit/integration tests, mocks, helpers
-utils/             # Bash setup scripts (conda/mamba environment management)
+util/             # Bash setup scripts (conda/mamba environment management)
 ```
 
 ## Essential Development Patterns
 
 ### 1. Configuration Access
+
 ```python
 from config_manager import get_config
 config = get_config()
@@ -59,6 +66,7 @@ value = config.get('section.key', default_value)  # Nested dot notation
 Config supports environment variable overrides with `CASCOR_` prefix (e.g., `CASCOR_SERVER_PORT=8080`).
 
 ### 2. Logging Pattern (Independent Console/File Levels)
+
 ```python
 from logging.logger import get_system_logger, get_training_logger, get_ui_logger
 logger = get_system_logger()  # or get_training_logger(), get_ui_logger()
@@ -69,6 +77,7 @@ logger = get_system_logger()  # or get_training_logger(), get_ui_logger()
 - Automatic rotation: midnight, 30-day retention, compression
 
 ### 3. CasCor Integration Hook Pattern
+
 The integration uses method wrapping to inject monitoring without modifying CasCor source:
 ```python
 # In src/backend/cascor_integration.py
@@ -77,6 +86,7 @@ cascor_integration.install_monitoring_hooks()  # Wraps train methods
 ```
 
 ### 4. Component Registration Pattern
+
 ```python
 # Frontend components inherit from BaseComponent
 class MyComponent(BaseComponent):
@@ -90,25 +100,57 @@ dashboard_manager.register_component(my_component)
 ## Environment & Workflow
 
 ### Conda Environment Requirement
+
 **CRITICAL**: Before running ANY Python code or test, first activate:
+
 ```bash
-conda activate JuniperPython
+conda activate JuniperCanopy
 ```
+
 This provides torch, yaml, h5py, and all ML dependencies. The project was developed for Ubuntu but should work cross-platform.
 
 ### Setup Script Pattern
-`utils/setup_environment.bash` uses conditional conda/mamba detection:
+
+`util/setup_environment.bash` uses conditional conda/mamba detection:
+
 ```bash
 USE_CONDA="${TRUE}"  # or USE_MAMBA="${TRUE}"
 CMD="${CONDA_CMD}"   # Automatically set based on flag
 ```
 
 ### Running the Application
+
 ```bash
-cd src/
-python main.py  # Starts FastAPI + Dash on localhost:8050
+# Simplistic launch
+python ./src/main.py  # Starts FastAPI + Dash on localhost:8050
+
+# Launch with environment configuration
+./util/juniper_canopy.bash
+
+# Convenience Script
+./try
 ```
 
+#### Running in Demo Mode
+
+```bash
+# Fully defined launch command
+exec "/opt/miniforge3/envs/JuniperCanopy/bin/uvicorn" main:app --host 0.0.0.0 --port 8050 --log-level debug
+
+# Using Conda Environment Variable (export CONDA_PREFIX=/opt/miniforge3/envs/JuniperCanopy)
+exec "$CONDA_PREFIX/bin/uvicorn" main:app --host 0.0.0.0 --port 8050 --log-level debug
+
+# Using Launch Script
+./util/juniper_canopy-demo.bash
+
+# Using Convenience Script
+./demo
+```
+
+### Development Server
+
+
+```bash
 ## Key Files & Their Roles
 
 ```bash
@@ -127,20 +169,24 @@ python main.py  # Starts FastAPI + Dash on localhost:8050
 ## Path Configuration & Portability
 
 ### CasCor Backend Path
+
 The config uses absolute paths for development. For portability across environments:
 
 **Environment Variable (Recommended)**:
 ```bash
-export CASCOR_BACKEND_PATH="../cascor"  # Relative to frontend root
+# Relative to frontend root
+export CASCOR_BACKEND_PATH_REL="../../JuniperCascor/juniper_cascor"
 # Or absolute for Ubuntu workstation:
-export CASCOR_BACKEND_PATH="${HOME}/Development/python/Juniper/src/prototypes/cascor"
+export CASCOR_BACKEND_PATH_ABS="${HOME}/Development/python/JuniperCascor/juniper_cascor"
+# Select one for now
+export CASCOR_BACKEND_PATH="${CASCOR_BACKEND_PATH_ABS}"
 ```
 
 **Config Override** (`conf/app_config.yaml`):
 ```yaml
 backend:
     cascor_integration:
-        backend_path: ${CASCOR_BACKEND_PATH:../cascor}  # Env var with fallback
+        backend_path: ${CASCOR_BACKEND_PATH:../../JuniperCascor/juniper_cascor}  # Env var with fallback
 ```
 
 **Runtime Detection Pattern**:
@@ -151,11 +197,19 @@ import os
 
 cascor_path = Path(os.getenv(
     'CASCOR_BACKEND_PATH',
-    Path(__file__).parent.parent.parent.parent / 'cascor'  # Relative fallback
+    Path(__file__).parent.parent.parent.parent.parent / 'JuniperCascor/juniper_cascor'  # Relative fallback
 ))
 ```
 
-Primary development: **Ubuntu 25.04 workstation** at `/home/pcalnon/Development/...`
+**Primary development:**
+- Platform: GPU Workstation
+- OS Name: Ubuntu 25.10
+- Dev Path: `/home/pcalnon/Development/...`
+
+**Secondary development:**
+- Platform: MacBook Pro, Intel, 2019
+- OS Name: MacOS 13
+- Dev Path: `/Users/pcalnon/Development/...`
 
 ## Common Pitfalls & Conventions
 
@@ -170,8 +224,10 @@ Primary development: **Ubuntu 25.04 workstation** at `/home/pcalnon/Development/
 Redis is configured but **partially implemented**. Complete implementation required:
 
 ### Current State
+
 - Docker Compose includes Redis 7 Alpine container
 - Config defines cache settings in `conf/app_config.yaml`:
+
 ```yaml
 backend.cache:
     enabled: true
@@ -180,6 +236,7 @@ backend.cache:
     ttl_seconds: 3600
     max_connections: 10
 ```
+
 - `redis` package listed in `conf/requirements.txt` (currently commented)
 
 ### Required Implementation
@@ -212,6 +269,7 @@ class RedisClient:
 ```
 
 **2. Integration Points**:
+
 - `src/backend/training_monitor.py`: Add Redis caching in metric callbacks
 - `src/communication/websocket_manager.py`: Use Redis pub/sub for multi-instance coordination
 - `src/main.py`: Initialize Redis client on startup, handle connection failures gracefully
@@ -472,7 +530,7 @@ class TestWebSocketPerformance:
 
 **Run all tests**:
 ```bash
-conda activate JuniperPython
+conda activate JuniperCanopy
 cd src/tests
 pytest
 ```
@@ -537,7 +595,7 @@ ptw src/tests -- --testmon  # Only run affected tests
 **Pre-commit hook** (`.git/hooks/pre-commit`):
 ```bash
 #!/usr/bin/env bash
-conda activate JuniperPython
+conda activate JuniperCanopy
 pytest src/tests/unit -x  # Stop on first failure
 if [ $? -ne 0 ]; then
     echo "Unit tests failed. Commit aborted."
@@ -546,6 +604,7 @@ fi
 ```
 
 ### Test Coverage Requirements
+
 - **Target**: 90% coverage (`development.testing.coverage_threshold: 0.9` in config)
 - **Critical paths**: 100% coverage required for:
     - `src/config_manager.py`
@@ -583,34 +642,34 @@ The `conf/Dockerfile` uses Python 3.9 slim base. For production:
 
 **Build image**:
 ```bash
-cd /path/to/cascor_frontend-1
-docker build -f conf/Dockerfile -t cascor-frontend:latest .
+cd /path/to/juniper_canopy
+docker build -f conf/Dockerfile -t juniper_canopy:latest .
 ```
 
 **Standalone run**:
 ```bash
 docker run -d \
-    --name cascor-frontend \
+    --name juniper-canopy \
     -p 8050:8050 \
     -e CASCOR_BACKEND_PATH=/app/cascor \
     -e CASCOR_ENV=production \
     -v $(pwd)/logs:/app/logs \
     -v $(pwd)/data:/app/data \
-    cascor-frontend:latest
+    juniper_canopy:latest
 ```
 
 ### Docker Compose Orchestration
 
 **Full stack** (Frontend + Redis + optional CasCor backend):
 ```bash
-cd /path/to/cascor_frontend-1
+cd /path/to/juniper_canopy
 docker-compose -f conf/docker-compose.yaml up -d
 ```
 
 **Stack includes**:
-- `cascor-frontend`: Main application (port 8050)
+- `juniper-canopy`: Main application (port 8050)
 - `redis`: Redis 7 Alpine with persistence (port 6379)
-- `cascor-backend`: (Optional) CasCor network service (port 8000)
+- `juniper_cascor:  the CasCor NN backend`: (Optional) CasCor network service (port 8000)
 
 **Environment variables** (create `.env` in project root):
 ```bash
@@ -626,7 +685,7 @@ JWT_SECRET_KEY=your-secret-key-here
 docker-compose -f conf/docker-compose.yaml ps        # Status
 docker-compose -f conf/docker-compose.yaml logs -f   # Follow logs
 docker-compose -f conf/docker-compose.yaml down      # Stop all
-docker-compose -f conf/docker-compose.yaml restart cascor-frontend  # Restart service
+docker-compose -f conf/docker-compose.yaml restart juniper_canopy  # Restart service
 ```
 
 **Volume persistence**:
@@ -646,7 +705,7 @@ docker-compose -f conf/docker-compose.yaml restart cascor-frontend  # Restart se
 3. **Resource limits** (docker-compose.yaml):
     ```yaml
     services:
-        cascor-frontend:
+        juniper-canopy:
             deploy:
                 resources:
                     limits:
@@ -659,19 +718,19 @@ docker-compose -f conf/docker-compose.yaml restart cascor-frontend  # Restart se
 
 ### Ubuntu 25.04 Systemd Service (Alternative to Docker)
 
-**Create service**: `/etc/systemd/system/cascor-frontend.service`
+**Create service**: `/etc/systemd/system/juniper-canopy.service`
 ```ini
 [Unit]
-Description=CasCor Frontend Service
+Description=Juniper Canopy Service
 After=network.target redis.service
 
 [Service]
 Type=simple
 User=pcalnon
 Group=pcalnon
-WorkingDirectory=/home/pcalnon/Development/python/Juniper/src/prototypes/cascor_frontend-1/src
+WorkingDirectory=/home/pcalnon/Development/python/JuniperCanopy/juniper_canopy/src
 Environment="PATH=/home/pcalnon/miniconda3/envs/JuniperPython/bin"
-Environment="CASCOR_BACKEND_PATH=/home/pcalnon/Development/python/Juniper/src/prototypes/cascor"
+Environment="CASCOR_BACKEND_PATH=/home/pcalnon/Development/python/JuniperCascor/juniper_cascor/src"
 ExecStart=/home/pcalnon/miniconda3/envs/JuniperPython/bin/python main.py
 Restart=on-failure
 RestartSec=10
@@ -683,9 +742,9 @@ WantedBy=multi-user.target
 **Enable and start**:
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable cascor-frontend
-sudo systemctl start cascor-frontend
-sudo systemctl status cascor-frontend
+sudo systemctl enable juniper-canopy
+sudo systemctl start juniper-canopy
+sudo systemctl status juniper-canopy
 ```
 
 **Critical**: When creating new files, always place them in the appropriate directory:
@@ -696,6 +755,7 @@ sudo systemctl status cascor-frontend
 ## Key Project Requirements
 
 The frontend must support:
+
 1. **Real-time training monitoring** - Live updates during neural network training
 2. **Performance statistics** - Metrics visualization and tracking
 3. **Dataset plotting** - Visual representation of training/test data
@@ -705,6 +765,7 @@ The frontend must support:
 ## Development Workflow
 
 Based on the prompt requirements, when implementing features:
+
 1. **Break complex problems into sub-problems** - Use systematic decomposition
 2. **Maintain detailed task tracking** - Document steps taken and assumptions made
 3. **Provide thorough documentation** - Include references and design rationale
@@ -713,6 +774,7 @@ Based on the prompt requirements, when implementing features:
 ## Technology Considerations
 
 The project requires careful selection of:
+
 - **Visualization frameworks** for real-time neural network monitoring
 - **Communication protocols** between Python backend and frontend
 - **Plotting libraries** for data visualization and decision boundaries
@@ -728,14 +790,14 @@ The project requires careful selection of:
 ## AI Agent Guidelines
 
 - Always check the project structure before creating files
-- Reference the original requirements in `prompts/prompt_cascor_frontend.md`
+- Reference the original requirements in `prompts/prompt_juniper_canopy.md`
 - Consider the neural network domain context when suggesting implementations
 - Prioritize maintainability and scalability in architectural decisions
 - Document assumptions and provide implementation rationale
 
 ## Key Insights Captured
 
-1. **Project Context**: This is a prototype for visualizing Cascade Correlation neural networks, which is a specialized domain requiring real-time monitoring capabilities. The Cascade Correlation network that this frontend is intended to monitor when completed is another prototype defined in the `Juniper/src/prototypes/cascor` directory.
+1. **Project Context**: This is a prototype for visualizing Cascade Correlation neural networks, which is a specialized domain requiring real-time monitoring capabilities. The Cascade Correlation network that this frontend is intended to monitor when completed is another prototype defined in the `JuniperCascor/juniper_cascor` directory.
 
 2. **Strict Directory Organization**: The project follows a specific directory pattern that must be maintained for all new files:
 
@@ -747,7 +809,7 @@ The project requires careful selection of:
     - `docs/` - Copies of reference sources with URLs and links to references
     - `images/` - Static images generated by the application
     - `logs/` - All log files
-    - `utils/` - Utility, environment, management, and cleanup scripts
+    - `util/` - Utility, environment, management, and cleanup scripts
     - `src/tests/` - All testing resources including unit and integration test source files, scripts, reports, mocks, helpers, config, data, and documentation
 
 3. **Development Environment**: Ubuntu/conda/VS Code stack with Python backend and frontend technology to be determined.
