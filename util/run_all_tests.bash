@@ -17,5 +17,5 @@ USERNAME="$(whoami)"
 JUNIPER_CANOPY_DIR="${HOME_DIR}}/Development/python/JuniperCanopy/juniper_canopy"
 cd "${JUNIPER_CANOPY_DIR}"
 
-echo "pytest -v --cov ./src/tests"
-pytest -v --cov ./src/tests
+echo "pytest -v ./src/tests"
+pytest -v ./src/tests

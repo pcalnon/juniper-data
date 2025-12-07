@@ -1,19 +1,19 @@
 ---
 ####################################################################################################################################################################################################
 # Project:       Juniper
-# Prototype:     Monitoring and Diagnostic Frontend for Cascade Correlation Neural Network
+# Prototype:     Juniper Canopy: Monitoring/Diagnostic Frontend for CasCor
 # File Name:     ci.yml
 # Author:        Paul Calnon
-# Version:       1.0.0
+# Version:       0.10.0
 #
 # Date:          2025-11-03
-# Last Modified: 2025-11-03
+# Last Modified: 2025-12-06
 #
 # License:       MIT License
 # Copyright:     Copyright (c) 2024-2025 Paul Calnon
 #
 # Description:
-#    GitHub Actions CI/CD Pipeline for CasCor Frontend
+#    GitHub Actions CI/CD Pipeline for Juniper Canopy CasCor NN Frontend
 #    - Runs tests on every push and PR
 #    - Generates coverage reports
 #    - Enforces quality gates
@@ -46,7 +46,8 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: 3.13
+          # python-version: 3.13
+          python-version: 3.14
 
       - name: Install Linting Tools
         run: |
@@ -67,7 +68,7 @@ jobs:
         run: |
           # Stop the build if there are Python syntax errors or undefined names
           flake8 src/ --count --select=E9,F63,F7,F82 --show-source --statistics
-          # Exit-zero treats all errors as warnings (warnings won't fail the build)
+          # Exit-zero, errors are warnings (warnings won't fail the build)
           flake8 src/ --count --max-line-length=120 --statistics --exit-zero
         continue-on-error: true
 
@@ -83,7 +84,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
 
     steps:
       - name: Checkout Code
@@ -95,7 +96,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           channels: conda-forge,pytorch,plotly,defaults
           channel-priority: flexible
-          activate-environment: JuniperPython-CI
+          activate-environment: JuniperCanopy
           environment-file: conf/conda_environment.yaml
           auto-activate-base: false
 
@@ -129,9 +130,11 @@ jobs:
         shell: bash -el {0}
         env:
           # CI test environment configuration
-          CASCOR_BACKEND_AVAILABLE: 0  # Disabled in standard CI (enable in nightly)
-          RUN_SERVER_TESTS: 0          # Disabled (requires live server)
-          ENABLE_SLOW_TESTS: 0         # Skip slow tests for fast feedback
+          # Disabled standard in CI
+          CASCOR_BACKEND_AVAILABLE: 0  # (Enable when needed in nightly build)
+          RUN_SERVER_TESTS: 0  # Disabled (requires live server)
+          ENABLE_SLOW_TESTS: 0  # Skip slow tests for fast feedback
+
         run: |
           cd src
           # Run tests excluding external dependencies
@@ -151,14 +154,17 @@ jobs:
 
       # Regression Test Suite
       # Runs critical regression tests to prevent known issues from reoccurring
-      # - Metrics panel data format validation (prevents data display regressions)
+      # - Metrics panel data format validation
+      # -     (prevents data display regressions)
       # - API contract verification (ensures backend/frontend compatibility)
       # - End-to-end dashboard tests (validates full user workflow)
       - name: Run Regression Tests
         shell: bash -el {0}
+        # pytest tests/unit/test_metrics_panel.py::
+        #     TestMetricsPanelDataFormatRegression -v
         run: |
           cd src
-          pytest tests/unit/test_metrics_panel.py::TestMetricsPanelDataFormatRegression -v
+          pytest tests/unit/test_metrics_panel.py -v
           pytest tests/integration/test_api_contracts.py -v
           pytest tests/integration/test_dashboard_e2e.py -v
         continue-on-error: false  # Fail build if regression tests fail
@@ -194,7 +200,9 @@ jobs:
         shell: bash -el {0}
         run: |
           cd src
-          COVERAGE=$(pytest tests/ --cov=. --cov-report=term-missing | grep "TOTAL" | awk '{print $NF}' | sed 's/%//')
+          COVERAGE="$(pytest tests/ --cov=. --cov-report=term-missing)"
+          COVERAGE="$(echo "${COVERAGE}" | grep "TOTAL")"
+          COVERAGE="$(echo "${COVERAGE}" | awk '{print $NF}' | sed 's/%//')"
           echo "Current coverage: ${COVERAGE}%"
 
           # Warning threshold (don't fail, just warn)
@@ -204,7 +212,7 @@ jobs:
 
           # Failure threshold (fail the build)
           if (( $(echo "$COVERAGE < 60" | bc -l) )); then
-            echo "::error::Coverage is critically low: ${COVERAGE}% (minimum: 60%)"
+            echo "::error::Coverage critically low: ${COVERAGE}% (min: 60%)"
             exit 1
           fi
         continue-on-error: true
@@ -215,7 +223,9 @@ jobs:
           echo "=== Test Summary ==="
           if [ -f reports/junit/results.xml ]; then
             echo "Test results generated successfully"
-            cat reports/junit/results.xml | grep -o 'tests="[0-9]*"' || echo "Tests completed"
+            cat reports/junit/results.xml | grep -o 'tests="[0-9]*"'&& {
+                echo "Tests completed";
+            }
           else
             echo "No test results file found"
           fi
@@ -257,7 +267,8 @@ jobs:
           echo "=== Build Information ==="
           echo "Python Version: $(python --version)"
           echo "Project: CasCor Frontend"
-          echo "Version: $(grep 'Version:' src/main.py | head -1 | awk '{print $3}')"
+          echo -ne "Version: "
+          echo "$(grep 'Version:' src/main.py | head -1 | awk '{print $3}')"
           echo "Build Date: $(date -u)"
 
   integration:
@@ -276,7 +287,7 @@ jobs:
           python-version: "3.13"
           channels: conda-forge,pytorch,plotly,defaults
           channel-priority: flexible
-          activate-environment: JuniperPython-CI
+          activate-environment: JuniperCanopy
           environment-file: conf/conda_environment.yaml
           auto-activate-base: false
 
