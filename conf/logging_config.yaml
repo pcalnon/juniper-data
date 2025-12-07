@@ -25,7 +25,7 @@ loggers:
   juniper:
     # level: DEBUG
     level: INFO
-    propagate: True
+    propagate: true
     handlers: [handler_console, handler_file]
 root:
   handlers: [handler_console, handler_file]
