@@ -81,6 +81,9 @@ demo_mode.py                    156     25    84%   120-145
 TOTAL                          2341    622    73%
 ```
 
+**View HTML report:**
+<file:///home/pcalnon/Development/python/JuniperCanopy/juniper_canopy/src/tests/reports/coverage/index.html>
+
 ---
 
 ## Set Up GitHub Secrets
