@@ -163,7 +163,7 @@ jobs:
         # pytest tests/unit/test_metrics_panel.py::
         #     TestMetricsPanelDataFormatRegression -v
         run: |
-          cd src
+          cd sr
           pytest tests/unit/test_metrics_panel.py -v
           pytest tests/integration/test_api_contracts.py -v
           pytest tests/integration/test_dashboard_e2e.py -v
@@ -184,7 +184,7 @@ jobs:
         with:
           name: test-results-${{ matrix.python-version }}
           path: |
-            reports/
+            reports/coverage/
             coverage.xml
           retention-days: 30
 
@@ -285,7 +285,8 @@ jobs:
         uses: conda-incubator/setup-miniconda@v3
         with:
           python-version: "3.13"
-          channels: conda-forge,pytorch,plotly,defaults
+          # channels: conda-forge,pytorch,plotly,defaults
+          channels: conda-forge,pytorch,nvidia,RMG,numba,jasonb857,ehmoussi,konstantin-orangeqs
           channel-priority: flexible
           activate-environment: JuniperCanopy
           environment-file: conf/conda_environment.yaml
