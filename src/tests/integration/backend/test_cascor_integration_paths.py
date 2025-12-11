@@ -23,15 +23,12 @@ class TestCascorIntegrationPaths:
         """Test _resolve_backend_path with explicit path argument."""
         # Create a fake backend directory
         backend_dir = tmp_path / "cascor_backend"
-        backend_dir.mkdir()
-
+        backend_dir.mkdir(exist_ok=True)
         with patch.object(CascorIntegration, "_add_backend_to_path"):
             with patch.object(CascorIntegration, "_import_backend_modules"):
                 integration = CascorIntegration.__new__(CascorIntegration)
                 integration.logger = MagicMock()
-
                 result = integration._resolve_backend_path(str(backend_dir))
-
                 # trunk-ignore(bandit/B101)
                 assert result == backend_dir.resolve()
                 # trunk-ignore(bandit/B101)
@@ -40,10 +37,8 @@ class TestCascorIntegrationPaths:
     def test_resolve_backend_path_with_env_variable(self, tmp_path, monkeypatch):
         """Test _resolve_backend_path with environment variable."""
         backend_dir = tmp_path / "cascor_from_env"
-        backend_dir.mkdir()
-
+        backend_dir.mkdir(exist_ok=True)
         monkeypatch.setenv("CASCOR_BACKEND_PATH", str(backend_dir))
-
         with patch.object(CascorIntegration, "_add_backend_to_path"):
             with patch.object(CascorIntegration, "_import_backend_modules"):
                 result = self._get_backend_path()
@@ -53,7 +48,7 @@ class TestCascorIntegrationPaths:
     def test_resolve_backend_path_with_tilde_expansion(self, tmp_path, monkeypatch):
         """Test _resolve_backend_path with tilde expansion."""
         backend_dir = tmp_path / "cascor_home"
-        backend_dir.mkdir()
+        backend_dir.mkdir(exist_ok=True)
 
         # Mock expanduser to return our tmp_path
         with patch("os.path.expanduser", return_value=str(backend_dir)):
@@ -66,10 +61,8 @@ class TestCascorIntegrationPaths:
     def test_resolve_backend_path_with_env_var_expansion(self, tmp_path, monkeypatch):
         """Test _resolve_backend_path with environment variable expansion."""
         backend_dir = tmp_path / "cascor_from_var"
-        backend_dir.mkdir()
-
+        backend_dir.mkdir(exist_ok=True)
         monkeypatch.setenv("CUSTOM_PATH", str(backend_dir))
-
         with patch.object(CascorIntegration, "_add_backend_to_path"):
             with patch.object(CascorIntegration, "_import_backend_modules"):
                 result = self._get_backend_path("$CUSTOM_PATH")
@@ -94,8 +87,7 @@ class TestCascorIntegrationPaths:
     def test_resolve_backend_path_from_config(self, tmp_path):
         """Test _resolve_backend_path falls back to config file."""
         backend_dir = tmp_path / "cascor_from_config"
-        backend_dir.mkdir()
-
+        backend_dir.mkdir(exist_ok=True)
         with patch.object(CascorIntegration, "_add_backend_to_path"):
             with patch.object(CascorIntegration, "_import_backend_modules"):
                 self._resolve_backend_path(backend_dir)
@@ -141,8 +133,7 @@ class TestCascorIntegrationPaths:
         """Test _add_backend_to_path adds src directory to sys.path."""
         backend_dir = tmp_path / "cascor"
         backend_src = backend_dir / "src"
-        backend_src.mkdir(parents=True)
-
+        backend_src.mkdir(parents=True, exist_ok=True)
         with patch.object(CascorIntegration, "_import_backend_modules"):
             integration = self._extracted_from_test_import_backend_modules_missing_raises_error_8(backend_dir)
             original_path = sys.path.copy()
@@ -157,8 +148,7 @@ class TestCascorIntegrationPaths:
     def test_add_backend_to_path_missing_src_raises_error(self, tmp_path):
         """Test _add_backend_to_path raises error when src/ directory missing."""
         backend_dir = tmp_path / "cascor_no_src"
-        backend_dir.mkdir()
-
+        backend_dir.mkdir(exist_ok=True)
         with patch.object(CascorIntegration, "_import_backend_modules"):
             integration = self._extracted_from_test_import_backend_modules_missing_raises_error_8(backend_dir)
             with pytest.raises(FileNotFoundError) as exc_info:
@@ -173,8 +163,7 @@ class TestCascorIntegrationPaths:
         """Test _add_backend_to_path doesn't add duplicate entries."""
         backend_dir = tmp_path / "cascor"
         backend_src = backend_dir / "src"
-        backend_src.mkdir(parents=True)
-
+        backend_src.mkdir(parents=True, exist_ok=True)
         with patch.object(CascorIntegration, "_import_backend_modules"):
             integration = self._extracted_from_test_import_backend_modules_missing_raises_error_8(backend_dir)
             original_path = sys.path.copy()
@@ -199,8 +188,7 @@ class TestCascorIntegrationPaths:
         """Test _import_backend_modules raises ImportError when modules missing."""
         backend_dir = tmp_path / "cascor"
         backend_src = backend_dir / "src"
-        backend_src.mkdir(parents=True)
-
+        backend_src.mkdir(parents=True, exist_ok=True)
         integration = self._extracted_from_test_import_backend_modules_missing_raises_error_8(backend_dir)
         with pytest.raises(ImportError) as exc_info:
             integration._import_backend_modules()

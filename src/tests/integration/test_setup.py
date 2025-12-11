@@ -69,6 +69,7 @@ def test_directories():
     # Get project root (3 levels up from test file)
     project_root = Path(__file__).parent.parent.parent.parent
     # required_dirs = ["conf", "notes", "src", "data", "logs", "images", "util"]
+    # TODO: remove data dir.  and logs?
     required_dirs = ["conf", "data", "docs", "images", "logs", "notes", "reports", "src", "util"]
 
     for dir_name in required_dirs:  # sourcery skip: no-loop-in-tests

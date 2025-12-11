@@ -138,12 +138,12 @@ def temp_test_directory(tmp_path):
         Path to temporary test directory
     """
     test_dir = tmp_path / "cascor_test"
-    test_dir.mkdir()
+    test_dir.mkdir(exist_ok=True)
 
     # Create subdirectories
-    (test_dir / "logs").mkdir()
-    (test_dir / "data").mkdir()
-    (test_dir / "images").mkdir()
+    (test_dir / "logs").mkdir(exist_ok=True)
+    (test_dir / "data").mkdir(exist_ok=True)
+    (test_dir / "images").mkdir(exist_ok=True)
 
     return test_dir
 

@@ -252,12 +252,12 @@ def temp_test_directory(tmp_path):
         Path to temporary test directory
     """
     test_dir = tmp_path / "cascor_test"
-    test_dir.mkdir()
+    test_dir.mkdir(exist_ok=True)
 
     # Create subdirectories
-    (test_dir / "logs").mkdir()
-    (test_dir / "data").mkdir()
-    (test_dir / "images").mkdir()
+    (test_dir / "logs").mkdir(exist_ok=True)
+    (test_dir / "data").mkdir(exist_ok=True)
+    (test_dir / "images").mkdir(exist_ok=True)
 
     return test_dir
 
@@ -390,11 +390,11 @@ def fake_backend_root(tmp_path):
     """
     backend_root = tmp_path / "cascor"
     src_dir = backend_root / "src"
-    src_dir.mkdir(parents=True)
+    src_dir.mkdir(parents=True, exist_ok=True)
 
     # Create minimal cascade_correlation module structure
     cc_module = src_dir / "cascade_correlation"
-    cc_module.mkdir()
+    cc_module.mkdir(exist_ok=True)
 
     # Create __init__.py files
     (cc_module / "__init__.py").write_text("# Fake cascade_correlation module\n")
@@ -418,7 +418,7 @@ class TrainingResults:
 
     # Create fake config module
     config_module = cc_module / "cascade_correlation_config"
-    config_module.mkdir()
+    config_module.mkdir(exist_ok=True)
     (config_module / "__init__.py").write_text("# Fake config module\n")
     (config_module / "cascade_correlation_config.py").write_text(
         """
