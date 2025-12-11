@@ -68,7 +68,8 @@ def test_directories():
     print("\nTesting directory structure...")
     # Get project root (3 levels up from test file)
     project_root = Path(__file__).parent.parent.parent.parent
-    required_dirs = ["conf", "notes", "src", "data", "logs", "images", "util"]
+    # required_dirs = ["conf", "notes", "src", "data", "logs", "images", "util"]
+    required_dirs = ["conf", "data", "docs", "images", "logs", "notes", "reports", "src", "util"]
 
     for dir_name in required_dirs:  # sourcery skip: no-loop-in-tests
         dir_path = project_root / dir_name
