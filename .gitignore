@@ -47,8 +47,8 @@ dist/
 .ipynb_checkpoints/
 
 # Data dirs
-data/
-data/*
+# data/
+# data/*
 data/MNIST/
 data/MNIST/raw/
 

@@ -134,6 +134,8 @@ jobs:
           echo "║       Juniper Canopy - Verify Conda Environment            ║"
           echo "╚════════════════════════════════════════════════════════════╝"
           conda list -n JuniperCanopy
+          eval "$(mamba shell hook --shell bash)"
+          mamba shell init --shell bash --root-prefix=~/.local/share/mamba
           mamba activate JuniperCanopy
           conda env list
           which python
@@ -149,17 +151,17 @@ jobs:
           echo -ne "\n╔════════════════════════════════════════════════════════════╗\n"
           echo "║      Juniper Canopy - Display Directory Contents           ║"
           echo "╚════════════════════════════════════════════════════════════╝"
-          ls -Flah /opt
-          ls -Flah /usr
-          ls -Flah /usr/share
-          ls -Flah /usr/local
-          ls -Flah /usr/local/lib
-          ls -Flah /home
-          ls -Flah /home/runner
-          ls -Flah /home/runner/work
-          ls -Flah /home/runner/work/JuniperCanopy
-          ls -Flah /home/runner/work/JuniperCanopy/juniper_canopy
-          sudo lsblk
+          echo "ls -Flah /opt" && ls -Flah /opt
+          echo "ls -Flah /usr" && ls -Flah /usr
+          echo "ls -Flah /usr/share" && ls -Flah /usr/share
+          echo "ls -Flah /usr/local" && ls -Flah /usr/local
+          echo "ls -Flah /usr/local/lib" && ls -Flah /usr/local/lib
+          echo "ls -Flah /home" && ls -Flah /home
+          echo "ls -Flah /home/runner" && ls -Flah /home/runner
+          echo "ls -Flah /home/runner/work" && ls -Flah /home/runner/work
+          echo "ls -Flah /home/runner/work/Juniper" && ls -Flah /home/runner/work/Juniper
+          echo "ls -Flah /home/runner/work/Juniper/Juniper" && ls -Flah /home/runner/work/Juniper/Juniper
+          echo "lsblk" && sudo lsblk
         continue-on-error: true
 
       - name: Free disk space
@@ -170,8 +172,19 @@ jobs:
           echo "╚════════════════════════════════════════════════════════════╝"
           df -h
           conda clean --all
-          sudo rm -rf /usr/share/dotnet/
+          sudo rm -rf /usr/games
+          sudo rm -rf /usr/share/php*
+          sudo rm -rf /usr/share/julia*
+
+          sudo rm -rf /usr/local/julia*
+          sudo rm -rf /usr/local/gradle*
+          sudo rm -rf /usr/local/apache-maven*
+          sudo rm -rf /usr/local/kotlinc
+          sudo rm -rf /usr/local/bison
+
           sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/microsoft
           sudo rm -rf /opt/ghc
           df -h
         continue-on-error: true
