@@ -476,7 +476,7 @@ InvalidRequest: Keyspace 'cascor' does not exist
 # Create keyspace
 cqlsh -e "CREATE KEYSPACE cascor WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};"
 
-# Create tables (see Step 3 above)
+# Create tables (see Step 3: Create Keyspace and Tables)
 ```
 
 ---
