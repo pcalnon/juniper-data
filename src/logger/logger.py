@@ -240,6 +240,7 @@ class CascorLogger:
         # os.makedirs(self.log_dir, exist_ok=True)
 
         # Create rotating file handler
+        print(f"Configuring file handler for {self.name}, at log dir: {self.log_dir}")
         log_filename = os.path.join(self.log_dir, f"{self.name}.log")
         max_bytes = self.config.get("global", {}).get("max_file_size_mb", 100) * 1024 * 1024
         backup_count = self.config.get("global", {}).get("backup_count", 5)
