@@ -227,13 +227,43 @@
 
 | Feature / Fix                                                                 | Status       |
 |-------------------------------------------------------------------------------|--------------|
-| Top Status Bar: Status/Phase fields not updating                             | Not Started  |
-| Training Controls: Buttons not resetting                                      | Not Started  |
+| Top Status Bar: Status field not updating                                     | Not Started  |
+| Top Status Bar: Phase field not updating                                      | Not Started  |
+| Top Status Bar: Epoch/Hidden Units fields display/update                      | Done         |
+| Training Controls: Buttons not resetting after being pressed                  | Not Started  |
+| Training Controls: Buttons become unclickable after first press               | Not Started  |
+| Training Controls: All 5 buttons affected                                     | Not Started  |
 | Training Controls: Meta-parameters not applied after change                   | Not Started  |
-| Training Metrics Tab: Add new tab and display metrics                        | Not Started  |
-| Training Data Tab: Add new tab and display data                              | Not Started  |
+| Training Controls: Manual apply button for meta-parameters                    | Not Started  |
+| Training Controls: Prevent in-progress updates from triggering training        | Not Started  |
+| Training Controls: Up/down arrows and direct entry for meta-parameters        | Done         |
+| Training Metrics Tab: Add new tab and display metrics                         | Not Started  |
+| Training Metrics Tab: Display accuracy, loss, and other metrics               | Not Started  |
+| Training Metrics Tab: Add replay functionality                                | Not Started  |
+| Training Metrics Tab: Add Save/Load buttons                                   | Not Started  |
+| Training Data Tab: Add new tab and display data                               | Not Started  |
+| Training Data Tab: Display input/output samples                               | Not Started  |
+| Training Data Tab: Add data import/export options                             | Not Started  |
 | Model Architecture Tab: Add new tab and display architecture                  | Not Started  |
+| Model Architecture Tab: Display network topology                              | Not Started  |
+| Model Architecture Tab: Fix topology display issues                           | Not Started  |
+| Model Architecture Tab: Node interactions (drag, select, edit)                | Not Started  |
+| Model Architecture Tab: Add node/edge tooltips                                | Not Started  |
+| Model Architecture Tab: Add zoom/pan functionality                            | Not Started  |
 | About Tab for Juniper Cascor backend                                          | Not Started  |
 | Cassandra Integration and Monitoring Tab                                      | Not Started  |
+| Cassandra Tab: Display cluster state                                          | Not Started  |
+| Cassandra Tab: Display usage stats                                            | Not Started  |
+| Cassandra Tab: Display/edit db schema                                         | Not Started  |
+| Cassandra Tab: Manage cluster options                                         | Not Started  |
 | Redis Integration and Monitoring Tab                                          | Not Started  |
+| Redis Tab: Display cluster state                                              | Not Started  |
+| Redis Tab: Display usage stats                                                | Not Started  |
+| Redis Tab: Display/edit db schema                                             | Not Started  |
+| Redis Tab: Manage cluster options                                             | Not Started  |
 | HDF5 Snapshot Functionality Tab                                               | Not Started  |
+| HDF5 Tab: List available snapshots                                            | Not Started  |
+| HDF5 Tab: Show snapshot details (timestamp, size, etc.)                       | Not Started  |
+| HDF5 Tab: Create new snapshot                                                 | Not Started  |
+| HDF5 Tab: Restore from existing snapshot                                      | Not Started  |
+| HDF5 Tab: Show history of snapshot activities                                 | Not Started  |
