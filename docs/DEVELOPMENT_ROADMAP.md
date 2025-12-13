@@ -8,7 +8,7 @@
 
 - Fix: The status bar at the top of the screen is not properly displaying/updating some fields.
   - The "Status" field appears to never be updating. It is always showing "Stopped" through all stages of the training process.
-  - The "Phase" field is not updating correctly.  It is always showing "Idle" through all stages of the training process.
+  - The "Phase" field is not updating correctly. It is always showing "Idle" through all stages of the training process.
   - The "Epoch" and "Hidden Units" fields are displaying and updating properly.
 
 #### Training Controls Section
