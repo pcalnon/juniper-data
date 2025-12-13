@@ -5,6 +5,75 @@ All notable changes to the juniper_canopy prototype will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.1] - 2025-12-13
+
+### Fixed [0.13.1]
+
+- **DEFAULT_SCALE NameError in NetworkVisualizer** (Critical)
+  - Fixed undefined `DEFAULT_SCALE` constant that blocked all test collection
+  - Changed default parameter to use `DashboardConstants.DEFAULT_SCALE`
+  - All 20 test collection errors resolved
+  - See [FIX_DEFAULT_SCALE_2025-12-13.md](notes/FIX_DEFAULT_SCALE_2025-12-13.md) for details
+
+### Added [0.13.1]
+
+- **Comprehensive Test Suite Expansion** (453 new tests)
+  - `test_callback_context_coverage.py` - 29 tests for callback adapter
+  - `test_dashboard_helpers_coverage.py` - 48 tests for dashboard helpers
+  - `test_network_visualizer_layout_coverage.py` - 43 tests for layout methods
+  - `test_metrics_panel_helpers_coverage.py` - 74 tests for metrics helpers  
+  - `test_main_api_coverage.py` - 36 tests for API endpoints
+  - `test_demo_mode_comprehensive.py` - 72 tests for demo mode
+  - `test_websocket_comprehensive.py` - 51 tests for WebSocket
+  - `test_config_manager_comprehensive.py` - 42 tests for config
+  - `test_cascor_integration_comprehensive.py` - 49 tests for backend
+  - `test_base_component_coverage.py` - 9 tests for base component
+
+### Changed [0.13.1]
+
+- **Test Results**
+  - 1666 tests passing, 37 skipped
+  - **90% overall coverage achieved** (up from 84%)
+
+---
+
+## [0.13.0] - 2025-12-13
+
+### Added [0.13.0]
+
+- **Training Metrics Replay Functionality** (P1-3)
+  - Transport controls: play/pause, step forward/backward, jump to start/end
+  - Speed controls: 1x, 2x, 4x playback speeds
+  - Progress slider with position display (current / total epochs)
+  - Automatic playback with configurable interval
+  - Controls only visible when training is Paused/Stopped/Completed/Failed
+
+- **Network Topology Staggered Layout** (P1-2)
+  - Added "Staggered" layout option to dropdown
+  - Hidden nodes now use zigzag pattern for better edge visibility
+  - Progressive horizontal spreading based on node count
+  - Maintains vertical spacing while improving edge clarity
+
+- **Node Selection Interactions** (P1-4)
+  - Click to select nodes with visual highlighting (yellow glow + orange ring)
+  - Box and lasso selection support via new mode bar buttons
+  - Selection info panel showing selected node details
+  - Toggle selection on re-click, clear on click elsewhere
+
+- **Candidate Node Info Section with History** (P1-1)
+  - Collapsible candidate pool section (toggle with header click)
+  - Historical pools stored and displayed (up to 10 entries)
+  - Previous pools shown as collapsed cards with epoch/candidate summary
+  - Section always visible with "No active candidate pool" placeholder
+
+### Changed [0.13.0]
+
+- **Test Coverage**
+  - 1213 tests passing, 37 skipped
+  - 84% overall coverage maintained
+
+---
+
 ## [0.12.0] - 2025-12-12
 
 ### Added [0.12.0]

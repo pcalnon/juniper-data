@@ -65,7 +65,7 @@ This document provides a comprehensive implementation plan for all fixes and enh
 
 **Implementation:**
 
-```
+```bash
 Location: src/frontend/dashboard_manager.py
 Methods: _handle_training_buttons_handler, _handle_button_timeout_and_acks_handler
 
@@ -88,7 +88,7 @@ Methods: _handle_training_buttons_handler, _handle_button_timeout_and_acks_handl
 
 **Implementation:**
 
-```
+```bash
 Location: src/frontend/dashboard_manager.py
 Changes:
 1. Add "Apply Parameters" button below meta-parameter inputs
@@ -112,7 +112,7 @@ Changes:
 
 **Implementation:**
 
-```
+```bash  
 Location: src/frontend/dashboard_manager.py
 Method: _update_top_status_phase_handler, _get_status_phase_display_content
 
@@ -136,7 +136,7 @@ Method: _update_top_status_phase_handler, _get_status_phase_display_content
 
 **Implementation:**
 
-```
+```bash
 Location: src/frontend/components/metrics_panel.py
 
 Strategy A (Preferred): Preserve layout on data updates
@@ -169,7 +169,7 @@ Implementation:
 
 **Implementation:**
 
-```
+```bash  
 Location: src/frontend/components/network_visualizer.py
 
 1. Check layout.dragmode and Plotly config options
@@ -193,7 +193,7 @@ Location: src/frontend/components/network_visualizer.py
 
 **Implementation:**
 
-```
+```bash
 Location: src/frontend/components/network_visualizer.py
 
 1. Avoid recreating entire figure layout unless topology changes
@@ -215,7 +215,7 @@ Location: src/frontend/components/network_visualizer.py
 
 **Implementation:**
 
-```
+```bash
 Location: src/frontend/components/network_visualizer.py
 
 1. Add theme-state input to update_network_graph callback
@@ -240,7 +240,7 @@ Location: src/frontend/components/network_visualizer.py
 
 **Implementation:**
 
-```
+```bash
 Location: src/frontend/components/metrics_panel.py
 
 1. Add candidate-pools-history store (keyed by pool ID)
@@ -263,7 +263,7 @@ Location: src/frontend/components/metrics_panel.py
 
 **Implementation:**
 
-```
+```bash
 Location: src/frontend/components/network_visualizer.py
 Method: _calculate_layout
 
@@ -289,7 +289,7 @@ Method: _calculate_layout
 
 **Implementation:**
 
-```
+```bash
 Location: src/frontend/components/metrics_panel.py
 
 Phase 1 (MVP):
@@ -321,7 +321,7 @@ Dependencies:
 
 **Implementation:**
 
-```
+```bash
 Location: src/frontend/components/network_visualizer.py
 
 Phase 1 (MVP):
@@ -352,7 +352,7 @@ Phase 2 (deferred):
 
 **Implementation:**
 
-```
+```bash
 Location: src/frontend/components/network_visualizer.py
 
 1. Detect newly added unit in update_network_graph
@@ -373,7 +373,7 @@ Location: src/frontend/components/network_visualizer.py
 
 **Implementation:**
 
-```
+```bash
 Location: src/frontend/components/network_visualizer.py
 
 1. Modify Plotly toImage config for download
@@ -391,7 +391,7 @@ Location: src/frontend/components/network_visualizer.py
 
 **Implementation:**
 
-```
+```bash
 Location: src/frontend/components/about_tab.py (new)
 Integration: src/frontend/dashboard_manager.py
 
@@ -414,7 +414,7 @@ Content:
 
 **Implementation:**
 
-```
+```bash
 Location: src/frontend/components/hdf5_tab.py (new)
 Backend: Requires /api/snapshots endpoint
 
@@ -445,6 +445,7 @@ Phase 2 (Actions):
 **Dependencies:** Backend snapshot format definition, HDF5 API
 
 **Implementation deferred until:**
+
 - Snapshot semantics tested on backend
 - Replay functionality complete
 - HDF5 tab operational
@@ -457,6 +458,7 @@ Phase 2 (Actions):
 **Risk:** High
 
 **Implementation considerations:**
+
 - Plotly 3D scatter or separate 3D component
 - Maintain 2D as default
 - Add rotation, zoom, pan in 3D space
@@ -470,6 +472,7 @@ Phase 2 (Actions):
 **Dependencies:** Backend monitoring APIs, RBAC/permissions
 
 **Implementation deferred until:**
+
 - Cassandra backend APIs available
 - Security review complete
 
@@ -480,6 +483,7 @@ Phase 2 (Actions):
 **Dependencies:** Backend monitoring APIs, RBAC/permissions
 
 **Implementation deferred until:**
+
 - Redis backend APIs available
 - Security review complete
 
@@ -503,6 +507,7 @@ graph TD
 ### Shared Dependencies
 
 All fixes share dependencies on:
+
 - Training state from backend (WebSocket/store)
 - Consistent state model in `DashboardManager`
 

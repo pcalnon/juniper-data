@@ -54,7 +54,7 @@ elif [[ "${COVERAGE_REPORT}" == "${TRUE}" ]]; then
         # --self-contained-html \
 
 else
-    echo "Coverate Report flag has an Invalid Value"
+    echo "Coverage Report flag has an Invalid Value"
     exit 1
 fi
 

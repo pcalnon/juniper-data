@@ -72,6 +72,17 @@ class DashboardConstants:
     MAX_METRICS_HISTORY: Final[int] = 100
     MAX_DATA_POINTS: Final[int] = 10000
 
+    DEFAULT_METRICS_HISTORY: Final[int] = 50
+    DEFAULT_DATA_POINTS: Final[int] = 1000
+
+    # Display Constants
+    DEFAULT_SCALE: Final[float] = 10.0
+    DEFAULT_ZOOM: Final[int] = 1
+    DEFAULT_ZOOM_INCREMENT: Final[int] = 1
+    DEFAULT_ZOOM_DECREMENT: Final[int] = 1
+    DEFAULT_ZOOM_MIN: Final[int] = 1
+    DEFAULT_ZOOM_MAX: Final[int] = 10
+
 
 class ServerConstants:
     """Server configuration constants.
