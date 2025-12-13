@@ -135,7 +135,7 @@
        - The midpoint between the left-most and right-most hidden nodes should be the same as the midpoint between the input and output nodes.
 
 5. Feat: Add mouse click events to the network topology tab to allow for selection and interaction with nodes.
-   - Provide visual Feedback when a node is selected.
+   - Provide visual feedback when a node is selected.
    - Allow for interaction with selected nodes:
      - Allow mouse Left Click and Drag to move the node.
      - Allow Control + Left Click and Drag to move the entire network.
