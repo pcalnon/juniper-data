@@ -1414,8 +1414,8 @@ class DashboardManager:
                     "hidden_units": state.get("max_hidden_units", 10),
                     "epochs": state.get("max_epochs", 200),
                 }
-        except Exception:
-            pass
+        except Exception as e:
+            self.logger.warning(f"Failed to initialize applied params: {e}")
         return dash.no_update
 
     def register_component(self, component: BaseComponent):
