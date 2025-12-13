@@ -410,6 +410,27 @@ class DashboardManager:
                                                     className="mb-2",
                                                     debounce=True,
                                                 ),
+                                                html.Hr(),
+                                                html.Div(
+                                                    [
+                                                        dbc.Button(
+                                                            "Apply Parameters",
+                                                            id="apply-params-button",
+                                                            className="w-100 mb-2",
+                                                            color="primary",
+                                                            disabled=True,
+                                                        ),
+                                                        html.Div(
+                                                            id="params-status",
+                                                            children="",
+                                                            style={
+                                                                "fontSize": "0.85em",
+                                                                "color": "#6c757d",
+                                                                "textAlign": "center",
+                                                            },
+                                                        ),
+                                                    ]
+                                                ),
                                             ]
                                         ),
                                     ],
@@ -513,14 +534,23 @@ class DashboardManager:
                 dcc.Store(
                     id="button-states",
                     data={
-                        "start": {"disabled": False, "loading": False},
-                        "pause": {"disabled": False, "loading": False},
-                        "stop": {"disabled": False, "loading": False},
-                        "resume": {"disabled": False, "loading": False},
-                        "reset": {"disabled": False, "loading": False},
+                        "start": {"disabled": False, "loading": False, "timestamp": 0},
+                        "pause": {"disabled": False, "loading": False, "timestamp": 0},
+                        "stop": {"disabled": False, "loading": False, "timestamp": 0},
+                        "resume": {"disabled": False, "loading": False, "timestamp": 0},
+                        "reset": {"disabled": False, "loading": False, "timestamp": 0},
                     },
                 ),
                 dcc.Store(id="last-button-click", data={"button": None, "timestamp": 0}),
+                # Stores for parameter tracking
+                dcc.Store(
+                    id="pending-params-store",
+                    data={"learning_rate": None, "hidden_units": None, "epochs": None},
+                ),
+                dcc.Store(
+                    id="applied-params-store",
+                    data={},
+                ),
             ],
             fluid=True,
         )
@@ -815,10 +845,56 @@ class DashboardManager:
             prevent_initial_call=True,
         )
         def handle_parameter_changes(learning_rate, max_hidden_units):
-            """Handle parameter input changes and send to backend."""
+            """Handle parameter input changes - now just logs, actual send is via Apply button."""
             return self._handle_parameter_changes_handler(
                 learning_rate=learning_rate, max_hidden_units=max_hidden_units
             )
+
+        # Track parameter changes to enable/disable Apply button
+        @self.app.callback(
+            [
+                Output("apply-params-button", "disabled"),
+                Output("params-status", "children"),
+            ],
+            [
+                Input("learning-rate-input", "value"),
+                Input("max-hidden-units-input", "value"),
+                Input("max-epochs-input", "value"),
+                Input("applied-params-store", "data"),
+            ],
+        )
+        def track_param_changes(lr, hu, epochs, applied):
+            """Enable Apply button when parameters differ from applied values."""
+            return self._track_param_changes_handler(lr, hu, epochs, applied)
+
+        # Handle Apply button click
+        @self.app.callback(
+            [
+                Output("applied-params-store", "data"),
+                Output("params-status", "children", allow_duplicate=True),
+            ],
+            Input("apply-params-button", "n_clicks"),
+            [
+                dash.dependencies.State("learning-rate-input", "value"),
+                dash.dependencies.State("max-hidden-units-input", "value"),
+                dash.dependencies.State("max-epochs-input", "value"),
+            ],
+            prevent_initial_call=True,
+        )
+        def apply_parameters(n_clicks, lr, hu, epochs):
+            """Apply parameters to backend and update applied store."""
+            return self._apply_parameters_handler(n_clicks, lr, hu, epochs)
+
+        # Initialize applied-params-store from backend on load
+        @self.app.callback(
+            Output("applied-params-store", "data", allow_duplicate=True),
+            Input("slow-update-interval", "n_intervals"),
+            dash.dependencies.State("applied-params-store", "data"),
+            prevent_initial_call=True,
+        )
+        def init_applied_params(n, current):
+            """Initialize applied params from backend if empty."""
+            return self._init_applied_params_handler(n, current)
 
     # Define event handlers for callbacks
     def _toggle_dark_mode_handler(self, n_clicks=None):
@@ -901,25 +977,56 @@ class DashboardManager:
             return "Error", error_style, "Error", error_style
 
     def _get_status_phase_display_content(self, state_response=None):
+        """Map backend state to display values for status bar."""
         state_data = state_response.json()
-        status = state_data.get("status", "Stopped")
-        phase = state_data.get("phase", "Idle")
+
+        # Get raw values from backend
+        raw_status = state_data.get("status", "Stopped")
+        raw_phase = state_data.get("phase", "Idle")
+
+        # Map FSM status enum names to display values
+        status_map = {
+            "STOPPED": "Stopped",
+            "STARTED": "Running",  # STARTED maps to Running display
+            "PAUSED": "Paused",
+            "Stopped": "Stopped",  # Also handle already formatted values
+            "Running": "Running",
+            "Paused": "Paused",
+        }
+
+        # Map FSM phase enum names to display values
+        phase_map = {
+            "IDLE": "Idle",
+            "OUTPUT": "Output Training",
+            "CANDIDATE": "Candidate Pool",
+            "INFERENCE": "Inference",
+            "Idle": "Idle",  # Also handle already formatted values
+            "Output": "Output Training",
+            "Candidate": "Candidate Pool",
+        }
+
+        # Get display values with fallbacks
+        status = status_map.get(raw_status, raw_status.title() if isinstance(raw_status, str) else "Unknown")
+        phase = phase_map.get(raw_phase, raw_phase.title() if isinstance(raw_phase, str) else "Idle")
 
         # Determine status color
-        if status == "Paused":
-            status_color = "#ffc107"  # Orange
-        elif status == "Running":
-            status_color = "#28a745"  # Green
-        else:
-            status_color = "#6c757d"  # Gray
+        status_colors = {
+            "Running": "#28a745",  # Green
+            "Paused": "#ffc107",  # Orange
+            "Stopped": "#6c757d",  # Gray
+            "Completed": "#17a2b8",  # Cyan
+            "Failed": "#dc3545",  # Red
+        }
+        status_color = status_colors.get(status, "#6c757d")
 
         # Determine phase color
-        if phase.lower() == "output":
-            phase_color = "#007bff"  # Blue
-        elif phase.lower() == "candidate":
-            phase_color = "#17a2b8"  # Cyan
-        else:  # Idle
-            phase_color = "#6c757d"  # Gray
+        phase_colors = {
+            "Output Training": "#007bff",  # Blue
+            "Candidate Pool": "#17a2b8",  # Cyan
+            "Inference": "#6f42c1",  # Purple
+            "Idle": "#6c757d",  # Gray
+        }
+        phase_color = phase_colors.get(phase, "#6c757d")
 
         status_style = {"fontWeight": "bold", "color": status_color}
         phase_style = {"fontWeight": "bold", "color": phase_color}
@@ -1152,9 +1259,9 @@ class DashboardManager:
         if not command:
             return dash.no_update, dash.no_update
 
-        # Set button to loading state (optimistic UI)
+        # Set button to loading state (optimistic UI) with timestamp
         new_button_states = button_states.copy()
-        new_button_states[command] = {"disabled": True, "loading": True}
+        new_button_states[command] = {"disabled": True, "loading": True, "timestamp": current_time}
 
         try:
             url = self._api_url(f"/api/train/{command}")
@@ -1165,7 +1272,7 @@ class DashboardManager:
             self.logger.warning(f"Training control failed: {type(e).__name__}: {e}")
             success = False
             # Re-enable button on error
-            new_button_states[command] = {"disabled": False, "loading": False}
+            new_button_states[command] = {"disabled": False, "loading": False, "timestamp": 0}
         return {"last": trigger, "ts": current_time, "success": success}, new_button_states
 
     def _update_last_click_handler(self, action=None):
@@ -1178,7 +1285,7 @@ class DashboardManager:
         """Update button states (disabled/loading) with visual feedback."""
 
         def get_button_props(cmd, label, icon):
-            state = button_states.get(cmd, {"disabled": False, "loading": False})
+            state = button_states.get(cmd, {"disabled": False, "loading": False, "timestamp": 0})
             disabled = state.get("disabled", False)
             loading = state.get("loading", False)
             text = f"⏳ {label}..." if loading else f"{icon} {label}"
@@ -1204,34 +1311,30 @@ class DashboardManager:
         )
 
     def _handle_button_timeout_and_acks_handler(self, action=None, n_intervals=None, button_states=None, **kwargs):
-        """Re-enable buttons after timeout (5s) or on control acknowledgment."""
-        ctx = get_callback_context()
-        trigger = kwargs.get("trigger") or ctx.get_triggered_id()
-        action = action if trigger == "training-control-action" else None
+        """Re-enable buttons after timeout (2s) based on their individual timestamps."""
         if not button_states:
             return dash.no_update
 
-        # Check if any button has been loading for more than 5 seconds
-        new_states = button_states.copy()
+        current_time = time.time()
+        new_states = {}
         changed = False
 
-        if action and "ts" in action:
-            current_time = time.time()
-            time_since_action = current_time - action["ts"]
+        for cmd, state in button_states.items():
+            timestamp = state.get("timestamp", 0)
+            is_loading = state.get("loading", False)
 
-            # Re-enable all buttons after 5 seconds (timeout)
-            if time_since_action > 5.0:
-                for cmd in new_states:
-                    if new_states[cmd].get("loading"):
-                        new_states[cmd] = {"disabled": False, "loading": False}
-                        changed = True
+            if is_loading and timestamp > 0:
+                elapsed = current_time - timestamp
+                # Reset after 2 seconds timeout
+                if elapsed > 2.0:
+                    new_states[cmd] = {"disabled": False, "loading": False, "timestamp": 0}
+                    changed = True
+                    self.logger.debug(f"Button {cmd} reset after {elapsed:.1f}s timeout")
+                else:
+                    new_states[cmd] = state
+            else:
+                new_states[cmd] = state
 
-            # Re-enable after successful completion (1 second)
-            elif action.get("success") and time_since_action > 1.0:
-                for cmd in new_states:
-                    if new_states[cmd].get("loading"):
-                        new_states[cmd] = {"disabled": False, "loading": False}
-                        changed = True
         return new_states if changed else dash.no_update
 
     def _sync_backend_params_handler(self, n=None):
@@ -1249,32 +1352,70 @@ class DashboardManager:
         return dash.no_update
 
     def _handle_parameter_changes_handler(self, learning_rate=None, max_hidden_units=None, **kwargs):
-        """Handle parameter input changes and send to backend."""
+        """Handle parameter input changes - now just logs, actual send is via Apply button."""
         ctx = get_callback_context()
         trigger = kwargs.get("trigger") or ctx.get_triggered_id()
 
+        if trigger == "learning-rate-input":
+            self.logger.debug(f"Learning rate changed to {learning_rate} (pending)")
+        elif trigger == "max-hidden-units-input":
+            self.logger.debug(f"Max hidden units changed to {max_hidden_units} (pending)")
+
+        return dash.no_update
+
+    def _track_param_changes_handler(self, lr, hu, epochs, applied):
+        """Enable Apply button when parameters differ from applied values."""
+        if not applied:
+            return True, ""
+
+        has_changes = (
+            lr != applied.get("learning_rate") or hu != applied.get("hidden_units") or epochs != applied.get("epochs")
+        )
+
+        status = "⚠️ Unsaved changes" if has_changes else ""
+        return not has_changes, status
+
+    def _apply_parameters_handler(self, n_clicks, lr, hu, epochs):
+        """Apply parameters to backend and update applied store."""
+        if not n_clicks:
+            return dash.no_update, dash.no_update
+
+        params = {
+            "learning_rate": float(lr) if lr else 0.01,
+            "hidden_units": int(hu) if hu else 10,
+            "epochs": int(epochs) if epochs else 200,
+        }
+
         try:
-            # Prepare parameter update payload
-            params = {}
-
-            if trigger == "learning-rate-input" and learning_rate is not None:
-                params["learning_rate"] = float(learning_rate)
-                self.logger.debug(f"Learning rate changed to {learning_rate}")
-
-            if trigger == "max-hidden-units-input" and max_hidden_units is not None:
-                params["max_hidden_units"] = int(max_hidden_units)
-                self.logger.debug(f"Max hidden units changed to {max_hidden_units}")
-
-            # Send to backend via API
-            if params:
-                url = self._api_url("/api/set_params")
-                response = requests.post(url, json=params, timeout=2)
-                if response.status_code == 200:
-                    self.logger.info(f"Parameters updated successfully: {params}")
-                else:
-                    self.logger.warning(f"Failed to update parameters: {response.status_code}")
+            response = requests.post(
+                self._api_url("/api/set_params"),
+                json=params,
+                timeout=2,
+            )
+            if response.status_code == 200:
+                self.logger.info(f"Parameters applied: {params}")
+                return params, "✓ Parameters applied"
+            self.logger.warning(f"Failed to apply: {response.status_code}")
+            return dash.no_update, "❌ Failed to apply"
         except Exception as e:
-            self.logger.warning(f"Parameter update failed: {type(e).__name__}: {e}")
+            self.logger.warning(f"Apply failed: {e}")
+            return dash.no_update, f"❌ Error: {str(e)[:30]}"
+
+    def _init_applied_params_handler(self, n, current):
+        """Initialize applied params from backend if empty."""
+        if current:
+            return dash.no_update
+        try:
+            response = requests.get(self._api_url("/api/state"), timeout=2)
+            if response.status_code == 200:
+                state = response.json()
+                return {
+                    "learning_rate": state.get("learning_rate", 0.01),
+                    "hidden_units": state.get("max_hidden_units", 10),
+                    "epochs": state.get("max_epochs", 200),
+                }
+        except Exception:
+            pass
         return dash.no_update
 
     def register_component(self, component: BaseComponent):

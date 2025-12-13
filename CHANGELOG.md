@@ -5,6 +5,69 @@ All notable changes to the juniper_canopy prototype will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2025-12-12
+
+### Added [0.12.0]
+
+- **Implementation Plan Documentation** (2025-12-12)
+  - Created [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) with prioritized roadmap
+  - Created [docs/phase0/README.md](docs/phase0/README.md) with detailed Phase 0 implementation guide
+  - Added phase directories for structured development (phase0, phase1, phase2, phase3)
+
+- **Apply Parameters Button** (P0-2)
+  - Added "Apply Parameters" button for manual meta-parameter application
+  - Added `applied-params-store` and `pending-params-store` for parameter tracking
+  - Visual feedback shows "⚠️ Unsaved changes" when parameters differ from applied
+  - Parameters only sent to backend on explicit Apply button click
+
+- **Graph View State Persistence** (P0-4)
+  - Added `view-state` store to MetricsPanel for preserving zoom/pan state
+  - New `capture_view_state` callback captures relayoutData from both plots
+  - Zoom and pan persist across interval-driven data updates
+  - Enabled displayModeBar on graphs for zoom/pan tools
+
+- **Network Topology View State Persistence** (P0-5, P0-6)
+  - Added `view-state` store for preserving zoom, pan, and tool selection
+  - Added `topology-hash` store to detect actual topology changes
+  - New `capture_view_state` callback captures relayoutData
+  - Pan/Lasso/Box Select tools now work correctly with proper dragmode
+
+### Fixed [0.12.0]
+
+- **Training Controls Button State** (P0-1)
+  - Buttons now return to normal state after 2-second timeout
+  - Added timestamp tracking to button states for proper timeout handling
+  - Fixed `_handle_button_timeout_and_acks_handler` to check individual button timestamps
+  - All 5 buttons (Start, Pause, Resume, Stop, Reset) properly reset after use
+
+- **Top Status Bar Updates** (P0-3)
+  - Fixed status/phase mapping from FSM enum values to display strings
+  - STARTED → "Running", STOPPED → "Stopped", PAUSED → "Paused"
+  - Phase mapping: OUTPUT → "Output Training", CANDIDATE → "Candidate Pool"
+  - Proper color coding: green for running, orange for paused, gray for stopped
+
+- **Network Topology Dark Mode** (P0-7)
+  - Fixed stats bar background color in dark mode (was white on white)
+  - Added theme callback for stats bar with proper dark (#343a40) and light (#f8f9fa) backgrounds
+  - Ensured text contrast in both light and dark modes
+
+- **Test Compatibility**
+  - Fixed `test_metrics_endpoint` to handle both list and dict API response formats
+
+### Changed [0.12.0]
+
+- **DEVELOPMENT_ROADMAP.md**
+  - Added priority column (P0-P3) to status table
+  - Added phase assignments to all features
+  - Added links to implementation plan documents
+  - Added priority legend
+
+- **Test Coverage**
+  - 1218 tests passing, 32 skipped
+  - 85% overall coverage maintained
+
+---
+
 ## [0.11.0] - 2025-12-07
 
 ### Fixed [0.11.0]

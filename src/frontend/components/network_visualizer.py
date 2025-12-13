@@ -35,12 +35,15 @@
 # COMPLETED:
 #
 #####################################################################################################################################################################################################
+import hashlib
+import json
 from typing import Any, Dict, List, Tuple
 
+import dash
 import networkx as nx
 import plotly.graph_objects as go
 from dash import dcc, html
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
 
 from ..base_component import BaseComponent
 
@@ -124,7 +127,8 @@ class NetworkVisualizer(BaseComponent):
                 ),
                 # Network statistics
                 html.Div(
-                    [
+                    id=f"{self.component_id}-stats-bar",
+                    children=[
                         html.Div(
                             [
                                 html.Strong("Input Units: "),
@@ -169,6 +173,17 @@ class NetworkVisualizer(BaseComponent):
                 ),
                 # Topology data store
                 dcc.Store(id=f"{self.component_id}-topology-store", data=self.current_topology),
+                # View state store for preserving zoom, pan, and tool selection
+                dcc.Store(
+                    id=f"{self.component_id}-view-state",
+                    data={
+                        "xaxis_range": None,
+                        "yaxis_range": None,
+                        "dragmode": "pan",
+                    },
+                ),
+                # Previous topology hash to detect changes
+                dcc.Store(id=f"{self.component_id}-topology-hash", data=None),
             ],
             style={"padding": "20px"},
         )
@@ -182,12 +197,50 @@ class NetworkVisualizer(BaseComponent):
         """
 
         @app.callback(
+            Output(f"{self.component_id}-view-state", "data"),
+            Input(f"{self.component_id}-graph", "relayoutData"),
+            State(f"{self.component_id}-view-state", "data"),
+            prevent_initial_call=True,
+        )
+        def capture_view_state(relayout_data, current_state):
+            """Capture user's view state (zoom, pan, tool selection)."""
+            if not relayout_data or not current_state:
+                return current_state or {"xaxis_range": None, "yaxis_range": None, "dragmode": "pan"}
+
+            new_state = current_state.copy()
+
+            # Capture axis ranges (zoom/pan)
+            if "xaxis.range[0]" in relayout_data:
+                new_state["xaxis_range"] = [
+                    relayout_data["xaxis.range[0]"],
+                    relayout_data["xaxis.range[1]"],
+                ]
+            if "yaxis.range[0]" in relayout_data:
+                new_state["yaxis_range"] = [
+                    relayout_data["yaxis.range[0]"],
+                    relayout_data["yaxis.range[1]"],
+                ]
+
+            # Capture tool selection
+            if "dragmode" in relayout_data:
+                new_state["dragmode"] = relayout_data["dragmode"]
+
+            # Handle autorange/reset
+            if relayout_data.get("xaxis.autorange"):
+                new_state["xaxis_range"] = None
+            if relayout_data.get("yaxis.autorange"):
+                new_state["yaxis_range"] = None
+
+            return new_state
+
+        @app.callback(
             [
                 Output(f"{self.component_id}-graph", "figure"),
                 Output(f"{self.component_id}-input-count", "children"),
                 Output(f"{self.component_id}-hidden-count", "children"),
                 Output(f"{self.component_id}-output-count", "children"),
                 Output(f"{self.component_id}-connection-count", "children"),
+                Output(f"{self.component_id}-topology-hash", "data"),
             ],
             [
                 Input(f"{self.component_id}-topology-store", "data"),
@@ -196,6 +249,10 @@ class NetworkVisualizer(BaseComponent):
                 Input("metrics-panel-metrics-store", "data"),
                 Input("theme-state", "data"),
             ],
+            [
+                State(f"{self.component_id}-view-state", "data"),
+                State(f"{self.component_id}-topology-hash", "data"),
+            ],
         )
         def update_network_graph(
             topology_data: Dict[str, Any],
@@ -203,6 +260,8 @@ class NetworkVisualizer(BaseComponent):
             show_weights: List[str],
             metrics_data: List[Dict[str, Any]],
             theme: str,
+            view_state: Dict[str, Any],
+            prev_hash: str,
         ):
             """
             Update network visualization based on topology data.
@@ -212,14 +271,28 @@ class NetworkVisualizer(BaseComponent):
                 layout_type: Layout algorithm to use
                 show_weights: List containing 'show' if weights should be displayed
                 metrics_data: Historical metrics data for detecting new units
+                theme: Current theme
+                view_state: Stored view state (zoom, pan, dragmode)
+                prev_hash: Previous topology hash
 
             Returns:
                 Tuple of updated components
             """
+
+            def compute_hash(topo):
+                key = {
+                    "input": topo.get("input_units", 0),
+                    "hidden": topo.get("hidden_units", 0),
+                    "output": topo.get("output_units", 0),
+                    "connections": len(topo.get("connections", [])),
+                }
+                return hashlib.md5(json.dumps(key, sort_keys=True).encode(), usedforsecurity=False).hexdigest()
+
             if not topology_data or topology_data.get("input_units", 0) == 0:
-                # Return empty state
                 empty_fig = self._create_empty_graph(theme)
-                return empty_fig, "0", "0", "0", "0"
+                return empty_fig, "0", "0", "0", "0", None
+
+            current_hash = compute_hash(topology_data)
 
             # Detect newly added hidden unit
             newly_added_unit = None
@@ -233,13 +306,37 @@ class NetworkVisualizer(BaseComponent):
             show_weight_labels = bool(show_weights) and ("show" in show_weights)
             fig = self._create_network_graph(topology_data, layout_type, show_weight_labels, newly_added_unit, theme)
 
+            # Apply stored view state
+            if view_state:
+                if view_state.get("xaxis_range"):
+                    fig.update_layout(xaxis_range=view_state["xaxis_range"])
+                if view_state.get("yaxis_range"):
+                    fig.update_layout(yaxis_range=view_state["yaxis_range"])
+                if view_state.get("dragmode"):
+                    fig.update_layout(dragmode=view_state["dragmode"])
+
             # Extract counts
             input_count = str(topology_data.get("input_units", 0))
             hidden_count = str(topology_data.get("hidden_units", 0))
             output_count = str(topology_data.get("output_units", 0))
             connection_count = str(len(topology_data.get("connections", [])))
 
-            return fig, input_count, hidden_count, output_count, connection_count
+            return fig, input_count, hidden_count, output_count, connection_count, current_hash
+
+        @app.callback(
+            Output(f"{self.component_id}-stats-bar", "style"),
+            Input("theme-state", "data"),
+        )
+        def update_stats_bar_theme(theme):
+            """Update stats bar background for dark mode."""
+            is_dark = theme == "dark"
+            return {
+                "marginBottom": "15px",
+                "padding": "10px",
+                "backgroundColor": "#343a40" if is_dark else "#f8f9fa",
+                "color": "#f8f9fa" if is_dark else "#212529",
+                "borderRadius": "3px",
+            }
 
         self.logger.debug(f"Callbacks registered for {self.component_id}")
 
@@ -344,6 +441,7 @@ class NetworkVisualizer(BaseComponent):
             font={"color": "#e9ecef" if is_dark else "#212529"},
             legend={"x": 0.7, "y": 0.95},
             transition={"duration": 500, "easing": "cubic-in-out"},
+            dragmode="pan",
         )
 
         return fig

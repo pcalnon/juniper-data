@@ -141,10 +141,15 @@ class TestAPIEndpoints:
             response = requests.get(f"{base_url}/api/metrics?limit=10", timeout=2)
             assert response.status_code == 200  # trunk-ignore(bandit/B101)
             data = response.json()
-            assert isinstance(data, list)  # trunk-ignore(bandit/B101)
+            # API may return a list or a dict with 'history' key
+            if isinstance(data, dict):
+                metrics_list = data.get("history", data.get("data", []))
+            else:
+                metrics_list = data
+            assert isinstance(metrics_list, list)  # trunk-ignore(bandit/B101)
 
-            if len(data) > 0:
-                metric = data[0]
+            if len(metrics_list) > 0:
+                metric = metrics_list[0]
                 assert "epoch" in metric  # trunk-ignore(bandit/B101)
                 assert "metrics" in metric  # trunk-ignore(bandit/B101)
         except requests.exceptions.ConnectionError:

@@ -41,13 +41,11 @@
 import os
 from typing import Any, Dict, List, Tuple
 
-import plotly.graph_objects as go
-
 # from plotly.subplots import make_subplots
+import dash
+import plotly.graph_objects as go
 from dash import dcc, html
-
-# from dash.dependencies import Input, Output, State
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
 
 from config_manager import ConfigManager
 
@@ -218,10 +216,14 @@ class MetricsPanel(BaseComponent):
                 ),
                 # Plots
                 dcc.Graph(
-                    id=f"{self.component_id}-loss-plot", config={"displayModeBar": False}, style={"height": "300px"}
+                    id=f"{self.component_id}-loss-plot",
+                    config={"displayModeBar": True, "displaylogo": False},
+                    style={"height": "300px"},
                 ),
                 dcc.Graph(
-                    id=f"{self.component_id}-accuracy-plot", config={"displayModeBar": False}, style={"height": "300px"}
+                    id=f"{self.component_id}-accuracy-plot",
+                    config={"displayModeBar": True, "displaylogo": False},
+                    style={"height": "300px"},
                 ),
                 # Network Information: Details section has been moved to left sidebar in dashboard_manager.py
                 # Candidate Pool Section
@@ -237,6 +239,16 @@ class MetricsPanel(BaseComponent):
                 dcc.Store(id=f"{self.component_id}-metrics-store", data=[]),
                 dcc.Store(id=f"{self.component_id}-network-stats-store", data={}),
                 dcc.Store(id=f"{self.component_id}-training-state-store", data={}),
+                # View state store for preserving graph zoom/pan
+                dcc.Store(
+                    id=f"{self.component_id}-view-state",
+                    data={
+                        "loss_xaxis_range": None,
+                        "loss_yaxis_range": None,
+                        "accuracy_xaxis_range": None,
+                        "accuracy_yaxis_range": None,
+                    },
+                ),
                 # Update interval
                 dcc.Interval(id=f"{self.component_id}-update-interval", interval=self.update_interval, n_intervals=0),
                 dcc.Interval(id=f"{self.component_id}-stats-update-interval", interval=5000, n_intervals=0),
@@ -279,6 +291,58 @@ class MetricsPanel(BaseComponent):
             return self._update_candidate_pool_handler(state=state)
 
         @app.callback(
+            Output(f"{self.component_id}-view-state", "data"),
+            [
+                Input(f"{self.component_id}-loss-plot", "relayoutData"),
+                Input(f"{self.component_id}-accuracy-plot", "relayoutData"),
+            ],
+            State(f"{self.component_id}-view-state", "data"),
+            prevent_initial_call=True,
+        )
+        def capture_view_state(loss_relayout, accuracy_relayout, current_state):
+            """Capture user's zoom/pan state from graphs."""
+            ctx = dash.callback_context
+            if not ctx.triggered:
+                return current_state or {}
+
+            trigger = ctx.triggered[0]["prop_id"].split(".")[0]
+            new_state = current_state.copy() if current_state else {}
+
+            if "loss-plot" in trigger and loss_relayout:
+                if "xaxis.range[0]" in loss_relayout:
+                    new_state["loss_xaxis_range"] = [
+                        loss_relayout["xaxis.range[0]"],
+                        loss_relayout["xaxis.range[1]"],
+                    ]
+                if "yaxis.range[0]" in loss_relayout:
+                    new_state["loss_yaxis_range"] = [
+                        loss_relayout["yaxis.range[0]"],
+                        loss_relayout["yaxis.range[1]"],
+                    ]
+                if loss_relayout.get("xaxis.autorange"):
+                    new_state["loss_xaxis_range"] = None
+                if loss_relayout.get("yaxis.autorange"):
+                    new_state["loss_yaxis_range"] = None
+
+            if "accuracy-plot" in trigger and accuracy_relayout:
+                if "xaxis.range[0]" in accuracy_relayout:
+                    new_state["accuracy_xaxis_range"] = [
+                        accuracy_relayout["xaxis.range[0]"],
+                        accuracy_relayout["xaxis.range[1]"],
+                    ]
+                if "yaxis.range[0]" in accuracy_relayout:
+                    new_state["accuracy_yaxis_range"] = [
+                        accuracy_relayout["yaxis.range[0]"],
+                        accuracy_relayout["yaxis.range[1]"],
+                    ]
+                if accuracy_relayout.get("xaxis.autorange"):
+                    new_state["accuracy_xaxis_range"] = None
+                if accuracy_relayout.get("yaxis.autorange"):
+                    new_state["accuracy_yaxis_range"] = None
+
+            return new_state
+
+        @app.callback(
             [
                 Output(f"{self.component_id}-loss-plot", "figure"),
                 Output(f"{self.component_id}-accuracy-plot", "figure"),
@@ -293,9 +357,10 @@ class MetricsPanel(BaseComponent):
                 Input(f"{self.component_id}-metrics-store", "data"),
                 Input("theme-state", "data"),
             ],
+            State(f"{self.component_id}-view-state", "data"),
         )
-        def update_metrics_display(metrics_data: List[Dict[str, Any]], theme: str):
-            return self._update_metrics_display_handler(metrics_data=metrics_data, theme=theme)
+        def update_metrics_display(metrics_data: List[Dict[str, Any]], theme: str, view_state: Dict):
+            return self._update_metrics_display_handler(metrics_data=metrics_data, theme=theme, view_state=view_state)
 
         self.logger.debug(f"Callbacks registered for {self.component_id}")
 
@@ -359,13 +424,16 @@ class MetricsPanel(BaseComponent):
 
         return self._create_candidate_pool_display(state), {"marginTop": "20px", "display": "block"}
 
-    def _update_metrics_display_handler(self, metrics_data: List[Dict[str, Any]] = None, theme: str = None):
+    def _update_metrics_display_handler(
+        self, metrics_data: List[Dict[str, Any]] = None, theme: str = None, view_state: Dict = None
+    ):
         """
         Update all metrics visualizations and displays.
 
         Args:
             metrics_data: List of metrics dictionaries
             theme: Current theme ("light" or "dark")
+            view_state: User's saved view state (zoom ranges)
 
         Returns:
             Tuple of updated components
@@ -389,6 +457,17 @@ class MetricsPanel(BaseComponent):
         # Create plots
         loss_fig = self._create_loss_plot(metrics_data, theme)
         accuracy_fig = self._create_accuracy_plot(metrics_data, theme)
+
+        # Apply stored view state to preserve user's zoom/pan
+        if view_state:
+            if view_state.get("loss_xaxis_range"):
+                loss_fig.update_layout(xaxis_range=view_state["loss_xaxis_range"])
+            if view_state.get("loss_yaxis_range"):
+                loss_fig.update_layout(yaxis_range=view_state["loss_yaxis_range"])
+            if view_state.get("accuracy_xaxis_range"):
+                accuracy_fig.update_layout(xaxis_range=view_state["accuracy_xaxis_range"])
+            if view_state.get("accuracy_yaxis_range"):
+                accuracy_fig.update_layout(yaxis_range=view_state["accuracy_yaxis_range"])
 
         # Get current values
         latest = metrics_data[-1]

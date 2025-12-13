@@ -128,31 +128,38 @@ class TestButtonStateIntegration:
                     reset_clicks=0,
                     last_click={"button": None, "timestamp": 0},
                     button_states={
-                        "start": {"disabled": False, "loading": False},
-                        "pause": {"disabled": False, "loading": False},
-                        "stop": {"disabled": False, "loading": False},
-                        "resume": {"disabled": False, "loading": False},
-                        "reset": {"disabled": False, "loading": False},
+                        "start": {"disabled": False, "loading": False, "timestamp": 0},
+                        "pause": {"disabled": False, "loading": False, "timestamp": 0},
+                        "stop": {"disabled": False, "loading": False, "timestamp": 0},
+                        "resume": {"disabled": False, "loading": False, "timestamp": 0},
+                        "reset": {"disabled": False, "loading": False, "timestamp": 0},
                     },
                     trigger="start-button",
                 )
 
             # Verify disabled
             assert button_states["start"]["disabled"] is True
+            assert button_states["start"]["loading"] is True
+            assert button_states["start"]["timestamp"] > 0
 
-            # Simulate acknowledgment received after 1.5 seconds
-            action_with_delay = {"last": "start-button", "ts": time.time() - 1.5, "success": True}
+            # Simulate button was pressed 2.5 seconds ago (exceeds 2s timeout)
+            button_states_with_old_timestamp = button_states.copy()
+            button_states_with_old_timestamp["start"] = {
+                "disabled": True,
+                "loading": True,
+                "timestamp": time.time() - 2.5,
+            }
 
             new_states = dashboard._handle_button_timeout_and_acks_handler(
-                action=action_with_delay,
-                n_intervals=0,
-                button_states=button_states,
-                trigger="training-control-action",
+                action=None,
+                n_intervals=1,
+                button_states=button_states_with_old_timestamp,
             )
 
-            # Verify re-enabled
+            # Verify re-enabled after timeout
             assert new_states["start"]["disabled"] is False
             assert new_states["start"]["loading"] is False
+            assert new_states["start"]["timestamp"] == 0
 
     def test_rapid_clicks_only_send_one_command(self):
         """Test: Rapid clicks → verify only one command sent."""

@@ -1,5 +1,21 @@
 # Juniper Canopy Fixes and Enhancements
 
+**Last Updated:** 2025-12-12  
+**Version:** 2.0.0  
+**Status:** Active Development
+
+## Implementation Plan
+
+For detailed implementation plans, see:
+
+- **[Implementation Plan Overview](docs/IMPLEMENTATION_PLAN.md)** - Complete prioritization and phased approach
+- **[Phase 0: Core UX Fixes](docs/phase0/README.md)** - Critical P0 bug fixes (1-2 days)
+- **[Phase 1: High-Impact Enhancements](docs/phase1/README.md)** - P1 features (2-4 days)
+- **[Phase 2: Polish Features](docs/phase2/README.md)** - P2 medium priority (2-3 days)
+- **[Phase 3: Advanced Features](docs/phase3/README.md)** - P3 long-term (multi-week)
+
+---
+
 ## Next Steps and Development Roadmap
 
 ### Fixes and Enhancements for each Juniper Canopy Information Section and Tab
@@ -225,45 +241,50 @@
 
 ### Status per Feature
 
-| Feature / Fix                                                                 | Status       |
-|-------------------------------------------------------------------------------|--------------|
-| Top Status Bar: Status field not updating                                     | Not Started  |
-| Top Status Bar: Phase field not updating                                      | Not Started  |
-| Top Status Bar: Epoch/Hidden Units fields display/update                      | Done         |
-| Training Controls: Buttons not resetting after being pressed                  | Not Started  |
-| Training Controls: Buttons become un-clickable after first press              | Not Started  |
-| Training Controls: All 5 buttons affected                                     | Not Started  |
-| Training Controls: Meta-parameters not applied after change                   | Not Started  |
-| Training Controls: Manual apply button for meta-parameters                    | Not Started  |
-| Training Controls: Prevent in-progress updates from triggering training       | Not Started  |
-| Training Controls: Up/down arrows and direct entry for meta-parameters        | Done         |
-| Training Metrics Tab: Add new tab and display metrics                         | Not Started  |
-| Training Metrics Tab: Display accuracy, loss, and other metrics               | Not Started  |
-| Training Metrics Tab: Add replay functionality                                | Not Started  |
-| Training Metrics Tab: Add Save/Load buttons                                   | Not Started  |
-| Training Data Tab: Add new tab and display data                               | Not Started  |
-| Training Data Tab: Display input/output samples                               | Not Started  |
-| Training Data Tab: Add data import/export options                             | Not Started  |
-| Model Architecture Tab: Add new tab and display architecture                  | Not Started  |
-| Model Architecture Tab: Display network topology                              | Not Started  |
-| Model Architecture Tab: Fix topology display issues                           | Not Started  |
-| Model Architecture Tab: Node interactions (drag, select, edit)                | Not Started  |
-| Model Architecture Tab: Add node/edge tooltips                                | Not Started  |
-| Model Architecture Tab: Add zoom/pan functionality                            | Not Started  |
-| About Tab for Juniper Cascor backend                                          | Not Started  |
-| Cassandra Integration and Monitoring Tab                                      | Not Started  |
-| Cassandra Tab: Display cluster state                                          | Not Started  |
-| Cassandra Tab: Display usage stats                                            | Not Started  |
-| Cassandra Tab: Display/edit db schema                                         | Not Started  |
-| Cassandra Tab: Manage cluster options                                         | Not Started  |
-| Redis Integration and Monitoring Tab                                          | Not Started  |
-| Redis Tab: Display cluster state                                              | Not Started  |
-| Redis Tab: Display usage stats                                                | Not Started  |
-| Redis Tab: Display/edit db schema                                             | Not Started  |
-| Redis Tab: Manage cluster options                                             | Not Started  |
-| HDF5 Snapshot Functionality Tab                                               | Not Started  |
-| HDF5 Tab: List available snapshots                                            | Not Started  |
-| HDF5 Tab: Show snapshot details (timestamp, size, etc.)                       | Not Started  |
-| HDF5 Tab: Create new snapshot                                                 | Not Started  |
-| HDF5 Tab: Restore from existing snapshot                                      | Not Started  |
-| HDF5 Tab: Show history of snapshot activities                                 | Not Started  |
+| Priority | Feature / Fix                                                          | Status       | Phase |
+|----------|------------------------------------------------------------------------|--------------|-------|
+| **P0**   | Top Status Bar: Status field not updating                              | ✅ Done      | 0     |
+| **P0**   | Top Status Bar: Phase field not updating                               | ✅ Done      | 0     |
+| Done     | Top Status Bar: Epoch/Hidden Units fields display/update               | Done         | -     |
+| **P0**   | Training Controls: Buttons not resetting after being pressed           | ✅ Done      | 0     |
+| **P0**   | Training Controls: Buttons become un-clickable after first press       | ✅ Done      | 0     |
+| **P0**   | Training Controls: All 5 buttons affected                              | ✅ Done      | 0     |
+| **P0**   | Training Controls: Meta-parameters not applied after change            | ✅ Done      | 0     |
+| **P0**   | Training Controls: Manual apply button for meta-parameters             | ✅ Done      | 0     |
+| **P0**   | Training Controls: Prevent in-progress updates from triggering         | ✅ Done      | 0     |
+| Done     | Training Controls: Up/down arrows and direct entry for meta-parameters | Done         | -     |
+| **P1**   | Training Metrics Tab: Candidate info section display/collapsibility    | Not Started  | 1     |
+| **P0**   | Training Metrics Tab: Graph range selection not persisting             | ✅ Done      | 0     |
+| **P1**   | Training Metrics Tab: Add replay functionality                         | Not Started  | 1     |
+| **P3**   | Training Metrics Tab: Add Save/Load buttons                            | Not Started  | 3     |
+| **P0**   | Network Topology Tab: Dark mode info bar background                    | ✅ Done      | 0     |
+| **P0**   | Network Topology Tab: Pan/Lasso tools performing Box Select            | ✅ Done      | 0     |
+| **P0**   | Network Topology Tab: Node interactions resetting after ~1 second      | ✅ Done      | 0     |
+| **P1**   | Network Topology Tab: Staggered hidden node layout                     | Not Started  | 1     |
+| **P1**   | Network Topology Tab: Mouse click events for node selection            | Not Started  | 1     |
+| **P2**   | Network Topology Tab: Visual indicator for most recently added node    | Not Started  | 2     |
+| **P2**   | Network Topology Tab: Unique name suggestion for image downloads       | Not Started  | 2     |
+| **P3**   | Network Topology Tab: 3D interactive view                              | Not Started  | 3     |
+| **P2**   | About Tab for Juniper Cascor backend                                   | Not Started  | 2     |
+| **P3**   | Cassandra Integration and Monitoring Tab                               | Not Started  | 3     |
+| **P3**   | Cassandra Tab: Display cluster state                                   | Not Started  | 3     |
+| **P3**   | Cassandra Tab: Display usage stats                                     | Not Started  | 3     |
+| **P3**   | Cassandra Tab: Display/edit db schema                                  | Not Started  | 3     |
+| **P3**   | Cassandra Tab: Manage cluster options                                  | Not Started  | 3     |
+| **P3**   | Redis Integration and Monitoring Tab                                   | Not Started  | 3     |
+| **P3**   | Redis Tab: Display cluster state                                       | Not Started  | 3     |
+| **P3**   | Redis Tab: Display usage stats                                         | Not Started  | 3     |
+| **P3**   | Redis Tab: Display/edit db schema                                      | Not Started  | 3     |
+| **P3**   | Redis Tab: Manage cluster options                                      | Not Started  | 3     |
+| **P2**   | HDF5 Snapshot Tab: List available snapshots                            | Not Started  | 2     |
+| **P2**   | HDF5 Tab: Show snapshot details (timestamp, size, etc.)                | Not Started  | 2     |
+| **P3**   | HDF5 Tab: Create new snapshot                                          | Not Started  | 3     |
+| **P3**   | HDF5 Tab: Restore from existing snapshot                               | Not Started  | 3     |
+| **P3**   | HDF5 Tab: Show history of snapshot activities                          | Not Started  | 3     |
+
+### Priority Legend
+
+- **P0 (Phase 0):** Critical - Core UX bugs, must fix first
+- **P1 (Phase 1):** High - High-impact features
+- **P2 (Phase 2):** Medium - Polish and medium-priority
+- **P3 (Phase 3):** Low - Advanced/infrastructure features
