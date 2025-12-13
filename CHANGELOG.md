@@ -5,6 +5,43 @@ All notable changes to the juniper_canopy prototype will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2025-12-13
+
+### Added [0.13.0]
+
+- **Training Metrics Replay Functionality** (P1-3)
+  - Transport controls: play/pause, step forward/backward, jump to start/end
+  - Speed controls: 1x, 2x, 4x playback speeds
+  - Progress slider with position display (current / total epochs)
+  - Automatic playback with configurable interval
+  - Controls only visible when training is Paused/Stopped/Completed/Failed
+
+- **Network Topology Staggered Layout** (P1-2)
+  - Added "Staggered" layout option to dropdown
+  - Hidden nodes now use zigzag pattern for better edge visibility
+  - Progressive horizontal spreading based on node count
+  - Maintains vertical spacing while improving edge clarity
+
+- **Node Selection Interactions** (P1-4)
+  - Click to select nodes with visual highlighting (yellow glow + orange ring)
+  - Box and lasso selection support via new mode bar buttons
+  - Selection info panel showing selected node details
+  - Toggle selection on re-click, clear on click elsewhere
+
+- **Candidate Node Info Section with History** (P1-1)
+  - Collapsible candidate pool section (toggle with header click)
+  - Historical pools stored and displayed (up to 10 entries)
+  - Previous pools shown as collapsed cards with epoch/candidate summary
+  - Section always visible with "No active candidate pool" placeholder
+
+### Changed [0.13.0]
+
+- **Test Coverage**
+  - 1213 tests passing, 37 skipped
+  - 84% overall coverage maintained
+
+---
+
 ## [0.12.0] - 2025-12-12
 
 ### Added [0.12.0]
