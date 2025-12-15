@@ -1,0 +1,13 @@
+{
+    "MD013": {
+        "line_length": 512
+    },
+    "MD033": {
+        "allowed_elements": [
+            "link",
+            "image",
+            "div"
+        ]
+    },
+    "MD041": false
+}

@@ -1,9 +1,10 @@
+<link href="markdown.css" rel="stylesheet" style="display: none; height: 0rem; margin: 0rem; padding: 0rem; margin-bottom: -10rem;"/>
+
 # Juniper: Dynamic Neural Network Research Platform
 
-<link href="markdown.css" rel="stylesheet" />
-
-![Juniper>](src/assets/Juniper_Logo.png "Juniper: Dynamic Neural Network Research Platform")
-Juniper is an AI/ML research platform for investigating dynamic neural network architectures and novel learning paradigms. The project emphasizes ground-up implementations from primary literature, enabling a more transparent exploration of fundamental algorithms.  
+![Juniper>](src/assets/Juniper_Logo.png#right "Juniper: Dynamic Neural Network Research Platform")
+Juniper is an AI/ML research platform for investigating dynamic neural network architectures and novel learning paradigms. The project emphasizes ground-up implementations from primary literature, enabling a more transparent exploration of fundamental algorithms.
+<div name="nofloat"></div>
 
 ## Active Research Components
 
@@ -21,4 +22,4 @@ Juniper is an AI/ML research platform for investigating dynamic neural network a
 
 ## Research Philosophy
 
-Juniper prioritizes **transparency over convenience** and **understanding over abstraction**. By implementing algorithms from first principles, the platform provides researchers with increased visibility into network behavior, enabling a more rigorous and more controlled investigation of learning dynamics and architectural innovations.
+Juniper prioritizes **transparency over convenience** and **understanding over abstraction**.  By implementing algorithms from first principles, the platform provides increased visibility into network behavior, enabling a more rigorous and more controlled investigation of learning dynamics and architectural innovations.
