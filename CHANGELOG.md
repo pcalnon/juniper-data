@@ -5,6 +5,57 @@ All notable changes to the juniper_canopy prototype will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.2] - 2025-12-16
+
+### Added [0.13.2]
+
+- **Project Branding Assets**
+  - Juniper logo images in `src/assets/` directory (`Juniper_Logo_150px.png`, `Juniper_Logo_200px.png`, 10 logo variants, 3 `.ico` files, `Juniper_Tree_3-widestance.png`)
+  - `markdown.css` for markdown-specific styling in documentation (95 lines)
+
+- **Markdown Tooling**
+  - `.markdownlint.json` configuration with relaxed rules (512-char lines, allowed HTML elements)
+  - Pre-commit integration for `markdownlint` with `docs/history/` excluded
+
+- **Utility Scripts and Configuration**
+  - `util/get_module_filenames.bash` for collecting codebase module statistics
+  - New config files for development tooling:
+    - `conf/get_code_stats.conf` - Source file reporting configuration
+    - `conf/get_file_lines.conf` - File line counting utility config
+    - `conf/get_file_todo.conf` - TODO extraction configuration
+    - `conf/get_module_filenames.conf` - Module filename collection config
+    - `conf/get_todo_comments.conf` - TODO comment extraction config
+    - `conf/util_logging.conf` - Leveled logging for utility scripts
+
+### Changed [0.13.2]
+
+- **Documentation and Presentation**
+  - Updated `README.md` with right-aligned Juniper logo and improved formatting
+
+- **Tooling and CI**
+  - Enabled `markdownlint` in pre-commit hooks (previously manual only)
+  - CI workflow updated to ignore markdown rules `MD033` and `MD041`
+
+- **Configuration and Utilities**
+  - Renamed `conf/script_util.cfg` → `conf/script_util.conf` with expanded functionality (+184 lines)
+  - Refactored utility scripts for improved modularity and configuration-driven behavior
+
+- **Versioning and Housekeeping**
+  - Standardized Python file headers with project metadata (e.g., `callback_context.py`)
+  - Reset internal version headers from `1.x.x` to `0.x.x` scheme for pre-1.0 semantic versioning
+  - Expanded `.gitignore` with vim swap file patterns (`*.swq`, `*.swn`, etc.), `*.xcf`, `*.tmp`
+
+### Removed [0.13.2]
+
+- Removed accidentally committed `happy_dance.css` that was not intended for the project
+
+### Test Results [0.13.2]
+
+- 1668 passed, 34 skipped, 1 warning in 97.15s (0:01:37)
+- **84.05% overall test coverage**
+
+---
+
 ## [0.13.1] - 2025-12-13
 
 ### Fixed [0.13.1]
