@@ -20,7 +20,7 @@
 ROOT_PROJ_NAME="JuniperCanopy"
 PROJ_NAME="juniper_canopy"
 ROOT_CONF_NAME="conf"
-ROOT_CONF_FILE_NAME="script_util.${ROOT_CONF_NAME}"
+ROOT_CONF_FILE_NAME="common.${ROOT_CONF_NAME}"
 DEV_DIR="Development"
 # LANGUAGE_NAME="rust/rust_mudgeon/"
 LANGUAGE_NAME="python"

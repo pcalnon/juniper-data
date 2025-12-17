@@ -40,7 +40,7 @@ PROJ_DIR="${PROJ_ROOT_DIR}/${PROJ_NAME}"
 
 CONF_DIR_NAME="conf"
 CONF_DIR="${PROJ_DIR}/${CONF_DIR_NAME}"
-CONF_FILE_NAME="script_util.cfg"
+CONF_FILE_NAME="common.conf"
 CONF_FILE="${CONF_DIR}/${CONF_FILE_NAME}"
 
 source "${CONF_FILE}"

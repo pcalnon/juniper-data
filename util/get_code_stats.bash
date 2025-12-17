@@ -55,64 +55,37 @@
 #####################################################################################################################################################################################################
 # Source script config file
 #####################################################################################################################################################################################################
-# set -eE -o functrace
-# TODO: revert back to this line after debugging is complete
 # source "$(dirname "$(dirname "$(realpath "${BASH_SOURCE[0]}")")")/conf/$(basename -s ".bash" "$(realpath "${BASH_SOURCE[0]}")").conf"; SUCCESS="$?"
-
-INIT_CONF="../conf/init.conf"
+export PARENT_SCRIPT_PATH_PARAM="$(realpath "${BASH_SOURCE[0]}")"
+export INIT_CONF="../conf/init.conf"
 source "${INIT_CONF}"; SUCCESS="$?"
-# ${INIT_CONF}; SUCCESS="$?"
 
-log_debug "Completed Sourcing Init Config File: ${INIT_CONF} returned value: ${SUCCESS}"
-
-exit 0
+[[ "${SUCCESS}" != "0" ]] && printf "%b%-21s %-28s %-21s %-11s %s%b\n" "\033[1;31m" "($(date +%F_%T))" "$(basename "${PARENT_SCRIPT_PATH_PARAM}"):(${LINENO})" "main:" "[CRITICAL]" "Config load Failed: \"${INIT_CONF}\"" "\033[0m" | tee -a "${LOG_FILE}" 2>&1 && set -e && exit 1
+log_debug "Successfully Sourced Current Script: $(basename "${PARENT_SCRIPT_PATH_PARAM}"), Init Config File: ${INIT_CONF}, Success: ${SUCCESS}"
 
 
-# export GET_CODE_STATS_CONF_SOURCED="${FALSE}"
-# export CLOSE_LOGGING_CONF_SOURCED="${FALSE}"
-
-SCRIPT_PATH="$(realpath "${BASH_SOURCE[0]}")"
-echo "SCRIPT_PATH: ${SCRIPT_PATH}"
-
-CONF_PATH="$(dirname "$(dirname "${SCRIPT_PATH}")")/conf"
-echo "CONF_PATH: ${CONF_PATH}"
-
-CONF_FILENAME="$(basename -s ".bash" "${SCRIPT_PATH}").conf"
-echo "CONF_FILENAME: ${CONF_FILENAME}"
-
-# CONF_FILE="${SCRIPT_PATH}/${SCRIPT_FILENAME}"
-CONF_FILE="${CONF_PATH}/${CONF_FILENAME}"
-echo "CONF_FILE: ${CONF_FILE}"
-
-source "${CONF_FILE}"
-SUCCESS="$?"
-log_debug "Sourcing Config File returned: ${SUCCESS}"
-log_debug "Completed sourcing Current Script: ${SCRIPT_NAME}, Config File: ${CONF_FILE}, Success: ${SUCCESS}"
-
-[[ "${SUCCESS}" != "0" ]] && printf "%b%-21s %-28s %-21s %-11s %s%b\n" "\033[1;31m" "($(date +%F_%T))" "$(basename "${SCRIPT_PATH}"):(${LINENO})" "main:" "[CRITICAL]" "Config load Failed: \"${CONF_FILE}\"" "\033[0m" | tee -a "${LOG_FILE}" 2>&1 && set -e && exit 1
-
-log_debug "Successfully Sourced Current Script: ${SCRIPT_NAME}, Config File: ${CONF_FILE}, Success: ${SUCCESS}"
-
-#
+#####################################################################################################################################################################################################
+# Obsolete and deprecated code
+#####################################################################################################################################################################################################
 # SCRIPT_PATH="$(realpath "${BASH_SOURCE[0]}")"
+# echo "SCRIPT_PATH: ${SCRIPT_PATH}"
 # CONF_PATH="$(dirname "$(dirname "${SCRIPT_PATH}")")/conf"
+# echo "CONF_PATH: ${CONF_PATH}"
 # CONF_FILENAME="$(basename -s ".bash" "${SCRIPT_PATH}").conf"
-# CONF_FILE="${SCRIPT_PATH}/${SCRIPT_FILENAME}"
-#
-# CONF_PATH="$(dirname "$(dirname "$(realpath "${BASH_SOURCE[0]}")")")/conf"
-# CONF_FILENAME="$(basename -s ".bash" "$(realpath "${BASH_SOURCE[0]}")").conf"
+# echo "CONF_FILENAME: ${CONF_FILENAME}"
 # CONF_FILE="${CONF_PATH}/${CONF_FILENAME}"
-#
-# CONF_FILE="$(dirname "$(dirname "$(realpath "${BASH_SOURCE[0]}")")")/conf/$(basename -s ".bash" "$(realpath "${BASH_SOURCE[0]}")").conf"
-#
-# source "${CONF_FILE}";  SUCCESS="$?"
+# echo "CONF_FILE: ${CONF_FILE}"
+# source "${CONF_FILE}"
+# SUCCESS="$?"
+# log_debug "Sourcing Config File returned: ${SUCCESS}"
+# log_debug "Completed sourcing Current Script: ${SCRIPT_NAME}, Config File: ${CONF_FILE}, Success: ${SUCCESS}"
+# [[ "${SUCCESS}" != "0" ]] && printf "%b%-21s %-28s %-21s %-11s %s%b\n" "\033[1;31m" "($(date +%F_%T))" "$(basename "${PARENT_SCRIPT_PATH_PARAM}"):(${LINENO})" "main:" "[CRITICAL]" "Config load Failed: \"${INIT_CONF}\"" "\033[0m" | tee -a "${LOG_FILE}" 2>&1 && set -e && exit 1
+# log_debug "Successfully Sourced Current Script: ${PARENT_SCRIPT_PATH_PARAM}, Config File: ${INIT_CONF}, Success: ${SUCCESS}"
 
 
 ####################################################################################################
 # Run env info functions
 ####################################################################################################
-# set -eE -o functrace
-# set -eE
 set -o functrace
 BASE_DIR=$(${GET_PROJECT_SCRIPT} "${BASH_SOURCE}")
 
@@ -120,15 +93,7 @@ echo "Base Dir: ${BASE_DIR}"
 
 # Determine Host OS
 CURRENT_OS=$(${GET_OS_SCRIPT})
-# Define Script Functions
-
 echo "Current OS: ${CURRENT_OS}"
-
-# TODO: This line is Borked:
-#   /home/pcalnon/Development/python/JuniperCanopy/juniper_canopy/conf/get_code_stats.conf:
-#   line 84
-#   /home/pcalnon/Development/python/JuniperCanopy/conf/script_util.cfg: No such file or directory
-# source "${SCRIPT_PATH}/conf/script_util.cfg"
 
 
 ####################################################################################################
