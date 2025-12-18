@@ -48,47 +48,40 @@
 # COMPLETED:
 #
 #####################################################################################################################################################################################################
+set -eE -o functrace
 
 
 #####################################################################################################################################################################################################
 # Source script config file
 #####################################################################################################################################################################################################
-# set -eE -o functrace
-# source "$(dirname "$(dirname "$(realpath "${BASH_SOURCE[0]}")")")/conf/$(basename -s ".bash" "$(realpath "${BASH_SOURCE[0]}")").conf"; SUCCESS="$?"
-# [[ "${SUCCESS}" != "0" ]] && printf "%b%-21s %-28s %-21s %-11s %s%b\n" "\033[1;31m" "($(date +%F_%T))" "$(basename "${SCRIPT_PATH}"):(${LINENO})" "main:" "[CRITICAL]" "Config load Failed: \"${CONF_FILE}\"" "\033[0m" | tee -a "${LOG_FILE}" 2>&1 && set -e && exit 1
-# log_debug "Successfully Sourced Current Script: ${SCRIPT_NAME}, Config File: ${CONF_FILE}, Success: ${SUCCESS}"
+export PARENT_PATH_PARAM="$(realpath "${BASH_SOURCE[0]}")"
+source "../conf/init.conf"; SUCCESS="$?"
 
-export PARENT_SCRIPT_PATH_PARAM="$(realpath "${BASH_SOURCE[0]}")"
-export INIT_CONF="../conf/init.conf"
-source "${INIT_CONF}"; SUCCESS="$?"
-
-[[ "${SUCCESS}" != "0" ]] && printf "%b%-21s %-28s %-21s %-11s %s%b\n" "\033[1;31m" "($(date +%F_%T))" "$(basename "${PARENT_SCRIPT_PATH_PARAM}"):(${LINENO})" "main:" "[CRITICAL]" "Config load Failed: \"${INIT_CONF}\"" "\033[0m" | tee -a "${LOG_FILE}" 2>&1 && set -e && exit 1
-log_debug "Successfully Sourced Current Script: $(basename "${PARENT_SCRIPT_PATH_PARAM}"), Init Config File: ${INIT_CONF}, Success: ${SUCCESS}"
+[[ "${SUCCESS}" != "0" ]] && { source "../conf/config_fail.conf"; log_error "${SUCCESS}" "${PARENT_PATH_PARAM}" "../conf/init.conf" "${LINENO}" "${LOG_FILE}"; }
+log_debug "Successfully Configured Current Script: $(basename "${PARENT_PATH_PARAM}"), by Sourcing the Init Config File: ${INIT_CONF}, Returned: \"${SUCCESS}\""
 
 
-#####################################################################################################
-# Define Debug Constants
-#####################################################################################################
-# TRUE="TRUE"
-# FALSE="FALSE"
+# # set -eE -o functrace
+# # source "$(dirname "$(dirname "$(realpath "${BASH_SOURCE[0]}")")")/conf/$(basename -s ".bash" "$(realpath "${BASH_SOURCE[0]}")").conf"; SUCCESS="$?"
+# # [[ "${SUCCESS}" != "0" ]] && printf "%b%-21s %-28s %-21s %-11s %s%b\n" "\033[1;31m" "($(date +%F_%T))" "$(basename "${SCRIPT_PATH}"):(${LINENO})" "main:" "[CRITICAL]" "Config load Failed: \"${CONF_FILE}\"" "\033[0m" | tee -a "${LOG_FILE}" 2>&1 && set -e && exit 1
+# # log_debug "Successfully Sourced Current Script: ${SCRIPT_NAME}, Config File: ${CONF_FILE}, Success: ${SUCCESS}"
 
-# DEBUG="${TRUE}"
-# DEBUG="${FALSE}"
+# export PARENT_SCRIPT_PATH_PARAM="$(realpath "${BASH_SOURCE[0]}")"
+# export INIT_CONF="../conf/init.conf"
+# source "${INIT_CONF}"; SUCCESS="$?"
 
-
-#####################################################################################################
-# Define Global Configuration File Constants
-####################################################################################################
+# [[ "${SUCCESS}" != "0" ]] && printf "%b%-21s %-28s %-21s %-11s %s%b\n" "\033[1;31m" "($(date +%F_%T))" "$(basename "${PARENT_SCRIPT_PATH_PARAM}"):(${LINENO})" "main:" "[CRITICAL]" "Config load Failed: \"${INIT_CONF}\"" "\033[0m" | tee -a "${LOG_FILE}" 2>&1 && set -e && exit 1
+# log_debug "Successfully Sourced Current Script: $(basename "${PARENT_SCRIPT_PATH_PARAM}"), Init Config File: ${INIT_CONF}, Success: ${SUCCESS}"
 
 
 ####################################################################################################
-# Run env info functions
+# TODO: Move these "Run env info functions" into config file
 ####################################################################################################
+set -eE -o functrace
+source "${DATE_FUNCTIONS_SCRIPT}"
 log_debug "Run env info functions"
-[[ ${DEBUG} == "${TRUE}" ]] && echo "Run env info functions"
 BASE_DIR=$(${GET_PROJECT_SCRIPT} "${BASH_SOURCE}")
 CURRENT_OS=$(${GET_OS_SCRIPT})
-source "${DATE_FUNCTIONS_SCRIPT}"
 
 
 #######################################################################################################################################################################################
