@@ -5,16 +5,13 @@
 # Application:   juniper_canopy
 # Purpose:       Monitoring and Diagnostic Frontend for Cascade Correlation Neural Network
 #
-# Script Name:   get_code_stats.bash
-# Script Path:   <Project>/<Application>/util/get_code_stats.bash
-# Conf File:     get_code_stats.conf
-# Conf Path:     <Project>/<Sub-Project>/<Application>/conf/  # TODO: Add parent project dir
-#
 # Author:        Paul Calnon
 # Version:       1.0.0
+# File Name:     get_code_stats.bash
+# File Path:     <Project>/<Sub-Project>/<Application>/util/
 #
 # Date:          2025-02-05
-# Last Modified: 2025-12-18
+# Last Modified: 2025-12-19
 #
 # License:       MIT License
 # Copyright:     Copyright (c) 2024,2025,2026 Paul Calnon
@@ -65,20 +62,6 @@
 set -o functrace
 export PARENT_PATH_PARAM="$(realpath "${BASH_SOURCE[0]}")" && INIT_CONF="../conf/init.conf"
 [[ -f "${INIT_CONF}" ]] && source "${INIT_CONF}" || { echo "Init Config File Not Found. Unable to Continue."; exit 1; }
-
-# source "../conf/init.conf"
-# [[ "${SUCCESS}" != "0" ]] && { source "../conf/config_fail.conf"; log_error "${SUCCESS}" "${PARENT_PATH_PARAM}" "../conf/init.conf" "${LINENO}" "${LOG_FILE}"; }
-# log_debug "Successfully Configured Current Script: $(basename "${PARENT_PATH_PARAM}"), by Sourcing the Init Config File: ${INIT_CONF}, Returned: \"${SUCCESS}\""
-
-
-#####################################################################################################################################################################################################
-# TODO: Move these "Use env info functions" into config file
-#####################################################################################################################################################################################################
-source "${DATE_FUNCTIONS_SCRIPT}"
-BASE_DIR=$(${GET_PROJECT_SCRIPT} "${BASH_SOURCE}")
-log_debug "Base Dir: ${BASE_DIR}"
-CURRENT_OS=$(${GET_OS_SCRIPT})
-log_debug "Current OS: ${CURRENT_OS}"
 
 
 #####################################################################################################################################################################################################
