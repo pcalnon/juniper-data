@@ -14,7 +14,7 @@
 # Version:       1.0.0
 #
 # Date:          2025-12-03
-# Last Modified: 2025-12-15
+# Last Modified: 2025-12-18
 #
 # License:       MIT License
 # Copyright:     Copyright (c) 2024,2025,2026 Paul Calnon
@@ -93,8 +93,9 @@ CURRENT_OS=$(${GET_OS_SCRIPT})
 
 #######################################################################################################################################################################################
 # Define functions for script
+# TODO: Need to add this to a fn config file
 #######################################################################################################################################################################################
-[[ ${DEBUG} == "${TRUE}" ]] && echo "Define functions for script"
+log_debug "Define functions for script"
 function usage() {
     RET_VAL="$1"
     shift
@@ -111,9 +112,9 @@ function usage() {
 #######################################################################################################################################################################################
 # Process Script's Command Line Argument(s)
 #######################################################################################################################################################################################
-[[ ${DEBUG} == "${TRUE}" ]] && echo "Process Script's Command Line Argument(s)"
+log_debug "Process Script's Command Line Argument(s)"
 while [[ "$1" != "" ]]; do
-    [[ ${DEBUG} == "${TRUE}" ]] && echo "Current Param Flag: $1"
+    log_debug "Current Param Flag: $1"
     case $1 in
         ${HELP_SHORT} | ${HELP_LONG})
             usage 1
@@ -121,10 +122,9 @@ while [[ "$1" != "" ]]; do
         ${OUTPUT_SHORT} | ${OUTPUT_LONG})
             shift
             PARAM="$1"
-            [[ ${DEBUG} == "${TRUE}" ]] && echo "Current Param Value: ${PARAM}"
-            shift
-            [[ ${DEBUG} == "${TRUE}" ]] && echo "Lowercase: ${PARAM,,*}"
-            [[ ${DEBUG} == "${TRUE}" ]] && echo "Uppercase: ${PARAM^^}"
+            log_debug "Current Param Value: ${PARAM}"
+            log_debug "Lowercase: ${PARAM,,*}"
+            log_debug "Uppercase: ${PARAM^^}"
             PARAM="${PARAM^^}"
             if [[ "${PARAM}" == "${TRUE}" || "${PARAM}" == "0" ]]; then
                 FULL_OUTPUT="${TRUE}"
@@ -140,7 +140,7 @@ done
 ####################################################################################################
 # Get list of project modules
 ####################################################################################################
-[[ ${DEBUG} == "${TRUE}" ]] && echo "Get list of project modules"
+log_debug "Get list of project modules"
 for MODULE_PATH in $(find "${SRC_DIR}" \( -name "${MODULE_EXT}" ! -name "${INIT_FILE_NAME}" ! -name "${TEST_FILE_NAME}" \) ); do
     if [[ ${FULL_OUTPUT} == "${TRUE}" ]]; then
         echo "${MODULE_PATH}"

@@ -14,7 +14,7 @@
 # Version:       1.0.0
 #
 # Date:          2025-12-03
-# Last Modified: 2025-12-15
+# Last Modified: 2025-12-18
 #
 # License:       MIT License
 # Copyright:     Copyright (c) 2024,2025,2026 Paul Calnon
@@ -69,6 +69,7 @@ export PARENT_PATH_PARAM="$(realpath "${BASH_SOURCE[0]}")" && INIT_CONF="../conf
 
 #####################################################################################################################################################################################################
 # Define Script Functions
+# TODO: Move this toa fn config file
 #####################################################################################################################################################################################################
 function usage() {
     EXIT_COND="${EXIT_COND_DEFAULT}"
@@ -105,9 +106,7 @@ fi
 DASHES=$(echo "${SEARCH_TERM}" | grep -e '^-.*')
 if [[ ${DASHES} != "" ]]; then
     SEARCH_TERM="\\${SEARCH_TERM}"
-    if [[ ${DEBUG} == "true" ]]; then
-        echo "Sanitized SEARCH_TERM Input: ${SEARCH_TERM}"
-    fi
+    log_debug  "Sanitized SEARCH_TERM Input: ${SEARCH_TERM}"
 fi
 
 

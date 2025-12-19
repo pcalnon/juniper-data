@@ -14,7 +14,7 @@
 # Version:       1.0.0
 #
 # Date:          2025-08-01
-# Last Modified: 2025-12-15
+# Last Modified: 2025-12-18
 #
 # License:       MIT License
 # Copyright:     Copyright (c) 2024,2025,2026 Paul Calnon
@@ -89,8 +89,9 @@ CURRENT_OS=$(${GET_OS_SCRIPT})
 
 #####################################################################################################################################################################################################
 # Define function for the script
+# TODO: Move this to fn config file
 #####################################################################################################################################################################################################
-get_script_path() {
+function get_script_path() {
     local source="${BASH_SOURCE[0]}"
     while [ -L "$source" ]; do
         local dir="$(cd -P "$(dirname "$source")" && pwd)"
