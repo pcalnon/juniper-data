@@ -73,7 +73,7 @@ if [[ "${DEBUG}" == "${TRUE}" ]]; then
         source "${INIT_CONF}"
     else
         echo "Init Config File Not Found. Unable to Continue."
-        return 0
+        return 1
     fi
 else
     [[ -f "${INIT_CONF}" ]] && source "${INIT_CONF}" || { echo "Init Config File Not Found. Unable to Continue."; exit 1; }
@@ -121,6 +121,7 @@ BIG_FILE=""
 #####################################################################################################################################################################################################
 log_debug "Evaluate each source file in project"
 for i in $(${GET_FILENAMES_SCRIPT} ${FILENAMES_SCRIPT_PARAMS}); do
+    echo "Call to Sourcefile Script: ${i}"
     # Get current filename and absolute path
     log_debug "Get current filename and absolute path"
     FILE_PATH="$(echo "${i}" | xargs)"

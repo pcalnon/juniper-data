@@ -1,0 +1,11 @@
+[2;90m(2025-12-23_15:08:24) :)                           :                     [TRACE]     FAIL_CONF_PREFIX: config_fail[0m
+[2;90m(2025-12-23_15:08:24) :)                           :                     [TRACE]     FUNCTION_CONF_INFIX: _fn[0m
+[2;90m(2025-12-23_15:08:24) :)                           :                     [TRACE]     PARENT_INFO_COUNT: 3[0m
+[2;90m(2025-12-23_15:08:24) :)                           :                     [TRACE]     CURRENT_PATH: /home/pcalnon/Development/python/JuniperCanopy/juniper_canopy/conf/init.conf[0m
+[2;90m(2025-12-23_15:08:24) :)                           :                     [TRACE]     CURRENT_NAME: [0m
+[2;90m(2025-12-23_15:08:24) :)                           :                     [TRACE]     CURRENT_DIR: .[0m
+[2;90m(2025-12-23_15:08:24) :)                           :                     [TRACE]     PROJ_ROOT_DIR: .[0m
+[2;90m(2025-12-23_15:08:24) :)                           :                     [TRACE]     CONF_DIR: ./conf[0m
+[2;90m(2025-12-23_15:08:24) :)                           :                     [TRACE]     CONFIG_LOGGING_FILE_NAME: logging.conf[0m
+[2;90m(2025-12-23_15:08:24) :)                           :                     [TRACE]     CONFIG_LOGGING_FILE: ./conf/logging.conf[0m
+(2025-12-23_15:08:24) :)                           :                     [CRITICAL]  Config Failure File: "./conf/logging.conf" does not exist[0m

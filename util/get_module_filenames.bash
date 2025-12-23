@@ -93,4 +93,7 @@ for MODULE_PATH in $(find "${SRC_DIR}" \( -name "${MODULE_EXT}" ! -name "${INIT_
         FILENAME="${MODULE_PATH//*\/}"
         echo "${FILENAME}"
     fi
+done
 echo "get_module_filenames.bash -26"
+
+[[ "${DEBUG}" == "${TRUE}" ]] && exit $(( TRUE )) || return $(( TRUE ))

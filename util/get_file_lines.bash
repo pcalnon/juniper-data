@@ -66,3 +66,5 @@ done
 echo "Search Term: \"${SEARCH_TERM}\""
 echo "Found in Files: ${FOUND_COUNT}"
 echo "Files Complete: ${DONE_COUNT}"
+
+[[ "${DEBUG}" == "${TRUE}" ]] && exit $(( TRUE )) || return $(( TRUE ))

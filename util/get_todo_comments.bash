@@ -53,11 +53,11 @@ function usage() {
     fi
     MESSAGE="usage: ${SCRIPT_NAME} <SEARCH TERM> | [--help|-h]"
     echo -ne "\n\t${MESSAGE}\n\n"
-    exit ${EXIT_COND}
+    exit $(( EXIT_COND ))
 }
 
 
-            usage 1 "Error: Invalid command line params: \"${@}\"\n"
+# usage 1 "Error: Invalid command line params: \"${@}\"\n"
 #####################################################################################################################################################################################################
 # Process Script's Command Line Argument(s)
 #####################################################################################################################################################################################################
@@ -121,3 +121,5 @@ done
 echo "Search Term: \"${SEARCH_TERM}\""
 echo "Found in Files: ${FOUND_COUNT}"
 echo "Files Complete: ${DONE_COUNT}"
+
+[[ "${DEBUG}" == "${TRUE}" ]] && exit $(( TRUE )) || return $(( TRUE ))

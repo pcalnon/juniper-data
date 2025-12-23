@@ -1,0 +1,10 @@
+[2;90m(2025-12-23_15:08:23) :)                           :                     [TRACE]     Project Language Dir Name: "python"[0m
+[2;90m(2025-12-23_15:08:23) :)                           :                     [TRACE]     Dev Dir Name: "Development"[0m
+[2;90m(2025-12-23_15:08:23) :)                           :                     [TRACE]     BASH_EXT: bash[0m
+[2;90m(2025-12-23_15:08:23) :)                           :                     [TRACE]     CONF_EXT: conf[0m
+[2;90m(2025-12-23_15:08:23) :)                           :                     [TRACE]     LOGS_EXT: log[0m
+[2;90m(2025-12-23_15:08:23) :)                           :                     [TRACE]     UTIL_DIR_NAME: util[0m
+[2;90m(2025-12-23_15:08:23) :)                           :                     [TRACE]     LOGS_DIR_NAME: logs[0m
+[2;90m(2025-12-23_15:08:23) :)                           :                     [TRACE]     CONF_DIR_NAME: conf[0m
+[2;90m(2025-12-23_15:08:23) :)                           :                     [TRACE]     COMMON_CONF_PREFIX: common[0m
+[2;90m(2025-12-23_15:08:23) :)                           :                     [TRACE]     LOGGING_CONF_PREFIX: logging[0m
