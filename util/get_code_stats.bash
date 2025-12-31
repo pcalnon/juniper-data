@@ -161,7 +161,9 @@ while read -r i; do
     # Perform Method Count calculation
     #################################################################################################################################################################################################
     log_debug "Perform Method Count calculation"
-    CURRENT_METHODS=$(grep -c "${FIND_METHOD_PARAMS}" "${FIND_METHOD_REGEX}" "${FILE_PATH}" 2>/dev/null || echo "0")
+    # Use tr to strip any whitespace and ensure we get a clean integer
+    CURRENT_METHODS="$(grep -c -E -- "${FIND_METHOD_REGEX}" "${FILE_PATH}" 2>/dev/null | tr -d '[:space:]')"
+    [[ -z "${CURRENT_METHODS}" ]] && CURRENT_METHODS="0"
     log_verbose "Current Methods: ${CURRENT_METHODS}"
     if (( $(echo "${CURRENT_METHODS} > ${MOST_METHODS}" | bc -l) )); then
         MOST_METHODS="$(echo "${CURRENT_METHODS}" | xargs)"
@@ -181,7 +183,9 @@ while read -r i; do
     #################################################################################################################################################################################################
     log_debug "Perform TODO count calculations"
     # Inline grep for performance - avoid subprocess overhead of calling get_file_todo.bash
-    CURRENT_TODOS="$(grep -ic "${SEARCH_TERM_DEFAULT}" "${FILE_PATH}" 2>/dev/null || echo "0")"
+    # Use tr to strip any newlines/whitespace and ensure we get a clean integer
+    CURRENT_TODOS="$(grep -ic "${SEARCH_TERM_DEFAULT}" "${FILE_PATH}" 2>/dev/null | tr -d '[:space:]')"
+    [[ -z "${CURRENT_TODOS}" ]] && CURRENT_TODOS="0"
     log_verbose "Current TODOS: ${CURRENT_TODOS}"
     if (( CURRENT_TODOS > 0 && ( $(echo "${CURRENT_TODOS} > ${MOST_TODOS}" | bc -l) ) )); then
         MOST_TODOS="$(echo "${CURRENT_TODOS}" | xargs)"
