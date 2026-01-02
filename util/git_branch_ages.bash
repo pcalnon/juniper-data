@@ -38,10 +38,20 @@
 # Source script config file
 #####################################################################################################################################################################################################
 set -o functrace
+# # shellcheck disable=SC2155
+# export PARENT_PATH_PARAM="$(realpath "${BASH_SOURCE[0]}")" && INIT_CONF="../conf/init.conf"
+# # shellcheck disable=SC1090,SC2015
+# [[ -f "${INIT_CONF}" ]] && source "${INIT_CONF}" || { echo "Init Config File Not Found. Unable to Continue."; exit 1; }
+
 # shellcheck disable=SC2155
-export PARENT_PATH_PARAM="$(realpath "${BASH_SOURCE[0]}")" && INIT_CONF="../conf/init.conf"
-# shellcheck disable=SC1090,SC2015
-[[ -f "${INIT_CONF}" ]] && source "${INIT_CONF}" || { echo "Init Config File Not Found. Unable to Continue."; exit 1; }
+SCRIPT_PATH="$(realpath "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(dirname "${SCRIPT_PATH}")"
+export PARENT_PATH_PARAM="${SCRIPT_PATH}"
+INIT_CONF="$(realpath "${SCRIPT_DIR}/../conf/init.conf")"
+# echo "get_code_stats.bash: SCRIPT_PATH: ${SCRIPT_PATH}"
+# echo "get_code_stats.bash: INIT_CONF: ${INIT_CONF}"
+# shellcheck disable=SC2015,SC1091 source=conf/init.conf
+[[ -f "${INIT_CONF}" ]] && source "${INIT_CONF}" || { echo "Init Config File Not Found at ${INIT_CONF}. Unable to Continue."; exit 1; }
 
 
 #####################################################################################################################################################################################################
@@ -55,4 +65,6 @@ git for-each-ref --sort='committerdate:iso8601' --color --format="%(color:green)
 echo -ne "\nRemote Branches:\n"
 git for-each-ref --sort='committerdate:iso8601' --color --format="%(color:green)%(committerdate:iso8601)|%(color:blue)%(committerdate:relative)|%(color:reset)%09%(refname)" refs/remotes | awk -F "refs/remotes/" '{print $1 $2;}' | column -s '|' -t
 
-[[ "${DEBUG}" == "${TRUE}" ]] && exit $(( TRUE )) || return $(( TRUE ))
+# [[ "${DEBUG}" == "${TRUE}" ]] && exit $(( TRUE )) || return $(( TRUE ))
+# exit $(( TRUE ))
+return $(( TRUE ))
