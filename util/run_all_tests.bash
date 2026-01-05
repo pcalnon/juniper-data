@@ -65,13 +65,13 @@ if [[ "${COVERAGE_REPORT}" == "${FALSE}" ]]; then
     log_verbose "RUN_TESTS_NO_COV_RPT: ${RUN_TESTS_NO_COV_RPT}"
     eval "${RUN_TESTS_NO_COV_RPT}"; SUCCESS="$?"
 elif [[ "${COVERAGE_REPORT}" == "${TRUE}" ]]; then
-    RUN_TESTS_WITH_COV_RPT="pytest -v ./src/tests \n \
-        --cov=src \n \
-        --cov-report=xml:src/tests/reports/coverage.xml \n \
-        --cov-report=term-missing \n \
-        --cov-report=html:src/tests/reports/coverage \n \
-        --junit-xml=src/tests/reports/junit/results.xml \n \
-        --continue-on-collection-errors \n \
+    RUN_TESTS_WITH_COV_RPT="pytest -v ./src/tests \
+        --cov=src \
+        --cov-report=xml:src/tests/reports/coverage.xml \
+        --cov-report=term-missing \
+        --cov-report=html:src/tests/reports/coverage \
+        --junit-xml=src/tests/reports/junit/results.xml \
+        --continue-on-collection-errors \
     "
     log_verbose "RUN_TESTS_WITH_COV_RPT: ${RUN_TESTS_WITH_COV_RPT}"
     eval "${RUN_TESTS_WITH_COV_RPT}"; SUCCESS="$?"
