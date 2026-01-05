@@ -35,7 +35,7 @@
 ### I Want To
 
 | Goal | Document | Location |
-|------|----------|----------|
+| ------ | ---------- | ---------- |
 | **Get the app running** | [QUICK_START.md](QUICK_START.md) | Root |
 | **Understand the project** | [README.md](README.md) | Root |
 | **Set up my environment** | [ENVIRONMENT_SETUP.md](ENVIRONMENT_SETUP.md) | Root |
@@ -553,7 +553,7 @@ src/tests/
 ### Root Directory
 
 | File | Lines | Type | Audience | Status |
-|------|-------|------|----------|--------|
+| ------ | ------- | ------ | ---------- | -------- |
 | README.md | ~550 | Overview | All | ✅ Active |
 | QUICK_START.md | ~250 | Tutorial | New users | ✅ Active |
 | ENVIRONMENT_SETUP.md | ~400 | Guide | Developers | ✅ Active |
@@ -564,7 +564,7 @@ src/tests/
 ### docs/ Directory
 
 | File | Lines | Type | Audience | Status |
-|------|-------|------|----------|--------|
+| ------ | ------- | ------ | ---------- | -------- |
 | **ci_cd/CICD_QUICK_START.md** | ~400 | Tutorial | Developers | ✅ **Active** |
 | **ci_cd/CICD_ENVIRONMENT_SETUP.md** | ~870 | Guide | DevOps | ✅ **Active** |
 | **ci_cd/CICD_MANUAL.md** | ~1,688 | Guide | Developers | ✅ **Active** |
