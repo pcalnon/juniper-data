@@ -150,3 +150,99 @@ class TestStatusBarUpdates:
             assert "phase" in data
             assert isinstance(data["status"], str)
             assert isinstance(data["phase"], str)
+
+
+class TestStatusEndpointFSMIntegration:
+    """Test /api/status endpoint returns FSM-based status and phase.
+
+    These tests verify that the unified status bar gets correct FSM-based
+    values from /api/status instead of hardcoded values.
+    """
+
+    def test_api_status_returns_phase_field(self, client):
+        """Test /api/status returns phase field (not current_phase)."""
+        response = client.get("/api/status")
+        assert response.status_code == 200
+        data = response.json()
+        # Must have phase field with correct key
+        assert "phase" in data, "Missing 'phase' field in /api/status response"
+        # Should not have old hardcoded 'current_phase' key
+        assert data.get("phase") != "demo_mode", "Phase should not be hardcoded 'demo_mode'"
+
+    def test_api_status_returns_is_running_and_is_paused(self, client):
+        """Test /api/status returns both is_running and is_paused flags."""
+        response = client.get("/api/status")
+        assert response.status_code == 200
+        data = response.json()
+        # Must have both flags for proper status determination
+        assert "is_running" in data, "Missing 'is_running' field in /api/status"
+        assert "is_paused" in data, "Missing 'is_paused' field in /api/status"
+        assert isinstance(data["is_running"], bool)
+        assert isinstance(data["is_paused"], bool)
+
+    def test_api_status_phase_has_valid_value(self, client):
+        """Test /api/status phase is a valid FSM phase value."""
+        response = client.get("/api/status")
+        assert response.status_code == 200
+        data = response.json()
+        # Phase must be one of the valid FSM phases (lowercase)
+        valid_phases = ["idle", "output", "candidate", "inference"]
+        assert data["phase"].lower() in valid_phases, f"Invalid phase: {data['phase']}"
+
+    def test_api_status_has_epoch_and_hidden_units(self, client):
+        """Test /api/status includes epoch and hidden_units for status bar."""
+        response = client.get("/api/status")
+        assert response.status_code == 200
+        data = response.json()
+        assert "current_epoch" in data
+        assert "hidden_units" in data
+        assert isinstance(data["current_epoch"], int)
+        assert isinstance(data["hidden_units"], int)
+
+    def test_api_status_reflects_training_start(self, client):
+        """Test /api/status shows running state after start command."""
+        # Start training
+        client.post("/api/train/start")
+        time.sleep(0.2)  # Give FSM time to transition
+
+        response = client.get("/api/status")
+        data = response.json()
+
+        # After start, should be running
+        assert data["is_running"] is True
+        assert data["is_paused"] is False
+        # Phase should be 'output' (first phase of training)
+        assert data["phase"] == "output"
+
+    def test_api_status_reflects_training_pause(self, client):
+        """Test /api/status shows paused state after pause command."""
+        # Ensure training is started
+        client.post("/api/train/start")
+        time.sleep(0.2)
+
+        # Pause training
+        client.post("/api/train/pause")
+        time.sleep(0.2)
+
+        response = client.get("/api/status")
+        data = response.json()
+
+        # After pause, should be paused
+        assert data["is_paused"] is True
+        # is_running reflects FSM PAUSED state (not STARTED)
+        assert data["is_running"] is False
+
+    def test_api_status_reflects_training_stop(self, client):
+        """Test /api/status shows stopped state after stop command."""
+        # Stop training
+        client.post("/api/train/stop")
+        time.sleep(0.2)
+
+        response = client.get("/api/status")
+        data = response.json()
+
+        # After stop, should be stopped
+        assert data["is_running"] is False
+        assert data["is_paused"] is False
+        # Phase should be 'idle' when stopped
+        assert data["phase"] == "idle"

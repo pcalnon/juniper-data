@@ -233,6 +233,7 @@ class TrainingState:
         "phase",
         "learning_rate",
         "max_hidden_units",
+        "max_epochs",
         "current_epoch",
         "current_step",
         "network_name",
@@ -257,6 +258,7 @@ class TrainingState:
         self.__phase: str = "Idle"
         self.__learning_rate: float = 0.0
         self.__max_hidden_units: int = 0
+        self.__max_epochs: int = 200
         self.__current_epoch: int = 0
         self.__current_step: int = 0
         self.__network_name: str = ""
@@ -287,6 +289,7 @@ class TrainingState:
                 "phase": self.__phase,
                 "learning_rate": self.__learning_rate,
                 "max_hidden_units": self.__max_hidden_units,
+                "max_epochs": self.__max_epochs,
                 "current_epoch": self.__current_epoch,
                 "current_step": self.__current_step,
                 "network_name": self.__network_name,

@@ -140,7 +140,8 @@ training:
     epochs:
       min: 10
       max: 1000
-      default: 200
+      # default: 200
+      default: 500
       description: Number of training epochs to run
       modifiable_during_training: true
 
@@ -153,8 +154,10 @@ training:
 
     hidden_units:
       min: 0
-      max: 20
-      default: 10
+      # max: 20
+      max: 100
+      # default: 10
+      default: 40
       description: Maximum number of hidden units to add
       modifiable_during_training: false
 

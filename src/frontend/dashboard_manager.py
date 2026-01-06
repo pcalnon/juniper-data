@@ -225,7 +225,7 @@ class DashboardManager:
                 dcc.Store(id="dark-mode-store", storage_type="local", data=False),
                 # Theme state for components (tracks current theme)
                 dcc.Store(id="theme-state", data="light"),
-                # Status & Connection Bar
+                # Unified Top Status Bar - Connection, Status, Phase, Metrics, and Latency
                 dbc.Row(
                     [
                         dbc.Col(
@@ -236,27 +236,104 @@ class DashboardManager:
                                             [
                                                 html.Div(
                                                     [
+                                                        # Latency indicator (colored circle)
                                                         html.Span(
                                                             "●",
                                                             id="status-indicator",
                                                             style={
-                                                                "fontSize": "20px",
+                                                                "fontSize": "16px",
                                                                 "color": "#28a745",
-                                                                "marginRight": "10px",
+                                                                "marginRight": "12px",
                                                             },
                                                         ),
-                                                        html.Span(id="connection-status", children="Initializing..."),
+                                                        # Status with label
+                                                        html.Span(
+                                                            [
+                                                                html.Span(
+                                                                    "Status: ",
+                                                                    style={"color": "#6c757d"},
+                                                                ),
+                                                                html.Span(
+                                                                    id="top-status-display",
+                                                                    children="Stopped",
+                                                                    style={"fontWeight": "bold", "color": "#6c757d"},
+                                                                ),
+                                                            ],
+                                                            style={"marginRight": "8px"},
+                                                        ),
+                                                        html.Span(
+                                                            " | ",
+                                                            style={"color": "#6c757d", "marginRight": "8px"},
+                                                        ),
+                                                        # Phase with label
+                                                        html.Span(
+                                                            [
+                                                                html.Span(
+                                                                    "Phase: ",
+                                                                    style={"color": "#6c757d"},
+                                                                ),
+                                                                html.Span(
+                                                                    id="top-phase-display",
+                                                                    children="Idle",
+                                                                    style={"fontWeight": "bold", "color": "#6c757d"},
+                                                                ),
+                                                            ],
+                                                            style={"marginRight": "8px"},
+                                                        ),
+                                                        html.Span(
+                                                            " | ",
+                                                            style={"color": "#6c757d", "marginRight": "8px"},
+                                                        ),
+                                                        # Epoch display
+                                                        html.Span(
+                                                            [
+                                                                html.Span(
+                                                                    "Epoch: ",
+                                                                    style={"color": "#6c757d"},
+                                                                ),
+                                                                html.Span(
+                                                                    id="top-epoch-display",
+                                                                    children="0",
+                                                                    style={"fontWeight": "bold", "color": "#17a2b8"},
+                                                                ),
+                                                            ],
+                                                            style={"marginRight": "8px"},
+                                                        ),
+                                                        html.Span(
+                                                            " | ",
+                                                            style={"color": "#6c757d", "marginRight": "8px"},
+                                                        ),
+                                                        # Hidden Units display
+                                                        html.Span(
+                                                            [
+                                                                html.Span(
+                                                                    "Hidden Units: ",
+                                                                    style={"color": "#6c757d"},
+                                                                ),
+                                                                html.Span(
+                                                                    id="top-hidden-units-display",
+                                                                    children="0",
+                                                                    style={"fontWeight": "bold", "color": "#17a2b8"},
+                                                                ),
+                                                            ],
+                                                            style={"marginRight": "20px"},
+                                                        ),
+                                                        # Latency display (right side)
                                                         html.Span(
                                                             id="latency-display",
                                                             children="",
                                                             style={
-                                                                "marginLeft": "20px",
+                                                                "marginLeft": "auto",
                                                                 "color": "#6c757d",
                                                                 "fontSize": "0.9em",
                                                             },
                                                         ),
                                                     ],
-                                                    style={"display": "flex", "alignItems": "center"},
+                                                    style={
+                                                        "display": "flex",
+                                                        "alignItems": "center",
+                                                        "flexWrap": "wrap",
+                                                    },
                                                 ),
                                             ],
                                             className="py-2",
@@ -269,48 +346,8 @@ class DashboardManager:
                         ),
                     ]
                 ),
-                # Top Status Bar - Status and Phase Indicators
-                dbc.Row(
-                    [
-                        dbc.Col(
-                            [
-                                dbc.Card(
-                                    [
-                                        dbc.CardBody(
-                                            [
-                                                html.Div(
-                                                    [
-                                                        html.Strong("Status: ", style={"marginRight": "5px"}),
-                                                        html.Span(
-                                                            id="top-status-display",
-                                                            children="Stopped",
-                                                            style={"fontWeight": "bold", "color": "#6c757d"},
-                                                        ),
-                                                    ],
-                                                    style={"display": "inline-block", "marginRight": "30px"},
-                                                ),
-                                                html.Div(
-                                                    [
-                                                        html.Strong("Phase: ", style={"marginRight": "5px"}),
-                                                        html.Span(
-                                                            id="top-phase-display",
-                                                            children="Idle",
-                                                            style={"fontWeight": "bold", "color": "#6c757d"},
-                                                        ),
-                                                    ],
-                                                    style={"display": "inline-block"},
-                                                ),
-                                            ],
-                                            className="py-2",
-                                        ),
-                                    ],
-                                    className="mb-3",
-                                ),
-                            ],
-                            width=12,
-                        ),
-                    ]
-                ),
+                # Hidden element to keep old connection-status for backward compat
+                html.Div(id="connection-status", style={"display": "none"}),
                 # Main content area with tabs
                 dbc.Row(
                     [
@@ -545,7 +582,7 @@ class DashboardManager:
                 # Stores for parameter tracking
                 dcc.Store(
                     id="pending-params-store",
-                    data={"learning_rate": None, "hidden_units": None, "epochs": None},
+                    data={"learning_rate": None, "max_hidden_units": None, "max_epochs": None},
                 ),
                 dcc.Store(
                     id="applied-params-store",
@@ -629,25 +666,18 @@ class DashboardManager:
                 Output("status-indicator", "style"),
                 Output("connection-status", "children"),
                 Output("latency-display", "children"),
-            ],
-            Input("fast-update-interval", "n_intervals"),
-        )
-        def update_status_bar(n_intervals):
-            """Update status bar with connection health and current state."""
-            return self._update_status_bar_handler(n_intervals=n_intervals)
-
-        @self.app.callback(
-            [
                 Output("top-status-display", "children"),
                 Output("top-status-display", "style"),
                 Output("top-phase-display", "children"),
                 Output("top-phase-display", "style"),
+                Output("top-epoch-display", "children"),
+                Output("top-hidden-units-display", "children"),
             ],
             Input("fast-update-interval", "n_intervals"),
         )
-        def update_top_status_phase(n_intervals):
-            """Update top Status and Phase indicators from TrainingState."""
-            return self._update_top_status_phase_handler(n_intervals=n_intervals)
+        def update_unified_status_bar(n_intervals):
+            """Update unified status bar with all state info."""
+            return self._update_unified_status_bar_handler(n_intervals=n_intervals)
 
     # Define Network callbacks
     def _setup_network_callbacks(self):
@@ -907,107 +937,99 @@ class DashboardManager:
         """Update theme state based on dark mode store."""
         return "dark" if is_dark else "light"
 
-    def _update_status_bar_handler(self, n_intervals=None):
-        """Update status bar with connection health and current state."""
+    def _update_unified_status_bar_handler(self, n_intervals=None):
+        """
+        Update unified status bar with all state info from /api/status.
+
+        Returns tuple of 9 elements:
+        - status_indicator style (latency color)
+        - connection_status children (hidden, for backward compat)
+        - latency_display children
+        - top_status_display children
+        - top_status_display style
+        - top_phase_display children
+        - top_phase_display style
+        - top_epoch_display children
+        - top_hidden_units_display children
+        """
+        error_indicator = {"fontSize": "16px", "color": "#dc3545", "marginRight": "12px"}
+        error_style = {"fontWeight": "bold", "color": "#dc3545"}
+
         try:
             # Measure latency
             start_time = time.time()
             health_response = requests.get(self._api_url("/api/health"), timeout=DashboardConstants.API_TIMEOUT_SECONDS)
             latency_ms = (time.time() - start_time) * 1000
 
-            # Get current status
+            # Get current status (now includes FSM-based status and phase)
             status_response = requests.get(self._api_url("/api/status"), timeout=DashboardConstants.API_TIMEOUT_SECONDS)
 
             if health_response.status_code == 200 and status_response.status_code == 200:
-                return self._get_status_bar_content(status_response, latency_ms)
+                return self._build_unified_status_bar_content(status_response, latency_ms)
             else:
                 return (
-                    {"fontSize": "20px", "color": "#dc3545", "marginRight": "10px"},
-                    "Status: Backend Unavailable",
+                    error_indicator,
+                    "Backend Unavailable",
                     "Latency: --",
+                    "Error",
+                    error_style,
+                    "Error",
+                    error_style,
+                    "--",
+                    "--",
                 )
         except Exception as e:
             self.logger.warning(f"Status bar update failed: {type(e).__name__}: {e}")
             return (
-                {"fontSize": "20px", "color": "#dc3545", "marginRight": "10px"},
-                "Status: Connection Error",
+                error_indicator,
+                "Connection Error",
                 "Latency: --",
+                "Error",
+                error_style,
+                "Error",
+                error_style,
+                "--",
+                "--",
             )
 
-    def _get_status_bar_content(self, status_response, latency_ms):
+    def _build_unified_status_bar_content(self, status_response, latency_ms):
+        """Build unified status bar content from /api/status response."""
         status_data = status_response.json()
 
-        # Determine color based on latency
+        # Determine latency indicator color
         if latency_ms < 100:
-            color = "#28a745"  # Green - excellent
+            latency_color = "#28a745"  # Green - excellent
         elif latency_ms < 500:
-            color = "#ffc107"  # Orange - acceptable
+            latency_color = "#ffc107"  # Orange - acceptable
         else:
-            color = "#dc3545"  # Red - slow
+            latency_color = "#dc3545"  # Red - slow
 
-        # Build status text
-        phase = status_data.get("phase", "idle")
-        epoch = status_data.get("current_epoch", 0)
-        hidden = status_data.get("hidden_units", 0)
-        is_running = status_data.get("is_running", False)
-        is_paused = status_data.get("is_paused", False)
-
-        state = "Running" if is_running and not is_paused else "Paused" if is_paused else "Stopped"
-        status_text = f"Status: {state} | Phase: {phase.title()} | Epoch: {epoch} | Hidden Units: {hidden}"
+        latency_indicator_style = {"fontSize": "16px", "color": latency_color, "marginRight": "12px"}
         latency_text = f"Latency: {latency_ms:.0f}ms"
 
-        return (
-            {"fontSize": "20px", "color": color, "marginRight": "10px"},
-            status_text,
-            latency_text,
-        )
+        # Get raw values from backend (now using FSM-based values)
+        is_running = status_data.get("is_running", False)
+        is_paused = status_data.get("is_paused", False)
+        raw_phase = status_data.get("phase", "idle")
+        epoch = status_data.get("current_epoch", 0)
+        hidden_units = status_data.get("hidden_units", 0)
 
-    def _update_top_status_phase_handler(self, n_intervals=None):
-        """Update top Status and Phase indicators from TrainingState."""
-        try:
-            state_response = requests.get(self._api_url("/api/state"), timeout=DashboardConstants.API_TIMEOUT_SECONDS)
+        # Determine display status
+        if is_running and not is_paused:
+            status = "Running"
+        elif is_paused:
+            status = "Paused"
+        else:
+            status = "Stopped"
 
-            if state_response.status_code == 200:
-                return self._get_status_phase_display_content(state_response=state_response)
-            error_style = {"fontWeight": "bold", "color": "#dc3545"}
-            return "Error", error_style, "Error", error_style
-        except Exception as e:
-            self.logger.warning(f"Top status/phase update failed: {type(e).__name__}: {e}")
-            error_style = {"fontWeight": "bold", "color": "#dc3545"}
-            return "Error", error_style, "Error", error_style
-
-    def _get_status_phase_display_content(self, state_response=None):
-        """Map backend state to display values for status bar."""
-        state_data = state_response.json()
-
-        # Get raw values from backend
-        raw_status = state_data.get("status", "Stopped")
-        raw_phase = state_data.get("phase", "Idle")
-
-        # Map FSM status enum names to display values
-        status_map = {
-            "STOPPED": "Stopped",
-            "STARTED": "Running",  # STARTED maps to Running display
-            "PAUSED": "Paused",
-            "Stopped": "Stopped",  # Also handle already formatted values
-            "Running": "Running",
-            "Paused": "Paused",
-        }
-
-        # Map FSM phase enum names to display values
+        # Map phase to display value
         phase_map = {
-            "IDLE": "Idle",
-            "OUTPUT": "Output Training",
-            "CANDIDATE": "Candidate Pool",
-            "INFERENCE": "Inference",
-            "Idle": "Idle",  # Also handle already formatted values
-            "Output": "Output Training",
-            "Candidate": "Candidate Pool",
+            "idle": "Idle",
+            "output": "Output Training",
+            "candidate": "Candidate Pool",
+            "inference": "Inference",
         }
-
-        # Get display values with fallbacks
-        status = status_map.get(raw_status, raw_status.title() if isinstance(raw_status, str) else "Unknown")
-        phase = phase_map.get(raw_phase, raw_phase.title() if isinstance(raw_phase, str) else "Idle")
+        phase = phase_map.get(raw_phase.lower(), raw_phase.title())
 
         # Determine status color
         status_colors = {
@@ -1031,7 +1053,20 @@ class DashboardManager:
         status_style = {"fontWeight": "bold", "color": status_color}
         phase_style = {"fontWeight": "bold", "color": phase_color}
 
-        return status, status_style, phase, phase_style
+        # Build connection status text for backward compat (hidden element)
+        connection_status = f"Status: {status} | Phase: {phase}"
+
+        return (
+            latency_indicator_style,
+            connection_status,
+            latency_text,
+            status,
+            status_style,
+            phase,
+            phase_style,
+            str(epoch),
+            str(hidden_units),
+        )
 
     def _sync_input_values_from_backend_handler(self, backend_state=None):
         """Sync input values from backend state (only when backend changes)."""
@@ -1346,6 +1381,7 @@ class DashboardManager:
                 return {
                     "learning_rate": state.get("learning_rate", 0.01),
                     "max_hidden_units": state.get("max_hidden_units", 10),
+                    "max_epochs": state.get("max_epochs", 200),
                 }
         except Exception as e:
             self.logger.warning(f"Failed to sync backend params: {e}")
@@ -1369,7 +1405,9 @@ class DashboardManager:
             return True, ""
 
         has_changes = (
-            lr != applied.get("learning_rate") or hu != applied.get("hidden_units") or epochs != applied.get("epochs")
+            lr != applied.get("learning_rate")
+            or hu != applied.get("max_hidden_units")
+            or epochs != applied.get("max_epochs")
         )
 
         status = "⚠️ Unsaved changes" if has_changes else ""
@@ -1381,9 +1419,9 @@ class DashboardManager:
             return dash.no_update, dash.no_update
 
         params = {
-            "learning_rate": float(lr) if lr else 0.01,
-            "hidden_units": int(hu) if hu else 10,
-            "epochs": int(epochs) if epochs else 200,
+            "learning_rate": float(lr) if lr is not None else 0.01,
+            "max_hidden_units": int(hu) if hu is not None else 10,
+            "max_epochs": int(epochs) if epochs is not None else 200,
         }
 
         try:
@@ -1395,7 +1433,7 @@ class DashboardManager:
             if response.status_code == 200:
                 self.logger.info(f"Parameters applied: {params}")
                 return params, "✓ Parameters applied"
-            self.logger.warning(f"Failed to apply: {response.status_code}")
+            self.logger.warning(f"Failed to apply: {response.status_code} {response.text}")
             return dash.no_update, "❌ Failed to apply"
         except Exception as e:
             self.logger.warning(f"Apply failed: {e}")
@@ -1411,8 +1449,8 @@ class DashboardManager:
                 state = response.json()
                 return {
                     "learning_rate": state.get("learning_rate", 0.01),
-                    "hidden_units": state.get("max_hidden_units", 10),
-                    "epochs": state.get("max_epochs", 200),
+                    "max_hidden_units": state.get("max_hidden_units", 10),
+                    "max_epochs": state.get("max_epochs", 200),
                 }
         except Exception as e:
             self.logger.warning(f"Failed to initialize applied params: {e}")

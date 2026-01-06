@@ -331,8 +331,8 @@ class TestAPIURLDynamicResolution:
         assert "request.host" in api_url_source  # trunk-ignore(bandit/B101)
 
         # Verify handler methods use the _api_url helper (check a sample handler)
-        # _update_status_bar_handler uses _api_url for API calls
-        handler_source = inspect.getsource(manager._update_status_bar_handler)
+        # _update_unified_status_bar_handler uses _api_url for API calls
+        handler_source = inspect.getsource(manager._update_unified_status_bar_handler)
         assert "_api_url" in handler_source  # trunk-ignore(bandit/B101)
 
         # Verify no hardcoded URLs in handler methods

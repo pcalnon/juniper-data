@@ -66,7 +66,7 @@ class TestMainEndpointsIntegration:
 
     def test_get_status_demo_mode(self, client):
         # sourcery skip: extract-duplicate-method
-        """Test /api/status returns demo mode training status."""
+        """Test /api/status returns demo mode training status with FSM-based phase."""
         response = client.get("/api/status")
         assert response.status_code == 200
         data = response.json()
@@ -79,7 +79,13 @@ class TestMainEndpointsIntegration:
         assert "input_size" in data
         assert "output_size" in data
         assert "hidden_units" in data
-        assert data["current_phase"] == "demo_mode"
+        # Phase now uses FSM-based values: 'idle', 'output', 'candidate', 'inference'
+        assert "phase" in data
+        valid_phases = ["idle", "output", "candidate", "inference"]
+        assert data["phase"] in valid_phases, f"Invalid phase: {data['phase']}"
+        # Also includes is_running and is_paused flags for status bar
+        assert "is_running" in data
+        assert "is_paused" in data
 
     # ========== Metrics Endpoints ==========
 

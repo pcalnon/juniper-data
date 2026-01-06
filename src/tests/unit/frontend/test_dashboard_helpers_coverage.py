@@ -7,7 +7,7 @@ Target coverage improvement for:
 - _api_url
 - _toggle_dark_mode_handler
 - _update_theme_state_handler
-- _update_status_bar_handler
+- _update_unified_status_bar_handler
 - _handle_training_buttons_handler (via CallbackContextAdapter)
 """
 import os
@@ -320,12 +320,12 @@ class TestThemeHandlers:
         assert result == "light"
 
 
-class TestStatusBarUpdateHandler:
-    """Tests for _update_status_bar_handler method."""
+class TestUnifiedStatusBarHandler:
+    """Tests for _update_unified_status_bar_handler method."""
 
     @patch("requests.get")
     def test_healthy_response(self, mock_get, reset_singletons):
-        """Test status bar update with healthy API response."""
+        """Test unified status bar update with healthy API response."""
         from frontend.dashboard_manager import DashboardManager
 
         # Create mock responses for both health and status endpoints
@@ -355,18 +355,31 @@ class TestStatusBarUpdateHandler:
         env = builder.get_environ()
 
         with manager.app.server.request_context(env):
-            result = manager._update_status_bar_handler(n_intervals=1)
+            result = manager._update_unified_status_bar_handler(n_intervals=1)
 
-        # Returns tuple: (style_dict, status_text, latency_text)
-        assert len(result) == 3
-        style, status_text, latency_text = result
-        assert "color" in style
-        assert "Running" in status_text
+        # Returns tuple of 9 elements for unified status bar
+        assert len(result) == 9
+        (
+            indicator_style,
+            connection_status,
+            latency_text,
+            status,
+            status_style,
+            phase,
+            phase_style,
+            epoch,
+            hidden_units,
+        ) = result
+        assert "color" in indicator_style
+        assert status == "Running"
+        assert phase == "Output Training"
         assert "ms" in latency_text
+        assert epoch == "10"
+        assert hidden_units == "3"
 
     @patch("requests.get")
     def test_error_response(self, mock_get, reset_singletons):
-        """Test status bar update with error response."""
+        """Test unified status bar update with error response."""
         import requests
 
         from frontend.dashboard_manager import DashboardManager
@@ -383,17 +396,20 @@ class TestStatusBarUpdateHandler:
         env = builder.get_environ()
 
         with manager.app.server.request_context(env):
-            result = manager._update_status_bar_handler(n_intervals=1)
+            result = manager._update_unified_status_bar_handler(n_intervals=1)
 
-        # Should return error indicators
-        assert len(result) == 3
-        style, status_text, latency_text = result
-        assert style["color"] == "#dc3545"  # Red for error
-        assert "Error" in status_text
+        # Returns 9 elements with error indicators
+        assert len(result) == 9
+        indicator_style = result[0]
+        status = result[3]
+        status_style = result[4]
+        assert indicator_style["color"] == "#dc3545"  # Red for error
+        assert status == "Error"
+        assert status_style["color"] == "#dc3545"
 
     @patch("requests.get")
     def test_timeout_response(self, mock_get, reset_singletons):
-        """Test status bar update with timeout."""
+        """Test unified status bar update with timeout."""
         import requests
 
         from frontend.dashboard_manager import DashboardManager
@@ -410,14 +426,14 @@ class TestStatusBarUpdateHandler:
         env = builder.get_environ()
 
         with manager.app.server.request_context(env):
-            result = manager._update_status_bar_handler(n_intervals=1)
+            result = manager._update_unified_status_bar_handler(n_intervals=1)
 
-        style, status_text, _ = result
-        assert style["color"] == "#dc3545"  # Red for error
+        indicator_style = result[0]
+        assert indicator_style["color"] == "#dc3545"  # Red for error
 
     @patch("requests.get")
     def test_backend_unavailable(self, mock_get, reset_singletons):
-        """Test status bar when backend returns non-200."""
+        """Test unified status bar when backend returns non-200."""
         from frontend.dashboard_manager import DashboardManager
 
         mock_response = Mock()
@@ -435,10 +451,10 @@ class TestStatusBarUpdateHandler:
         env = builder.get_environ()
 
         with manager.app.server.request_context(env):
-            result = manager._update_status_bar_handler(n_intervals=1)
+            result = manager._update_unified_status_bar_handler(n_intervals=1)
 
-        style, status_text, _ = result
-        assert "Unavailable" in status_text
+        connection_status = result[1]
+        assert "Unavailable" in connection_status
 
 
 class TestTrainingButtonHandlers:
@@ -723,17 +739,27 @@ class TestNetworkInfoToggleHandlers:
 
 
 class TestTopStatusPhaseHandler:
-    """Tests for top status/phase display handler."""
+    """Tests for top status/phase display via unified handler."""
 
     @patch("requests.get")
     def test_running_status_display(self, mock_get, reset_singletons):
-        """Test running status displays correctly."""
+        """Test running status displays correctly in unified bar."""
         from frontend.dashboard_manager import DashboardManager
 
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"status": "STARTED", "phase": "OUTPUT"}
-        mock_get.return_value = mock_response
+        # Create mock responses for both health and status endpoints
+        mock_health_response = Mock()
+        mock_health_response.status_code = 200
+
+        mock_status_response = Mock()
+        mock_status_response.status_code = 200
+        mock_status_response.json.return_value = {
+            "is_running": True,
+            "is_paused": False,
+            "phase": "output",
+            "current_epoch": 5,
+            "hidden_units": 2,
+        }
+        mock_get.side_effect = [mock_health_response, mock_status_response]
 
         manager = DashboardManager({})
 
@@ -745,23 +771,34 @@ class TestTopStatusPhaseHandler:
         env = builder.get_environ()
 
         with manager.app.server.request_context(env):
-            result = manager._update_top_status_phase_handler(n_intervals=1)
+            result = manager._update_unified_status_bar_handler(n_intervals=1)
 
-        # Returns tuple: (status, status_style, phase, phase_style)
-        status, status_style, phase, phase_style = result
+        # Unified handler returns 9 elements
+        status = result[3]
+        status_style = result[4]
+        phase = result[5]
         assert status == "Running"
         assert status_style["color"] == "#28a745"  # Green
         assert phase == "Output Training"
 
     @patch("requests.get")
     def test_paused_status_display(self, mock_get, reset_singletons):
-        """Test paused status displays with orange color."""
+        """Test paused status displays with orange color in unified bar."""
         from frontend.dashboard_manager import DashboardManager
 
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"status": "PAUSED", "phase": "CANDIDATE"}
-        mock_get.return_value = mock_response
+        mock_health_response = Mock()
+        mock_health_response.status_code = 200
+
+        mock_status_response = Mock()
+        mock_status_response.status_code = 200
+        mock_status_response.json.return_value = {
+            "is_running": False,
+            "is_paused": True,
+            "phase": "candidate",
+            "current_epoch": 10,
+            "hidden_units": 3,
+        }
+        mock_get.side_effect = [mock_health_response, mock_status_response]
 
         manager = DashboardManager({})
 
@@ -773,16 +810,18 @@ class TestTopStatusPhaseHandler:
         env = builder.get_environ()
 
         with manager.app.server.request_context(env):
-            result = manager._update_top_status_phase_handler(n_intervals=1)
+            result = manager._update_unified_status_bar_handler(n_intervals=1)
 
-        status, status_style, phase, phase_style = result
+        status = result[3]
+        status_style = result[4]
+        phase = result[5]
         assert status == "Paused"
         assert status_style["color"] == "#ffc107"  # Orange
         assert phase == "Candidate Pool"
 
     @patch("requests.get")
     def test_error_status_display(self, mock_get, reset_singletons):
-        """Test error case displays error styling."""
+        """Test error case displays error styling in unified bar."""
         import requests
 
         from frontend.dashboard_manager import DashboardManager
@@ -799,21 +838,31 @@ class TestTopStatusPhaseHandler:
         env = builder.get_environ()
 
         with manager.app.server.request_context(env):
-            result = manager._update_top_status_phase_handler(n_intervals=1)
+            result = manager._update_unified_status_bar_handler(n_intervals=1)
 
-        status, status_style, phase, phase_style = result
+        status = result[3]
+        status_style = result[4]
         assert status == "Error"
         assert status_style["color"] == "#dc3545"  # Red
 
     @patch("requests.get")
     def test_stopped_status_display(self, mock_get, reset_singletons):
-        """Test stopped status displays with gray color."""
+        """Test stopped status displays with gray color in unified bar."""
         from frontend.dashboard_manager import DashboardManager
 
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"status": "STOPPED", "phase": "IDLE"}
-        mock_get.return_value = mock_response
+        mock_health_response = Mock()
+        mock_health_response.status_code = 200
+
+        mock_status_response = Mock()
+        mock_status_response.status_code = 200
+        mock_status_response.json.return_value = {
+            "is_running": False,
+            "is_paused": False,
+            "phase": "idle",
+            "current_epoch": 0,
+            "hidden_units": 0,
+        }
+        mock_get.side_effect = [mock_health_response, mock_status_response]
 
         manager = DashboardManager({})
 
@@ -825,9 +874,11 @@ class TestTopStatusPhaseHandler:
         env = builder.get_environ()
 
         with manager.app.server.request_context(env):
-            result = manager._update_top_status_phase_handler(n_intervals=1)
+            result = manager._update_unified_status_bar_handler(n_intervals=1)
 
-        status, status_style, phase, phase_style = result
+        status = result[3]
+        status_style = result[4]
+        phase = result[5]
         assert status == "Stopped"
         assert status_style["color"] == "#6c757d"  # Gray
         assert phase == "Idle"
@@ -888,7 +939,7 @@ class TestParameterTrackingHandler:
 
         manager = DashboardManager({})
 
-        applied = {"learning_rate": 0.01, "hidden_units": 10, "epochs": 200}
+        applied = {"learning_rate": 0.01, "max_hidden_units": 10, "max_epochs": 200}
         disabled, status = manager._track_param_changes_handler(lr=0.01, hu=10, epochs=200, applied=applied)
 
         assert disabled is True  # Button disabled when no changes
@@ -900,7 +951,7 @@ class TestParameterTrackingHandler:
 
         manager = DashboardManager({})
 
-        applied = {"learning_rate": 0.01, "hidden_units": 10, "epochs": 200}
+        applied = {"learning_rate": 0.01, "max_hidden_units": 10, "max_epochs": 200}
         disabled, status = manager._track_param_changes_handler(lr=0.02, hu=10, epochs=200, applied=applied)
 
         assert disabled is False  # Button enabled when changes exist
@@ -943,8 +994,8 @@ class TestApplyParametersHandler:
             params, status = manager._apply_parameters_handler(n_clicks=1, lr=0.02, hu=15, epochs=300)
 
         assert params["learning_rate"] == 0.02
-        assert params["hidden_units"] == 15
-        assert params["epochs"] == 300
+        assert params["max_hidden_units"] == 15
+        assert params["max_epochs"] == 300
         assert "✓" in status
 
     @patch("requests.post")

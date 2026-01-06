@@ -5,6 +5,90 @@ All notable changes to the juniper_canopy prototype will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.3] - 2026-01-06
+
+### Fixed [0.14.3]
+
+- **P0-2: Meta-Parameters Apply Button**
+  - Fixed critical key mismatch between frontend and backend parameter names
+  - Frontend was sending `hidden_units`/`epochs` but backend expected `max_hidden_units`/`max_epochs`
+  - This caused the Apply button to appear to work but silently ignore hidden units and epochs changes
+  - All three parameters (learning_rate, max_hidden_units, max_epochs) now correctly persist
+
+### Changed [0.14.3]
+
+- **TrainingState** (`src/backend/training_monitor.py`)
+  - Added `max_epochs` field to `_STATE_FIELDS` set
+  - Added `__max_epochs` private attribute with default value 200
+  - Updated `get_state()` to include `max_epochs` in returned dictionary
+
+- **Dashboard Manager** (`src/frontend/dashboard_manager.py`)
+  - `_apply_parameters_handler()`: Changed payload keys from `hidden_units`/`epochs` to `max_hidden_units`/`max_epochs`
+  - `_track_param_changes_handler()`: Updated comparison keys to match backend schema
+  - `_init_applied_params_handler()`: Updated returned keys for consistency
+  - `_sync_backend_params_handler()`: Added `max_epochs` to synced state
+  - Updated `pending-params-store` initialization to use correct keys
+
+- **API Endpoint** (`src/main.py`)
+  - `/api/set_params` now includes `max_epochs` in TrainingState updates
+
+- **Demo Mode** (`src/demo_mode.py`)
+  - `_initialize_training_state()`: Added `max_epochs` to initial state
+  - `_update_candidate_pool_state()`: Added `max_epochs` to periodic state updates
+  - `apply_params()`: Now updates internal `training_state` with all parameter values
+
+### Added [0.14.3]
+
+- **Tests**
+  - New integration test file: `src/tests/integration/test_apply_button_parameters.py`
+  - 12 comprehensive tests covering:
+    - TrainingState accepts all three parameter fields
+    - API endpoint correctly updates all parameters
+    - Dashboard handlers use correct keys throughout
+    - Full round-trip parameter persistence verification
+
+### Test Results [0.14.3]
+
+- **46 passed** parameter-related tests
+- All Apply button functionality verified working
+- No regressions in existing functionality
+
+---
+
+## [0.14.2] - 2026-01-05
+
+### Fixed [0.14.2]
+
+- **P0-3: Top Status Bar Updates**
+  - Fixed `/api/status` endpoint to return FSM-based `phase` field instead of hardcoded `"demo_mode"`
+  - Added `is_running` and `is_paused` boolean flags to `/api/status` for accurate status determination
+  - Consolidated two separate status bars into single unified status bar
+  - Status and Phase now display correct values with state-specific colors:
+    - Status: Running (green), Paused (orange), Stopped (gray)
+    - Phase: Output Training (blue), Candidate Pool (cyan), Idle (gray)
+  - Status bar now includes all elements: Status, Phase, Epoch, Hidden Units, and Latency indicator
+
+### Changed [0.14.2]
+
+- **Dashboard Layout**
+  - Unified status bar replaces previous two-bar layout
+  - New display format: `● Status: <status> | Phase: <phase> | Epoch: <n> | Hidden Units: <n> Latency: <ms>`
+  - Renamed `_update_status_bar_handler` to `_update_unified_status_bar_handler` for clarity
+
+### Added [0.14.2]
+
+- **Tests**
+  - Added 7 new integration tests in `TestStatusEndpointFSMIntegration` class for FSM integration
+  - Tests verify `/api/status` returns correct FSM-based values for all training states
+
+### Test Results [0.14.2]
+
+- **403 passed** integration tests
+- **126 passed** unit tests
+- All status bar-related tests passing
+
+---
+
 ## [0.14.1] - 2026-01-05
 
 ### Fixed [0.14.1]

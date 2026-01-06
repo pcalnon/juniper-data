@@ -497,25 +497,35 @@ async def get_status():
     """
     Get current training status.
     Returns:
-        Training status dictionary
+        Training status dictionary with FSM-based status and phase
     """
     global demo_mode_instance
 
-    # Demo mode status
+    # Demo mode status - get proper FSM-based status and phase
     if demo_mode_instance:
         state = demo_mode_instance.get_current_state()
         network = demo_mode_instance.get_network()
+
+        # Get FSM state for accurate status and phase
+        fsm_state = demo_mode_instance.state_machine.get_state_summary()
+
+        # Map FSM status to is_running/is_paused flags
+        is_running = fsm_state["status"] == "STARTED"
+        is_paused = fsm_state["status"] == "PAUSED"
+
         return {
-            "is_training": state["is_running"],
+            "is_training": is_running and not is_paused,
+            "is_running": is_running,
+            "is_paused": is_paused,
             "current_epoch": state["current_epoch"],
             "current_loss": state["current_loss"],
             "current_accuracy": state["current_accuracy"],
             "network_connected": True,
-            "monitoring_active": state["is_running"],
+            "monitoring_active": is_running,
             "input_size": network.input_size,
             "output_size": network.output_size,
             "hidden_units": len(network.hidden_units),
-            "current_phase": "demo_mode",
+            "phase": fsm_state["phase"].lower(),  # 'output', 'candidate', 'idle'
         }
 
     # Real cascor status
@@ -524,8 +534,11 @@ async def get_status():
 
     return {
         "is_training": False,
+        "is_running": False,
+        "is_paused": False,
         "network_connected": False,
         "monitoring_active": False,
+        "phase": "idle",
     }
 
 
@@ -914,28 +927,28 @@ async def api_set_params(params: dict):
         max_hidden_units = params.get("max_hidden_units")
         max_epochs = params.get("max_epochs")
 
-        # Update TrainingState
+        # Update TrainingState with all provided parameters
         updates = {}
         if learning_rate is not None:
             updates["learning_rate"] = float(learning_rate)
         if max_hidden_units is not None:
             updates["max_hidden_units"] = int(max_hidden_units)
-        # Note: max_epochs is not stored in TrainingState, only applied to demo mode
+        if max_epochs is not None:
+            updates["max_epochs"] = int(max_epochs)
 
         # Check if any parameter was provided
-        has_params = updates or max_epochs is not None
+        has_params = bool(updates)
 
         if has_params:
-            if updates:
-                training_state.update_state(**updates)
-                system_logger.info(f"Parameters updated: {updates}")
+            training_state.update_state(**updates)
+            system_logger.info(f"Parameters updated: {updates}")
 
             # Apply to demo mode instance if active
             if demo_mode_instance:
                 demo_mode_instance.apply_params(
                     learning_rate=updates.get("learning_rate"),
                     max_hidden_units=updates.get("max_hidden_units"),
-                    max_epochs=max_epochs,
+                    max_epochs=updates.get("max_epochs"),
                 )
 
             # Broadcast state change

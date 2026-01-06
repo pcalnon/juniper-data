@@ -277,6 +277,7 @@ class DemoMode:
                 phase="Idle",
                 learning_rate=0.01,
                 max_hidden_units=self.max_hidden_units,
+                max_epochs=self.max_epochs,
                 current_epoch=0,
                 current_step=0,
                 network_name="MockCascorNetwork",
@@ -332,6 +333,7 @@ class DemoMode:
             phase=phase,
             learning_rate=self.network.learning_rate,
             max_hidden_units=self.max_hidden_units,
+            max_epochs=self.max_epochs,
             current_epoch=self.current_epoch,
             current_step=self.current_epoch,
             network_name="MockCascorNetwork",
@@ -936,6 +938,18 @@ class DemoMode:
             if max_epochs is not None:
                 self.max_epochs = int(max_epochs)
                 self.logger.info(f"Demo mode: max_epochs set to {max_epochs}")
+
+        # Update TrainingState with new parameter values
+        if self.training_state:
+            updates = {}
+            if learning_rate is not None:
+                updates["learning_rate"] = learning_rate
+            if max_hidden_units is not None:
+                updates["max_hidden_units"] = max_hidden_units
+            if max_epochs is not None:
+                updates["max_epochs"] = max_epochs
+            if updates:
+                self.training_state.update_state(**updates)
 
         # Update TrainingState if available
         self._update_training_state()

@@ -15,9 +15,9 @@ Phase 0 addresses critical bugs that make the dashboard feel unreliable. These P
 
 ## Table of Contents
 
-- [P0-1: Training Controls Button State Fix](#p0-1-training-controls-button-state-fix)
+- [P0-1: Training Controls Button State Fix](#p0-1-training-controls-button-state-fix) - FIXED
 - [P0-2: Meta-Parameters Apply Button](#p0-2-meta-parameters-apply-button)
-- [P0-3: Top Status Bar Updates](#p0-3-top-status-bar-updates)
+- [P0-3: Top Status Bar Updates](#p0-3-top-status-bar-updates) - FIXED
 - [P0-4: Graph Range Persistence](#p0-4-graph-range-persistence)
 - [P0-5: Pan/Lasso Tool Fix](#p0-5-panlasso-tool-fix)
 - [P0-6: Interaction Persistence](#p0-6-interaction-persistence)
@@ -118,6 +118,51 @@ def test_rapid_clicks_debounced():
 ### Problem. P0-2
 
 Meta-parameters are not applied after being changed. Need manual Apply button.
+
+**Update:** Although a fix for this issue has been attempted in previous work, this issue persisted.  The Apply Button became active and appeared to work, but the parameter changes were not actually applied.
+
+### Root Cause Analysis, P0-2
+
+The issue was a **key mismatch** between the frontend and backend:
+
+1. **Frontend used**: `hidden_units`, `epochs`
+2. **Backend expected**: `max_hidden_units`, `max_epochs`
+
+This caused the API endpoint `/api/set_params` to silently ignore the hidden_units and epochs parameters, only applying learning_rate.
+
+Additionally, `max_epochs` was not included in `TrainingState`, so it wasn't properly persisted or returned by `/api/state`.
+
+### Solution Implemented, P0-2
+
+**Files Modified:**
+
+1. **`src/backend/training_monitor.py`**:
+   - Added `max_epochs` to `_STATE_FIELDS` set
+   - Added `__max_epochs` attribute with default value 200
+   - Updated `get_state()` to include `max_epochs`
+
+2. **`src/frontend/dashboard_manager.py`**:
+   - `_apply_parameters_handler()`: Changed payload keys from `hidden_units`/`epochs` to `max_hidden_units`/`max_epochs`
+   - `_track_param_changes_handler()`: Updated comparison keys to match backend
+   - `_init_applied_params_handler()`: Updated returned keys to match backend
+   - `_sync_backend_params_handler()`: Added `max_epochs` to returned state
+   - Updated `pending-params-store` initialization keys
+
+3. **`src/main.py`**:
+   - `/api/set_params`: Now includes `max_epochs` in TrainingState updates
+
+4. **`src/demo_mode.py`**:
+   - `_initialize_training_state()`: Added `max_epochs` initialization
+   - `_update_candidate_pool_state()`: Added `max_epochs` to state updates
+   - `apply_params()`: Now updates internal `training_state` with new parameter values
+
+**Tests Added:**
+
+- `src/tests/integration/test_apply_button_parameters.py`: 12 comprehensive tests covering:
+  - TrainingState accepts all three parameters
+  - API endpoint updates all parameters correctly
+  - Dashboard handlers use correct keys
+  - Full round-trip persistence verification
 
 ### Solution Design, P0-2
 
@@ -243,10 +288,40 @@ def test_unsaved_indicator_shown():
 ### Problem, P0-3
 
 Status always shows "Stopped" and Phase always shows "Idle" regardless of actual training state.
+Additionally, there were two separate status bars when there should only be one.
 
 ### Root Cause Analysis, P0-3
 
-`_update_top_status_phase_handler` fetches from `/api/state` but the response mapping may not match actual training states.
+1. `/api/status` endpoint was returning hardcoded `"current_phase": "demo_mode"` instead of FSM-based phase
+2. `/api/status` only had `is_training` boolean, not proper `is_running`/`is_paused` flags for status determination
+3. Two separate status bars existed: first used `/api/status` (broken), second used `/api/state` (working)
+
+### Solution Implemented, P0-3
+
+1. **Fixed `/api/status` endpoint** in `main.py`:
+   - Now returns FSM-based `phase` field (lowercase: 'idle', 'output', 'candidate', 'inference')
+   - Added `is_running` and `is_paused` boolean flags for accurate status determination
+   - Removed hardcoded `"current_phase": "demo_mode"`
+
+2. **Consolidated two status bars** in `dashboard_manager.py`:
+   - Merged into single unified status bar with all elements
+   - Display format: `● Status: <status> | Phase: <phase> | Epoch: <n> | Hidden Units: <n> Latency: <ms>`
+   - Status and Phase display values are styled with state-specific colors:
+     - Running = Green, Paused = Orange, Stopped = Gray
+     - Output Training = Blue, Candidate Pool = Cyan, Idle = Gray
+
+3. **Created unified handler** `_update_unified_status_bar_handler`:
+   - Single callback that updates all 9 status bar elements
+   - Uses only `/api/status` endpoint (fewer API calls)
+
+### Files Modified, P0-3
+
+- `src/main.py` - Fixed `/api/status` endpoint to return FSM-based values
+- `src/frontend/dashboard_manager.py` - Consolidated layout and unified handler
+- `src/tests/integration/test_status_bar_updates.py` - Added 7 new tests for FSM integration
+- `src/tests/integration/test_main_endpoints.py` - Updated test for new response format
+- `src/tests/integration/test_architectural_fixes.py` - Updated handler reference
+- `src/tests/unit/frontend/test_dashboard_helpers_coverage.py` - Updated test class
 
 ### Solution Design, P0-3
 
