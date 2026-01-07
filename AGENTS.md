@@ -110,18 +110,18 @@ xdg-open reports/coverage/index.html  # Linux
 
 #### Pytest Markers
 
-| Marker            | Meaning                                      | Typical use                                           |
-|-------------------|----------------------------------------------|-------------------------------------------------------|
-| `unit`            | Fast tests, no external dependencies         | Pure logic / small components                         |
-| `integration`     | Integration tests (DB, FS, backend, etc.)    | Backend + frontend wiring, config, I/O                |
-| `regression`      | Regression tests for fixed bugs              | Guarding against previously-fixed issues              |
-| `performance`     | Performance / benchmark tests                | Throughput, latency, allocation checks                |
-| `e2e`             | Full end-to-end tests                        | Full stack with real services                         |
-| `slow`            | Tests > 1s                                   | Load-heavy, large data, long-running loops            |
-| `requires_cascor` | Needs a real CasCor backend                  | Real backend integration tests                        |
-| `requires_server` | Needs a running server                       | External client tests vs pre-started server           |
-| `requires_redis`  | Needs Redis                                  | Cache / pub-sub integration tests                     |
-| `requires_display`| Needs a GUI/display                          | Visualization / UI snapshot tests                     |
+| Marker             | Meaning                                   | Typical use                                 |
+| ------------------ | ----------------------------------------- | ------------------------------------------- |
+| `unit`             | Fast tests, no external dependencies      | Pure logic / small components               |
+| `integration`      | Integration tests (DB, FS, backend, etc.) | Backend + frontend wiring, config, I/O      |
+| `regression`       | Regression tests for fixed bugs           | Guarding against previously-fixed issues    |
+| `performance`      | Performance / benchmark tests             | Throughput, latency, allocation checks      |
+| `e2e`              | Full end-to-end tests                     | Full stack with real services               |
+| `slow`             | Tests > 1s                                | Load-heavy, large data, long-running loops  |
+| `requires_cascor`  | Needs a real CasCor backend               | Real backend integration tests              |
+| `requires_server`  | Needs a running server                    | External client tests vs pre-started server |
+| `requires_redis`   | Needs Redis                               | Cache / pub-sub integration tests           |
+| `requires_display` | Needs a GUI/display                       | Visualization / UI snapshot tests           |
 
 Example marker usage:
 
@@ -141,12 +141,12 @@ pytest -m performance -v
 
 The test suite auto-skips certain tests unless you opt in via environment variables:
 
-| Variable                  | Effect                                                       | Default |
-|---------------------------|--------------------------------------------------------------|---------|
-| `CASCOR_BACKEND_AVAILABLE`| Enable tests marked `requires_cascor`                        | unset   |
-| `RUN_SERVER_TESTS`        | Enable tests marked `requires_server`                        | unset   |
-| `RUN_DISPLAY_TESTS`       | Enable tests marked `requires_display` in headless environments | unset |
-| `ENABLE_SLOW_TESTS`       | Run tests marked `slow`                                      | unset   |
+| Variable                   | Effect                                                          | Default |
+| -------------------------- | --------------------------------------------------------------- | ------- |
+| `CASCOR_BACKEND_AVAILABLE` | Enable tests marked `requires_cascor`                           | unset   |
+| `RUN_SERVER_TESTS`         | Enable tests marked `requires_server`                           | unset   |
+| `RUN_DISPLAY_TESTS`        | Enable tests marked `requires_display` in headless environments | unset   |
+| `ENABLE_SLOW_TESTS`        | Run tests marked `slow`                                         | unset   |
 
 > **Note:** `conftest.py` **forces** `CASCOR_DEMO_MODE=1` for the test process by default so tests do **not** require a real backend unless you explicitly enable it via `CASCOR_BACKEND_AVAILABLE=1`.
 
@@ -622,26 +622,50 @@ python -c "from config_manager import ConfigManager; cm = ConfigManager(); print
 All Python files should include the standard project header:
 
 ```python
-#!/usr/bin/env python
-#####################################################################
+#####################################################################################################################################################################################################
 # Project:       Juniper
-# Prototype:     Monitoring and Diagnostic Frontend for Cascade Correlation Neural Network
-# File Name:     <filename>.py
+# Sub-Project:   JuniperCanopy
+# Application:   juniper_canopy
+# Purpose:       Monitoring and Diagnostic Frontend for Cascade Correlation Neural Network
+#
 # Author:        Paul Calnon
 # Version:       <version>
-# Date:          <date>
-# Last Modified: <date>
+# File Name:     <filename>.py
+# File Path:     <Project>/<Sub-Project>/<Application>/<Source Directory Path>/
+#
+# Created Date:  <date created>
+# Last Modified: <date last changed>
+#
 # License:       MIT License
-# Copyright:     Copyright (c) 2024-2025 Paul Calnon
-# Description:   <description>
-#####################################################################
+# Copyright:     Copyright (c) 2024,2025,2026 Paul Calnon
+#
+# Description:
+#     <High level description of the current script>
+#
+#####################################################################################################################################################################################################
+# Notes:
+#     <Additional information about the script>
+#
+#####################################################################################################################################################################################################
+# References:
+#     <External information sources or documentation relevant to the script>
+#
+#####################################################################################################################################################################################################
+# TODO :
+#     <List of pending tasks or improvements for the script>
+#
+#####################################################################################################################################################################################################
+# COMPLETED:
+#     <List of completed tasks or features for the script>
+#
+#####################################################################################################################################################################################################
 ```
 
 ### Naming Conventions
 
 - **Classes:** PascalCase (e.g., `DemoMode`, `WebSocketManager`)
 - **Functions/Methods:** snake_case (e.g., `get_metrics_history`, `broadcast_from_thread`)
-- **Constants:** UPPER_SNAKE_CASE (e.g., `MAX_EPOCHS`, `DEFAULT_PORT`)
+- **Constants:** _UPPER_SNAKE_CASE (e.g., `_MAX_EPOCHS`, `_DEFAULT_PORT`)
 - **Private attributes:** Prefix with double underscore (e.g., `self.__private_data`)
 - **Protected attributes:** Prefix with single underscore (e.g., `self._lock`)
 
@@ -880,7 +904,7 @@ system_logger.error("Error occurred")
 logs/
 ├── system.log       # System events
 ├── training.log     # Training metrics
-└── ui.log          # UI interactions
+└── ui.log           # UI interactions
 ```
 
 ### Debug Mode
@@ -1044,18 +1068,16 @@ export CASCOR_BACKEND_PATH=/path/to/cascor  # Default: ../cascor
 
 Organize files according to their purpose:
 
-```bash
-| File Type | Location | Examples |
-|-----------|----------|----------|
-| Source code | `src/` and logical subdirs | `src/demo_mode.py`, `src/frontend/` |
-| Tests | `src/tests/{unit,integration,performance}/` | `src/tests/unit/test_demo_mode.py` |
-| Documentation | `notes/` | `notes/DEVELOPMENT_ROADMAP.md` |
-| Configuration | `conf/` | `conf/app_config.yaml` |
-| Datasets | `data/` | `data/spiral_dataset.csv` |
-| Logs | `logs/` | `logs/system.log` |
-| Images | `images/` | `images/network_topology.png` |
-| Scripts | `util/` | `util/juniper_canopy-demo.bash` |
-```
+| File Type     | Location                                    | Examples                            |
+| ------------- | ------------------------------------------- | ----------------------------------- |
+| Source code   | `src/` and logical subdirs                  | `src/demo_mode.py`, `src/frontend/` |
+| Tests         | `src/tests/{unit,integration,performance}/` | `src/tests/unit/test_demo_mode.py`  |
+| Documentation | `notes/`                                    | `notes/DEVELOPMENT_ROADMAP.md`      |
+| Configuration | `conf/`                                     | `conf/app_config.yaml`              |
+| Datasets      | `data/`                                     | `data/spiral_dataset.csv`           |
+| Logs          | `logs/`                                     | `logs/system.log`                   |
+| Images        | `images/`                                   | `images/network_topology.png`       |
+| Scripts       | `util/`                                     | `util/juniper_canopy-demo.bash`     |
 
 **Mirror package structure in tests:**
 
@@ -1359,13 +1381,14 @@ Before committing documentation changes:
 - Align columns for readability
 
 ```bash
-✓ | File Type | Location | Examples |
-  |-----------|----------|----------|
+✓ | File Type     | Location                                    | Examples                            |
+  | ------------- | ------------------------------------------- | ----------------------------------- |
   | Source    | `src/`   | `main.py` |
 
-✗ |File|Loc|Ex|
+✗  |File|Loc|Ex|
 |-|-|-|
-|Src|src|main|
+|S-c|s-c|m-n|
+||||
 ```
 
 ### Internal Linking Conventions

@@ -90,41 +90,41 @@ Following the critical bug fix, the test suite was significantly expanded to rea
 
 #### Coverage Improvement
 
-| Metric | Before | After | Change |
-| -------- | -------- | ------- | -------- |
-| Overall Coverage | 84% | 90% | +6% |
-| Total Tests | 1213 | 1666 | +453 |
-| Tests Passing | 1213 | 1666 | +453 |
+| Metric           | Before | After | Change |
+| ---------------- | ------ | ----- | ------ |
+| Overall Coverage | 84%    | 90%   | +6%    |
+| Total Tests      | 1213   | 1666  | +453   |
+| Tests Passing    | 1213   | 1666  | +453   |
 
 #### New Test Files Created
 
-| Test File | Tests | Target Component | Coverage Impact |
-| ----------- | ------- | ------------------ | ----------------- |
-| `test_callback_context_coverage.py` | 29 | `callback_context.py` | 49% → 100% |
-| `test_dashboard_helpers_coverage.py` | 48 | `dashboard_manager.py` | 51% → 67% |
-| `test_network_visualizer_layout_coverage.py` | 43 | `network_visualizer.py` | 59% → 71% |
-| `test_metrics_panel_helpers_coverage.py` | 74 | `metrics_panel.py` | 57% → 67% |
-| `test_main_api_coverage.py` | 36 | `main.py` | 67% → 79% |
-| `test_demo_mode_comprehensive.py` | 72 | `demo_mode.py` | 81% → 94% |
-| `test_websocket_comprehensive.py` | 51 | `websocket_manager.py` | 76% → 94% |
-| `test_config_manager_comprehensive.py` | 42 | `config_manager.py` | 79% → 95% |
-| `test_cascor_integration_comprehensive.py` | 49 | `cascor_integration.py` | 76% → 95% |
-| `test_base_component_coverage.py` | 9 | `base_component.py` | 81% → 92% |
+| Test File                                    | Tests | Target Component        | Coverage Impact |
+| -------------------------------------------- | ----- | ----------------------- | --------------- |
+| `test_callback_context_coverage.py`          | 29    | `callback_context.py`   | 49% → 100%      |
+| `test_dashboard_helpers_coverage.py`         | 48    | `dashboard_manager.py`  | 51% → 67%       |
+| `test_network_visualizer_layout_coverage.py` | 43    | `network_visualizer.py` | 59% → 71%       |
+| `test_metrics_panel_helpers_coverage.py`     | 74    | `metrics_panel.py`      | 57% → 67%       |
+| `test_main_api_coverage.py`                  | 36    | `main.py`               | 67% → 79%       |
+| `test_demo_mode_comprehensive.py`            | 72    | `demo_mode.py`          | 81% → 94%       |
+| `test_websocket_comprehensive.py`            | 51    | `websocket_manager.py`  | 76% → 94%       |
+| `test_config_manager_comprehensive.py`       | 42    | `config_manager.py`     | 79% → 95%       |
+| `test_cascor_integration_comprehensive.py`   | 49    | `cascor_integration.py` | 76% → 95%       |
+| `test_base_component_coverage.py`            | 9     | `base_component.py`     | 81% → 92%       |
 
 #### Component Coverage Summary
 
-| Component | Before | After | Status |
-| --------- | -------- | ------- | -------- |
-| `callback_context.py` | 49% | 100% | ✅ |
-| `config_manager.py` | 79% | 95% | ✅ |
-| `cascor_integration.py` | 76% | 95% | ✅ |
-| `demo_mode.py` | 81% | 94% | ✅ |
-| `websocket_manager.py` | 76% | 94% | ✅ |
-| `base_component.py` | 81% | 92% | ✅ |
-| `main.py` | 67% | 79% | ⚠️ (Dash integration) |
-| `dashboard_manager.py` | 51% | 67% | ⚠️ (Dash integration) |
-| `metrics_panel.py` | 57% | 67% | ⚠️ (Dash integration) |
-| `network_visualizer.py` | 59% | 71% | ⚠️ (Dash integration) |
+| Component               | Before | After | Status                  |
+| ----------------------- | ------ | ----- | ----------------------- |
+| `callback_context.py`   | 49%    | 100%  | ✅                      |
+| `config_manager.py`     | 79%    | 95%   | ✅                      |
+| `cascor_integration.py` | 76%    | 95%   | ✅                      |
+| `demo_mode.py`          | 81%    | 94%   | ✅                      |
+| `websocket_manager.py`  | 76%    | 94%   | ✅                      |
+| `base_component.py`     | 81%    | 92%   | ✅                      |
+| `main.py`               | 67%    | 79%   | ⚠️ (Dash integration)   |
+| `dashboard_manager.py`  | 51%    | 67%   | ⚠️ (Dash integration)   |
+| `metrics_panel.py`      | 57%    | 67%   | ⚠️ (Dash integration)   |
+| `network_visualizer.py` | 59%    | 71%   | ⚠️ (Dash integration)   |
 
 #### Notes
 

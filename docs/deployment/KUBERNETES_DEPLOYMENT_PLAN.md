@@ -224,13 +224,13 @@ sudo usermod -aG docker $USER
 
 #### 4.1.2 Cluster Requirements
 
-| Requirement | Minimum | Recommended |
-| ------------- | --------- | ------------- |
-| Kubernetes Version | 1.28+ | 1.30+ |
-| Nodes | 2 | 3+ |
-| Node CPU | 2 cores | 4 cores |
-| Node Memory | 4 GB | 8 GB |
-| Storage Class | Standard | SSD-backed |
+| Requirement        | Minimum  | Recommended |
+| ------------------ | -------- | ----------- |
+| Kubernetes Version | 1.28+    | 1.30+       |
+| Nodes              | 2        | 3+          |
+| Node CPU           | 2 cores  | 4 cores     |
+| Node Memory        | 4 GB     | 8 GB        |
+| Storage Class      | Standard | SSD-backed  |
 
 #### 4.1.3 Cluster Setup Options
 
@@ -724,14 +724,14 @@ kubectl describe deployment juniper-canopy -n juniper-dev
 
 ### 4.6 Troubleshooting Guide
 
-| Symptom | Possible Cause | Solution |
-| --------- | --------------- | ---------- |
-| Pod stuck in `Pending` | Insufficient resources | Check node resources: `kubectl describe nodes` |
-| Pod in `CrashLoopBackOff` | Application error | Check logs: `kubectl logs <pod>` |
-| Readiness probe failing | App not responding | Check `/readyz` implementation, increase initialDelaySeconds |
-| WebSocket disconnects | Ingress timeout | Increase proxy-read-timeout annotation |
-| 502 Bad Gateway | Service not ready | Check pod readiness, service selector |
-| OOMKilled | Memory limit too low | Increase memory limit |
+| Symptom                   | Possible Cause         | Solution                                                     |
+| ------------------------- | ---------------------- | ------------------------------------------------------------ |
+| Pod stuck in `Pending`    | Insufficient resources | Check node resources: `kubectl describe nodes`               |
+| Pod in `CrashLoopBackOff` | Application error      | Check logs: `kubectl logs <pod>`                             |
+| Readiness probe failing   | App not responding     | Check `/readyz` implementation, increase initialDelaySeconds |
+| WebSocket disconnects     | Ingress timeout        | Increase proxy-read-timeout annotation                       |
+| 502 Bad Gateway           | Service not ready      | Check pod readiness, service selector                        |
+| OOMKilled                 | Memory limit too low   | Increase memory limit                                        |
 
 ---
 
@@ -999,11 +999,11 @@ jobs:
 
 ### 5.3 Environment Promotion Strategy
 
-| Environment | Branch/Tag | Deployment | Approval | URL Pattern |
-| ------------- | ------------ | ------------ | ---------- | ------------- |
-| Development | `develop` | Automatic | None | `juniper-dev.example.com` |
-| Staging | `staging` | Automatic | Environment protection | `juniper-staging.example.com` |
-| Production | `v*` tags | Automatic | Environment protection + reviewers | `juniper.example.com` |
+| Environment | Branch/Tag | Deployment | Approval                           | URL Pattern                   |
+| ----------- | ---------- | ---------- | ---------------------------------- | ----------------------------- |
+| Development | `develop`  | Automatic  | None                               | `juniper-dev.example.com`     |
+| Staging     | `staging`  | Automatic  | Environment protection             | `juniper-staging.example.com` |
+| Production  | `v*` tags  | Automatic  | Environment protection + reviewers | `juniper.example.com`         |
 
 ### 5.4 Rollback Procedure
 
@@ -1029,12 +1029,12 @@ kubectl rollout undo deployment/juniper-canopy --to-revision=2 -n juniper-prod
 
 ### 6.1 Secrets Classification
 
-| Category | Secrets | Storage | Rotation Frequency |
-| ---------- | --------- | --------- | ------------------- |
-| **Application Secrets** | JWT_SECRET_KEY, LOG_API_KEY | K8s Secret | 90 days |
-| **Infrastructure Secrets** | REDIS_URL, CASSANDRA_PASSWORD | K8s Secret | 90 days |
-| **CI/CD Secrets** | CODECOV_TOKEN, GHCR credentials | GitHub Secrets | 1 year |
-| **Cloud Provider** | AWS/GCP credentials | OIDC (no secrets) | N/A |
+| Category                   | Secrets                         | Storage           | Rotation Frequency |
+| -------------------------- | ------------------------------- | ----------------- | ------------------ |
+| **Application Secrets**    | JWT_SECRET_KEY, LOG_API_KEY     | K8s Secret        | 90 days            |
+| **Infrastructure Secrets** | REDIS_URL, CASSANDRA_PASSWORD   | K8s Secret        | 90 days            |
+| **CI/CD Secrets**          | CODECOV_TOKEN, GHCR credentials | GitHub Secrets    | 1 year             |
+| **Cloud Provider**         | AWS/GCP credentials             | OIDC (no secrets) | N/A                |
 
 ### 6.2 Implementation Approach
 
@@ -1171,11 +1171,11 @@ echo "Secret rotation complete"
 
 ### 6.4 GitHub Secrets Configuration
 
-| Secret Name | Purpose | Where Used |
-| ------------- | --------- | ------------ |
-| `CODECOV_TOKEN` | Coverage upload | Test job |
-| `GHCR_TOKEN` | Container registry (auto) | `GITHUB_TOKEN` |
-| `KUBE_CONFIG` | Kubernetes deployment | Deploy jobs |
+| Secret Name     | Purpose                   | Where Used     |
+| --------------- | ------------------------- | -------------- |
+| `CODECOV_TOKEN` | Coverage upload           | Test job       |
+| `GHCR_TOKEN`    | Container registry (auto) | `GITHUB_TOKEN` |
+| `KUBE_CONFIG`   | Kubernetes deployment     | Deploy jobs    |
 
 ---
 
@@ -1185,21 +1185,21 @@ echo "Secret rotation complete"
 
 **Primary Registry:** GitHub Container Registry (GHCR)
 
-| Aspect | Configuration |
-| -------- | --------------- |
-| Registry URL | `ghcr.io/pcalnon/juniper-canopy` |
-| Authentication | `GITHUB_TOKEN` (automatic) |
-| Visibility | Private (organization default) |
-| Retention | Latest + last 5 versions per branch |
+| Aspect         | Configuration                       |
+| -------------- | ----------------------------------- |
+| Registry URL   | `ghcr.io/pcalnon/juniper-canopy`    |
+| Authentication | `GITHUB_TOKEN` (automatic)          |
+| Visibility     | Private (organization default)      |
+| Retention      | Latest + last 5 versions per branch |
 
 **Image Tagging Convention:**
 
-| Tag Pattern | Example | Purpose |
-| ------------- | --------- | --------- |
-| `sha-<short-sha>` | `sha-abc1234` | Immutable commit reference |
-| `<branch>` | `develop`, `main` | Latest from branch |
-| `v<semver>` | `v1.0.0`, `v1.2.3` | Release versions |
-| `latest` | `latest` | Latest from main branch |
+| Tag Pattern       | Example            | Purpose                    |
+| ----------------- | ------------------ | -------------------------- |
+| `sha-<short-sha>` | `sha-abc1234`      | Immutable commit reference |
+| `<branch>`        | `develop`, `main`  | Latest from branch         |
+| `v<semver>`       | `v1.0.0`, `v1.2.3` | Release versions           |
+| `latest`          | `latest`           | Latest from main branch    |
 
 ### 7.2 Build Caching Strategy
 
@@ -1241,59 +1241,59 @@ echo "Secret rotation complete"
 
 **Priority: Critical:**
 
-| Task | Owner | Status | Deliverable |
-| ------ | ------- | -------- | ------------- |
-| Fix Dockerfile issues | DevOps | Not Started | Updated multi-stage Dockerfile |
-| Implement health endpoints | Dev | Not Started | `/healthz`, `/readyz` in main.py |
-| Create .dockerignore | DevOps | Not Started | .dockerignore file |
-| Set up GHCR | DevOps | Not Started | Registry access configured |
-| Basic K8s manifests | DevOps | Not Started | Deployment, Service, ConfigMap, Secret |
+| Task                       | Owner  | Status      | Deliverable                            |
+| -------------------------- | ------ | ----------- | -------------------------------------- |
+| Fix Dockerfile issues      | DevOps | Not Started | Updated multi-stage Dockerfile         |
+| Implement health endpoints | Dev    | Not Started | `/healthz`, `/readyz` in main.py       |
+| Create .dockerignore       | DevOps | Not Started | .dockerignore file                     |
+| Set up GHCR                | DevOps | Not Started | Registry access configured             |
+| Basic K8s manifests        | DevOps | Not Started | Deployment, Service, ConfigMap, Secret |
 
 ### Phase 2: CI/CD Pipeline (Week 2-3)
 
 **Priority: High:**
 
-| Task | Owner | Status | Deliverable |
-| ------ | ------- | -------- | ------------- |
-| Update ci.yml for Docker build | DevOps | Not Started | Build and push stages |
-| Add Trivy scanning | DevOps | Not Started | Container security scanning |
-| Environment configuration | DevOps | Not Started | GitHub environments (dev/staging/prod) |
-| Deployment automation | DevOps | Not Started | Deploy stages in workflow |
+| Task                           | Owner  | Status      | Deliverable                            |
+| ------------------------------ | ------ | ----------- | -------------------------------------- |
+| Update ci.yml for Docker build | DevOps | Not Started | Build and push stages                  |
+| Add Trivy scanning             | DevOps | Not Started | Container security scanning            |
+| Environment configuration      | DevOps | Not Started | GitHub environments (dev/staging/prod) |
+| Deployment automation          | DevOps | Not Started | Deploy stages in workflow              |
 
 ### Phase 3: Kubernetes Infrastructure (Week 3-4)
 
 **Priority: High:**
 
-| Task | Owner | Status | Deliverable |
-| ------ | ------- | -------- | ------------- |
-| Set up K8s cluster | Platform | Not Started | EKS/GKE cluster |
+| Task                  | Owner    | Status      | Deliverable        |
+| --------------------- | -------- | ----------- | ------------------ |
+| Set up K8s cluster    | Platform | Not Started | EKS/GKE cluster    |
 | Install ingress-nginx | Platform | Not Started | Ingress controller |
-| Install cert-manager | Platform | Not Started | TLS automation |
-| Deploy Redis | Platform | Not Started | Cache layer |
-| Network policies | Platform | Not Started | Security isolation |
+| Install cert-manager  | Platform | Not Started | TLS automation     |
+| Deploy Redis          | Platform | Not Started | Cache layer        |
+| Network policies      | Platform | Not Started | Security isolation |
 
 ### Phase 4: Production Readiness (Week 4-5)
 
 **Priority: Medium:**
 
-| Task | Owner | Status | Deliverable |
-| ------ | ------- | -------- | ------------- |
-| HPA configuration | DevOps | Not Started | Autoscaling |
-| PDB configuration | DevOps | Not Started | Disruption budget |
-| Monitoring setup | Platform | Not Started | Prometheus/Grafana |
-| Log aggregation | Platform | Not Started | Loki/ELK |
-| Secret rotation automation | DevOps | Not Started | Rotation scripts |
+| Task                       | Owner    | Status      | Deliverable        |
+| -------------------------- | -------- | ----------- | ------------------ |
+| HPA configuration          | DevOps   | Not Started | Autoscaling        |
+| PDB configuration          | DevOps   | Not Started | Disruption budget  |
+| Monitoring setup           | Platform | Not Started | Prometheus/Grafana |
+| Log aggregation            | Platform | Not Started | Loki/ELK           |
+| Secret rotation automation | DevOps   | Not Started | Rotation scripts   |
 
 ### Phase 5: Advanced Features (Week 5+)
 
 **Priority: Low:**
 
-| Task | Owner | Status | Deliverable |
-| ------ | ------- | -------- | ------------- |
-| GitOps (ArgoCD) | Platform | Not Started | GitOps deployment |
-| External Secrets Operator | Platform | Not Started | Vault integration |
-| Service mesh evaluation | Platform | Not Started | Istio/Linkerd assessment |
-| Multi-cluster strategy | Platform | Not Started | DR/HA architecture |
+| Task                      | Owner    | Status      | Deliverable              |
+| ------------------------- | -------- | ----------- | ------------------------ |
+| GitOps (ArgoCD)           | Platform | Not Started | GitOps deployment        |
+| External Secrets Operator | Platform | Not Started | Vault integration        |
+| Service mesh evaluation   | Platform | Not Started | Istio/Linkerd assessment |
+| Multi-cluster strategy    | Platform | Not Started | DR/HA architecture       |
 
 ---
 
@@ -1301,22 +1301,22 @@ echo "Secret rotation complete"
 
 ### Technical Risks
 
-| Risk | Probability | Impact | Mitigation |
-| ------ | ------------- | -------- | ------------ |
-| WebSocket connection drops during scaling | Medium | High | Conservative scale-down policy, session affinity |
-| Database connection pool exhaustion | Low | High | Connection pooling, proper limits |
-| Secret exposure in logs/errors | Low | Critical | Secret masking, log sanitization |
-| Container image vulnerabilities | Medium | Medium | Regular scanning, base image updates |
-| Ingress timeout misconfiguration | Medium | Medium | Thorough testing, monitoring |
+| Risk                                      | Probability | Impact   | Mitigation                                       |
+| ----------------------------------------- | ----------- | -------- | ------------------------------------------------ |
+| WebSocket connection drops during scaling | Medium      | High     | Conservative scale-down policy, session affinity |
+| Database connection pool exhaustion       | Low         | High     | Connection pooling, proper limits                |
+| Secret exposure in logs/errors            | Low         | Critical | Secret masking, log sanitization                 |
+| Container image vulnerabilities           | Medium      | Medium   | Regular scanning, base image updates             |
+| Ingress timeout misconfiguration          | Medium      | Medium   | Thorough testing, monitoring                     |
 
 ### Operational Risks
 
-| Risk | Probability | Impact | Mitigation |
-| ------ | ------------- | -------- | ------------ |
-| Deployment rollback needed | Medium | Medium | Maintain 5 revisions, test rollback procedure |
-| Certificate expiration | Low | High | cert-manager automation, monitoring |
-| Resource exhaustion | Medium | Medium | Resource quotas, monitoring alerts |
-| Secret rotation failures | Low | High | Automated testing, backup procedure |
+| Risk                       | Probability | Impact | Mitigation                                    |
+| -------------------------- | ----------- | ------ | --------------------------------------------- |
+| Deployment rollback needed | Medium      | Medium | Maintain 5 revisions, test rollback procedure |
+| Certificate expiration     | Low         | High   | cert-manager automation, monitoring           |
+| Resource exhaustion        | Medium      | Medium | Resource quotas, monitoring alerts            |
+| Secret rotation failures   | Low         | High   | Automated testing, backup procedure           |
 
 ---
 
@@ -1565,17 +1565,17 @@ This document is a **planning document only**. No changes should be made to the 
 
 **Required Approvals:**
 
-| Role | Name | Date | Signature |
-| ------ | ------ | ------ | ----------- |
-| Project Owner | | | |
-| Lead Developer | | | |
-| DevOps Engineer | | | |
-| Security Review | | | |
+| Role            | Name | Date | Signature |
+| --------------- | ---- | ---- | --------- |
+| Project Owner   |      |      |           |
+| Lead Developer  |      |      |           |
+| DevOps Engineer |      |      |           |
+| Security Review |      |      |           |
 
 ---
 
 ## Document History
 
-| Version | Date | Author | Changes |
-| --------- | ------ | -------- | --------- |
-| 1.0.0 | 2025-12-30 | AI Architect | Initial planning document |
+| Version | Date       | Author       | Changes                   |
+| ------- | ---------- | ------------ | ------------------------- |
+| 1.0.0   | 2025-12-30 | AI Architect | Initial planning document |

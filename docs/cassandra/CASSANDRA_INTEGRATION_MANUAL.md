@@ -59,15 +59,15 @@ Cassandra integration will provide:
 
 ### Comparison with Redis
 
-| Aspect | Redis | Cassandra |
-|--------|-------|-----------|
-| **Purpose** | Real-time caching | Long-term storage |
-| **Data Model** | Key-value | Wide-column |
-| **Query** | Simple GET/SET | CQL (SQL-like) |
-| **Persistence** | Optional (AOF/RDB) | Always persistent |
-| **Scalability** | Vertical | Horizontal |
-| **Consistency** | Strong | Tunable |
-| **TTL** | Per-key | Per-row |
+| Aspect             | Redis                 | Cassandra                  |
+| ------------------ | --------------------- | -------------------------- |
+| **Purpose**        | Real-time caching     | Long-term storage          |
+| **Data Model**     | Key-value             | Wide-column                |
+| **Query**          | Simple GET/SET        | CQL (SQL-like)             |
+| **Persistence**    | Optional (AOF/RDB)    | Always persistent          |
+| **Scalability**    | Vertical              | Horizontal                 |
+| **Consistency**    | Strong                | Tunable                    |
+| **TTL**            | Per-key               | Per-row                    |
 | **Use in Juniper** | Current metrics cache | Historical metrics storage |
 
 **Recommended:** Use both - Redis for real-time, Cassandra for long-term.
@@ -80,20 +80,20 @@ Cassandra integration will provide:
 
 ```bash
 ┌──────────────────────────────────────────────────────────────┐
-│                  Frontend Dashboard                           │
+│                  Frontend Dashboard                          │
 └─────────────────────┬────────────────────────────────────────┘
                       │
                       ▼
 ┌──────────────────────────────────────────────────────────────┐
-│                 FastAPI Backend                               │
+│                 FastAPI Backend                              │
 │  ┌────────────────────────────────────────────────────────┐  │
 │  │           REST API Endpoints                           │  │
-│  │  /api/runs, /api/metrics/range, /api/export          │  │
+│  │  /api/runs, /api/metrics/range, /api/export            │  │
 │  └─────────────┬──────────────────────────────────────────┘  │
-│                │                                              │
+│                │                                             │
 │    ┌───────────┴──────────┐                                  │
-│    ▼                      ▼                                   │
-│  ┌─────────────┐   ┌────────────────┐                       │
+│    ▼                      ▼                                  │
+│  ┌─────────────┐   ┌────────────────┐                        │
 │  │ Redis Cache │   │ CassandraManager│                       │
 │  │ (Real-time) │   │  (Historical)   │                       │
 │  └─────────────┘   └────────┬────────┘                       │
@@ -101,7 +101,7 @@ Cassandra integration will provide:
                               │
                               ▼
               ┌───────────────────────────────┐
-              │    Cassandra Cluster           │
+              │    Cassandra Cluster          │
               │  ┌──────────────────────────┐ │
               │  │  Keyspace: cascor        │ │
               │  │                          │ │
@@ -111,9 +111,9 @@ Cassandra integration will provide:
               │  │  - training_runs         │ │
               │  │  - dataset_info          │ │
               │  └──────────────────────────┘ │
-              │                                │
+              │                               │
               │  Nodes: Node1, Node2, Node3   │
-              │  Replication Factor: 3         │
+              │  Replication Factor: 3        │
               └───────────────────────────────┘
 ```
 
@@ -351,17 +351,44 @@ src/backend/
 **Implementation skeleton:**
 
 ```python
-#!/usr/bin/env python
-#####################################################################
+#####################################################################################################################################################################################################
 # Project:       Juniper
-# Prototype:     Monitoring and Diagnostic Frontend for CasCor
-# File Name:     cassandra_manager.py
+# Sub-Project:   JuniperCanopy
+# Application:   juniper_canopy
+# Purpose:       Monitoring and Diagnostic Frontend for Cascade Correlation Neural Network
+#
 # Author:        Paul Calnon
 # Version:       0.1.0
-# Date:          2025-11-05
-# Description:   Cassandra manager for time-series metrics storage
-#####################################################################
-
+# File Name:     cassandra_manager.py
+# File Path:     <Project>/<Sub-Project>/<Application>/src/backend/
+#
+# Created Date:  2025-11-05
+# Last Modified: <date last changed>
+#
+# License:       MIT License
+# Copyright:     Copyright (c) 2024,2025,2026 Paul Calnon
+#
+# Description:
+# Description:
+#     Cassandra manager for time-series metrics storage
+#
+#####################################################################################################################################################################################################
+# Notes:
+#     <Additional information about the script>
+#
+#####################################################################################################################################################################################################
+# References:
+#     <External information sources or documentation relevant to the script>
+#
+#####################################################################################################################################################################################################
+# TODO :
+#     <List of pending tasks or improvements for the script>
+#
+#####################################################################################################################################################################################################
+# COMPLETED:
+#     <List of completed tasks or features for the script>
+#
+#####################################################################################################################################################################################################
 import logging
 import uuid
 from datetime import datetime

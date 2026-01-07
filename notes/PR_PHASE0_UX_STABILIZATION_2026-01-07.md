@@ -35,11 +35,11 @@ Completes **Phase 0 of the Juniper Canopy development roadmap**, addressing 11 C
 
 ## Test Results
 
-| Metric | Before | After |
-| -------- | -------- | ------- |
-| Tests | ~2097 | 2129 |
-| Pass Rate | 100% | 100% |
-| Coverage | ~75% | 93%+ |
+| Metric    | Before | After |
+| --------- | ------ | ----- |
+| Tests     | ~2097  | 2129  |
+| Pass Rate | 100%   | 100%  |
+| Coverage  | ~75%   | 93%+  |
 
 ## Files Changed
 

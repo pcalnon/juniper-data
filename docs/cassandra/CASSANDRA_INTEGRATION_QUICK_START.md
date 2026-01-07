@@ -55,14 +55,14 @@ Cassandra is NOT mentioned in current configuration files. This guide describes 
 
 **Comparison with Redis:**
 
-| Feature | Redis | Cassandra |
-|---------|-------|-----------|
-| Use Case | Caching, real-time | Long-term storage |
-| Data Structure | Key-value | Wide-column |
-| Persistence | Optional | Always |
-| Scalability | Vertical | Horizontal |
-| Query Power | Limited | CQL (SQL-like) |
-| TTL | Per-key | Per-row |
+| Feature        | Redis              | Cassandra         |
+| -------------- | ------------------ | ----------------- |
+| Use Case       | Caching, real-time | Long-term storage |
+| Data Structure | Key-value          | Wide-column       |
+| Persistence    | Optional           | Always            |
+| Scalability    | Vertical           | Horizontal        |
+| Query Power    | Limited            | CQL (SQL-like)    |
+| TTL            | Per-key            | Per-row           |
 
 **Recommended architecture:**
 
@@ -583,7 +583,7 @@ with open('metrics.json', 'w') as f:
 
 ```bash
 ┌─────────────────────────────────────────────────────────────┐
-│                  Juniper Canopy Frontend                     │
+│                  Juniper Canopy Frontend                    │
 └─────────────────┬───────────────────────────────────────────┘
                   │
                   ▼

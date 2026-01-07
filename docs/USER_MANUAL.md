@@ -118,7 +118,7 @@ You should see:
 
 ```bash
 ┌─────────────────────────────────────────────────────────┐
-│              Juniper Canopy Monitor                    │
+│              Juniper Canopy Monitor                     │
 │    Real-time monitoring for Cascade Correlation NNs     │
 ├──────────────┬──────────────────────────────────────────┤
 │ Status: ●    │ WebSocket: 1 connection(s)               │

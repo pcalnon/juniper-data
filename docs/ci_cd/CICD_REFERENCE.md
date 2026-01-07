@@ -946,32 +946,32 @@ curl https://codecov.io/api/v2/repos/OWNER/REPO/coverage
 
 ### Common Error Codes
 
-| Error | Cause | Solution |
-|-------|-------|----------|
-| E001 | Workflow syntax error | Validate YAML syntax |
-| E002 | Missing required field | Add required field to workflow |
-| E003 | Invalid expression | Fix workflow expression syntax |
-| E101 | Job timeout | Increase timeout or optimize job |
-| E102 | Job cancelled | Check concurrency settings |
-| E201 | Step failed | Check step logs for details |
-| E202 | Command not found | Install required tool |
-| E203 | Permission denied | Check file permissions |
-| E301 | Artifact upload failed | Check size and path |
-| E302 | Artifact download failed | Verify artifact exists |
+| Error | Cause                    | Solution                         |
+| ----- | ------------------------ | -------------------------------- |
+| E001  | Workflow syntax error    | Validate YAML syntax             |
+| E002  | Missing required field   | Add required field to workflow   |
+| E003  | Invalid expression       | Fix workflow expression syntax   |
+| E101  | Job timeout              | Increase timeout or optimize job |
+| E102  | Job cancelled            | Check concurrency settings       |
+| E201  | Step failed              | Check step logs for details      |
+| E202  | Command not found        | Install required tool            |
+| E203  | Permission denied        | Check file permissions           |
+| E301  | Artifact upload failed   | Check size and path              |
+| E302  | Artifact download failed | Verify artifact exists           |
 
 ### Exit Codes
 
-| Code | Meaning |
-|------|---------|
-| 0 | Success |
-| 1 | General error |
-| 2 | Misuse of shell command |
-| 126 | Command cannot execute |
-| 127 | Command not found |
-| 128 | Invalid exit argument |
-| 130 | Terminated by Ctrl+C |
-| 137 | Killed (out of memory) |
-| 139 | Segmentation fault |
+| Code | Meaning                 |
+| ---- | ----------------------- |
+| 0    | Success                 |
+| 1    | General error           |
+| 2    | Misuse of shell command |
+| 126  | Command cannot execute  |
+| 127  | Command not found       |
+| 128  | Invalid exit argument   |
+| 130  | Terminated by Ctrl+C    |
+| 137  | Killed (out of memory)  |
+| 139  | Segmentation fault      |
 
 ### Log Analysis
 
@@ -997,23 +997,23 @@ grep "coverage" workflow.log | grep -i "low\|fail"
 
 ### Baseline Performance
 
-| Stage | Duration | CPU | Memory |
-|-------|----------|-----|--------|
-| Lint | 2 min | 1 core | 512 MB |
-| Test (each) | 8 min | 2 cores | 2 GB |
-| Build | 2 min | 1 core | 512 MB |
-| Integration | 5 min | 2 cores | 1 GB |
-| Quality Gate | 30 sec | 1 core | 256 MB |
-| Total (parallel) | ~15 min | - | - |
+| Stage            | Duration | CPU     | Memory |
+| ---------------- | -------- | ------- | ------ |
+| Lint             | 2 min    | 1 core  | 512 MB |
+| Test (each)      | 8 min    | 2 cores | 2 GB   |
+| Build            | 2 min    | 1 core  | 512 MB |
+| Integration      | 5 min    | 2 cores | 1 GB   |
+| Quality Gate     | 30 sec   | 1 core  | 256 MB |
+| Total (parallel) | ~15 min  | -       | -      |
 
 ### Optimization Targets
 
-| Metric | Current | Target | Stretch |
-|--------|---------|--------|---------|
-| Total build time | 15 min | 10 min | 7 min |
-| Test suite | 8 min | 5 min | 3 min |
-| Lint | 2 min | 1 min | 30 sec |
-| Coverage overhead | 20% | 10% | 5% |
+| Metric            | Current | Target | Stretch |
+| ----------------- | ------- | ------ | ------- |
+| Total build time  | 15 min  | 10 min | 7 min   |
+| Test suite        | 8 min   | 5 min  | 3 min   |
+| Lint              | 2 min   | 1 min  | 30 sec  |
+| Coverage overhead | 20%     | 10%    | 5%      |
 
 ---
 

@@ -95,12 +95,12 @@ source "${ROOT_CONF_FILE}"  # This caused issues!
 
 ## Files Modified
 
-| File | Changes |
-|------|---------|
-| `conf/init.conf` | Added `CALLING_PID` variable using `$$`, guarded `PARENT_PID` assignment |
-| `conf/common.conf` | Changed to use `CALLING_PID` for script resolution, reordered validation priority |
-| `conf/__git_log_weeks.conf` | Fixed `__date_functions.conf` filename prefix |
-| `util/__get_os_name.bash` | Removed unnecessary `common.conf` sourcing |
+| File                        | Changes                                                                           |
+| --------------------------- | --------------------------------------------------------------------------------- |
+| `conf/init.conf`            | Added `CALLING_PID` variable using `$$`, guarded `PARENT_PID` assignment          |
+| `conf/common.conf`          | Changed to use `CALLING_PID` for script resolution, reordered validation priority |
+| `conf/__git_log_weeks.conf` | Fixed `__date_functions.conf` filename prefix                                     |
+| `util/__get_os_name.bash`   | Removed unnecessary `common.conf` sourcing                                        |
 
 ## Verification
 

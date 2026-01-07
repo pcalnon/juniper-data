@@ -20,13 +20,13 @@ Complete technical reference for demo mode implementation.
 ```bash
 ┌─────────────────────────────────────────────────────────────┐
 │                        FastAPI Server                       │
-│  ┌───────────────┐  ┌──────────────┐  ┌─────────────────┐  │
-│  │  REST API     │  │  WebSocket   │  │  Dash Dashboard │  │
-│  │  Endpoints    │  │  Endpoints   │  │  Integration    │  │
-│  └───────┬───────┘  └──────┬───────┘  └────────┬────────┘  │
-└──────────┼──────────────────┼───────────────────┼───────────┘
-           │                  │                   │
-           ▼                  ▼                   ▼
+│  ┌───────────────┐  ┌──────────────┐  ┌─────────────────┐   │
+│  │  REST API     │  │  WebSocket   │  │  Dash Dashboard │   │
+│  │  Endpoints    │  │  Endpoints   │  │  Integration    │   │
+│  └───────┬───────┘  └──────┬───────┘  └────────┬────────┘   │
+└──────────┼─────────────────┼───────────────────┼────────────┘
+           │                 │                   │
+           ▼                 ▼                   ▼
     ┌──────────────────────────────────────────────────┐
     │           WebSocketManager (Singleton)           │
     │  • Thread-safe broadcasting                      │
@@ -36,7 +36,7 @@ Complete technical reference for demo mode implementation.
                        │
                        ▼
             ┌──────────────────────┐
-            │  DemoMode (Singleton) │
+            │ DemoMode (Singleton) │
             │  ┌─────────────────┐ │
             │  │ Training Thread │ │
             │  │  • Event loop   │ │

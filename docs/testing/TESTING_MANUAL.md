@@ -536,15 +536,15 @@ def test_with_cascor_backend():
 
 ### Available Markers
 
-| Marker | Description | Usage |
-|--------|-------------|-------|
-| `@pytest.mark.unit` | Unit tests | Isolated component tests |
-| `@pytest.mark.integration` | Integration tests | Component interaction tests |
-| `@pytest.mark.performance` | Performance tests | Speed/resource tests |
-| `@pytest.mark.regression` | Regression tests | Bug fix verification |
-| `@pytest.mark.slow` | Slow tests | Long-running tests |
-| `@pytest.mark.requires_cascor` | Requires backend | External dependency |
-| `@pytest.mark.asyncio` | Async tests | Async/await tests |
+| Marker                         | Description       | Usage                       |
+| ------------------------------ | ----------------- | --------------------------- |
+| `@pytest.mark.unit`            | Unit tests        | Isolated component tests    |
+| `@pytest.mark.integration`     | Integration tests | Component interaction tests |
+| `@pytest.mark.performance`     | Performance tests | Speed/resource tests        |
+| `@pytest.mark.regression`      | Regression tests  | Bug fix verification        |
+| `@pytest.mark.slow`            | Slow tests        | Long-running tests          |
+| `@pytest.mark.requires_cascor` | Requires backend  | External dependency         |
+| `@pytest.mark.asyncio`         | Async tests       | Async/await tests           |
 
 ### Running by Marker
 
@@ -599,12 +599,12 @@ xdg-open reports/coverage/index.html
 
 ### Coverage Targets
 
-| Module Type | Target Coverage |
-|-------------|----------------|
-| Critical modules | 100% |
-| Core modules | 80%+ |
-| Frontend modules | 60%+ |
-| Overall project | 80%+ |
+| Module Type      | Target Coverage |
+| ---------------- | --------------- |
+| Critical modules | 100%            |
+| Core modules     | 80%+            |
+| Frontend modules | 60%+            |
+| Overall project  | 80%+            |
 
 ### Critical Modules (100% target)
 

@@ -38,15 +38,15 @@ This release completes Phase 0 of the Juniper Canopy development roadmap, delive
 
 ### Test Coverage
 
-| Component | Before | After |
-| ----------- | -------- | ------- |
-| metrics_panel.py | 67% | 98% |
-| dashboard_manager.py | 68% | 93% |
-| network_visualizer.py | 71% | 99% |
-| decision_boundary.py | 84% | 100% |
-| dataset_plotter.py | 87% | 99% |
-| main.py | 79% | 89% |
-| **Overall** | ~75% | **93%+** |
+| Component             | Before | After    |
+| --------------------- | ------ | -------- |
+| metrics_panel.py      | 67%    | 98%      |
+| dashboard_manager.py  | 68%    | 93%      |
+| network_visualizer.py | 71%    | 99%      |
+| decision_boundary.py  | 84%    | 100%     |
+| dataset_plotter.py    | 87%    | 99%      |
+| main.py               | 79%    | 89%      |
+| **Overall**           | ~75%   | **93%+** |
 
 ### Test Suite
 

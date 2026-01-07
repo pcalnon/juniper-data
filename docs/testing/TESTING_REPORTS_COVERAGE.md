@@ -160,18 +160,18 @@ The `index.html` shows:
 
 Each source file report shows:
 
-```html
-# Example: src_demo_mode_py.html
+#### Example: src_demo_mode_py.html
 
+```html
 Coverage: 83% (200 statements, 34 missing)
 
-Line | Coverage | Source Code
------|----------|-------------
-  1  |    ✓    | #!/usr/bin/env python
-  2  |    ✓    | """Demo mode for Juniper Canopy."""
+| Line | Coverage | Source Code                         |
+| ---- | -------- | ----------------------------------- |
+| 1    | ✓        | #!/usr/bin/env python               |
+| 2    | ✓        | """Demo mode for Juniper Canopy.""" |
 ...
- 123 |    ✗    | def _advanced_feature(self):
- 124 |    ✗    |     return "not tested"
+| 123  | ✗        | def _advanced_feature(self):        |
+| 124  | ✗        | return "not tested"                 |
 ...
 
 # Legend:
@@ -446,13 +446,13 @@ assert used_function() == "used"
 
 ### Coverage Percentage Interpretation
 
-| Coverage | Status | Action Required |
-|----------|--------|-----------------|
-| 0-59% | 🔴 Critical | Urgent: Add tests immediately |
-| 60-79% | 🟡 Low | Important: Improve coverage |
-| 80-89% | 🟢 Good | Optional: Fill remaining gaps |
-| 90-99% | 🟢 Excellent | Maintain current level |
-| 100% | 🟢 Perfect | Review if practical/necessary |
+| Coverage | Status        | Action Required               |
+| -------- | ------------- | ----------------------------- |
+| 0-59%    | 🔴 Critical   | Urgent: Add tests immediately |
+| 60-79%   | 🟡 Low        | Important: Improve coverage   |
+| 80-89%   | 🟢 Good       | Optional: Fill remaining gaps |
+| 90-99%   | 🟢 Excellent  | Maintain current level        |
+| 100%     | 🟢 Perfect    | Review if practical/necessary |
 
 ### Module-Specific Targets
 

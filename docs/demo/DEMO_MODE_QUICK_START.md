@@ -53,13 +53,13 @@ Demo mode simulates a realistic CasCor training run:
 
 ## Demo vs Production
 
-| Aspect | Demo Mode | Production Mode |
-|--------|-----------|-----------------|
-| **Backend** | Simulated in Python | Real CasCor C++ prototype |
-| **Dataset** | Fixed spiral (200 samples) | Configurable datasets |
-| **Training** | Deterministic curves | Real network training |
-| **Launch** | `./demo` | `cd src && python main.py` |
-| **Purpose** | UI development, testing | Real neural network training |
+| Aspect       | Demo Mode                  | Production Mode              |
+| ------------ | -------------------------- | ---------------------------- |
+| **Backend**  | Simulated in Python        | Real CasCor C++ prototype    |
+| **Dataset**  | Fixed spiral (200 samples) | Configurable datasets        |
+| **Training** | Deterministic curves       | Real network training        |
+| **Launch**   | `./demo`                   | `cd src && python main.py`   |
+| **Purpose**  | UI development, testing    | Real neural network training |
 
 ## Stop Demo Mode
 

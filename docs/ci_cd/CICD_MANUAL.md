@@ -888,15 +888,16 @@ coverage:
 
 ```markdown
 ## Codecov Report
+
 Coverage: 73.45% (+0.23%)
 Files Changed: 3
 Lines Changed: +45 / -12
 
-| File | Coverage | Δ |
-|------|----------|---|
-| config_manager.py | 93.2% | +2.1% |
-| demo_mode.py | 84.5% | -1.2% |
-| websocket_manager.py | 78.3% | +0.5% |
+| File                 | Coverage | Δ     |
+| -------------------- | -------- | ----- |
+| config_manager.py    | 93.2%    | +2.1% |
+| demo_mode.py         | 84.5%    | -1.2% |
+| websocket_manager.py | 78.3%    | +0.5% |
 ```
 
 **Interpreting:**
@@ -1064,13 +1065,13 @@ Minimum:  60%
 
 **By module:**
 
-| Module | Current | Target | Status |
-|--------|---------|--------|--------|
-| config_manager | 93% | 100% | ⚠️ Close |
-| demo_mode | 84% | 100% | ⚠️ Close |
-| websocket_manager | 78% | 100% | ❌ Gap |
-| dashboard_manager | 84% | 60% | ✅ Exceeds |
-| metrics_panel | 94% | 60% | ✅ Exceeds |
+| Module            | Current | Target | Status     |
+| ----------------- | ------- | ------ | ---------- |
+| config_manager    | 93%     | 100%   | ⚠️ Close   |
+| demo_mode         | 84%     | 100%   | ⚠️ Close   |
+| websocket_manager | 78%     | 100%   | ❌ Gap     |
+| dashboard_manager | 84%     | 60%    | ✅ Exceeds |
+| metrics_panel     | 94%     | 60%    | ✅ Exceeds |
 
 ### Test Metrics
 
