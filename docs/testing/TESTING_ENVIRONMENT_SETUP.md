@@ -527,14 +527,14 @@ find . -type f -name "*.pyc" -delete
 
 ## Environment Variables Reference
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `CASCOR_DEBUG` | `0` | Enable debug logging |
-| `CASCOR_DEMO_MODE` | `0` | Run in demo mode |
-| `CASCOR_CONFIG_PATH` | `conf/app_config.yaml` | Config file path |
-| `CASCOR_TEST_MODE` | `0` | Enable test mode |
-| `CASCOR_LOG_LEVEL` | `INFO` | Logging level |
-| `CASCOR_SERVER_PORT` | `8050` | Server port |
+| Variable             | Default                | Description          |
+| -------------------- | ---------------------- | -------------------- |
+| `CASCOR_DEBUG`       | `0`                    | Enable debug logging |
+| `CASCOR_DEMO_MODE`   | `0`                    | Run in demo mode     |
+| `CASCOR_CONFIG_PATH` | `conf/app_config.yaml` | Config file path     |
+| `CASCOR_TEST_MODE`   | `0`                    | Enable test mode     |
+| `CASCOR_LOG_LEVEL`   | `INFO`                 | Logging level        |
+| `CASCOR_SERVER_PORT` | `8050`                 | Server port          |
 
 ## Next Steps
 

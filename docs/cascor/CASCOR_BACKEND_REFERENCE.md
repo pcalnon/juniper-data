@@ -371,12 +371,12 @@ backend:
 
 ### Environment Variables
 
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `CASCOR_BACKEND_PATH` | string | `../cascor` | Backend path |
-| `CASCOR_BACKEND_ENABLED` | bool | `true` | Enable integration |
-| `CASCOR_MONITORING_HOOKS` | bool | `true` | Enable hooks |
-| `CASCOR_DEMO_MODE` | bool | `false` | Force demo mode |
+| Variable                  | Type   | Default     | Description        |
+| ------------------------- | ------ | ----------- | ------------------ |
+| `CASCOR_BACKEND_PATH`     | string | `../cascor` | Backend path       |
+| `CASCOR_BACKEND_ENABLED`  | bool   | `true`      | Enable integration |
+| `CASCOR_MONITORING_HOOKS` | bool   | `true`      | Enable hooks       |
+| `CASCOR_DEMO_MODE`        | bool   | `false`     | Force demo mode    |
 
 ---
 
@@ -494,11 +494,11 @@ with self.topology_lock:
 
 ### Exceptions
 
-| Exception | Cause | Recovery |
-|-----------|-------|----------|
-| `FileNotFoundError` | Backend path invalid | Set correct path |
-| `ImportError` | Backend modules missing | Fix CasCor installation |
-| `AttributeError` | Network method missing | Check CasCor version |
+| Exception           | Cause                   | Recovery                |
+| ------------------- | ----------------------- | ----------------------- |
+| `FileNotFoundError` | Backend path invalid    | Set correct path        |
+| `ImportError`       | Backend modules missing | Fix CasCor installation |
+| `AttributeError`    | Network method missing  | Check CasCor version    |
 
 ### Fallback Behavior
 

@@ -150,9 +150,9 @@ git push origin feature/your-branch
 ```bash
 CI/CD Pipeline
 ├── ✓ Lint (Code Quality)              ~2 min
-├── ✓ Test Suite (Python 3.11)        ~8 min
-├── ✓ Test Suite (Python 3.12)        ~8 min
-├── ✓ Test Suite (Python 3.13)        ~8 min
+├── ✓ Test Suite (Python 3.11)         ~8 min
+├── ✓ Test Suite (Python 3.12)         ~8 min
+├── ✓ Test Suite (Python 3.13)         ~8 min
 ├── ✓ Build                            ~2 min
 ├── ✓ Quality Gate                     ~30 sec
 └── ✓ Notify                           ~10 sec

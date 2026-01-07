@@ -34,23 +34,23 @@
 
 ### I Want To
 
-| Goal | Document | Location |
-| ------ | ---------- | ---------- |
-| **Get the app running** | [QUICK_START.md](QUICK_START.md) | Root |
-| **Understand the project** | [README.md](README.md) | Root |
-| **Set up my environment** | [ENVIRONMENT_SETUP.md](ENVIRONMENT_SETUP.md) | Root |
-| **Run tests** | [TESTING_QUICK_START.md](TESTING_QUICK_START.md) | Root |
-| **Set up test environment** | [TESTING_ENVIRONMENT_SETUP.md](TESTING_ENVIRONMENT_SETUP.md) | Root |
-| **Learn testing** | [TESTING_MANUAL.md](TESTING_MANUAL.md) | Root |
-| **View coverage reports** | [TESTING_REPORTS_COVERAGE.md](TESTING_REPORTS_COVERAGE.md) | Root |
-| **Testing reference** | [TESTING_REFERENCE.md](TESTING_REFERENCE.md) | Root |
-| **Get CI/CD running** | [CICD_QUICK_START.md](docs/ci_cd/CICD_QUICK_START.md) | docs/ci_cd/ |
+| Goal                         | Document                                                          | Location    |
+| ---------------------------- | ----------------------------------------------------------------- | ----------- |
+| **Get the app running**      | [QUICK_START.md](QUICK_START.md)                                  | Root        |
+| **Understand the project**   | [README.md](README.md)                                            | Root        |
+| **Set up my environment**    | [ENVIRONMENT_SETUP.md](ENVIRONMENT_SETUP.md)                      | Root        |
+| **Run tests**                | [TESTING_QUICK_START.md](TESTING_QUICK_START.md)                  | Root        |
+| **Set up test environment**  | [TESTING_ENVIRONMENT_SETUP.md](TESTING_ENVIRONMENT_SETUP.md)      | Root        |
+| **Learn testing**            | [TESTING_MANUAL.md](TESTING_MANUAL.md)                            | Root        |
+| **View coverage reports**    | [TESTING_REPORTS_COVERAGE.md](TESTING_REPORTS_COVERAGE.md)        | Root        |
+| **Testing reference**        | [TESTING_REFERENCE.md](TESTING_REFERENCE.md)                      | Root        |
+| **Get CI/CD running**        | [CICD_QUICK_START.md](docs/ci_cd/CICD_QUICK_START.md)             | docs/ci_cd/ |
 | **Set up CI/CD environment** | [CICD_ENVIRONMENT_SETUP.md](docs/ci_cd/CICD_ENVIRONMENT_SETUP.md) | docs/ci_cd/ |
-| **Learn CI/CD workflow** | [CICD_MANUAL.md](docs/ci_cd/CICD_MANUAL.md) | docs/ci_cd/ |
-| **CI/CD reference** | [CICD_REFERENCE.md](docs/ci_cd/CICD_REFERENCE.md) | docs/ci_cd/ |
-| **See version history** | [CHANGELOG.md](CHANGELOG.md) | Root |
-| **Contribute code** | [AGENTS.md](AGENTS.md) | Root |
-| **Find external links** | [references_and_links.md](docs/references_and_links.md) | docs/ |
+| **Learn CI/CD workflow**     | [CICD_MANUAL.md](docs/ci_cd/CICD_MANUAL.md)                       | docs/ci_cd/ |
+| **CI/CD reference**          | [CICD_REFERENCE.md](docs/ci_cd/CICD_REFERENCE.md)                 | docs/ci_cd/ |
+| **See version history**      | [CHANGELOG.md](CHANGELOG.md)                                      | Root        |
+| **Contribute code**          | [AGENTS.md](AGENTS.md)                                            | Root        |
+| **Find external links**      | [references_and_links.md](docs/references_and_links.md)           | docs/       |
 
 ---
 
@@ -552,32 +552,32 @@ src/tests/
 
 ### Root Directory
 
-| File | Lines | Type | Audience | Status |
-| ------ | ------- | ------ | ---------- | -------- |
-| README.md | ~550 | Overview | All | ✅ Active |
-| QUICK_START.md | ~250 | Tutorial | New users | ✅ Active |
-| ENVIRONMENT_SETUP.md | ~400 | Guide | Developers | ✅ Active |
-| DOCUMENTATION_OVERVIEW.md | ~700 | Navigation | All | ✅ Active (this file) |
-| AGENTS.md | 829 | Reference | Developers, AI | ✅ Active |
-| CHANGELOG.md | 392 | History | All | ✅ Active |
+| File                      | Lines | Type       | Audience       | Status                |
+| ------------------------- | ----- | ---------- | -------------- | --------------------- |
+| README.md                 | ~550  | Overview   | All            | ✅ Active             |
+| QUICK_START.md            | ~250  | Tutorial   | New users      | ✅ Active             |
+| ENVIRONMENT_SETUP.md      | ~400  | Guide      | Developers     | ✅ Active             |
+| DOCUMENTATION_OVERVIEW.md | ~700  | Navigation | All            | ✅ Active (this file) |
+| AGENTS.md                 | 829   | Reference  | Developers, AI | ✅ Active             |
+| CHANGELOG.md              | 392   | History    | All            | ✅ Active             |
 
 ### docs/ Directory
 
-| File | Lines | Type | Audience | Status |
-| ------ | ------- | ------ | ---------- | -------- |
-| **ci_cd/CICD_QUICK_START.md** | ~400 | Tutorial | Developers | ✅ **Active** |
-| **ci_cd/CICD_ENVIRONMENT_SETUP.md** | ~870 | Guide | DevOps | ✅ **Active** |
-| **ci_cd/CICD_MANUAL.md** | ~1,688 | Guide | Developers | ✅ **Active** |
-| **ci_cd/CICD_REFERENCE.md** | ~1,058 | Reference | All | ✅ **Active** |
-| references_and_links.md | 176 | Reference | All | ✅ Active |
-| AGENTS.md | 829 | Reference | Developers, AI | ✅ Active (duplicate) |
-| README.md | 142 | Overview | All | 🟡 Superseded by root README |
-| CHANGELOG.md | 392 | History | All | 🟡 Superseded by root CHANGELOG |
-| **testing/TESTING_QUICK_START.md** | ~180 | Tutorial | Developers | ✅ **Active** |
-| **testing/TESTING_ENVIRONMENT_SETUP.md** | ~550 | Guide | Developers | ✅ **Active** |
-| **testing/TESTING_MANUAL.md** | ~900 | Guide | Developers | ✅ **Active** |
-| **testing/TESTING_REFERENCE.md** | ~1,200 | Reference | Developers | ✅ **Active** |
-| **testing/TESTING_REPORTS_COVERAGE.md** | ~900 | Guide | Developers | ✅ **Active** |
+| File                                     | Lines  | Type      | Audience       | Status                           |
+| ---------------------------------------- | ------ | --------- | -------------- | -------------------------------- |
+| **ci_cd/CICD_QUICK_START.md**            | ~400   | Tutorial  | Developers     | ✅ **Active**                    |
+| **ci_cd/CICD_ENVIRONMENT_SETUP.md**      | ~870   | Guide     | DevOps         | ✅ **Active**                    |
+| **ci_cd/CICD_MANUAL.md**                 | ~1,688 | Guide     | Developers     | ✅ **Active**                    |
+| **ci_cd/CICD_REFERENCE.md**              | ~1,058 | Reference | All            | ✅ **Active**                    |
+| references_and_links.md                  | 176    | Reference | All            | ✅ Active                        |
+| AGENTS.md                                | 829    | Reference | Developers, AI | ✅ Active (duplicate)            |
+| README.md                                | 142    | Overview  | All            | 🟡 Superseded by root README     |
+| CHANGELOG.md                             | 392    | History   | All            | 🟡 Superseded by root CHANGELOG  |
+| **testing/TESTING_QUICK_START.md**       | ~180   | Tutorial  | Developers     | ✅ **Active**                    |
+| **testing/TESTING_ENVIRONMENT_SETUP.md** | ~550   | Guide     | Developers     | ✅ **Active**                    |
+| **testing/TESTING_MANUAL.md**            | ~900   | Guide     | Developers     | ✅ **Active**                    |
+| **testing/TESTING_REFERENCE.md**         | ~1,200 | Reference | Developers     | ✅ **Active**                    |
+| **testing/TESTING_REPORTS_COVERAGE.md**  | ~900   | Guide     | Developers     | ✅ **Active**                    |
 
 > **Note:** CI/CD documentation consolidated 2025-11-11 (12→4 files). See [docs/ci_cd/CONSOLIDATION_SUMMARY.md](docs/ci_cd/CONSOLIDATION_SUMMARY.md).
 

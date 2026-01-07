@@ -76,11 +76,11 @@ class ServerConstants:
 
 ### Class Categories
 
-| Class | Purpose | Examples |
-|-------|---------|----------|
-| `TrainingConstants` | Neural network training parameters | Epochs, learning rates, hidden units |
-| `DashboardConstants` | UI behavior and limits | Update intervals, timeouts, data limits |
-| `ServerConstants` | Server configuration | Host, port, WebSocket paths |
+| Class                | Purpose                            | Examples                                |
+| -------------------- | ---------------------------------- | --------------------------------------- |
+| `TrainingConstants`  | Neural network training parameters | Epochs, learning rates, hidden units    |
+| `DashboardConstants` | UI behavior and limits             | Update intervals, timeouts, data limits |
+| `ServerConstants`    | Server configuration               | Host, port, WebSocket paths             |
 
 ## When to Use Constants, in Application
 
@@ -330,14 +330,14 @@ epochs = config.get('training.epochs.default',
 
 ### Decision Matrix
 
-| Characteristic | Constants | Configuration |
-|----------------|-----------|---------------|
-| Environment-specific | ❌ No | ✅ Yes |
-| User-configurable | ❌ No | ✅ Yes |
-| Code-level default | ✅ Yes | ❌ No |
-| Type-checked | ✅ Yes | ⚠️ Limited |
-| Changes require code change | ✅ Yes | ❌ No |
-| Validated at import time | ✅ Yes | ❌ No |
+| Characteristic              | Constants | Configuration |
+| --------------------------- | --------- | ------------- |
+| Environment-specific        | ❌ No     | ✅ Yes        |
+| User-configurable           | ❌ No     | ✅ Yes        |
+| Code-level default          | ✅ Yes    | ❌ No         |
+| Type-checked                | ✅ Yes    | ⚠️ Limited    |
+| Changes require code change | ✅ Yes    | ❌ No         |
+| Validated at import time    | ✅ Yes    | ❌ No         |
 
 ## Best Practices
 
@@ -783,6 +783,6 @@ Is this a hard-coded value?
 
 ## Version History
 
-| Version | Date | Changes |
-|---------|------|---------|
-| 1.0.0 | 2025-11-17 | Initial guide creation |
+| Version | Date       | Changes                |
+| ------- | ---------- | ---------------------- |
+| 1.0.0   | 2025-11-17 | Initial guide creation |

@@ -11,14 +11,14 @@ Comprehensive testing analysis and improvements completed for the juniper_canopy
 
 ### Overall Results
 
-| Metric | Before | After | Improvement |
-|--------|--------|-------|-------------|
-| **Test Failures** | 26 | 16 | -38% |
-| **Tests Passing** | 854 | 899 | +5% |
-| **Tests Total** | 912 | 947 | +4% |
-| **Skipped Tests** | 32 | 32 | - |
-| **Collection Errors** | 1 | 0 | -100% |
-| **Code Coverage** | ~64% | ~61%* | See note |
+| Metric                | Before | After | Improvement |
+| --------------------- | ------ | ----- | ----------- |
+| **Test Failures**     | 26     | 16    | -38%        |
+| **Tests Passing**     | 854    | 899   | +5%         |
+| **Tests Total**       | 912    | 947   | +4%         |
+| **Skipped Tests**     | 32     | 32    | -           |
+| **Collection Errors** | 1      | 0     | -100%       |
+| **Code Coverage**     | ~64%   | ~61%* | See note    |
 
 *Coverage appears lower due to added test files being included in total. Source file coverage improved.
 
@@ -322,17 +322,17 @@ All tests failing with connection refused errors:
 
 ### Files Needing Coverage (<80%)
 
-| File | Current % | Target % | Priority | Status |
-|------|-----------|----------|----------|--------|
-| dashboard_manager.py | 31% | 80% | High | ✅ Tests created |
-| decision_boundary.py | 33% | 80% | High | 📋 Plan ready |
-| dataset_plotter.py | 45% | 80% | High | 📋 Plan ready |
-| cascor_integration.py | 49% | 80% | High | 📋 Plan ready |
-| data_adapter.py | 54% | 80% | High | 📋 Plan ready |
-| metrics_panel.py | 56% | 80% | Medium | 📋 Plan ready |
-| main.py | 63% | 80% | Medium | 📋 Plan ready |
-| network_visualizer.py | 69% | 80% | Medium | 📋 Plan ready |
-| logger.py | 73% | 80% | Low | 📋 Plan ready |
+| File                  | Current % | Target % | Priority | Status           |
+| --------------------- | --------- | -------- | -------- | ---------------- |
+| dashboard_manager.py  | 31%       | 80%      | High     | ✅ Tests created |
+| decision_boundary.py  | 33%       | 80%      | High     | 📋 Plan ready    |
+| dataset_plotter.py    | 45%       | 80%      | High     | 📋 Plan ready    |
+| cascor_integration.py | 49%       | 80%      | High     | 📋 Plan ready    |
+| data_adapter.py       | 54%       | 80%      | High     | 📋 Plan ready    |
+| metrics_panel.py      | 56%       | 80%      | Medium   | 📋 Plan ready    |
+| main.py               | 63%       | 80%      | Medium   | 📋 Plan ready    |
+| network_visualizer.py | 69%       | 80%      | Medium   | 📋 Plan ready    |
+| logger.py             | 73%       | 80%      | Low      | 📋 Plan ready    |
 
 **Note**: Overall coverage calculation includes test files. When excluding test files from coverage calculation, source code coverage is higher than reported total.
 

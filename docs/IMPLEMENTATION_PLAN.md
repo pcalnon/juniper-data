@@ -63,21 +63,21 @@ This document provides a comprehensive implementation plan for all fixes and enh
 
 ## Priority Matrix
 
-| Priority | Description | Target Timeline |
-| ---------- | ------------- | ----------------- |
-| **P0** | Critical bugs breaking core functionality | Phase 0 (1-2 days) |
-| **P1** | High-impact features and important fixes | Phase 1 (2-4 days) |
-| **P2** | Medium-priority polish and features | Phase 2 (2-3 days) |
-| **P3** | Low-priority and infrastructure-heavy items | Phase 3 (multi-week) |
+| Priority | Description                                 | Target Timeline      |
+| -------- | ------------------------------------------- | -------------------- |
+| **P0**   | Critical bugs breaking core functionality   | Phase 0 (1-2 days)   |
+| **P1**   | High-impact features and important fixes    | Phase 1 (2-4 days)   |
+| **P2**   | Medium-priority polish and features         | Phase 2 (2-3 days)   |
+| **P3**   | Low-priority and infrastructure-heavy items | Phase 3 (multi-week) |
 
 ### Summary by Priority
 
 | Priority | Fixes | Enhancements | New Tabs | Total |
-| ---------- | ------- | -------------- | ---------- | ------- |
-| P0 | 6 | 0 | 0 | 6 |
-| P1 | 1 | 3 | 0 | 4 |
-| P2 | 1 | 2 | 2 | 5 |
-| P3 | 0 | 2 | 2 | 4 |
+| -------- | ----- | ------------ | -------- | ----- |
+| P0       | 6     | 0            | 0        | 6     |
+| P1       | 1     | 3            | 0        | 4     |
+| P2       | 1     | 2            | 2        | 5     |
+| P3       | 0     | 2            | 2        | 4     |
 
 ---
 
@@ -597,17 +597,17 @@ See individual implementation documents:
 
 ## Test Coverage Requirements
 
-| Phase | Unit Tests | Integration Tests | Target Coverage |
-| ------- | ------------ | ------------------- | ----------------- |
-| Phase 0 | 15-20 | 8-10 | 88% |
-| Phase 1 | 20-25 | 10-12 | 89% |
-| Phase 2 | 10-15 | 5-8 | 90% |
-| Phase 3 | TBD | TBD | 90%+ |
+| Phase   | Unit Tests | Integration Tests | Target Coverage |
+| ------- | ---------- | ----------------- | --------------- |
+| Phase 0 | 15-20      | 8-10              | 88%             |
+| Phase 1 | 20-25      | 10-12             | 89%             |
+| Phase 2 | 10-15      | 5-8               | 90%             |
+| Phase 3 | TBD        | TBD               | 90%+            |
 
 ---
 
 ## Change Log
 
-| Date | Version | Changes |
-| ------ | --------- | --------- |
-| 2025-12-12 | 1.0.0 | Initial implementation plan |
+| Date       | Version | Changes                     |
+| ---------- | ------- | --------------------------- |
+| 2025-12-12 | 1.0.0   | Initial implementation plan |

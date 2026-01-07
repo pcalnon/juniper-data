@@ -55,13 +55,13 @@ This guide covers complete environment setup for Juniper Canopy development and 
 
 ### Software Requirements
 
-| Software | Minimum Version | Recommended | Purpose |
-|----------|----------------|-------------|---------|
-| **Python** | 3.11 | 3.11 or 3.12 | Runtime |
-| **Conda/Mamba** | 4.12+ | Latest | Environment management |
-| **Git** | 2.20+ | Latest | Version control |
-| **Make** | Any | Latest | Build automation (optional) |
-| **curl** | Any | Latest | API testing |
+| Software        | Minimum Version | Recommended  | Purpose                     |
+| --------------- | --------------- | ------------ | --------------------------- |
+| **Python**      | 3.11            | 3.11 or 3.12 | Runtime                     |
+| **Conda/Mamba** | 4.12+           | Latest       | Environment management      |
+| **Git**         | 2.20+           | Latest       | Version control             |
+| **Make**        | Any             | Latest       | Build automation (optional) |
+| **curl**        | Any             | Latest       | API testing                 |
 
 ### Hardware Requirements
 

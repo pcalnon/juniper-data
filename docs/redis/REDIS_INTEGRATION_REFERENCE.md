@@ -73,14 +73,14 @@ backend:
 
 **Override configuration via environment:**
 
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `CASCOR_CACHE_ENABLED` | bool | `true` | Enable Redis caching |
-| `CASCOR_CACHE_TYPE` | string | `redis` | Cache type ('redis' or 'memory') |
-| `CASCOR_CACHE_REDIS_URL` | string | `redis://localhost:6379/0` | Redis connection URL |
-| `CASCOR_CACHE_TTL_SECONDS` | int | `3600` | Default TTL (seconds) |
-| `CASCOR_CACHE_MAX_MEMORY_MB` | int | `100` | Max memory (MB) |
-| `REDIS_PASSWORD` | string | - | Redis password (for production) |
+| Variable                     | Type   | Default                    | Description                      |
+| ---------------------------- | ------ | -------------------------- | -------------------------------- |
+| `CASCOR_CACHE_ENABLED`       | bool   | `true`                     | Enable Redis caching             |
+| `CASCOR_CACHE_TYPE`          | string | `redis`                    | Cache type ('redis' or 'memory') |
+| `CASCOR_CACHE_REDIS_URL`     | string | `redis://localhost:6379/0` | Redis connection URL             |
+| `CASCOR_CACHE_TTL_SECONDS`   | int    | `3600`                     | Default TTL (seconds)            |
+| `CASCOR_CACHE_MAX_MEMORY_MB` | int    | `100`                      | Max memory (MB)                  |
+| `REDIS_PASSWORD`             | string | -                          | Redis password (for production)  |
 
 **Example:**
 
@@ -410,13 +410,13 @@ cascor:session:user_123
 
 ### Key Prefixes
 
-| Prefix | Purpose | TTL | Example |
-|--------|---------|-----|---------|
-| `cascor:metrics:` | Training metrics | 1s | `cascor:metrics:latest` |
-| `cascor:topology:` | Network topology | 5s | `cascor:topology:latest` |
-| `cascor:history:` | Training history | 60s | `cascor:history:full` |
-| `cascor:session:` | User sessions | 24h | `cascor:session:abc123` |
-| `cascor:control:` | Control commands | 5s | `cascor:control:latest` |
+| Prefix             | Purpose          | TTL | Example                  |
+| ------------------ | ---------------- | --- | ------------------------ |
+| `cascor:metrics:`  | Training metrics | 1s  | `cascor:metrics:latest`  |
+| `cascor:topology:` | Network topology | 5s  | `cascor:topology:latest` |
+| `cascor:history:`  | Training history | 60s | `cascor:history:full`    |
+| `cascor:session:`  | User sessions    | 24h | `cascor:session:abc123`  |
+| `cascor:control:`  | Control commands | 5s  | `cascor:control:latest`  |
 
 ### Key Patterns
 
@@ -442,13 +442,13 @@ cascor:session:user_123
 
 ### Default TTL Values
 
-| Data Type | TTL | Reason |
-|-----------|-----|--------|
-| Metrics | 1s | Real-time updates |
-| Topology | 5s | Changes less frequently |
-| History | 60s | Expensive to compute |
-| Sessions | 24h | Long-lived user data |
-| Control | 5s | Command responses |
+| Data Type | TTL | Reason                  |
+| --------- | --- | ----------------------- |
+| Metrics   | 1s  | Real-time updates       |
+| Topology  | 5s  | Changes less frequently |
+| History   | 60s | Expensive to compute    |
+| Sessions  | 24h | Long-lived user data    |
+| Control   | 5s  | Command responses       |
 
 ### Custom TTL
 
@@ -479,12 +479,12 @@ cache.set_cached("cascor:static:info", data, ttl=0)
 
 ### Channel Names
 
-| Channel | Purpose | Message Type |
-|---------|---------|--------------|
-| `cascor:training` | Training events | Metrics updates |
-| `cascor:control` | Control commands | Pause/resume/reset |
-| `cascor:topology` | Topology changes | Network structure |
-| `cascor:events` | General events | System events |
+| Channel           | Purpose          | Message Type       |
+| ----------------- | ---------------- | ------------------ |
+| `cascor:training` | Training events  | Metrics updates    |
+| `cascor:control`  | Control commands | Pause/resume/reset |
+| `cascor:topology` | Topology changes | Network structure  |
+| `cascor:events`   | General events   | System events      |
 
 ### Message Format
 
@@ -550,13 +550,13 @@ cache.set_cached("cascor:static:info", data, ttl=0)
 
 **redis-py exceptions:**
 
-| Exception | Cause | Recovery |
-|-----------|-------|----------|
-| `ConnectionError` | Redis not reachable | Retry connection, fallback to memory |
-| `TimeoutError` | Operation timeout | Retry with longer timeout |
-| `AuthenticationError` | Invalid password | Check credentials |
-| `ResponseError` | Redis error response | Check command syntax |
-| `DataError` | Invalid data type | Validate data before caching |
+| Exception             | Cause                | Recovery                             |
+| --------------------- | -------------------- | ------------------------------------ |
+| `ConnectionError`     | Redis not reachable  | Retry connection, fallback to memory |
+| `TimeoutError`        | Operation timeout    | Retry with longer timeout            |
+| `AuthenticationError` | Invalid password     | Check credentials                    |
+| `ResponseError`       | Redis error response | Check command syntax                 |
+| `DataError`           | Invalid data type    | Validate data before caching         |
 
 ### Error Handling Pattern
 
@@ -615,12 +615,12 @@ class CacheManager:
 
 **Operation latencies:**
 
-| Operation | Latency | Throughput |
-|-----------|---------|------------|
-| GET | <1ms | 100,000 ops/s |
-| SET | <1ms | 80,000 ops/s |
-| PUBLISH | <1ms | 50,000 msgs/s |
-| SUBSCRIBE | <5ms | N/A |
+| Operation | Latency | Throughput    |
+| --------- | ------- | ------------- |
+| GET       | <1ms    | 100,000 ops/s |
+| SET       | <1ms    | 80,000 ops/s  |
+| PUBLISH   | <1ms    | 50,000 msgs/s |
+| SUBSCRIBE | <5ms    | N/A           |
 
 **Network overhead:**
 

@@ -1,34 +1,37 @@
 #!/usr/bin/env python
 #####################################################################################################################################################################################################
 # Project:       Juniper
-# Prototype:     Juniper Canopy: Monitoring and Diagnostic Frontend for Cascade Correlation Neural Network
-# File Name:     main.py
+# Sub-Project:   JuniperCanopy
+# Application:   juniper_canopy
+# Purpose:       Monitoring and Diagnostic Frontend for Cascade Correlation Neural Network
+#
 # Author:        Paul Calnon
 # Version:       0.7.1
+# File Name:     main.py
+# File Path:     ${HOME}/Development/python/JuniperCanopy/juniper_canopy/src/
 #
-# Date:          2025-10-11
+# Date Created:  2025-10-11
 # Last Modified: 2025-12-13
 #
 # License:       MIT License
-# Copyright:     Copyright (c) 2024-2025 Paul Calnon
+# Copyright:     Copyright (c) 2024,2025,2026 Paul Calnon
 #
 # Description:
-#    This file contains the Main function to monitor the current Cascade Correlation Neural Network prototype
-#       including training, state, and architecture with the Juniper prototype Frontend for monitoring and diagnostics.
+#     This file contains the Main function to monitor the current Cascade Correlation Neural Network prototype
+#     including training, state, and architecture with the Juniper prototype Frontend for monitoring and diagnostics.
 #
 #####################################################################################################################################################################################################
 # Notes:
-#
-# Main Application Entry Point
-#
-# FastAPI application with Dash integration for Juniper Canopy monitoring.
+#     Main Application Entry Point
+#     FastAPI application with Dash integration for Juniper Canopy monitoring.
 #
 #####################################################################################################################################################################################################
 # References:
 #
 #####################################################################################################################################################################################################
 # TODO :
-#     Force pre-compile checks to run
+#     Force pre-commit checks to run
+#
 #####################################################################################################################################################################################################
 # COMPLETED:
 #

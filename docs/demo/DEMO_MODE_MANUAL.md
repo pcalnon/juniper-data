@@ -26,16 +26,16 @@ Demo mode simulates a complete CasCor neural network training session without re
 
 ### Demo vs Production
 
-| Feature | Demo Mode | Production Mode |
-|---------|-----------|-----------------|
-| **Backend** | Simulated (Python) | Real CasCor (C++/Python) |
-| **Dataset** | Fixed spiral (200 samples) | Configurable datasets |
-| **Training** | Deterministic curves | Real network training |
-| **Network** | Simulated cascade growth | Actual cascade correlation |
-| **Performance** | Fixed timing (~100ms updates) | Variable based on computation |
-| **Purpose** | Development, testing, demos | Real neural network training |
-| **Launch** | `./demo` | `cd src && python main.py` |
-| **Config** | `CASCOR_DEMO_MODE=1` | `CASCOR_DEMO_MODE=0` (default) |
+| Feature         | Demo Mode                     | Production Mode                |
+| --------------- | ----------------------------- | ------------------------------ |
+| **Backend**     | Simulated (Python)            | Real CasCor (C++/Python)       |
+| **Dataset**     | Fixed spiral (200 samples)    | Configurable datasets          |
+| **Training**    | Deterministic curves          | Real network training          |
+| **Network**     | Simulated cascade growth      | Actual cascade correlation     |
+| **Performance** | Fixed timing (~100ms updates) | Variable based on computation  |
+| **Purpose**     | Development, testing, demos   | Real neural network training   |
+| **Launch**      | `./demo`                      | `cd src && python main.py`     |
+| **Config**      | `CASCOR_DEMO_MODE=1`          | `CASCOR_DEMO_MODE=0` (default) |
 
 ### When to Use Demo Mode
 

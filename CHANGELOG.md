@@ -5,9 +5,13 @@ All notable changes to the juniper_canopy prototype will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.15.0] - 2026-01-06
+## [0.15.0] - 2026-01-07
 
 ### Fixed [0.15.0] - Phase 0 Completion
+
+- **P0-1: Training Controls Button State Fix**
+  - Buttons return to normal state after click with 2-second timeout
+  - Proper visual feedback during action execution
 
 - **P0-5: Pan/Lasso Tool Fix**
   - Default dragmode set to "pan" in network topology graph
@@ -28,11 +32,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - /api/status endpoint exposes completed, failed, and fsm_status fields
   - Dashboard status bar displays "Completed" (cyan) and "Failed" (red) states
 
+- **P0-7: Dark Mode Info Bar**
+  - Theme-aware stats bar with proper background/text colors
+  - Consistent styling across light and dark themes
+
 - **P0-9: Legend Display and Positioning**
   - Legend positioned at bottom-left (x=0.02, y=0.02)
   - Theme-aware styling with semi-transparent backgrounds (0.7 alpha)
   - Dark mode: rgba(36, 36, 36, 0.7) background with #f8f9fa text
   - Light mode: rgba(248, 249, 250, 0.7) background with #212529 text
+
+- **P0-12: Meta-Parameters Apply Button (Learning Rate)**
+  - Float tolerance fix for change detection
+  - Learning rate changes now detected correctly despite floating-point precision
 
 ### Added [0.15.0]
 
@@ -1459,6 +1471,12 @@ None.
 ### Links
 
 - [Unreleased]: Current development
+- [0.15.0]: Phase 0 - Core UX Stabilization (11 fixes)
+- [0.14.4]: Configuration test architecture fix + coverage improvements
+- [0.14.3]: Apply button fix + graph range persistence
+- [0.14.2]: Top status bar updates with FSM integration
+- [0.14.1]: Documentation and dependency updates
+- [0.14.0]: Bash script configuration infrastructure
 - [0.4.0]: Documentation consolidation and structure optimization
 - [0.3.1]: Phase 2.5 pre-deployment MVP enhancements
 - [0.3.0]: Testing infrastructure and CI/CD pipeline

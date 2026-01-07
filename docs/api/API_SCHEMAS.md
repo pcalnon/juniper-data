@@ -1,27 +1,39 @@
 # API Response Schemas
 
 **Last Updated:** 2025-11-13  
-**Version:** 1.0.0  
+**Version:** 0.1.0  
 **Status:** Current
 
 ## Table of Contents
 
-- [Overview](#overview)
-- [REST API Endpoints](#rest-api-endpoints)
-  - [Health Check](#get-apihealth)
-  - [Status](#get-apistatus)
-  - [Metrics](#get-apimetrics)
-  - [Metrics History](#get-apimetricshistory)
-  - [Network Topology](#get-apitopology)
-  - [Dataset](#get-apidataset)
-  - [Decision Boundary](#get-apidecision_boundary)
-  - [Statistics](#get-apistatistics)
-  - [Training Control](#training-control-endpoints)
-- [WebSocket Endpoints](#websocket-endpoints)
-  - [Training WebSocket](#ws-wstraining)
-  - [Control WebSocket](#ws-wscontrol)
-- [Error Responses](#error-responses)
-- [Data Types](#data-types)
+- [API Response Schemas](#api-response-schemas)
+  - [Table of Contents](#table-of-contents)
+  - [Overview](#overview)
+  - [REST API Endpoints](#rest-api-endpoints)
+    - [GET /api/health](#get-apihealth)
+    - [GET /api/status](#get-apistatus)
+    - [GET /api/metrics](#get-apimetrics)
+    - [GET /api/metrics/history](#get-apimetricshistory)
+    - [GET /api/topology](#get-apitopology)
+    - [GET /api/dataset](#get-apidataset)
+    - [GET /api/decision\_boundary](#get-apidecision_boundary)
+    - [GET /api/statistics](#get-apistatistics)
+  - [Training Control Endpoints](#training-control-endpoints)
+    - [POST /api/train/start](#post-apitrainstart)
+    - [POST /api/train/pause](#post-apitrainpause)
+    - [POST /api/train/resume](#post-apitrainresume)
+    - [POST /api/train/stop](#post-apitrainstop)
+    - [POST /api/train/reset](#post-apitrainreset)
+  - [WebSocket Endpoints](#websocket-endpoints)
+    - [WS /ws/training](#ws-wstraining)
+    - [WS /ws/control](#ws-wscontrol)
+  - [Error Responses](#error-responses)
+  - [Data Types](#data-types)
+    - [Metric Naming Convention](#metric-naming-convention)
+    - [Timestamp Format](#timestamp-format)
+    - [Node ID Format](#node-id-format)
+    - [Connection Format](#connection-format)
+  - [Notes](#notes)
 
 ---
 

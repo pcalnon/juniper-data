@@ -258,27 +258,27 @@ export BASE_DIR="${PROJ_DIR}"
 
 ### Phase 1: Immediate Fix (Unblock Demo) - Est. 30 min
 
-| Step | Task | Files | Priority |
-| ------ | ------ | ------- | ---------- |
-| 1.1 | Implement Fix 1: Make `__get_project_dir.bash` standalone | `util/__get_project_dir.bash` | 🔴 Critical |
-| 1.2 | Test demo script launches successfully | - | 🔴 Critical |
-| 1.3 | Test other util scripts still work | All scripts in `util/` | 🔴 Critical |
+| Step | Task                                                      | Files                         | Priority     |
+| ---- | --------------------------------------------------------- | ----------------------------- | ------------ |
+| 1.1  | Implement Fix 1: Make `__get_project_dir.bash` standalone | `util/__get_project_dir.bash` | 🔴 Critical  |
+| 1.2  | Test demo script launches successfully                    | -                             | 🔴 Critical  |
+| 1.3  | Test other util scripts still work                        | All scripts in `util/`        | 🔴 Critical  |
 
 ### Phase 2: Config Hardening (Optional) - Est. 1 hr
 
-| Step | Task | Files | Priority |
-| ------ | ------ | ------- | ---------- |
-| 2.1 | Apply Fix 2 to all affected config files | 5 config files | 🟡 Medium |
-| 2.2 | Update documentation in affected files | 5 config files | 🟡 Medium |
-| 2.3 | Add comments explaining the pattern | All affected files | 🟢 Low |
+| Step | Task                                     | Files              | Priority   |
+| ---- | ---------------------------------------- | ------------------ | ---------- |
+| 2.1  | Apply Fix 2 to all affected config files | 5 config files     | 🟡 Medium  |
+| 2.2  | Update documentation in affected files   | 5 config files     | 🟡 Medium  |
+| 2.3  | Add comments explaining the pattern      | All affected files | 🟢 Low     |
 
 ### Phase 3: Architectural Improvements (Future) - Est. 2-4 hrs
 
-| Step | Task | Files | Priority |
-| ------ | ------ | ------- | ---------- |
-| 3.1 | Remove hardcoded paths from helper scripts | Multiple util scripts | 🟢 Low |
-| 3.2 | Add documentation for shell script architecture | `docs/shell_scripts.md` | 🟢 Low |
-| 3.3 | Consider single entry-point init pattern | Architecture redesign | 🟢 Low |
+| Step | Task                                            | Files                   | Priority |
+| ---- | ----------------------------------------------- | ----------------------- | -------- |
+| 3.1  | Remove hardcoded paths from helper scripts      | Multiple util scripts   | 🟢 Low   |
+| 3.2  | Add documentation for shell script architecture | `docs/shell_scripts.md` | 🟢 Low   |
+| 3.3  | Consider single entry-point init pattern        | Architecture redesign   | 🟢 Low   |
 
 ---
 
@@ -328,18 +328,18 @@ $ bash -c 'export PARENT_PATH_PARAM="$(realpath $0)"; source conf/init.conf; ech
 
 ### Fix 1 Risks
 
-| Risk | Likelihood | Impact | Mitigation |
-| ------ | ------------ | -------- | ------------ |
-| Other scripts depend on `__get_project_dir.bash` sourcing `common.conf` | Low | Medium | Search codebase for dependencies; none found |
-| Hardcoded paths no longer work in certain contexts | Low | Low | The current hardcoded paths aren't used anyway (the argument-based logic is what runs) |
-| Symlink resolution differs | Low | Low | Tested with `realpath` and `readlink -f` |
+| Risk                                                                    | Likelihood | Impact | Mitigation                                                                             |
+| ----------------------------------------------------------------------- | ---------- | ------ | -------------------------------------------------------------------------------------- |
+| Other scripts depend on `__get_project_dir.bash` sourcing `common.conf` | Low        | Medium | Search codebase for dependencies; none found                                           |
+| Hardcoded paths no longer work in certain contexts                      | Low        | Low    | The current hardcoded paths aren't used anyway (the argument-based logic is what runs) |
+| Symlink resolution differs                                              | Low        | Low    | Tested with `realpath` and `readlink -f`                                               |
 
 ### Fix 2 Risks
 
-| Risk | Likelihood | Impact | Mitigation |
-| ------ | ------------ | -------- | ------------ |
-| Configs become non-reusable outside init chain | Medium | Low | Document the assumption; acceptable trade-off |
-| `PROJ_DIR` not available in some context | Low | Medium | Only apply to configs that are always sourced via `init.conf` |
+| Risk                                           | Likelihood | Impact | Mitigation                                                    |
+| ---------------------------------------------- | ---------- | ------ | ------------------------------------------------------------- |
+| Configs become non-reusable outside init chain | Medium     | Low    | Document the assumption; acceptable trade-off                 |
+| `PROJ_DIR` not available in some context       | Low        | Medium | Only apply to configs that are always sourced via `init.conf` |
 
 ---
 
@@ -347,30 +347,30 @@ $ bash -c 'export PARENT_PATH_PARAM="$(realpath $0)"; source conf/init.conf; ech
 
 ### Shell Scripts Analyzed
 
-| File | Status | Notes |
-| ------ | -------- | ------- |
-| `demo` | OK | Symlink to `util/run_demo.bash` |
-| `util/run_demo.bash` | OK | Symlink to `util/juniper_canopy-demo.bash` |
-| `util/juniper_canopy-demo.bash` | OK | Main demo launcher script |
-| `util/__get_project_dir.bash` | 🔴 BUG | Contains circular dependency |
-| `util/__get_os_name.bash` | OK | Fixed in prior PR, standalone |
-| `util/__git_log_weeks.bash` | OK | Does not trigger cycle |
+| File                            | Status  | Notes                                      |
+| ------------------------------- | ------- | ------------------------------------------ |
+| `demo`                          | OK      | Symlink to `util/run_demo.bash`            |
+| `util/run_demo.bash`            | OK      | Symlink to `util/juniper_canopy-demo.bash` |
+| `util/juniper_canopy-demo.bash` | OK      | Main demo launcher script                  |
+| `util/__get_project_dir.bash`   | 🔴 BUG  | Contains circular dependency               |
+| `util/__get_os_name.bash`       | OK      | Fixed in prior PR, standalone              |
+| `util/__git_log_weeks.bash`     | OK      | Does not trigger cycle                     |
 
 ### Config Files Analyzed
 
-| File | Status | Notes |
-| ------ | -------- | ------- |
-| `conf/init.conf` | OK | Entry point for initialization |
-| `conf/common.conf` | OK | Main config, auto-sources primary configs |
-| `conf/common_functions.conf` | OK | Function definitions |
-| `conf/logging.conf` | OK | Logging setup |
-| `conf/logging_functions.conf` | OK | Logging function definitions |
-| `conf/logging_colors.conf` | OK | Color definitions |
-| `conf/juniper_canopy-demo.conf` | ⚠️ | Uses vulnerable pattern (fix optional) |
-| `conf/create_performance_profile.conf` | ⚠️ | Uses vulnerable pattern |
-| `conf/update_weekly.conf` | ⚠️ | Uses vulnerable pattern |
-| `conf/get_file_todo.conf` | ⚠️ | Uses vulnerable pattern |
-| `conf/proto.conf` | ⚠️ | Uses vulnerable pattern |
+| File                                   | Status | Notes                                     |
+| -------------------------------------- | ------ | ----------------------------------------- |
+| `conf/init.conf`                       | OK     | Entry point for initialization            |
+| `conf/common.conf`                     | OK     | Main config, auto-sources primary configs |
+| `conf/common_functions.conf`           | OK     | Function definitions                      |
+| `conf/logging.conf`                    | OK     | Logging setup                             |
+| `conf/logging_functions.conf`          | OK     | Logging function definitions              |
+| `conf/logging_colors.conf`             | OK     | Color definitions                         |
+| `conf/juniper_canopy-demo.conf`        | ⚠️     | Uses vulnerable pattern (fix optional)    |
+| `conf/create_performance_profile.conf` | ⚠️     | Uses vulnerable pattern                   |
+| `conf/update_weekly.conf`              | ⚠️     | Uses vulnerable pattern                   |
+| `conf/get_file_todo.conf`              | ⚠️     | Uses vulnerable pattern                   |
+| `conf/proto.conf`                      | ⚠️     | Uses vulnerable pattern                   |
 
 ---
 

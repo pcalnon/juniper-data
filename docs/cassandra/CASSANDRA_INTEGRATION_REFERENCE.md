@@ -47,14 +47,14 @@ backend:
 
 ### Environment Variables
 
-| Variable | Type | Description |
-|----------|------|-------------|
-| `CASCOR_CASSANDRA_ENABLED` | bool | Enable Cassandra |
+| Variable                          | Type   | Description                    |
+| --------------------------------- | ------ | ------------------------------ |
+| `CASCOR_CASSANDRA_ENABLED`        | bool   | Enable Cassandra               |
 | `CASCOR_CASSANDRA_CONTACT_POINTS` | string | Comma-separated node addresses |
-| `CASCOR_CASSANDRA_PORT` | int | CQL port |
-| `CASCOR_CASSANDRA_KEYSPACE` | string | Keyspace name |
-| `CASSANDRA_USERNAME` | string | Auth username |
-| `CASSANDRA_PASSWORD` | string | Auth password |
+| `CASCOR_CASSANDRA_PORT`           | int    | CQL port                       |
+| `CASCOR_CASSANDRA_KEYSPACE`       | string | Keyspace name                  |
+| `CASSANDRA_USERNAME`              | string | Auth username                  |
+| `CASSANDRA_PASSWORD`              | string | Auth password                  |
 
 ---
 

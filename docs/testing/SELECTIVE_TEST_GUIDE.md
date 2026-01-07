@@ -11,16 +11,16 @@ The juniper_canopy project uses a selective test enablement system to manage tes
 
 Tests are organized using pytest markers:
 
-| Marker | Description | Enabled By Default |
-|--------|-------------|-------------------|
-| `unit` | Fast unit tests, no external dependencies | ✓ Yes |
-| `integration` | Integration tests (may use files, DB) | ✓ Yes |
-| `e2e` | End-to-end tests (full system required) | ✓ Yes |
-| `slow` | Tests taking >1 second | ✗ No |
-| `requires_cascor` | Requires CasCor backend installation | ✗ No |
-| `requires_server` | Requires live server running | ✗ No |
-| `requires_display` | Requires display for visualization | ✗ No |
-| `requires_redis` | Requires Redis connection | ✗ No |
+| Marker             | Description                               | Enabled By Default |
+| ------------------ | ----------------------------------------- | ------------------ |
+| `unit`             | Fast unit tests, no external dependencies | ✓ Yes              |
+| `integration`      | Integration tests (may use files, DB)     | ✓ Yes              |
+| `e2e`              | End-to-end tests (full system required)   | ✓ Yes              |
+| `slow`             | Tests taking >1 second                    | ✗ No               |
+| `requires_cascor`  | Requires CasCor backend installation      | ✗ No               |
+| `requires_server`  | Requires live server running              | ✗ No               |
+| `requires_display` | Requires display for visualization        | ✗ No               |
+| `requires_redis`   | Requires Redis connection                 | ✗ No               |
 
 ## Environment Variables
 

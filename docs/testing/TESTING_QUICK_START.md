@@ -136,17 +136,17 @@ src/tests/
 
 ## Quick Reference
 
-| Command | Description |
-|---------|-------------|
-| `pytest` | Run all tests |
-| `pytest -m unit` | Run unit tests |
-| `pytest -m integration` | Run integration tests |
-| `pytest -k "name"` | Run tests matching name |
-| `pytest -x` | Stop at first failure |
-| `pytest -v` | Verbose output |
-| `pytest --cov=src` | Run with coverage |
-| `pytest --lf` | Run last failed tests |
-| `pytest --ff` | Run failures first |
+| Command                 | Description             |
+| ----------------------- | ----------------------- |
+| `pytest`                | Run all tests           |
+| `pytest -m unit`        | Run unit tests          |
+| `pytest -m integration` | Run integration tests   |
+| `pytest -k "name"`      | Run tests matching name |
+| `pytest -x`             | Stop at first failure   |
+| `pytest -v`             | Verbose output          |
+| `pytest --cov=src`      | Run with coverage       |
+| `pytest --lf`           | Run last failed tests   |
+| `pytest --ff`           | Run failures first      |
 
 ---
 

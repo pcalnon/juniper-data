@@ -1,50 +1,51 @@
 #!/usr/bin/env python
 #####################################################################################################################################################################################################
 # Project:       Juniper
-# Prototype:     Monitoring and Diagnostic Frontend for Cascade Correlation Neural Network
-# File Name:     demo_mode.py
+# Sub-Project:   JuniperCanopy
+# Application:   juniper_canopy
+# Purpose:       Monitoring and Diagnostic Frontend for Cascade Correlation Neural Network
+#
 # Author:        Paul Calnon
 # Version:       0.1.1
+# File Name:     demo_mode.py
+# File Path:     ${HOME}/Development/python/JuniperCanopy/juniper_canopy/src/
 #
-# Date:          2025-10-22
+# Date Created:  2025-10-22
 # Last Modified: 2025-12-13
 #
 # License:       MIT License
-# Copyright:     Copyright (c) 2024-2025 Paul Calnon
+# Copyright:     Copyright (c) 2024,2025,2026 Paul Calnon
 #
 # Description:
-#    This file provides demo mode functionality for the Juniper Canopy, generating
-#    mock training data and network states to enable frontend development and testing
-#    without requiring an active CasCor training session.
+#     This file provides demo mode functionality for the Juniper Canopy, generating
+#     mock training data and network states to enable frontend development and testing
+#     without requiring an active CasCor training session.
 #
 #####################################################################################################################################################################################################
 # Notes:
-#
-# Demo Mode Module
-#
-# Generates realistic mock data for all frontend components:
-# - Training metrics with realistic loss/accuracy curves
-# - Network topology evolution (cascade unit additions)
-# - Decision boundaries from synthetic classifiers
-# - Spiral dataset for visualization
-#
-# Training Control Methods (verified in v1.1.0):
-# - start()  - Begin training simulation
-# - pause()  - Pause training without losing state
-# - resume() - Resume from paused state
-# - stop()   - Stop training completely
-# - reset()  - Reset to initial state
-#
-# Usage:
-#     from demo_mode import DemoMode
-#     demo = DemoMode()
-#     demo.start()  # Begins continuous demo simulation
+#     Demo Mode Module
+#         Generates realistic mock data for all frontend components:
+#             - Training metrics with realistic loss/accuracy curves
+#             - Network topology evolution (cascade unit additions)
+#             - Decision boundaries from synthetic classifiers
+#             - Spiral dataset for visualization
+#         Training Control Methods (verified in v1.1.0):
+#             - start()  - Begin training simulation
+#             - pause()  - Pause training without losing state
+#             - resume() - Resume from paused state
+#             - stop()   - Stop training completely
+#             - reset()  - Reset to initial state
+#         Usage:
+#             from demo_mode import DemoMode
+#             demo = DemoMode()
+#             demo.start()  # Begins continuous demo simulation
 #
 #####################################################################################################################################################################################################
 # References:
 #
 #####################################################################################################################################################################################################
 # TODO :
+#     Force pre-commit checks to run
 #
 #####################################################################################################################################################################################################
 # COMPLETED:
