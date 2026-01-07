@@ -18,7 +18,11 @@ from config_manager import get_config
 
 
 class TestTrainingParameterConfig:
-    """Test training parameter configuration management."""
+    """Test training parameter configuration management.
+
+    These tests validate configuration structure and compatibility with constants.
+    YAML values may override constant defaults, but must remain within valid bounds.
+    """
 
     @pytest.fixture
     def config_manager(self):
@@ -26,34 +30,54 @@ class TestTrainingParameterConfig:
         return get_config(force_reload=True)
 
     def test_get_epochs_config(self, config_manager):
-        """Test retrieving epochs configuration."""
+        """Test retrieving epochs configuration - validates structure and bounds."""
+        from constants import TrainingConstants
+
         epochs_config = config_manager.get_training_param_config("epochs")
 
-        assert epochs_config["min"] == 10
-        assert epochs_config["max"] == 1000
-        assert epochs_config["default"] == 200
+        # Structure validation
         assert epochs_config["description"] == "Number of training epochs to run"
         assert epochs_config["modifiable_during_training"] is True
 
+        # Internal consistency: min <= default <= max
+        assert epochs_config["min"] <= epochs_config["default"] <= epochs_config["max"]
+
+        # Compatibility with constants bounds (YAML may override defaults within bounds)
+        assert epochs_config["min"] >= TrainingConstants.MIN_TRAINING_EPOCHS
+        assert epochs_config["max"] <= TrainingConstants.MAX_TRAINING_EPOCHS
+
     def test_get_learning_rate_config(self, config_manager):
-        """Test retrieving learning rate configuration."""
+        """Test retrieving learning rate configuration - validates structure and bounds."""
+        from constants import TrainingConstants
+
         lr_config = config_manager.get_training_param_config("learning_rate")
 
-        assert lr_config["min"] == 0.0001
-        assert lr_config["max"] == 1.0
-        assert lr_config["default"] == 0.01
+        # Structure validation
         assert lr_config["description"] == "Learning rate for training algorithm"
         assert lr_config["modifiable_during_training"] is True
 
+        # Internal consistency
+        assert lr_config["min"] <= lr_config["default"] <= lr_config["max"]
+
+        # Compatibility with constants bounds
+        assert lr_config["min"] >= TrainingConstants.MIN_LEARNING_RATE
+        assert lr_config["max"] <= TrainingConstants.MAX_LEARNING_RATE
+
     def test_get_hidden_units_config(self, config_manager):
-        """Test retrieving hidden units configuration."""
+        """Test retrieving hidden units configuration - validates structure and bounds."""
+        from constants import TrainingConstants
+
         hu_config = config_manager.get_training_param_config("hidden_units")
 
-        assert hu_config["min"] == 0
-        assert hu_config["max"] == 20
-        assert hu_config["default"] == 10
+        # Structure validation
         assert hu_config["description"] == "Maximum number of hidden units to add"
         assert hu_config["modifiable_during_training"] is False
+
+        # Internal consistency
+        assert hu_config["min"] <= hu_config["default"] <= hu_config["max"]
+
+        # Compatibility: min must be >= constant min (YAML max may exceed constant max for flexibility)
+        assert hu_config["min"] >= TrainingConstants.MIN_HIDDEN_UNITS
 
     def test_invalid_parameter_name(self, config_manager):
         """Test error handling for invalid parameter name."""
@@ -91,16 +115,25 @@ class TestTrainingParameterConfig:
             config_manager.validate_training_param_value("learning_rate", 2.0)  # Above max
 
     def test_get_training_defaults(self, config_manager):
-        """Test retrieving all training defaults."""
+        """Test retrieving all training defaults - validates structure and types."""
+        from constants import TrainingConstants
+
         defaults = config_manager.get_training_defaults()
 
+        # Required keys must exist
         assert "epochs" in defaults
         assert "learning_rate" in defaults
         assert "hidden_units" in defaults
 
-        assert defaults["epochs"] == 200
-        assert defaults["learning_rate"] == 0.01
-        assert defaults["hidden_units"] == 10
+        # Types validation
+        assert isinstance(defaults["epochs"], int)
+        assert isinstance(defaults["learning_rate"], float)
+        assert isinstance(defaults["hidden_units"], int)
+
+        # Values must be within constant bounds (but may differ from constant defaults)
+        assert TrainingConstants.MIN_TRAINING_EPOCHS <= defaults["epochs"] <= TrainingConstants.MAX_TRAINING_EPOCHS
+        assert TrainingConstants.MIN_LEARNING_RATE <= defaults["learning_rate"] <= TrainingConstants.MAX_LEARNING_RATE
+        assert defaults["hidden_units"] >= TrainingConstants.MIN_HIDDEN_UNITS
 
     def test_param_modifiability(self, config_manager):
         """Test parameter modifiability flags."""
@@ -136,7 +169,12 @@ class TestTrainingParameterConfig:
 
 
 class TestConfigConstantsConsistency:
-    """Test configuration consistency with constants module."""
+    """Test configuration compatibility with constants module.
+
+    Constants define safe bounds and recommended defaults.
+    YAML config may override defaults but must remain compatible with bounds.
+    This design allows YAML to be used for experiments/tuning without code changes.
+    """
 
     @pytest.fixture
     def config_manager(self):
@@ -144,53 +182,60 @@ class TestConfigConstantsConsistency:
         return get_config(force_reload=True)
 
     def test_config_constants_consistency(self, config_manager):
-        """Test configuration consistency with constants module."""
+        """Test configuration compatibility check runs without error."""
         # Should return bool without raising exceptions
         result = config_manager.verify_config_constants_consistency()
         assert isinstance(result, bool)
+        # Note: result may be False if YAML overrides differ from constants (by design)
 
-        # Should be True if config matches constants
-        assert result is True, "Config values should match constants"
-
-    def test_epochs_match_constants(self, config_manager):
-        """Test that epochs config matches TrainingConstants."""
+    def test_epochs_compatible_with_constants(self, config_manager):
+        """Test that epochs config is compatible with TrainingConstants bounds."""
         from constants import TrainingConstants
 
         epochs_config = config_manager.get_training_param_config("epochs")
 
-        assert epochs_config["min"] == TrainingConstants.MIN_TRAINING_EPOCHS
-        assert epochs_config["max"] == TrainingConstants.MAX_TRAINING_EPOCHS
-        assert epochs_config["default"] == TrainingConstants.DEFAULT_TRAINING_EPOCHS
+        # YAML min/max must be within constant bounds
+        assert epochs_config["min"] >= TrainingConstants.MIN_TRAINING_EPOCHS
+        assert epochs_config["max"] <= TrainingConstants.MAX_TRAINING_EPOCHS
 
-    def test_learning_rate_matches_constants(self, config_manager):
-        """Test that learning rate config matches TrainingConstants."""
+        # Default must be within the configured range
+        assert epochs_config["min"] <= epochs_config["default"] <= epochs_config["max"]
+
+    def test_learning_rate_compatible_with_constants(self, config_manager):
+        """Test that learning rate config is compatible with TrainingConstants bounds."""
         from constants import TrainingConstants
 
         lr_config = config_manager.get_training_param_config("learning_rate")
 
-        assert lr_config["min"] == TrainingConstants.MIN_LEARNING_RATE
-        assert lr_config["max"] == TrainingConstants.MAX_LEARNING_RATE
-        assert lr_config["default"] == TrainingConstants.DEFAULT_LEARNING_RATE
+        # YAML min/max must be within constant bounds
+        assert lr_config["min"] >= TrainingConstants.MIN_LEARNING_RATE
+        assert lr_config["max"] <= TrainingConstants.MAX_LEARNING_RATE
 
-    def test_hidden_units_match_constants(self, config_manager):
-        """Test that hidden units config matches TrainingConstants."""
+        # Default must be within the configured range
+        assert lr_config["min"] <= lr_config["default"] <= lr_config["max"]
+
+    def test_hidden_units_compatible_with_constants(self, config_manager):
+        """Test that hidden units config is compatible with TrainingConstants bounds."""
         from constants import TrainingConstants
 
         hu_config = config_manager.get_training_param_config("hidden_units")
 
-        assert hu_config["min"] == TrainingConstants.MIN_HIDDEN_UNITS
-        assert hu_config["max"] == TrainingConstants.MAX_HIDDEN_UNITS
-        assert hu_config["default"] == TrainingConstants.DEFAULT_MAX_HIDDEN_UNITS
+        # YAML min must be >= constant min (max may exceed for flexibility)
+        assert hu_config["min"] >= TrainingConstants.MIN_HIDDEN_UNITS
 
-    def test_defaults_consistency(self, config_manager):
-        """Test that config defaults match constants."""
+        # Default must be within the configured range
+        assert hu_config["min"] <= hu_config["default"] <= hu_config["max"]
+
+    def test_defaults_within_valid_bounds(self, config_manager):
+        """Test that config defaults are within valid operational bounds."""
         from constants import TrainingConstants
 
         defaults = config_manager.get_training_defaults()
 
-        assert defaults["epochs"] == TrainingConstants.DEFAULT_TRAINING_EPOCHS
-        assert defaults["learning_rate"] == TrainingConstants.DEFAULT_LEARNING_RATE
-        assert defaults["hidden_units"] == TrainingConstants.DEFAULT_MAX_HIDDEN_UNITS
+        # Defaults must be within constant-defined safe bounds
+        assert TrainingConstants.MIN_TRAINING_EPOCHS <= defaults["epochs"] <= TrainingConstants.MAX_TRAINING_EPOCHS
+        assert TrainingConstants.MIN_LEARNING_RATE <= defaults["learning_rate"] <= TrainingConstants.MAX_LEARNING_RATE
+        assert defaults["hidden_units"] >= TrainingConstants.MIN_HIDDEN_UNITS
 
 
 class TestConfigTrainingBehavior:

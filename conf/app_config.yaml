@@ -140,8 +140,7 @@ training:
     epochs:
       min: 10
       max: 1000
-      # default: 200
-      default: 500
+      default: 500  # Override: increased from constant default (200) for longer training runs
       description: Number of training epochs to run
       modifiable_during_training: true
 
@@ -154,10 +153,8 @@ training:
 
     hidden_units:
       min: 0
-      # max: 20
-      max: 100
-      # default: 10
-      default: 40
+      max: 100  # Override: increased from constant max (20) for complex networks
+      default: 40  # Override: increased from constant default (10) for better capacity
       description: Maximum number of hidden units to add
       modifiable_during_training: false
 

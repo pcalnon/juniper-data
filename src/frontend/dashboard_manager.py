@@ -1400,15 +1400,38 @@ class DashboardManager:
         return dash.no_update
 
     def _track_param_changes_handler(self, lr, hu, epochs, applied):
-        """Enable Apply button when parameters differ from applied values."""
+        """Enable Apply button when parameters differ from applied values.
+
+        Uses float tolerance for learning_rate comparison to handle floating-point
+        precision issues that can occur with step-based input adjustments.
+
+        Args:
+            lr: Current learning rate input value
+            hu: Current max hidden units input value
+            epochs: Current max epochs input value
+            applied: Dictionary of currently applied parameter values
+
+        Returns:
+            Tuple of (disabled, status) where disabled is True if no changes
+        """
         if not applied:
             return True, ""
 
-        has_changes = (
-            lr != applied.get("learning_rate")
-            or hu != applied.get("max_hidden_units")
-            or epochs != applied.get("max_epochs")
-        )
+        def float_equal(a, b, tol=1e-9):
+            """Compare floats with tolerance to handle precision issues."""
+            if a is None or b is None:
+                return a == b
+            try:
+                return abs(float(a) - float(b)) < tol
+            except (TypeError, ValueError):
+                return False
+
+        # Use float tolerance for learning_rate comparison
+        lr_changed = not float_equal(lr, applied.get("learning_rate"))
+        hu_changed = hu != applied.get("max_hidden_units")
+        epochs_changed = epochs != applied.get("max_epochs")
+
+        has_changes = lr_changed or hu_changed or epochs_changed
 
         status = "⚠️ Unsaved changes" if has_changes else ""
         return not has_changes, status

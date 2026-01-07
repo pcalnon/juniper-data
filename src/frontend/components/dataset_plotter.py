@@ -200,29 +200,46 @@ class DatasetPlotter(BaseComponent):
             Returns:
                 Tuple of updated components
             """
-            if not dataset:
-                empty_fig = self._create_empty_plot("No dataset loaded", theme)
-                return empty_fig, empty_fig, "0", "0", "0", "N/A"
-
-            # Filter data by split
-            filtered_data = self._filter_by_split(dataset, split)
-
-            # Create plots
-            scatter_fig = self._create_scatter_plot(filtered_data, theme)
-            dist_fig = self._create_distribution_plot(filtered_data, theme)
-
-            # Calculate statistics
-            n_samples = len(filtered_data.get("inputs", []))
-            n_features = len(filtered_data["inputs"][0]) if filtered_data.get("inputs") else 0
-            targets = filtered_data.get("targets", [])
-            unique_classes = len(set(targets)) if targets else 0
-
-            # Class balance
-            balance_info = self._calculate_balance(targets) if targets else "N/A"
-
-            return (scatter_fig, dist_fig, str(n_samples), str(n_features), str(unique_classes), balance_info)
+            return self._process_dataset_update(dataset, split, theme)
 
         self.logger.debug(f"Callbacks registered for {self.component_id}")
+
+    def _process_dataset_update(self, dataset: Optional[Dict[str, Any]], split: str, theme: str) -> tuple:
+        """
+        Process dataset update and return visualization components.
+
+        This method contains the logic for the update_dataset_plots callback,
+        extracted for testability.
+
+        Args:
+            dataset: Dataset dictionary
+            split: Data split to display ('all', 'train', 'test')
+            theme: Current theme ("light" or "dark")
+
+        Returns:
+            Tuple of (scatter_fig, dist_fig, sample_count, feature_count, class_count, balance_info)
+        """
+        if not dataset:
+            empty_fig = self._create_empty_plot("No dataset loaded", theme)
+            return empty_fig, empty_fig, "0", "0", "0", "N/A"
+
+        # Filter data by split
+        filtered_data = self._filter_by_split(dataset, split)
+
+        # Create plots
+        scatter_fig = self._create_scatter_plot(filtered_data, theme)
+        dist_fig = self._create_distribution_plot(filtered_data, theme)
+
+        # Calculate statistics
+        n_samples = len(filtered_data.get("inputs", []))
+        n_features = len(filtered_data["inputs"][0]) if filtered_data.get("inputs") else 0
+        targets = filtered_data.get("targets", [])
+        unique_classes = len(set(targets)) if targets else 0
+
+        # Class balance
+        balance_info = self._calculate_balance(targets) if targets else "N/A"
+
+        return (scatter_fig, dist_fig, str(n_samples), str(n_features), str(unique_classes), balance_info)
 
     def _filter_by_split(self, dataset: Dict[str, Any], split: str) -> Dict[str, Any]:
         """
