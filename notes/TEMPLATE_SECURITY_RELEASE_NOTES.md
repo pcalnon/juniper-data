@@ -35,7 +35,7 @@ JuniperCanopy is a real-time monitoring and diagnostic frontend for Cascade Corr
 
 [EXPLANATION_OF_HOW_JUNIPERCANOPY_IS_AFFECTED]
 
-**Reference:** [Dependabot security advisory](DEPENDABOT_ALERT_URL)
+**Reference:** [Dependabot security advisory](<DEPENDABOT_ALERT_URL>)
 
 ---
 
@@ -133,7 +133,7 @@ If you encounter issues during upgrade or have questions about this advisory, pl
 
 ## References
 
-- [Dependabot Security Advisory](DEPENDABOT_ALERT_URL)
-- [<CWE_ID>: <CWE_TITLE>](CWE_URL)
+- [Dependabot Security Advisory](<DEPENDABOT_ALERT_URL>)
+- [<CWE_ID>: <CWE_TITLE>](<CWE_URL>)
 - [JuniperCanopy v[PREVIOUS_VERSION] Release Notes](RELEASE_NOTES_v[PREVIOUS_VERSION].md)
 - [CHANGELOG.md](../CHANGELOG.md)
