@@ -1812,6 +1812,33 @@ result = function_name(value1, value2)
 - Cassandra: CASSANDRA_QUICK_START.md, CASSANDRA_MANUAL.md, CASSANDRA_REFERENCE.md
 - CasCor Backend: CASCOR_BACKEND_QUICK_START.md, CASCOR_BACKEND_MANUAL.md, CASCOR_BACKEND_REFERENCE.md
 
+### Security Release Notes
+
+**Purpose:** Document security patch releases addressing vulnerabilities in dependencies or application code.
+
+**Template:** [notes/TEMPLATE_SECURITY_RELEASE_NOTES.md](notes/TEMPLATE_SECURITY_RELEASE_NOTES.md)
+
+**Required Structure:**
+
+1. **Title**: `JuniperCanopy v<VERSION> – SECURITY PATCH RELEASE`
+2. **Summary paragraph**: Brief description of vulnerability and upgrade recommendation
+3. **Security Impact table**: Vulnerable package, vulnerability class, attack vector, upstream fix
+4. **Detailed vulnerability description**: How the vulnerability works and affects JuniperCanopy
+5. **Affected Versions section**: Which versions are vulnerable and under what conditions
+6. **Remediation / Upgrade Instructions**: Step-by-step upgrade guide with Git and pip commands
+7. **Temporary Mitigation**: Workarounds if immediate upgrade is not possible
+8. **Changes section**: List of security and documentation changes
+9. **Testing & Quality table**: Test pass/skip counts, runtime, coverage
+10. **Upgrade Recommendation**: Risk-specific guidance
+11. **References**: Links to Dependabot alert, CVE/CWE, previous release notes, CHANGELOG
+
+**Naming Convention:** `RELEASE_NOTES_v<VERSION>.md`
+
+**Examples:**
+
+- [RELEASE_NOTES_v0.14.1-alpha.md](notes/RELEASE_NOTES_v0.14.1-alpha.md) - filelock TOCTOU vulnerability
+- [RELEASE_NOTES_v0.15.1-alpha.md](notes/RELEASE_NOTES_v0.15.1-alpha.md) - urllib3 decompression bomb vulnerability
+
 ## Update Triggers
 
 Clear rules for when to update each documentation type:
