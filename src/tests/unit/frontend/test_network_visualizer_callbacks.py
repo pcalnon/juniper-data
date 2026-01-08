@@ -254,14 +254,18 @@ class TestUpdateNetworkGraphCallback:
     def test_show_weights_parsing_true(self, visualizer, simple_topology):
         """Should parse show_weights=['show'] as True."""
         # Test that ['show'] is interpreted correctly
-        show_weight_labels = bool(["show"]) and ("show" in ["show"])
-        assert show_weight_labels is True
+        # show_weight_labels = bool(["show"]) and ("show" in ["show"])
+        show_weight_labels = bool(["show"]) and "show" in {"show"}
+        # assert show_weight_labels is True
+        assert show_weight_labels
 
     @pytest.mark.unit
     def test_show_weights_parsing_false(self, visualizer, simple_topology):
         """Should parse show_weights=[] as False."""
-        show_weight_labels = bool([]) and ("show" in [])
-        assert show_weight_labels is False
+        # show_weight_labels = bool([]) and ("show" in [])
+        show_weight_labels = bool([]) and "show" in {}
+        # assert show_weight_labels is False
+        assert not show_weight_labels
 
     @pytest.mark.unit
     def test_newly_added_unit_detection(self, visualizer, simple_topology):
@@ -272,9 +276,10 @@ class TestUpdateNetworkGraphCallback:
         ]
         prev_hidden = metrics_data[-2].get("network_topology", {}).get("hidden_units", 0)
         curr_hidden = metrics_data[-1].get("network_topology", {}).get("hidden_units", 0)
-        newly_added = None
-        if curr_hidden > prev_hidden:
-            newly_added = curr_hidden - 1
+        # newly_added = None
+        # if curr_hidden > prev_hidden:
+        #     newly_added = curr_hidden - 1
+        newly_added = curr_hidden - 1 if curr_hidden > prev_hidden else None
         assert newly_added == 0
 
     @pytest.mark.unit
@@ -286,9 +291,10 @@ class TestUpdateNetworkGraphCallback:
         ]
         prev_hidden = metrics_data[-2].get("network_topology", {}).get("hidden_units", 0)
         curr_hidden = metrics_data[-1].get("network_topology", {}).get("hidden_units", 0)
-        newly_added = None
-        if curr_hidden > prev_hidden:
-            newly_added = curr_hidden - 1
+        # newly_added = None
+        # if curr_hidden > prev_hidden:
+        #     newly_added = curr_hidden - 1
+        newly_added = curr_hidden - 1 if curr_hidden > prev_hidden else None
         assert newly_added is None
 
     @pytest.mark.unit
@@ -605,12 +611,14 @@ class TestHandleNodeSelectionCallback:
 
         # Handle box/lasso selection
         if "selectedData" in trigger and selected_data:
-            points = selected_data.get("points", [])
-            if points:
+            # points = selected_data.get("points", [])
+            # if points:
+            if points := selected_data.get("points", []):
                 selected_nodes = []
                 for point in points:
-                    text = point.get("text", "")
-                    if text:
+                    if text := point.get("text", ""):
+                        # text = point.get("text", "")
+                        # if text:
                         node_id = text.lower().replace(" ", "_")
                         selected_nodes.append(node_id)
 
@@ -620,11 +628,13 @@ class TestHandleNodeSelectionCallback:
 
         # Handle single click selection
         if "clickData" in trigger and click_data:
-            points = click_data.get("points", [])
-            if points:
+            if points := click_data.get("points", []):
+                # points = click_data.get("points", [])
+                # if points:
                 point = points[0]
-                text = point.get("text", "")
-                if text:
+                if text := point.get("text", ""):
+                    # text = point.get("text", "")
+                    # if text:
                     node_id = text.lower().replace(" ", "_")
 
                     # Toggle selection

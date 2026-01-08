@@ -34,6 +34,7 @@ The Candidate Node detailed information section of the Training Metrics tab was 
 2. The section should be collapsible into its heading
 3. This candidate information area should retain data from previous, completed candidate pools
 4. Previous candidate pool data should be collapsed into sub-headings
+5. Previous candidate pool data that is collapsed, should be able to be expanded by clicking the sub-heading
 
 ### Solution Implemented, P1-1
 

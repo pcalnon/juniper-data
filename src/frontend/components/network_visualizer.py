@@ -1010,14 +1010,13 @@ class NetworkVisualizer(BaseComponent):
         state = current_highlight.get("state", "active")
 
         # Check if user has selected a different node (trigger for fade)
-        if state == "active" and selected_nodes:
-            if highlight_node not in selected_nodes:
-                # User selected a different node, start fading
-                return {
-                    **current_highlight,
-                    "state": "fading",
-                    "fade_start_interval": n_intervals,
-                }
+        if state == "active" and selected_nodes and highlight_node not in selected_nodes:
+            # User selected a different node, start fading
+            return {
+                **current_highlight,
+                "state": "fading",
+                "fade_start_interval": n_intervals,
+            }
 
         # If fading, check if fade duration has elapsed
         if state == "fading":
@@ -1111,24 +1110,23 @@ class NetworkVisualizer(BaseComponent):
         # Edge highlights (draw first, behind node)
         edge_opacity = 0.5 * opacity  # More muted than node
         for from_node, to_node, data in G.edges(data=True):
-            if from_node == node_id or to_node == node_id:
-                if from_node in pos and to_node in pos:
-                    x0, y0 = pos[from_node]
-                    x1, y1 = pos[to_node]
-                    traces.append(
-                        go.Scatter(
-                            x=[x0, x1, None],
-                            y=[y0, y1, None],
-                            mode="lines",
-                            line={
-                                "width": 6,
-                                "color": f"rgba(23, 162, 184, {edge_opacity})",  # Cyan with opacity
-                            },
-                            hoverinfo="skip",
-                            showlegend=False,
-                            name="New Unit Edges",
-                        )
+            if (from_node == node_id or to_node == node_id) and from_node in pos and to_node in pos:
+                x0, y0 = pos[from_node]
+                x1, y1 = pos[to_node]
+                traces.append(
+                    go.Scatter(
+                        x=[x0, x1, None],
+                        y=[y0, y1, None],
+                        mode="lines",
+                        line={
+                            "width": 6,
+                            "color": f"rgba(23, 162, 184, {edge_opacity})",  # Cyan with opacity
+                        },
+                        hoverinfo="skip",
+                        showlegend=False,
+                        name="New Unit Edges",
                     )
+                )
 
         # Node glow effect (outer glow)
         base_glow_size = 38

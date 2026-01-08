@@ -701,10 +701,9 @@ class TestP21HighlightTraces:
             if hasattr(tn, "marker") and tn.marker and hasattr(tl, "marker") and tl.marker:
                 size_n = tn.marker.size
                 size_l = tl.marker.size
-                if size_n and size_l and size_n > 0 and size_l > 0:
-                    if size_l > size_n:
-                        size_diff_found = True
-                        break
+                if size_n and size_l and size_n > 0 and size_l > 0 and size_l > size_n:
+                    size_diff_found = True
+                    break
         assert size_diff_found, "Larger scale should produce larger marker sizes"
 
 
@@ -715,11 +714,10 @@ class TestImageDownloadFilename:
         """Graph config should include toImageButtonOptions."""
         layout = visualizer.get_layout()
         # Find the dcc.Graph component in the layout
-        graph = None
-        for child in layout.children:
-            if hasattr(child, "id") and "graph" in str(child.id):
-                graph = child
-                break
+        graph = next(
+            (child for child in layout.children if hasattr(child, "id") and "graph" in str(child.id)),
+            None,
+        )
 
         assert graph is not None, "Graph component not found in layout"
         assert "toImageButtonOptions" in graph.config
@@ -727,11 +725,10 @@ class TestImageDownloadFilename:
     def test_image_filename_has_timestamp_format(self, visualizer):
         """Image filename should contain timestamp in expected format."""
         layout = visualizer.get_layout()
-        graph = None
-        for child in layout.children:
-            if hasattr(child, "id") and "graph" in str(child.id):
-                graph = child
-                break
+        graph = next(
+            (child for child in layout.children if hasattr(child, "id") and "graph" in str(child.id)),
+            None,
+        )
 
         filename = graph.config["toImageButtonOptions"]["filename"]
         assert filename.startswith("juniper_topology_")
@@ -744,21 +741,18 @@ class TestImageDownloadFilename:
     def test_image_format_is_png(self, visualizer):
         """Image format should be PNG."""
         layout = visualizer.get_layout()
-        graph = None
-        for child in layout.children:
-            if hasattr(child, "id") and "graph" in str(child.id):
-                graph = child
-                break
+        graph = next(
+            (child for child in layout.children if hasattr(child, "id") and "graph" in str(child.id)),
+            None,
+        )
 
         assert graph.config["toImageButtonOptions"]["format"] == "png"
 
     def test_image_scale_is_2x(self, visualizer):
         """Image scale should be 2x for higher resolution."""
         layout = visualizer.get_layout()
-        graph = None
-        for child in layout.children:
-            if hasattr(child, "id") and "graph" in str(child.id):
-                graph = child
-                break
-
+        graph = next(
+            (child for child in layout.children if hasattr(child, "id") and "graph" in str(child.id)),
+            None,
+        )
         assert graph.config["toImageButtonOptions"]["scale"] == 2
