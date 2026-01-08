@@ -5,6 +5,47 @@ All notable changes to the juniper_canopy prototype will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] - 2026-01-07
+
+### Phase 2 In Progress - Polish Features
+
+Phase 2 focuses on polish features and medium-priority enhancements. Status documented in `docs/phase2/README.md`.
+
+### Added [0.17.0]
+
+- **P2-2: Unique Name Suggestion for Image Downloads**
+  - Network topology image downloads now use timestamp-based filenames
+  - Format: `juniper_topology_YYYYMMDD_HHMMSS.png`
+  - High-resolution export (2x scale)
+  - Implementation: `network_visualizer.py` lines 39, 189-193
+  - Tests: 4 new tests in `test_network_visualizer_coverage.py`
+
+- **P2-3: About Tab for Juniper Cascor Backend**
+  - New "About" tab in dashboard with application information
+  - Displays version, license (MIT), credits, documentation links, and contact info
+  - Collapsible System Information section (Python version, platform, architecture)
+  - New component: `src/frontend/components/about_panel.py`
+  - Tests: 27 new tests in `test_about_panel.py`
+
+- **Phase 2 Documentation** (`docs/phase2/README.md`)
+  - Complete documentation structure for all P2 features
+  - Status tracking, solution designs, and verification checklist
+
+### Changed [0.17.0]
+
+- **DashboardManager** now registers 5 components (added AboutPanel)
+- Updated component count tests in:
+  - `test_dashboard_enhancements.py`
+  - `test_dashboard_manager.py`
+  - `test_dashboard_manager_coverage.py`
+
+### Test Results [0.17.0]
+
+- **2160 passed**, 37 skipped (26 new tests added)
+- Coverage maintained at 95%+
+
+---
+
 ## [0.16.0] - 2026-01-07
 
 ### Phase 1 Complete - High-Impact Enhancements
@@ -46,6 +87,10 @@ All Phase 1 items validated and documented. Phase 1 README created at `docs/phas
   - Complete documentation of all P1 implementations
   - Root cause analysis and solution details
   - Verification checklist
+
+- **PR Description** (`notes/PR_PHASE1_VALIDATION_2026-01-07.md`)
+  - Pull request documentation for Phase 1 validation
+  - Summary of all validated features and changes
 
 ### Test Results [0.16.0]
 

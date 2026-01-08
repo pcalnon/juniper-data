@@ -31,7 +31,7 @@ class TestDashboardManagerInitialization:
         # trunk-ignore(bandit/B101)
         assert isinstance(manager.app, dash.Dash)
         # trunk-ignore(bandit/B101)
-        assert len(manager.components) == 4  # 4 core components
+        assert len(manager.components) == 5  # 5 core components: metrics, network, dataset, decision, about
 
     def test_init_with_full_config(self):
         """Test initialization with complete configuration."""

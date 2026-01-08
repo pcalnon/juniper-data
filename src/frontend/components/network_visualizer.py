@@ -4,10 +4,10 @@
 # Prototype:     Monitoring and Diagnostic Frontend for Cascade Correlation Neural Network
 # File Name:     network_visualizer.py
 # Author:        Paul Calnon
-# Version:       1.4.0
+# Version:       1.5.0
 #
 # Date:          2025-10-11
-# Last Modified: 2025-12-03
+# Last Modified: 2026-01-07
 #
 # License:       MIT License
 # Copyright:     Copyright (c) 2024-2025 Paul Calnon
@@ -37,7 +37,9 @@
 #####################################################################################################################################################################################################
 import hashlib
 import json
-from typing import Any, Dict, List, Tuple
+import math
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
 
 import networkx as nx
 import plotly.graph_objects as go
@@ -186,6 +188,11 @@ class NetworkVisualizer(BaseComponent):
                         "displayModeBar": True,
                         "displaylogo": False,
                         "modeBarButtonsToAdd": ["select2d", "lasso2d"],
+                        "toImageButtonOptions": {
+                            "filename": f"juniper_topology_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                            "format": "png",
+                            "scale": 2,
+                        },
                     },
                     style={"height": "600px"},
                 ),
@@ -204,6 +211,12 @@ class NetworkVisualizer(BaseComponent):
                 dcc.Store(id=f"{self.component_id}-topology-hash", data=None),
                 # Selected nodes store
                 dcc.Store(id=f"{self.component_id}-selected-nodes", data=[]),
+                # New node highlight state for P2-1: persistent highlighting with fade
+                # Structure: {node_id, unit_index, state (active/fading), start_interval, fade_start_interval}
+                dcc.Store(
+                    id=f"{self.component_id}-new-node-highlight",
+                    data=None,
+                ),
             ],
             style={"padding": "20px"},
         )

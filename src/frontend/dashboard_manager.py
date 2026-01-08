@@ -4,10 +4,10 @@
 # Prototype:     Monitoring and Diagnostic Frontend for Cascade Correlation Neural Network
 # File Name:     dashboard_manager.py
 # Author:        Paul Calnon
-# Version:       0.1.9
+# Version:       0.2.0
 #
 # Date:          2025-10-11
-# Last Modified: 2025-12-13
+# Last Modified: 2026-01-07
 #
 # License:       MIT License
 # Copyright:     Copyright (c) 2024-2025 Paul Calnon
@@ -51,6 +51,7 @@ from constants import DashboardConstants, TrainingConstants
 
 from .base_component import BaseComponent
 from .callback_context import get_callback_context
+from .components.about_panel import AboutPanel
 from .components.dataset_plotter import DatasetPlotter
 from .components.decision_boundary import DecisionBoundary
 from .components.metrics_panel import MetricsPanel
@@ -176,11 +177,14 @@ class DashboardManager:
             self.config.get("decision_boundary", {}), component_id="decision-boundary"
         )
 
+        self.about_panel = AboutPanel(self.config.get("about_panel", {}), component_id="about-panel")
+
         # Register components
         self.register_component(self.metrics_panel)
         self.register_component(self.network_visualizer)
         self.register_component(self.dataset_plotter)
         self.register_component(self.decision_boundary)
+        self.register_component(self.about_panel)
 
         self.logger.info("All MVP components initialized and registered")
 
@@ -538,6 +542,11 @@ class DashboardManager:
                                             self.dataset_plotter.get_layout(),
                                             label="Dataset View",
                                             tab_id="dataset",
+                                        ),
+                                        dbc.Tab(
+                                            self.about_panel.get_layout(),
+                                            label="About",
+                                            tab_id="about",
                                         ),
                                     ],
                                     id="visualization-tabs",

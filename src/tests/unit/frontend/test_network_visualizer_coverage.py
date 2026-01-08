@@ -419,3 +419,59 @@ class TestEdgeCases:
         }
         fig = visualizer._create_network_graph(topology, "hierarchical", True)
         assert isinstance(fig, go.Figure)
+
+
+class TestImageDownloadFilename:
+    """Test P2-2: Unique name suggestion for image downloads."""
+
+    def test_graph_config_has_to_image_button_options(self, visualizer):
+        """Graph config should include toImageButtonOptions."""
+        layout = visualizer.get_layout()
+        # Find the dcc.Graph component in the layout
+        graph = None
+        for child in layout.children:
+            if hasattr(child, "id") and "graph" in str(child.id):
+                graph = child
+                break
+
+        assert graph is not None, "Graph component not found in layout"
+        assert "toImageButtonOptions" in graph.config
+
+    def test_image_filename_has_timestamp_format(self, visualizer):
+        """Image filename should contain timestamp in expected format."""
+        layout = visualizer.get_layout()
+        graph = None
+        for child in layout.children:
+            if hasattr(child, "id") and "graph" in str(child.id):
+                graph = child
+                break
+
+        filename = graph.config["toImageButtonOptions"]["filename"]
+        assert filename.startswith("juniper_topology_")
+        # Filename format: juniper_topology_YYYYMMDD_HHMMSS
+        # Extract the timestamp part and validate format
+        timestamp_part = filename.replace("juniper_topology_", "")
+        assert len(timestamp_part) == 15  # YYYYMMDD_HHMMSS
+        assert timestamp_part[8] == "_"  # Separator between date and time
+
+    def test_image_format_is_png(self, visualizer):
+        """Image format should be PNG."""
+        layout = visualizer.get_layout()
+        graph = None
+        for child in layout.children:
+            if hasattr(child, "id") and "graph" in str(child.id):
+                graph = child
+                break
+
+        assert graph.config["toImageButtonOptions"]["format"] == "png"
+
+    def test_image_scale_is_2x(self, visualizer):
+        """Image scale should be 2x for higher resolution."""
+        layout = visualizer.get_layout()
+        graph = None
+        for child in layout.children:
+            if hasattr(child, "id") and "graph" in str(child.id):
+                graph = child
+                break
+
+        assert graph.config["toImageButtonOptions"]["scale"] == 2

@@ -263,9 +263,9 @@ For detailed implementation plans, see:
 | **P1**   | Network Topology Tab: Staggered hidden node layout                     | ✅ Done     | 1     |
 | **P1**   | Network Topology Tab: Mouse click events for node selection            | ✅ Done     | 1     |
 | **P2**   | Network Topology Tab: Visual indicator for most recently added node    | Not Started | 2     |
-| **P2**   | Network Topology Tab: Unique name suggestion for image downloads       | Not Started | 2     |
+| **P2**   | Network Topology Tab: Unique name suggestion for image downloads       | ✅ Done     | 2     |
 | **P3**   | Network Topology Tab: 3D interactive view                              | Not Started | 3     |
-| **P2**   | About Tab for Juniper Cascor backend                                   | Not Started | 2     |
+| **P2**   | About Tab for Juniper Cascor backend                                   | ✅ Done     | 2     |
 | **P3**   | Cassandra Integration and Monitoring Tab                               | Not Started | 3     |
 | **P3**   | Cassandra Tab: Display cluster state                                   | Not Started | 3     |
 | **P3**   | Cassandra Tab: Display usage stats                                     | Not Started | 3     |
