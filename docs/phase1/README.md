@@ -111,7 +111,7 @@ Users needed the ability to replay the training process:
      - ⏮ Go to start button
      - ◀ Step backward button  
      - ▶ Play/Pause button
-     - ▶ Step forward button
+     - ⏩ Step forward button
      - ⏭ Go to end button
      - Speed selector (1x, 2x, 4x)
      - Progress slider with position display
