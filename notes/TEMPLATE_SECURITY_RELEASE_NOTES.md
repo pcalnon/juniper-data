@@ -2,12 +2,10 @@
 
 **Purpose:** This template defines the required structure, formatting, and organization for all JuniperCanopy security patch release notes.
 
-**Usage:** CopMD022/blanks-around-headings: Headings should be surrounded by blank lines [Expected: 1; Actual: 0; Above]markdownlintMD022
-MD025/single-title/single-h1: Multiple top-level headings in the same documentmarkdownlintMD025y this template and replace placeholder text (indicated by `[PLACEHOLDER]`) with actual release information.
+**Usage:** Copy this template and replace placeholder text (indicated by `[PLACEHOLDER]`) with actual release information.
 
 ---
 
-trunk-ignore(ruff/E402)
 # JuniperCanopy v[VERSION] – 🔒 SECURITY PATCH RELEASE
 
 **Release Date:** [RELEASE_DATE]
@@ -113,12 +111,12 @@ However, the **recommended** and supported remediation is to upgrade to **v[VERS
 
 ## Testing & Quality
 
-| Metric | Result |
-| -------- | -------- |
-| **Tests passed** | [NUM_PASSED] |
-| **Tests skipped** | [NUM_SKIPPED] |
-| **Runtime** | [RUNTIME_SECONDS] seconds |
-| **Coverage** | [COVERAGE_PERCENT]% overall |
+| Metric            | Result                      |
+| ----------------- | --------------------------- |
+| **Tests passed**  | [NUM_PASSED]                |
+| **Tests skipped** | [NUM_SKIPPED]               |
+| **Runtime**       | [RUNTIME_SECONDS] seconds   |
+| **Coverage**      | [COVERAGE_PERCENT]% overall |
 
 These results cover the updated dependency set and related code paths.
 
