@@ -48,25 +48,25 @@ This PR delivers a critical security patch addressing a urllib3 decompression bo
 
 ## Files Changed
 
-| File | Change Type | Description |
-|------|-------------|-------------|
-| `conf/requirements.txt` | Modified | urllib3 pinned to `>=2.6.3` |
-| `notes/RELEASE_NOTES_v0.15.1-alpha.md` | Added | Security release documentation |
-| `notes/TEMPLATE_SECURITY_RELEASE_NOTES.md` | Added | Reusable security release template |
-| `AGENTS.md` | Modified | Added Security Release Notes section |
-| `.markdownlint.json` | Modified | Template compatibility rules |
+| File                                       | Change Type | Description                          |
+| ------------------------------------------ | ----------- | ------------------------------------ |
+| `conf/requirements.txt`                    | Modified    | urllib3 pinned to `>=2.6.3`          |
+| `notes/RELEASE_NOTES_v0.15.1-alpha.md`     | Added       | Security release documentation       |
+| `notes/TEMPLATE_SECURITY_RELEASE_NOTES.md` | Added       | Reusable security release template   |
+| `AGENTS.md`                                | Modified    | Added Security Release Notes section |
+| `.markdownlint.json`                       | Modified    | Template compatibility rules         |
 
 ---
 
 ## Security Impact
 
-| Attribute | Value |
-|-----------|-------|
-| **Severity** | High |
-| **Vulnerable Package** | urllib3 ≤2.6.2 |
-| **Vulnerability** | Decompression bomb (CWE-409) |
-| **Attack Vector** | Malicious HTTP redirect responses |
-| **Fix** | urllib3 ≥2.6.3 |
+| Attribute              | Value                             |
+| ---------------------- | --------------------------------- |
+| **Severity**           | High                              |
+| **Vulnerable Package** | urllib3 ≤2.6.2                    |
+| **Vulnerability**      | Decompression bomb (CWE-409)      |
+| **Attack Vector**      | Malicious HTTP redirect responses |
+| **Fix**                | urllib3 ≥2.6.3                    |
 
 ---
 
@@ -74,11 +74,11 @@ This PR delivers a critical security patch addressing a urllib3 decompression bo
 
 All existing tests pass. No new tests required for this security/documentation update.
 
-| Metric | Result |
-|--------|--------|
-| Tests Passed | 2247 |
-| Tests Skipped | 34 |
-| Coverage | 95%+ |
+| Metric        | Result |
+| ------------- | ------ |
+| Tests Passed  | 2247   |
+| Tests Skipped | 34     |
+| Coverage      | 95%+   |
 
 ---
 
