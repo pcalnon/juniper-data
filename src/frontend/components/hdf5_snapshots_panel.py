@@ -900,7 +900,6 @@ class HDF5SnapshotsPanel(BaseComponent):
                 return False, "", None
 
             import json
-
             with contextlib.suppress(json.JSONDecodeError, IndexError):
                 id_str = prop_id.rsplit(".", 1)[0]
                 id_dict = json.loads(id_str)
