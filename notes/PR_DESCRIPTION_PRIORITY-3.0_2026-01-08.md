@@ -50,7 +50,7 @@ This PR delivers a critical security patch addressing a urllib3 decompression bo
 
 | File                                       | Change Type | Description                          |
 | ------------------------------------------ | ----------- | ------------------------------------ |
-| `conf/requirements.txt`                    | Modified    | urllib3 pinned to `>=2.6.3`          |
+| `conf/requirements.txt`                    | Modified    | urllib3 pinned to `~=2.6.3`          |
 | `notes/RELEASE_NOTES_v0.15.1-alpha.md`     | Added       | Security release documentation       |
 | `notes/TEMPLATE_SECURITY_RELEASE_NOTES.md` | Added       | Reusable security release template   |
 | `AGENTS.md`                                | Modified    | Added Security Release Notes section |
