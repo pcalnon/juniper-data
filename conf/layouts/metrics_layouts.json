@@ -1,0 +1,14 @@
+{
+  "testing_123": {
+    "name": "testing_123",
+    "created": "2026-01-09T21:35:57.636602+00:00Z",
+    "description": "",
+    "selected_metrics": [
+      "loss",
+      "accuracy"
+    ],
+    "zoom_ranges": {},
+    "smoothing_window": 10,
+    "hyperparameters": {}
+  }
+}
