@@ -5,41 +5,6 @@ All notable changes to the juniper_canopy prototype will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.18.1] - 2026-01-08
-
-### Security Patch Release - urllib3 Decompression Bomb Vulnerability
-
-This release addresses a critical security vulnerability in the urllib3 dependency. Full details in `notes/RELEASE_NOTES_v0.15.1-alpha.md`.
-
-### Security [0.18.1]
-
-- **urllib3 Dependency Update**: `≤2.6.2 → >=2.6.3`
-  - Addresses decompression bomb vulnerability (CWE-409)
-  - Malicious servers could exploit HTTP redirect handling to cause excessive resource consumption
-  - Reference: [Dependabot Alert #2](https://github.com/pcalnon/Juniper/security/dependabot/2)
-
-### Added [0.18.1]
-
-- **Security Release Notes** (`notes/RELEASE_NOTES_v0.15.1-alpha.md`)
-  - Complete security advisory documentation
-  - Remediation and upgrade instructions
-  - Follows standardized security release notes format
-
-- **Security Release Notes Template** (`notes/TEMPLATE_SECURITY_RELEASE_NOTES.md`)
-  - Reusable template for future security releases
-  - Defines required structure with 11 sections
-  - Placeholder markers for easy customization
-
-- **AGENTS.md Documentation Standards**
-  - Added "Security Release Notes" section under Documentation File Types
-  - References template as required format for all security releases
-  - Links to example release notes (v0.14.1-alpha, v0.15.1-alpha)
-
-### Changed [0.18.1]
-
-- **conf/requirements.txt**: urllib3 pinned to `~=2.6.3`
-- **.markdownlint.json**: Updated rules for template file compatibility
-
 ---
 
 ## [0.18.0] - 2026-01-08
@@ -183,6 +148,49 @@ All Phase 1 items validated and documented. Phase 1 README created at `docs/phas
 
 - **2134 passed**, 32 skipped
 - All Phase 1 issues validated
+- Coverage maintained at 95%+
+
+---
+
+## [0.15.1] - 2026-01-07
+
+### Security Patch Release - urllib3 Decompression Bomb Vulnerability
+
+This release addresses a critical security vulnerability in the `urllib3` dependency. Full details in `notes/RELEASE_NOTES_v0.15.1-alpha.md`.
+
+### Security [0.15.1]
+
+- **urllib3 Dependency Update**: `≤2.6.2 → >=2.6.3`
+  - Addresses decompression bomb vulnerability (CWE-409)
+  - Malicious servers could exploit HTTP redirect handling to cause excessive resource consumption
+  - Attack vector: Malicious HTTP redirect responses with compressed content
+  - Reference: [Dependabot Alert #2](https://github.com/pcalnon/Juniper/security/dependabot/2)
+
+### Added [0.15.1]
+
+- **Security Release Notes** (`notes/RELEASE_NOTES_v0.15.1-alpha.md`)
+  - Complete security advisory documentation
+  - Remediation and upgrade instructions
+  - Follows standardized security release notes format
+
+- **Security Release Notes Template** (`notes/TEMPLATE_SECURITY_RELEASE_NOTES.md`)
+  - Reusable template for future security releases
+  - Defines required structure with 11 sections
+  - Placeholder markers for easy customization
+
+- **AGENTS.md Documentation Standards**
+  - Added "Security Release Notes" section under Documentation File Types
+  - References template as required format for all security releases
+  - Links to example release notes (v0.14.1-alpha, v0.15.1-alpha)
+
+### Changed [0.15.1]
+
+- **conf/requirements.txt**: urllib3 pinned to `~=2.6.3`
+- **.markdownlint.json**: Updated rules for template file compatibility
+
+### Test Results [0.15.1]
+
+- **2247 passed**, 34 skipped
 - Coverage maintained at 95%+
 
 ---

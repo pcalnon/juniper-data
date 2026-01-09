@@ -1,6 +1,6 @@
 # JuniperCanopy v0.15.1-alpha – 🔒 SECURITY PATCH RELEASE
 
-**Release Date:** 2023-04-11
+**Release Date:** 2026-01-08
 **Release Type:** Security Patch  
 **Priority:** High
 **Package Affected:** JuniperCanopy
