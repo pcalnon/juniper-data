@@ -3,10 +3,11 @@
 **Purpose:** This template defines the required structure, formatting, and organization for all JuniperCanopy security patch release notes.
 
 **Usage:** Copy this template and replace placeholder text (indicated by `[PLACEHOLDER]`) with actual release information.
+**Emoji usage:** Use emoji shortcodes (for example, `:lock:`) instead of raw emoji characters to ensure consistent rendering across Markdown viewers.
 
 ---
 
-# JuniperCanopy v[VERSION] – 🔒 SECURITY PATCH RELEASE
+# JuniperCanopy v[VERSION] – :lock: SECURITY PATCH RELEASE
 
 **Release Date:** [RELEASE_DATE]
 **Release Type:** Security Patch  
