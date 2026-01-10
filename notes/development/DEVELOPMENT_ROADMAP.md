@@ -1,8 +1,8 @@
 # Juniper Canopy Fixes and Enhancements
 
 **Last Updated:** 2026-01-09  
-**Version:** 2.7.0  
-**Status:** Phase 3 In Progress (Wave 1 & 2 Complete - P3-1 through P3-5 Verified)
+**Version:** 2.8.0  
+**Status:** Phase 3 Complete (All Waves Complete - P3-1 through P3-7 Done)
 
 ## Implementation Plan
 
@@ -256,7 +256,7 @@ For detailed implementation plans, see:
 | **P1**   | Training Metrics Tab: Candidate info section display/collapsibility    | ✅ Done     | 1     |
 | **P0**   | Training Metrics Tab: Graph range selection not persisting             | ✅ Done     | 0     |
 | **P1**   | Training Metrics Tab: Add replay functionality                         | ✅ Done     | 1     |
-| **P3**   | Training Metrics Tab: Add Save/Load buttons                            | Not Started | 3     |
+| **P3**   | Training Metrics Tab: Add Save/Load buttons                            | ✅ Done     | 3     |
 | **P0**   | Network Topology Tab: Dark mode info bar background                    | ✅ Done     | 0     |
 | **P0**   | Network Topology Tab: Pan/Lasso tools performing Box Select            | ✅ Done     | 0     |
 | **P0**   | Network Topology Tab: Node interactions resetting after ~1 second      | ✅ Done     | 0     |
@@ -264,18 +264,18 @@ For detailed implementation plans, see:
 | **P1**   | Network Topology Tab: Mouse click events for node selection            | ✅ Done     | 1     |
 | **P2**   | Network Topology Tab: Visual indicator for most recently added node    | ✅ Done     | 2     |
 | **P2**   | Network Topology Tab: Unique name suggestion for image downloads       | ✅ Done     | 2     |
-| **P3**   | Network Topology Tab: 3D interactive view                              | Not Started | 3     |
+| **P3**   | Network Topology Tab: 3D interactive view                              | ✅ Done     | 3     |
 | **P2**   | About Tab for Juniper Cascor backend                                   | ✅ Done     | 2     |
-| **P3**   | Cassandra Integration and Monitoring Tab                               | Not Started | 3     |
-| **P3**   | Cassandra Tab: Display cluster state                                   | Not Started | 3     |
-| **P3**   | Cassandra Tab: Display usage stats                                     | Not Started | 3     |
-| **P3**   | Cassandra Tab: Display/edit db schema                                  | Not Started | 3     |
-| **P3**   | Cassandra Tab: Manage cluster options                                  | Not Started | 3     |
-| **P3**   | Redis Integration and Monitoring Tab                                   | Not Started | 3     |
-| **P3**   | Redis Tab: Display cluster state                                       | Not Started | 3     |
-| **P3**   | Redis Tab: Display usage stats                                         | Not Started | 3     |
-| **P3**   | Redis Tab: Display/edit db schema                                      | Not Started | 3     |
-| **P3**   | Redis Tab: Manage cluster options                                      | Not Started | 3     |
+| **P3**   | Cassandra Integration and Monitoring Tab                               | ✅ Done     | 3     |
+| **P3**   | Cassandra Tab: Display cluster state                                   | ✅ Done     | 3     |
+| **P3**   | Cassandra Tab: Display usage stats                                     | ✅ Done     | 3     |
+| **P3**   | Cassandra Tab: Display/edit db schema                                  | ✅ Done     | 3     |
+| **P3**   | Cassandra Tab: Manage cluster options                                  | ✅ Done     | 3     |
+| **P3**   | Redis Integration and Monitoring Tab                                   | ✅ Done     | 3     |
+| **P3**   | Redis Tab: Display cluster state                                       | ✅ Done     | 3     |
+| **P3**   | Redis Tab: Display usage stats                                         | ✅ Done     | 3     |
+| **P3**   | Redis Tab: Display/edit db schema                                      | ✅ Done     | 3     |
+| **P3**   | Redis Tab: Manage cluster options                                      | ✅ Done     | 3     |
 | **P2**   | HDF5 Snapshot Tab: List available snapshots                            | ✅ Done     | 2     |
 | **P2**   | HDF5 Tab: Show snapshot details (timestamp, size, etc.)                | ✅ Done     | 2     |
 | **P3**   | HDF5 Tab: Create new snapshot                                          | ✅ Done     | 3     |

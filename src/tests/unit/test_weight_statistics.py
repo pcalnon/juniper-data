@@ -230,6 +230,77 @@ class TestInputValidation:
         assert abs(stats["mean"] - 3.5) < 1e-6
 
 
+class TestExceptionHandling:
+    """Test exception handling in statistics computation."""
+
+    def test_skewness_exception_handling(self, monkeypatch):
+        """Test that skewness exception is caught and returns 0.0."""
+        from scipy import stats as scipy_stats
+
+        def mock_skew(*args, **kwargs):
+            raise RuntimeError("Simulated skewness failure")
+
+        monkeypatch.setattr(scipy_stats, "skew", mock_skew)
+
+        weights = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+        result = compute_weight_statistics(weights)
+
+        assert result["skewness"] == 0.0
+
+    def test_kurtosis_exception_handling(self, monkeypatch):
+        """Test that kurtosis exception is caught and returns 0.0."""
+        from scipy import stats as scipy_stats
+
+        def mock_kurtosis(*args, **kwargs):
+            raise RuntimeError("Simulated kurtosis failure")
+
+        monkeypatch.setattr(scipy_stats, "kurtosis", mock_kurtosis)
+
+        weights = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+        result = compute_weight_statistics(weights)
+
+        assert result["kurtosis"] == 0.0
+
+    def test_both_skewness_and_kurtosis_exceptions(self, monkeypatch):
+        """Test that both exceptions can occur and be handled."""
+        from scipy import stats as scipy_stats
+
+        def mock_skew(*args, **kwargs):
+            raise ValueError("Skew computation error")
+
+        def mock_kurtosis(*args, **kwargs):
+            raise ValueError("Kurtosis computation error")
+
+        monkeypatch.setattr(scipy_stats, "skew", mock_skew)
+        monkeypatch.setattr(scipy_stats, "kurtosis", mock_kurtosis)
+
+        weights = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+        result = compute_weight_statistics(weights)
+
+        assert result["skewness"] == 0.0
+        assert result["kurtosis"] == 0.0
+        assert result["mean"] == 3.0
+
+    def test_zero_std_dev_z_score_fallback(self, monkeypatch):
+        """Test z-score fallback when std_dev is 0 (bypasses constant check)."""
+        weights = np.array([1.0, 2.0, 3.0])
+
+        original_std = np.std
+
+        def mock_std(arr, ddof=0):
+            return 0.0
+
+        monkeypatch.setattr(np, "std", mock_std)
+
+        result = compute_weight_statistics(weights)
+
+        z_dist = result["z_score_distribution"]
+        assert z_dist["within_1_sigma"] == 3
+        assert z_dist["within_2_sigma"] == 3
+        assert z_dist["within_3_sigma"] == 3
+        assert z_dist["beyond_3_sigma"] == 0
+
+
 class TestStatisticalAccuracy:
     """Test accuracy of statistical computations."""
 

@@ -1588,6 +1588,90 @@ async def delete_metrics_layout(name: str):
     }
 
 
+# ============================================================================
+# Redis Monitoring API (P3-6)
+# ============================================================================
+
+
+@app.get("/api/v1/redis/status")
+async def get_redis_status():
+    """
+    Get Redis health and availability status (P3-6).
+
+    Always returns HTTP 200 with a 'status' field:
+    - DISABLED: Feature disabled via config or missing driver
+    - UNAVAILABLE: Enabled but cannot connect
+    - UP: Redis connection is healthy
+    - DOWN: Redis connection failed
+
+    Returns:
+        JSON object with status, mode, message, and details
+    """
+    from backend.redis_client import get_redis_client
+
+    client = get_redis_client()
+    return client.get_status()
+
+
+@app.get("/api/v1/redis/metrics")
+async def get_redis_metrics():
+    """
+    Get Redis usage metrics (P3-6).
+
+    Returns metrics including memory usage, connection stats,
+    keyspace info, and hit rates.
+
+    Returns:
+        JSON object with status, mode, message, and metrics
+    """
+    from backend.redis_client import get_redis_client
+
+    client = get_redis_client()
+    return client.get_metrics()
+
+
+# ============================================================================
+# Cassandra Monitoring API (P3-7)
+# ============================================================================
+
+
+@app.get("/api/v1/cassandra/status")
+async def get_cassandra_status():
+    """
+    Get Cassandra cluster health and availability status (P3-7).
+
+    Always returns HTTP 200 with a 'status' field:
+    - DISABLED: Feature disabled via config or missing driver
+    - UNAVAILABLE: Enabled but cannot connect
+    - UP: Cluster connection is healthy
+    - DOWN: Cluster connection failed
+
+    Returns:
+        JSON object with status, mode, message, and details (hosts, keyspace, etc.)
+    """
+    from backend.cassandra_client import get_cassandra_client
+
+    client = get_cassandra_client()
+    return client.get_status()
+
+
+@app.get("/api/v1/cassandra/metrics")
+async def get_cassandra_metrics():
+    """
+    Get Cassandra keyspace and table metrics (P3-7).
+
+    Returns metrics including keyspace counts, table information,
+    and cluster statistics.
+
+    Returns:
+        JSON object with status, mode, message, and metrics
+    """
+    from backend.cassandra_client import get_cassandra_client
+
+    client = get_cassandra_client()
+    return client.get_metrics()
+
+
 @app.websocket("/ws")
 async def ws_endpoint(websocket: WebSocket):
     """

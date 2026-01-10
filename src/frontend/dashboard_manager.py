@@ -52,11 +52,13 @@ from constants import DashboardConstants, TrainingConstants
 from .base_component import BaseComponent
 from .callback_context import get_callback_context
 from .components.about_panel import AboutPanel
+from .components.cassandra_panel import CassandraPanel
 from .components.dataset_plotter import DatasetPlotter
 from .components.decision_boundary import DecisionBoundary
 from .components.hdf5_snapshots_panel import HDF5SnapshotsPanel
 from .components.metrics_panel import MetricsPanel
 from .components.network_visualizer import NetworkVisualizer
+from .components.redis_panel import RedisPanel
 
 
 class DashboardManager:
@@ -184,6 +186,12 @@ class DashboardManager:
             self.config.get("hdf5_snapshots_panel", {}), component_id="hdf5-snapshots-panel"
         )
 
+        # P3-6: Redis Monitoring Panel
+        self.redis_panel = RedisPanel(self.config.get("redis_panel", {}), component_id="redis-panel")
+
+        # P3-7: Cassandra Monitoring Panel
+        self.cassandra_panel = CassandraPanel(self.config.get("cassandra_panel", {}), component_id="cassandra-panel")
+
         # Register components
         self.register_component(self.metrics_panel)
         self.register_component(self.network_visualizer)
@@ -191,6 +199,8 @@ class DashboardManager:
         self.register_component(self.decision_boundary)
         self.register_component(self.about_panel)
         self.register_component(self.hdf5_snapshots_panel)
+        self.register_component(self.redis_panel)
+        self.register_component(self.cassandra_panel)
 
         self.logger.info("All MVP components initialized and registered")
 
@@ -553,6 +563,16 @@ class DashboardManager:
                                             self.hdf5_snapshots_panel.get_layout(),
                                             label="HDF5 Snapshots",
                                             tab_id="snapshots",
+                                        ),
+                                        dbc.Tab(
+                                            self.redis_panel.get_layout(),
+                                            label="Redis",
+                                            tab_id="redis",
+                                        ),
+                                        dbc.Tab(
+                                            self.cassandra_panel.get_layout(),
+                                            label="Cassandra",
+                                            tab_id="cassandra",
                                         ),
                                         dbc.Tab(
                                             self.about_panel.get_layout(),
