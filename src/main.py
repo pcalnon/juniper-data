@@ -919,7 +919,6 @@ async def get_snapshot_history(limit: int = 50):
     Returns:
         JSON object with history entries array
     """
-    import json
     from pathlib import Path
 
     history_file = Path(_snapshots_dir) / "snapshot_history.jsonl"
