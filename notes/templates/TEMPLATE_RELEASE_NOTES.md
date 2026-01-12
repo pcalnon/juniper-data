@@ -4,7 +4,15 @@
 
 **Usage:** Copy this template and replace placeholder text (indicated by `[PLACEHOLDER]`) with actual release information. For security patch releases, use `TEMPLATE_SECURITY_RELEASE_NOTES.md` instead.
 
-**Naming Convention:** `RELEASE_NOTES_v[VERSION].md` (e.g., `RELEASE_NOTES_v0.23.0.md`)
+**Naming Convention:** `RELEASE_NOTES_v[VERSION].md` (e.g., `RELEASE_NOTES_v0.23.0.md`, `RELEASE_NOTES_v0.24.0-alpha.md`)
+
+**Location:** Save release notes to `notes/releases/` directory.
+
+**Related Templates:**
+
+- `TEMPLATE_SECURITY_RELEASE_NOTES.md` – For security patch releases
+- `TEMPLATE_PULL_REQUEST_DESCRIPTION.md` – For accompanying PR descriptions
+- `TEMPLATE_ISSUE_TRACKING.md` – For bug/issue documentation
 
 ---
 
@@ -12,7 +20,7 @@
 
 **Release Date:** [YYYY-MM-DD]  
 **Version:** [X.Y.Z] or [X.Y.Z-STAGE] (e.g., 0.23.0, 0.24.0-alpha)  
-**Codename:** [OPTIONAL_CODENAME] (e.g., Phase 3 Complete)  
+**Codename:** [OPTIONAL_CODENAME] (e.g., Phase 3 Complete, Refactor Verified)  
 **Release Type:** [PATCH|MINOR|MAJOR|ALPHA|BETA]
 
 ---
@@ -28,20 +36,31 @@
 ## Release Summary
 
 - **Release type:** [PATCH|MINOR|MAJOR]
-- **Primary focus:** [E.G._BUG_FIXES|NEW_FEATURES|PERFORMANCE|STABILITY]
+- **Primary focus:** [E.G._BUG_FIXES|NEW_FEATURES|PERFORMANCE|STABILITY|VERIFICATION|DOCUMENTATION]
 - **Breaking changes:** [YES|NO]
-- **Priority summary:** [E.G._P0_BUGS_FIXED|KEY_P1_FEATURES_DELIVERED]
+- **Priority summary:** [E.G._P0_BUGS_FIXED|KEY_P1_FEATURES_DELIVERED|ALL_PHASES_COMPLETE]
 
 ---
 
 ## Features Summary
 
-<!-- Optional: Use for releases with multiple features across phases -->
+<!-- Use for releases with multiple features. Include cumulative phase status for milestone releases. -->
 
 | ID     | Feature                | Status   | Version | Phase |
 | ------ | ---------------------- | -------- | ------- | ----- |
 | [P#-N] | [FEATURE_NAME]         | ✅ Done  | [X.Y.Z] | [0-3] |
 | [P#-N] | [FEATURE_NAME]         | Planned  | -       | [0-3] |
+
+<!-- Optional: Cumulative Phase Status (for milestone releases) -->
+
+**Cumulative Phase Status:**
+
+| Phase | Items | Status |
+| ----- | ----- | ------ |
+| Phase 0: [PHASE_TITLE] | [N] items | ✅ Complete |
+| Phase 1: [PHASE_TITLE] | [N] items | ✅ Complete |
+| Phase 2: [PHASE_TITLE] | [N] items | 🔄 In Progress |
+| Phase 3: [PHASE_TITLE] | [N] items | 📋 Planned |
 
 ---
 
@@ -96,6 +115,17 @@
 | Component | Before | After | Change |
 | --------- | ------ | ----- | ------ |
 | [FILE]    | [N]%   | [N]%  | +[N]%  |
+
+<!-- Optional: Test count growth for multi-version releases -->
+
+### Test Count Growth
+
+| Version | Tests | Change |
+| ------- | ----- | ------ |
+| [X.Y.Z] | [N]   | —      |
+| [X.Y.Z] | [N]   | +[N]   |
+
+**Total new tests since v[BASELINE]:** [N] tests
 
 ---
 
@@ -186,6 +216,11 @@ cd src && pytest tests/ -v
 - [ISSUE_SUMMARY] – [WORKAROUND_OR_N/A] (see [ISSUE-XXX])
 - [ISSUE_SUMMARY] – Expected fix in v[VERSION]
 
+<!-- Common patterns for known issues -->
+
+- **[COMPONENT] coverage at [N]%:** [EXPLANATION_WHY_NOT_HIGHER]. Not a functional issue.
+- **Documentation drift:** [BRIEF_DESCRIPTION]. To be addressed in future maintenance.
+
 <!-- If no known issues -->
 None known at time of release.
 
@@ -227,7 +262,18 @@ See [Development Roadmap](../../DEVELOPMENT_ROADMAP.md) for full details.
 ## Links
 
 - [Full Changelog](../../CHANGELOG.md)
-- [Development Roadmap](../development/DEVELOPMENT_ROADMAP.md)
-- [Phase Documentation](../development/phase[N]/README.md)
-- [Pull Request Details]([PR_FILE_PATH])
+- [Development Roadmap](../../DEVELOPMENT_ROADMAP.md)
+- [Phase Documentation](../../docs/phase[N]/README.md)
+- [Verification Report](../development/[VERIFICATION_REPORT_FILE]) <!-- Optional: for milestone releases -->
+- [Pull Request Details](../pull_requests/[PR_FILE])
 - [Previous Release](RELEASE_NOTES_v[PREVIOUS_VERSION].md)
+
+---
+
+<!-- Template Maintenance Notes:
+     - Last Updated: 2026-01-11
+     - Added: Cumulative Phase Status table, Test Count Growth section
+     - Added: Common Known Issues patterns, Related Templates section
+     - Added: Location guidance, Verification Report link
+     - Fixed: Relative paths to match actual project structure
+-->
