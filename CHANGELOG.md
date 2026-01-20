@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.24.3] - 2026-01-20
+
+### Identified: Deprecation Warning
+
+- **CANOPY-P2-001**: Documented `asyncio.iscoroutinefunction` deprecation warning
+  - **Location**: `src/tests/unit/test_main_coverage_extended.py:434`
+  - **Warning**: `'asyncio.iscoroutinefunction' is deprecated and slated for removal in Python 3.16; use 'inspect.iscoroutinefunction' instead`
+  - **Impact**: Cosmetic - generates deprecation warning in test output; will break in Python 3.16
+  - **Status**: ⚠️ COSMETIC - low priority fix
+  - **Proposed Fix**: Replace `asyncio.iscoroutinefunction()` with `inspect.iscoroutinefunction()`
+
+### Technical Notes [0.24.3]
+
+- **SemVer impact:** PATCH – Documentation only; no code changes
+- Issue documented in `JuniperCascor/juniper_cascor/notes/INTEGRATION_ROADMAP.md` (v1.7.0)
+
+---
+
 ## [0.24.2] - 2026-01-12
 
 ### Environment Fix: Missing pytest-mock Dependency
