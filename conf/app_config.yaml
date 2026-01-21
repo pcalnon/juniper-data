@@ -258,8 +258,12 @@ backend:
     enabled: true
     monitoring_hooks: true
     state_polling_interval_ms: 500
+    # Integration Issue 4.1: Use environment variable for flexible backend path configuration
+    # The path can be set via CASCOR_BACKEND_PATH environment variable
+    # Default fallback: ../JuniperCascor/juniper_cascor (relative to Juniper workspace)
     # backend_path: ~/Development/python/JuniperCanopy/juniper_cascor
-    backend_path: ~/Development/python/JuniperCascor/juniper_cascor
+    # backend_path: ~/Development/python/JuniperCascor/juniper_cascor
+    backend_path: "${CASCOR_BACKEND_PATH:../../JuniperCascor/juniper_cascor}"
 
   # Communication settings
   communication:
@@ -403,3 +407,4 @@ environment_variables:
   - LOG_API_KEY
   - REDIS_URL
   - CASCOR_BACKEND_URL
+  - CASCOR_BACKEND_PATH  # Integration Issue 4.1: Path to Cascor backend for integration

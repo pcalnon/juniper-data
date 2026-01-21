@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.24.4] - 2026-01-21
+
+### Fixed: [0.24.4]
+
+- **CANOPY-P2-001**: Fixed `asyncio.iscoroutinefunction` deprecation warning
+  - **Location**: `src/tests/unit/test_main_coverage_extended.py:434`
+  - **Problem**: `asyncio.iscoroutinefunction` is deprecated and slated for removal in Python 3.16
+  - **Fix**: Replaced `asyncio.iscoroutinefunction()` with `inspect.iscoroutinefunction()`
+  - **Changes**:
+    - Added `import inspect` at line 20
+    - Replaced deprecated function call at line 437
+    - Original line commented out with CANOPY-P2-001 reference
+  - **Result**: Test passes without deprecation warning
+
+- **Integration Issue 4.1**: Updated backend path configuration
+  - **Location**: `conf/app_config.yaml`
+  - **Problem**: Hardcoded backend path limited deployment flexibility
+  - **Fix**: Changed to environment variable with default fallback: `${CASCOR_BACKEND_PATH:../JuniperCascor/juniper_cascor}`
+  - **Added**: `CASCOR_BACKEND_PATH` to environment_variables list
+  - **Result**: Backend path can be configured via environment variable
+
+### Technical Notes [0.24.4]
+
+- **SemVer impact:** PATCH – Bug fixes; no API changes
+- Tests pass without deprecation warnings
+- Backend path now flexible via environment variable
+
+---
+
 ## [0.24.3] - 2026-01-20
 
 ### Identified: Deprecation Warning
@@ -15,8 +44,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Location**: `src/tests/unit/test_main_coverage_extended.py:434`
   - **Warning**: `'asyncio.iscoroutinefunction' is deprecated and slated for removal in Python 3.16; use 'inspect.iscoroutinefunction' instead`
   - **Impact**: Cosmetic - generates deprecation warning in test output; will break in Python 3.16
-  - **Status**: ⚠️ COSMETIC - low priority fix
-  - **Proposed Fix**: Replace `asyncio.iscoroutinefunction()` with `inspect.iscoroutinefunction()`
+  - **Status**: ✅ RESOLVED in v0.24.4
+  - **Fix Applied**: Replaced with `inspect.iscoroutinefunction()`
 
 ### Technical Notes [0.24.3]
 

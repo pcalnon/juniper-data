@@ -17,6 +17,7 @@ Covers:
 - main() function (lines 975-1001, 1005)
 """
 import asyncio
+import inspect  # CANOPY-P2-001: Use inspect.iscoroutinefunction instead of deprecated asyncio.iscoroutinefunction
 import json
 import os
 import sys
@@ -431,7 +432,9 @@ class TestLifespanShutdown:
         from communication.websocket_manager import websocket_manager
 
         assert hasattr(websocket_manager, "shutdown")
-        assert asyncio.iscoroutinefunction(websocket_manager.shutdown)
+        # CANOPY-P2-001: Use inspect.iscoroutinefunction instead of deprecated asyncio.iscoroutinefunction
+        # assert asyncio.iscoroutinefunction(websocket_manager.shutdown)
+        assert inspect.iscoroutinefunction(websocket_manager.shutdown)
 
 
 class TestCascorIntegrationBranches:
