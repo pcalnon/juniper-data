@@ -25,11 +25,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Tests Added**: 20 new unit tests in `tests/unit/backend/test_data_adapter_normalization.py`
   - **Result**: Bidirectional metrics format conversion between Cascor and Canopy
 
+- **Integration Issue 4.2**: API/Protocol Compatibility Verification
+  - **Location**: `src/tests/integration/test_cascor_api_compatibility.py`
+  - **Tests Added**: 21 new integration tests verifying:
+    - Network attribute structure (input_size, output_size, hidden_units, etc.)
+    - Training history format (train_loss, train_accuracy, value_loss, etc.)
+    - Hidden unit structure (weights, bias, activation_fn)
+    - Topology extraction compatibility
+    - Metrics normalization integration
+  - **Result**: All API contracts verified compatible
+
+### Identified: [0.24.5]
+
+- **Module Naming Collision**: Canopy's `constants.py` shadows Cascor's `constants/` package
+  - **Impact**: Direct imports from Canopy code may fail
+  - **Workaround**: `CascorIntegration` handles path ordering automatically
+  - **Recommendation**: Consider renaming to avoid collision
+
 ### Technical Notes [0.24.5]
 
-- **SemVer impact**: PATCH – New methods added; no breaking changes
+- **SemVer impact**: PATCH – New methods and tests added; no breaking changes
 - `data_adapter.py` version: 0.1.4 → 0.1.5
 - All 20 normalization tests pass
+- All 21 API compatibility tests pass (2 require CASCOR_BACKEND_AVAILABLE=1)
 
 ---
 
