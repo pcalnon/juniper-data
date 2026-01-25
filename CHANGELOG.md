@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.24.7] - 2026-01-24
+
+### Added: [0.24.7]
+
+- **End-to-End Integration Analysis**: Documentation of Cascor-Canopy integration
+  - Summarized in `notes/PRE-DEPLOYMENT_ROADMAP.md` Section 10
+  - Key issues identified (INTEG-001 through INTEG-005)
+  - Reference to JuniperCascor PRE-DEPLOYMENT_ROADMAP.md for full analysis
+
+- **Continuous Profiling Infrastructure**: Reference documentation
+  - See JuniperCascor PRE-DEPLOYMENT_ROADMAP.md Section 11 for full design
+  - Applicable to both Cascor backend and Canopy frontend
+
+- **Code Coverage Roadmap**: Canopy-specific coverage targets
+  - Current: ~73%, Target: 90%
+  - Priority areas: Backend integration, WebSocket manager, training state machine
+
+### Documentation: [0.24.7]
+
+- Updated `notes/PRE-DEPLOYMENT_ROADMAP.md` with sections 10, 11, 12
+  - Section 10: Integration analysis summary
+  - Section 11: Profiling infrastructure references
+  - Section 12: Canopy-specific coverage roadmap
+
+### Technical Notes: [0.24.7]
+
+- **SemVer impact**: PATCH – Documentation only; no code changes
+- Investigation and planning phase for integration verification
+- No code changes in this release
+
+---
+
 ## [0.24.6] - 2026-01-24
 
 ### Fixed: [0.24.6]
