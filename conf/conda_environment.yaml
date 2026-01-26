@@ -61,7 +61,7 @@ channels:
   - ehmoussi
   - konstantin-orangeqs
 dependencies:
-  - python-3.14.2-h32b2ec7_100_cp314.conda
+  - python=3.14.2=h32b2ec7_100_cp314
 
   # Add other dependencies
   - _libgcc_mutex=0.1=conda_forge
@@ -324,7 +324,6 @@ dependencies:
   - pytest-html=4.1.1=pyhd8ed1ab_1
   - pytest-metadata=3.1.1=pyhd8ed1ab_1
   - pytest-mock=3.15.1=pypi_0
-  - python=3.14.2=h32b2ec7_100_cp314
   - python-dateutil=2.9.0.post0=pypi_0
   - python-dotenv=1.2.1=pyhcf101f3_0
   - python-multipart=0.0.20=pyhff2d567_0
