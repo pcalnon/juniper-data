@@ -52,6 +52,7 @@
 name: JuniperCanopy
 channels:
   - conda-forge
+  - conda-forge/label/python_rc
   - pytorch
   - nvidia
   - plotly
