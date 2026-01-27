@@ -10,7 +10,7 @@
 # Script Path:   <Project>/<Sub-Project>/<Application>/conf/
 #
 # Date:          2025-12-06
-# Last Modified: 2026-01-26
+# Last Modified: 2026-01-27
 #
 # License:       MIT License
 # Copyright:     Copyright (c) 2024,2025,2026 Paul Calnon
@@ -64,7 +64,6 @@ channels:
   - konstantin-orangeqs
 dependencies:
   - python=3.14.2=h32b2ec7_100_cp314
-  # - python=3.14.0=h32b2ec7_100_cp314
 
   # Add other dependencies
   - _libgcc_mutex=0.1=conda_forge
@@ -351,10 +350,6 @@ dependencies:
   - tk=8.6.13=noxft_ha0e22de_103
   - toml=0.10.2=pyhcf101f3_3
   - tomli=2.3.0=pyhcf101f3_0
-  # PyTorch and Triton installed via pip (not available on conda-forge for Python 3.14)
-  - pip:
-      - torch>=2.0
-      - triton>=2.0
   - typer=0.20.0=pyhefaf540_1
   - typer-slim=0.20.0=pyhcf101f3_1
   - typer-slim-standard=0.20.0=h4daf872_1
@@ -400,3 +395,12 @@ dependencies:
   - yamllint=1.37.1=pyhe01879c_0
   - zipp=3.23.0=pyhcf101f3_1
   - zstd=1.5.7=hb78ec9c_6
+
+  # PyTorch and Triton installed via pip (not available on conda-forge for Python 3.14)
+  - pip:
+      - a2wsgi
+      - anyio
+      # - torch>=2.0
+      - torch
+      # - triton>=2.0
+      - triton

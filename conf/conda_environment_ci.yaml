@@ -133,4 +133,6 @@ dependencies:
   # Packages not available on conda-forge (install via pip)
   - pip:
       - a2wsgi
+      - anyio
       - torch
+      - triton
