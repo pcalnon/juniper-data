@@ -560,15 +560,13 @@ class CascorIntegration:
         if self.network is None:
             raise RuntimeError("No network connected. Call create_network() first.")
 
+        loop = asyncio.get_running_loop()
+        self.logger.info("Starting async training")
+
         with self._training_lock:
             if self._training_future is not None and not self._training_future.done():
                 raise RuntimeError("Training already in progress. Wait for completion or request stop.")
             self._training_stop_requested = False
-
-        self.logger.info("Starting async training")
-
-        loop = asyncio.get_running_loop()
-        with self._training_lock:
             self._training_future = loop.run_in_executor(
                 self._training_executor, lambda: self._run_fit_sync(*args, **kwargs)
             )
