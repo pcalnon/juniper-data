@@ -1,1 +1,1 @@
-"""Unit tests for Juniper Canopy."""
+"""Unit tests for Juniper Data."""

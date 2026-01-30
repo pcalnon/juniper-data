@@ -1,1 +1,0 @@
-../../../util/run_tests.bash

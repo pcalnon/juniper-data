@@ -1,0 +1,57 @@
+"""Spiral dataset generator module."""
+
+from .defaults import (
+    MAX_NOISE,
+    MAX_POINTS,
+    MAX_ROTATIONS,
+    MAX_SPIRALS,
+    MIN_NOISE,
+    MIN_POINTS,
+    MIN_ROTATIONS,
+    MIN_SPIRALS,
+    SPIRAL_DEFAULT_CLOCKWISE,
+    SPIRAL_DEFAULT_DISTRIBUTION,
+    SPIRAL_DEFAULT_N_POINTS,
+    SPIRAL_DEFAULT_N_ROTATIONS,
+    SPIRAL_DEFAULT_N_SPIRALS,
+    SPIRAL_DEFAULT_NOISE,
+    SPIRAL_DEFAULT_ORIGIN,
+    SPIRAL_DEFAULT_RADIUS,
+    SPIRAL_DEFAULT_RANDOM_VALUE_SCALE,
+    SPIRAL_DEFAULT_SEED,
+    SPIRAL_DEFAULT_TEST_RATIO,
+    SPIRAL_DEFAULT_TRAIN_RATIO,
+)
+from .generator import VERSION, SpiralGenerator, get_schema
+from .params import SpiralParams
+
+__all__ = [
+    # Generator
+    "SpiralGenerator",
+    "get_schema",
+    "VERSION",
+    # Default constants
+    "SPIRAL_DEFAULT_N_SPIRALS",
+    "SPIRAL_DEFAULT_N_POINTS",
+    "SPIRAL_DEFAULT_N_ROTATIONS",
+    "SPIRAL_DEFAULT_CLOCKWISE",
+    "SPIRAL_DEFAULT_DISTRIBUTION",
+    "SPIRAL_DEFAULT_ORIGIN",
+    "SPIRAL_DEFAULT_RADIUS",
+    "SPIRAL_DEFAULT_NOISE",
+    "SPIRAL_DEFAULT_RANDOM_VALUE_SCALE",
+    "SPIRAL_DEFAULT_SEED",
+    "SPIRAL_DEFAULT_TRAIN_RATIO",
+    "SPIRAL_DEFAULT_TEST_RATIO",
+    # Validation bounds
+    "MIN_SPIRALS",
+    "MAX_SPIRALS",
+    "MIN_POINTS",
+    "MAX_POINTS",
+    "MIN_ROTATIONS",
+    "MAX_ROTATIONS",
+    "MIN_NOISE",
+    "MAX_NOISE",
+    # Pydantic model
+    "SpiralParams",
+]

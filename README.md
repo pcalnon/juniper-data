@@ -1,24 +1,109 @@
-<div align="right" width="150px" height="150px" align="right" valign="top"> <img src="src/assets/Juniper_Logo_150px.png" alt="Juniper" align="right" valign="top" width="150px" /></div>
-<br /> <br /> <br /> <br />
+# Juniper Data
 
-# Juniper: Dynamic Neural Network Research Platform
+Dataset generation and management service for the Juniper ecosystem.
 
-Juniper is an AI/ML research platform for investigating dynamic neural network architectures and novel learning paradigms.  The project emphasizes ground-up implementations from primary literature, enabling a more transparent exploration of fundamental algorithms.
+## Overview
 
-## Active Research Components
+Juniper Data provides a centralized service for generating, storing, and serving datasets used by the Juniper neural network projects. It supports various dataset types including the classic two-spiral classification problem.
 
-**juniper_cascor**:  Cascade Correlation Neural Network
+## Installation
 
-- Reference implementation from foundational research (Fahlman & Lebiere, 1990)
-- Designed for flexibility, modularity, and scalability
-- Enables investigation of constructive learning algorithms
+### Basic Installation
 
-**juniper_canopy**:  Interactive Research Interface
+```bash
+pip install -e .
+```
 
-- Research-driven monitoring and visualization environment
-- Delivers novel observations through real-time network introspection
-- Transforms metrics into insights, accelerating experimental iteration
+### With API Support
 
-## Research Philosophy
+```bash
+pip install -e ".[api]"
+```
 
-Juniper prioritizes **transparency over convenience** and **understanding over abstraction**.  By implementing algorithms from first principles, the platform provides increased visibility into network behavior, enabling a more rigorous and more controlled investigation of learning dynamics and architectural innovations.
+### Development Installation
+
+```bash
+pip install -e ".[dev]"
+```
+
+### Full Installation
+
+```bash
+pip install -e ".[all]"
+```
+
+## Quick Start
+
+### Generate a Spiral Dataset
+
+```python
+from juniper_data.generators.spiral import SpiralGenerator
+
+generator = SpiralGenerator()
+dataset = generator.generate(n_points=100, n_spirals=2, noise=0.1)
+```
+
+### Start the API Server
+
+```bash
+uvicorn juniper_data.api.main:app --reload
+```
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check endpoint |
+| `/datasets` | GET | List available datasets |
+| `/datasets/{id}` | GET | Get a specific dataset |
+| `/generators/spiral` | POST | Generate a new spiral dataset |
+| `/generators/spiral/config` | GET | Get spiral generator configuration |
+
+## Project Structure
+
+```
+JuniperData/
+├── juniper_data/
+│   ├── core/           # Core functionality and base classes
+│   ├── generators/     # Dataset generators
+│   │   └── spiral/     # Spiral dataset generator
+│   ├── storage/        # Dataset persistence layer
+│   └── api/            # FastAPI application
+│       └── routes/     # API route handlers
+├── tests/
+│   ├── unit/           # Unit tests
+│   └── integration/    # Integration tests
+├── pyproject.toml      # Project configuration
+└── README.md           # This file
+```
+
+## Development
+
+### Running Tests
+
+```bash
+pytest
+```
+
+### Running Tests with Coverage
+
+```bash
+pytest --cov=juniper_data --cov-report=html
+```
+
+### Code Formatting
+
+```bash
+black juniper_data tests
+isort juniper_data tests
+```
+
+### Type Checking
+
+```bash
+mypy juniper_data
+```
+
+## License
+
+MIT License - Copyright (c) 2024-2026 Paul Calnon

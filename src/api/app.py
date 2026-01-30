@@ -1,0 +1,92 @@
+"""FastAPI application factory and configuration."""
+
+import logging
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import AsyncGenerator
+
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+from juniper_data import __version__
+from juniper_data.storage import LocalFSDatasetStore
+
+from .routes import datasets, generators, health
+from .settings import Settings, get_settings
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Application lifespan handler for startup/shutdown."""
+    settings: Settings = app.state.settings
+    storage_path = Path(settings.storage_path)
+    store = LocalFSDatasetStore(storage_path)
+    datasets.set_store(store)
+
+    logging.basicConfig(
+        level=getattr(logging, settings.log_level.upper(), logging.INFO),
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+    logger = logging.getLogger("juniper_data")
+    logger.info(f"JuniperData API v{__version__} starting")
+    logger.info(f"Storage path: {storage_path.absolute()}")
+
+    yield
+
+    logger.info("JuniperData API shutting down")
+
+
+def create_app(settings: Settings = None) -> FastAPI:
+    """Create and configure the FastAPI application.
+
+    Args:
+        settings: Optional settings override. If not provided,
+                  settings are loaded from environment variables.
+
+    Returns:
+        Configured FastAPI application instance.
+    """
+    if settings is None:
+        settings = get_settings()
+
+    app = FastAPI(
+        title="Juniper Data API",
+        description="Dataset generation and management service for the Juniper ecosystem",
+        version=__version__,
+        lifespan=lifespan,
+    )
+
+    app.state.settings = settings
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    app.include_router(health.router, prefix="/v1")
+    app.include_router(generators.router, prefix="/v1")
+    app.include_router(datasets.router, prefix="/v1")
+
+    @app.exception_handler(ValueError)
+    async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
+        return JSONResponse(
+            status_code=400,
+            content={"detail": str(exc)},
+        )
+
+    @app.exception_handler(Exception)
+    async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        logging.getLogger("juniper_data").exception("Unhandled exception")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error"},
+        )
+
+    return app
+
+
+app = create_app()

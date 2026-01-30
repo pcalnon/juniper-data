@@ -1,9 +1,6 @@
 """
-Juniper Canopy Package
-
-A real-time monitoring frontend for Cascade Correlation neural networks.
+Juniper Data - Dataset generation and management service for the Juniper ecosystem.
 """
 
-__version__ = "0.4.0"
+__version__ = "0.1.0"
 __author__ = "Paul Calnon"
-__description__ = "Real-time monitoring frontend for Cascade Correlation neural networks"

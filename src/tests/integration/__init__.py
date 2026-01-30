@@ -1,1 +1,1 @@
-"""Integration tests for Juniper Canopy."""
+"""Integration tests for Juniper Data."""

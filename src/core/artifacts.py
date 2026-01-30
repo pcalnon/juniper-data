@@ -1,0 +1,62 @@
+"""Artifact utilities for NPZ file handling and checksum computation."""
+
+import hashlib
+import io
+from pathlib import Path
+from typing import Dict
+
+import numpy as np
+
+
+def save_npz(path: Path, arrays: Dict[str, np.ndarray]) -> None:
+    """Save arrays to NPZ file.
+
+    Args:
+        path: Path to save the NPZ file.
+        arrays: Dictionary mapping array names to numpy arrays.
+    """
+    np.savez(path, **arrays)
+
+
+def load_npz(path: Path) -> Dict[str, np.ndarray]:
+    """Load arrays from NPZ file.
+
+    Args:
+        path: Path to the NPZ file.
+
+    Returns:
+        Dictionary mapping array names to numpy arrays.
+    """
+    with np.load(path) as data:
+        return {key: data[key] for key in data.files}
+
+
+def arrays_to_bytes(arrays: Dict[str, np.ndarray]) -> bytes:
+    """Convert arrays to NPZ bytes for streaming response.
+
+    Args:
+        arrays: Dictionary mapping array names to numpy arrays.
+
+    Returns:
+        Bytes representation of the NPZ file.
+    """
+    buffer = io.BytesIO()
+    np.savez(buffer, **arrays)
+    buffer.seek(0)
+    return buffer.read()
+
+
+def compute_checksum(arrays: Dict[str, np.ndarray]) -> str:
+    """Compute SHA-256 checksum of arrays for integrity verification.
+
+    The checksum is computed over the NPZ byte representation of the arrays,
+    ensuring consistent results across different systems.
+
+    Args:
+        arrays: Dictionary mapping array names to numpy arrays.
+
+    Returns:
+        SHA-256 hex digest of the arrays.
+    """
+    data = arrays_to_bytes(arrays)
+    return hashlib.sha256(data).hexdigest()
