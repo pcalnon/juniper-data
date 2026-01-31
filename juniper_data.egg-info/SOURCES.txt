@@ -1,0 +1,8 @@
+LICENSE
+README.md
+pyproject.toml
+juniper_data.egg-info/PKG-INFO
+juniper_data.egg-info/SOURCES.txt
+juniper_data.egg-info/dependency_links.txt
+juniper_data.egg-info/requires.txt
+juniper_data.egg-info/top_level.txt

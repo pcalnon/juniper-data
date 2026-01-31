@@ -1,3 +1,28 @@
+Metadata-Version: 2.4
+Name: juniper-data
+Version: 0.1.0
+Summary: Dataset generation and management service for the Juniper ecosystem
+Author: Paul Calnon
+License: MIT
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: numpy>=1.24.0
+Requires-Dist: pydantic>=2.0.0
+Provides-Extra: api
+Requires-Dist: fastapi>=0.100.0; extra == "api"
+Requires-Dist: uvicorn[standard]>=0.23.0; extra == "api"
+Requires-Dist: pydantic-settings>=2.0.0; extra == "api"
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0.0; extra == "dev"
+Requires-Dist: black>=23.0.0; extra == "dev"
+Requires-Dist: isort>=5.12.0; extra == "dev"
+Requires-Dist: mypy>=1.0.0; extra == "dev"
+Provides-Extra: all
+Requires-Dist: juniper-data[api,dev]; extra == "all"
+Dynamic: license-file
+
 # Juniper Data
 
 Dataset generation and management service for the Juniper ecosystem.
@@ -51,17 +76,17 @@ uvicorn juniper_data.api.main:app --reload
 
 ## API Endpoints
 
-| Endpoint                    | Method | Description                        |
-| --------------------------- | ------ | ---------------------------------- |
-| `/health`                   | GET    | Health check endpoint              |
-| `/datasets`                 | GET    | List available datasets            |
-| `/datasets/{id}`            | GET    | Get a specific dataset             |
-| `/generators/spiral`        | POST   | Generate a new spiral dataset      |
-| `/generators/spiral/config` | GET    | Get spiral generator configuration |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check endpoint |
+| `/datasets` | GET | List available datasets |
+| `/datasets/{id}` | GET | Get a specific dataset |
+| `/generators/spiral` | POST | Generate a new spiral dataset |
+| `/generators/spiral/config` | GET | Get spiral generator configuration |
 
 ## Project Structure
 
-```bash
+```
 JuniperData/
 ├── juniper_data/
 │   ├── core/           # Core functionality and base classes

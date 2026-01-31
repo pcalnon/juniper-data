@@ -7,10 +7,10 @@
 # Version:       0.1.0
 #
 # Date Created:  2026-01-29
-# Last Modified: 2026-01-29
+# Last Modified: 2026-01-30
 #
 # License:       MIT License
-# Copyright:     Copyright (c) 2024-2026 Paul Calnon
+# Copyright:     Copyright (c) 2024,2025,2026 Paul Calnon
 #
 # Description:
 #    Python project configuration for Juniper Data
@@ -18,6 +18,7 @@
 #
 # References:
 #    - JuniperCascor project patterns
+#    - JUNIPER-DATA-001: CI/CD Pipeline Setup
 #####################################################################################################################################################################################################
 
 [build-system]
@@ -44,15 +45,28 @@ api = [
     "uvicorn[standard]>=0.23.0",
     "pydantic-settings>=2.0.0",
 ]
-dev = [
+test = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
+    "pytest-timeout>=2.2.0",
+    "pytest-asyncio>=0.21.0",
+    "httpx>=0.24.0",
+    "coverage[toml]>=7.0.0",
+]
+dev = [
     "black>=23.0.0",
     "isort>=5.12.0",
     "mypy>=1.0.0",
+    "flake8>=7.0.0",
+    "bandit>=1.7.9",
+    "pip-audit>=2.7.0",
+    "pre-commit>=3.0.0",
+    "flake8-bugbear>=24.0.0",
+    "flake8-comprehensions>=3.14.0",
+    "flake8-simplify>=0.21.0",
 ]
 all = [
-    "juniper-data[api,dev]",
+    "juniper-data[api,dev,test]",
 ]
 
 [tool.setuptools.packages.find]
@@ -61,7 +75,9 @@ include = ["juniper_data*"]
 
 [tool.black]
 line-length = 120
+# target-version = ["py311", "py312", "py313", "py314"]  # py314 not yet supported by black
 target-version = ["py311", "py312", "py313"]
+
 include = '\.pyi?$'
 extend-exclude = '''
 /(
@@ -73,6 +89,7 @@ extend-exclude = '''
     | logs
     | reports
     | htmlcov
+    | images
 )/
 '''
 
@@ -85,9 +102,14 @@ known_first_party = ["juniper_data"]
 sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
 default_section = "THIRDPARTY"
 
+[tool.bandit]
+exclude_dirs = ["tests", "reports", "logs", "htmlcov", "data"]
+skips = ["B101", "B311"]
+
 [tool.pytest.ini_options]
 minversion = "6.0"
-testpaths = ["tests"]
+testpaths = ["juniper_data/tests"]
+pythonpath = ["."]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
@@ -142,11 +164,11 @@ directory = "htmlcov"
 output = "coverage.xml"
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.14"
 warn_return_any = false
 warn_unused_configs = true
 ignore_missing_imports = true
-no_strict_optional = true
+# no_strict_optional = true
 exclude = [
     "^data/",
     "^logs/",

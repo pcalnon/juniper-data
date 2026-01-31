@@ -4,7 +4,7 @@
 **Version**: 0.1.0  
 **License**: MIT License  
 **Author**: Paul Calnon  
-**Last Updated**: 2026-01-29
+**Last Updated**: 2026-01-30
 
 ---
 
@@ -26,34 +26,44 @@ pip install -e ".[all]"
 pytest
 
 # Run unit tests only
-pytest tests/unit/
+pytest juniper_data/tests/unit/
 
 # Run integration tests only
-pytest tests/integration/
+pytest juniper_data/tests/integration/
 
 # Run tests with coverage
-pytest --cov=juniper_data --cov-report=html
+pytest juniper_data/tests/ --cov=juniper_data --cov-report=html --cov-report=term-missing
 
 # Run a specific test file
-pytest tests/unit/test_spiral_generator.py -v
+pytest juniper_data/tests/unit/test_spiral_generator.py -v
 
 # Type checking with mypy
-mypy juniper_data
+mypy juniper_data --ignore-missing-imports
 
 # Linting with flake8
 flake8 juniper_data --max-line-length=120 --extend-ignore=E203,E266,E501,W503
 
 # Format checking with black
-black --check --diff juniper_data tests
+black --check --diff juniper_data
 
 # Import sorting check with isort
-isort --check-only --diff juniper_data tests
+isort --check-only --diff juniper_data
+
+# Pre-commit hooks (CI/CD local validation)
+pip install pre-commit                    # Install pre-commit (one-time)
+pre-commit install                        # Install git hooks (one-time)
+pre-commit run --all-files                # Run all hooks on all files
+
+# Security scanning
+pip install bandit pip-audit              # Install security tools
+bandit -r juniper_data                    # Run Bandit SAST scan
+pip-audit                                 # Check for dependency vulnerabilities
 
 # Start API server (development)
-uvicorn juniper_data.api.main:app --reload --host 0.0.0.0 --port 8000
+python -m juniper_data                    # Use module entry point on port 8100
 
 # Start API server (production)
-uvicorn juniper_data.api.main:app --host 0.0.0.0 --port 8000
+uvicorn juniper_data.api.app:app --host 0.0.0.0 --port 8100
 ```
 
 ---
@@ -62,7 +72,7 @@ uvicorn juniper_data.api.main:app --host 0.0.0.0 --port 8000
 
 ### Directory Structure
 
-```
+```bash
 JuniperData/
 ├── juniper_data/              # Main package
 │   ├── __init__.py            # Package init with version
@@ -91,14 +101,14 @@ JuniperData/
 
 ### Component Overview
 
-| Component | Purpose |
-|-----------|---------|
-| `core/` | Base classes, exceptions, configuration |
-| `generators/` | Dataset generation implementations |
-| `generators/spiral/` | Two-spiral classification dataset |
-| `storage/` | Dataset persistence and retrieval |
-| `api/` | FastAPI REST service |
-| `api/routes/` | API endpoint handlers |
+| Component            | Purpose                                 |
+| -------------------- | --------------------------------------- |
+| `core/`              | Base classes, exceptions, configuration |
+| `generators/`        | Dataset generation implementations      |
+| `generators/spiral/` | Two-spiral classification dataset       |
+| `storage/`           | Dataset persistence and retrieval       |
+| `api/`               | FastAPI REST service                    |
+| `api/routes/`        | API endpoint handlers                   |
 
 ---
 
@@ -109,19 +119,24 @@ Following JuniperCascor patterns:
 ### Naming Conventions
 
 **Constants**:
+
 - Uppercase with underscores, prefixed by component: `_DATA_DEFAULT_NOISE`
 - Hierarchical naming: `_SPIRAL_GENERATOR_DEFAULT_POINTS`
 
 **Classes**:
+
 - PascalCase: `SpiralGenerator`, `DatasetStorage`
 
 **Methods/Functions**:
+
 - snake_case: `generate_dataset`, `get_configuration`
 
 **Private Members**:
+
 - Single underscore prefix: `_internal_method`, `_private_attribute`
 
 **Dunder Methods**:
+
 - Double underscore: `__init__`, `__repr__`
 
 ### Code Formatting
@@ -143,27 +158,27 @@ Following JuniperCascor patterns:
 
 ### Core Dependencies
 
-| Library | Purpose |
-|---------|---------|
-| `numpy` | Numerical computations |
+| Library    | Purpose                      |
+| ---------- | ---------------------------- |
+| `numpy`    | Numerical computations       |
 | `pydantic` | Data validation and settings |
 
 ### API Dependencies (Optional)
 
-| Library | Purpose |
-|---------|---------|
+| Library   | Purpose            |
+| --------- | ------------------ |
 | `fastapi` | REST API framework |
-| `uvicorn` | ASGI server |
+| `uvicorn` | ASGI server        |
 
 ### Development Dependencies
 
-| Library | Purpose |
-|---------|---------|
-| `pytest` | Testing framework |
-| `pytest-cov` | Coverage reporting |
-| `black` | Code formatting |
-| `isort` | Import sorting |
-| `mypy` | Static type checking |
+| Library      | Purpose              |
+| ------------ | -------------------- |
+| `pytest`     | Testing framework    |
+| `pytest-cov` | Coverage reporting   |
+| `black`      | Code formatting      |
+| `isort`      | Import sorting       |
+| `mypy`       | Static type checking |
 
 ---
 

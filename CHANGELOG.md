@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-01-30
+
+**Summary**: Added comprehensive CI/CD pipeline with pre-commit hooks, GitHub Actions workflow, and security scanning. Renamed source directory from `src/` to `juniper_data/` for proper package discovery.
+
+### Added: [0.1.1]
+
+- **CI/CD Pipeline** (`.github/workflows/ci.yml`)
+  - Pre-commit job across Python 3.11-3.14 matrix
+  - Unit tests with 50% coverage gate
+  - Integration tests for PRs and main/develop
+  - Security scanning: Gitleaks, Bandit SARIF, pip-audit
+  - Quality gate aggregator with proper failure handling
+  - pip-based (no conda required)
+
+- **Pre-commit Configuration** (`.pre-commit-config.yaml`)
+  - General file checks (YAML, TOML, JSON, merge conflicts)
+  - Python formatting: Black (line-length=120)
+  - Import sorting: isort (black profile)
+  - Linting: Flake8 with bugbear, comprehensions, simplify
+  - Type checking: MyPy
+  - Security: Bandit SAST scanning
+
+- **Enhanced pyproject.toml**
+  - New `test` optional dependency group
+  - Bandit configuration section
+  - Updated pytest paths for new structure
+  - Added dev tools: flake8, bandit, pip-audit, pre-commit
+
+### Changed: [0.1.1]
+
+- **Directory Structure**: Renamed `src/` to `juniper_data/` for proper package discovery
+- **Test paths**: Updated from `tests/` to `juniper_data/tests/`
+
+### Technical Notes: [0.1.1]
+
+- **SemVer impact**: PATCH – CI/CD infrastructure only; no API changes
+- **Pre-commit status**: All 16 hooks pass
+- **Test count**: 76 tests passing
+
+---
+
 ## [0.1.0] - 2026-01-29
 
 **Summary**: Initial release of JuniperData - a standalone dataset generation and management service extracted from JuniperCascor as part of the Juniper ecosystem refactoring initiative.
@@ -73,7 +114,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Migration Notes: [0.1.0]
 
 - This release corresponds to Phases 0-2 of the JuniperCascor refactoring plan
-- Cascor integration (Phase 3) pending
+- Cascor integration (Phase 3) completed in JuniperCascor 0.6.0
 - Canopy integration (Phase 4) pending
 
 ---
@@ -82,4 +123,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date       | Description                    |
 | ------- | ---------- | ------------------------------ |
+| 0.1.1   | 2026-01-30 | CI/CD Pipeline & Pre-commit    |
 | 0.1.0   | 2026-01-29 | Initial release (Phases 0-2)   |
+
+---
+
+## Related Changes
+
+### JuniperCascor 0.6.0 (2026-01-30)
+
+Phase 3 Cascor integration completed:
+
+- Added `JuniperDataClient` for API communication
+- Added `SpiralDataProvider` for torch tensor conversion
+- Feature flag `JUNIPER_DATA_URL` enables JuniperData mode in SpiralProblem
