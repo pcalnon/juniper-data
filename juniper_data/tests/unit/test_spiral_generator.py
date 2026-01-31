@@ -317,3 +317,178 @@ class TestSpiralGeometry:
         var_with_noise = result_with_noise["X_full"].var()
 
         assert var_with_noise > var_no_noise
+
+
+@pytest.mark.unit
+@pytest.mark.spiral
+@pytest.mark.generators
+class TestSpiralGeneratorLegacyMode:
+    """Tests for legacy_cascor algorithm mode."""
+
+    def test_legacy_mode_generates_correct_shapes(self) -> None:
+        """Verify legacy_cascor mode generates arrays with correct shapes."""
+        params = SpiralParams(
+            n_spirals=2,
+            n_points_per_spiral=50,
+            algorithm="legacy_cascor",
+            seed=42,
+        )
+        result = SpiralGenerator.generate(params)
+
+        assert result["X_full"].shape == (100, 2)
+        assert result["y_full"].shape == (100, 2)
+        assert result["X_train"].shape[1] == 2
+        assert result["y_train"].shape[1] == 2
+
+    def test_legacy_mode_deterministic_with_seed(self) -> None:
+        """Verify same seed produces identical arrays in legacy mode."""
+        params1 = SpiralParams(
+            n_spirals=2,
+            n_points_per_spiral=50,
+            algorithm="legacy_cascor",
+            seed=12345,
+        )
+        params2 = SpiralParams(
+            n_spirals=2,
+            n_points_per_spiral=50,
+            algorithm="legacy_cascor",
+            seed=12345,
+        )
+
+        result1 = SpiralGenerator.generate(params1)
+        result2 = SpiralGenerator.generate(params2)
+
+        np.testing.assert_array_equal(result1["X_full"], result2["X_full"])
+        np.testing.assert_array_equal(result1["y_full"], result2["y_full"])
+
+    def test_legacy_mode_different_from_modern(self) -> None:
+        """Verify legacy_cascor produces different results than modern algorithm."""
+        params_modern = SpiralParams(
+            n_spirals=2,
+            n_points_per_spiral=50,
+            algorithm="modern",
+            seed=42,
+        )
+        params_legacy = SpiralParams(
+            n_spirals=2,
+            n_points_per_spiral=50,
+            algorithm="legacy_cascor",
+            seed=42,
+        )
+
+        result_modern = SpiralGenerator.generate(params_modern)
+        result_legacy = SpiralGenerator.generate(params_legacy)
+
+        assert not np.allclose(result_modern["X_full"], result_legacy["X_full"])
+
+    def test_legacy_mode_uniform_noise_range(self) -> None:
+        """Verify legacy mode uses uniform noise in [0, noise) range."""
+        params = SpiralParams(
+            n_spirals=2,
+            n_points_per_spiral=100,
+            algorithm="legacy_cascor",
+            noise=1.0,
+            seed=42,
+        )
+        result = SpiralGenerator.generate(params)
+
+        params_no_noise = SpiralParams(
+            n_spirals=2,
+            n_points_per_spiral=100,
+            algorithm="legacy_cascor",
+            noise=0.0,
+            seed=42,
+        )
+        result_no_noise = SpiralGenerator.generate(params_no_noise)
+
+        noise_x = result["X_full"][:, 0] - result_no_noise["X_full"][:, 0]
+        noise_y = result["X_full"][:, 1] - result_no_noise["X_full"][:, 1]
+
+        assert noise_x.min() >= 0.0
+        assert noise_x.max() < 1.0
+        assert noise_y.min() >= 0.0
+        assert noise_y.max() < 1.0
+
+    def test_legacy_mode_radii_distribution(self) -> None:
+        """Verify legacy mode uses sqrt-uniform radii distribution."""
+        params = SpiralParams(
+            n_spirals=2,
+            n_points_per_spiral=1000,
+            algorithm="legacy_cascor",
+            noise=0.0,
+            seed=42,
+        )
+        result = SpiralGenerator.generate(params)
+
+        X = result["X_full"]
+        radii = np.sqrt(X[:, 0] ** 2 + X[:, 1] ** 2)
+
+        radii_squared = radii**2
+        radii_squared_normalized = radii_squared / radii_squared.max()
+
+        assert radii_squared_normalized.mean() < 0.6
+
+    def test_origin_offset_works(self) -> None:
+        """Verify origin parameter shifts the dataset center."""
+        params_centered = SpiralParams(
+            n_spirals=2,
+            n_points_per_spiral=100,
+            algorithm="legacy_cascor",
+            origin=(0.0, 0.0),
+            seed=42,
+        )
+        params_offset = SpiralParams(
+            n_spirals=2,
+            n_points_per_spiral=100,
+            algorithm="legacy_cascor",
+            origin=(5.0, 10.0),
+            seed=42,
+        )
+
+        result_centered = SpiralGenerator.generate(params_centered)
+        result_offset = SpiralGenerator.generate(params_offset)
+
+        mean_centered = result_centered["X_full"].mean(axis=0)
+        mean_offset = result_offset["X_full"].mean(axis=0)
+
+        np.testing.assert_allclose(mean_offset[0] - mean_centered[0], 5.0, atol=0.1)
+        np.testing.assert_allclose(mean_offset[1] - mean_centered[1], 10.0, atol=0.1)
+
+    def test_radius_parameter_controls_spread(self) -> None:
+        """Verify radius parameter controls the spread of points."""
+        params_small = SpiralParams(
+            n_spirals=2,
+            n_points_per_spiral=100,
+            algorithm="legacy_cascor",
+            radius=5.0,
+            noise=0.0,
+            seed=42,
+        )
+        params_large = SpiralParams(
+            n_spirals=2,
+            n_points_per_spiral=100,
+            algorithm="legacy_cascor",
+            radius=20.0,
+            noise=0.0,
+            seed=42,
+        )
+
+        result_small = SpiralGenerator.generate(params_small)
+        result_large = SpiralGenerator.generate(params_large)
+
+        radii_small = np.sqrt(result_small["X_full"][:, 0] ** 2 + result_small["X_full"][:, 1] ** 2)
+        radii_large = np.sqrt(result_large["X_full"][:, 0] ** 2 + result_large["X_full"][:, 1] ** 2)
+
+        max_small = radii_small.max()
+        max_large = radii_large.max()
+
+        ratio = max_large / max_small
+        assert 3.0 < ratio < 5.0
+
+    def test_algorithm_param_validation(self) -> None:
+        """Verify invalid algorithm values raise ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            SpiralParams(algorithm="invalid_algorithm")
+
+        error_str = str(exc_info.value)
+        assert "algorithm" in error_str or "Input should be" in error_str

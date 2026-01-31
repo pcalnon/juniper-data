@@ -4,13 +4,12 @@ This module provides the SpiralGenerator class for generating multi-spiral
 classification datasets using only NumPy operations.
 """
 
-from typing import Dict, Tuple
+from typing import Dict, Literal, Tuple
 
 import numpy as np
 
 from juniper_data.core.split import shuffle_and_split
 
-from .defaults import SPIRAL_DEFAULT_RADIUS
 from .params import SpiralParams
 
 VERSION = "1.0.0"
@@ -81,12 +80,14 @@ class SpiralGenerator:
             angle_offset = 2 * np.pi * i / params.n_spirals
             coords = SpiralGenerator._generate_spiral_coordinates(
                 n_points=params.n_points_per_spiral,
-                radius=SPIRAL_DEFAULT_RADIUS,
+                radius=params.radius,
                 n_rotations=params.n_rotations,
                 angle_offset=angle_offset,
                 clockwise=params.clockwise,
                 noise=params.noise,
                 rng=rng,
+                algorithm=params.algorithm,
+                origin=params.origin,
             )
             all_coords.append(coords)
 
@@ -107,6 +108,8 @@ class SpiralGenerator:
         clockwise: bool,
         noise: float,
         rng: np.random.Generator,
+        algorithm: Literal["modern", "legacy_cascor"] = "modern",
+        origin: Tuple[float, float] = (0.0, 0.0),
     ) -> np.ndarray:
         """Generate coordinates for a single spiral arm.
 
@@ -118,23 +121,33 @@ class SpiralGenerator:
             clockwise: Whether spiral rotates clockwise.
             noise: Noise level to apply.
             rng: NumPy random generator.
+            algorithm: Generation algorithm ('modern' or 'legacy_cascor').
+            origin: Origin point (x, y) for spiral center.
 
         Returns:
             Array of shape (n_points, 2) containing x, y coordinates.
         """
-        radii = np.linspace(0, radius, n_points)
-        theta = np.linspace(0, 2 * np.pi * n_rotations, n_points) + angle_offset
-
         direction = 1 if clockwise else -1
 
-        x = direction * radii * np.cos(theta) + SpiralGenerator._make_noise(n_points, noise, rng)
-        y = direction * radii * np.sin(theta) + SpiralGenerator._make_noise(n_points, noise, rng)
+        if algorithm == "legacy_cascor":
+            distance = np.sqrt(rng.random(n_points)) * radius
+            theta = direction * (distance + angle_offset)
+            x = np.cos(theta) * distance + SpiralGenerator._make_noise_uniform(n_points, noise, rng)
+            y = np.sin(theta) * distance + SpiralGenerator._make_noise_uniform(n_points, noise, rng)
+        else:
+            radii = np.linspace(0, radius, n_points)
+            theta = np.linspace(0, 2 * np.pi * n_rotations, n_points) + angle_offset
+            x = direction * radii * np.cos(theta) + SpiralGenerator._make_noise(n_points, noise, rng)
+            y = direction * radii * np.sin(theta) + SpiralGenerator._make_noise(n_points, noise, rng)
+
+        x += origin[0]
+        y += origin[1]
 
         return np.column_stack([x, y]).astype(np.float32)
 
     @staticmethod
     def _make_noise(n_points: int, noise: float, rng: np.random.Generator) -> np.ndarray:
-        """Generate random noise array.
+        """Generate random noise array using normal distribution.
 
         Args:
             n_points: Number of noise values to generate.
@@ -145,6 +158,20 @@ class SpiralGenerator:
             Array of shape (n_points,) containing scaled random noise.
         """
         return rng.standard_normal(n_points) * noise
+
+    @staticmethod
+    def _make_noise_uniform(n_points: int, noise: float, rng: np.random.Generator) -> np.ndarray:
+        """Generate uniform random noise in [0, noise).
+
+        Args:
+            n_points: Number of noise values to generate.
+            noise: Noise scale factor.
+            rng: NumPy random generator.
+
+        Returns:
+            Array of shape (n_points,) containing uniform random noise.
+        """
+        return rng.random(n_points) * noise
 
     @staticmethod
     def _create_one_hot_labels(n_spirals: int, n_points_per_spiral: int) -> np.ndarray:

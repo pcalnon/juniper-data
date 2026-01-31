@@ -4,7 +4,7 @@ This module defines the Pydantic model for spiral dataset generation parameters
 with validation and computation methods.
 """
 
-from typing import Optional
+from typing import Literal, Optional, Tuple
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -22,6 +22,7 @@ from .defaults import (
     SPIRAL_DEFAULT_N_ROTATIONS,
     SPIRAL_DEFAULT_N_SPIRALS,
     SPIRAL_DEFAULT_NOISE,
+    SPIRAL_DEFAULT_RADIUS,
     SPIRAL_DEFAULT_SEED,
     SPIRAL_DEFAULT_TEST_RATIO,
     SPIRAL_DEFAULT_TRAIN_RATIO,
@@ -93,6 +94,20 @@ class SpiralParams(BaseModel):
     shuffle: bool = Field(
         default=True,
         description="Whether to shuffle the dataset before splitting",
+    )
+    algorithm: Literal["modern", "legacy_cascor"] = Field(
+        default="modern",
+        description="Generation algorithm: 'modern' (linspace+normal noise) or 'legacy_cascor' (sqrt-uniform radii + uniform noise)",
+    )
+    radius: float = Field(
+        default=SPIRAL_DEFAULT_RADIUS,
+        gt=0.0,
+        le=100.0,
+        description="Maximum radius for modern mode, or max distance parameter for legacy mode",
+    )
+    origin: Tuple[float, float] = Field(
+        default=(0.0, 0.0),
+        description="Origin point (x, y) for spiral center",
     )
 
     @model_validator(mode="after")

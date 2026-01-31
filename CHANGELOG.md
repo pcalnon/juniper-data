@@ -5,6 +5,57 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-01-31
+
+**Summary**: Added legacy parity mode for spiral generator to achieve statistical compatibility with JuniperCascor's SpiralProblem implementation.
+
+### Added: [0.2.0]
+
+- **Legacy Parity Mode** (`generators/spiral/`)
+  - New `algorithm` parameter: `"modern"` (default) or `"legacy_cascor"`
+  - New `radius` parameter: Maximum radius/distance (default: 10.0)
+  - New `origin` parameter: Center point offset as `(x, y)` tuple (default: `(0.0, 0.0)`)
+  
+- **Legacy Cascor Algorithm** (`algorithm="legacy_cascor"`)
+  - Sqrt-uniform radial sampling: `sqrt(random) * radius`
+  - Distance-as-angle formula: `angle = direction * (distance + offset)`
+  - Uniform noise in `[0, noise)` (not zero-centered)
+  - Matches statistical properties of original JuniperCascor SpiralProblem
+
+- **New Unit Tests** (8 tests for legacy mode)
+  - `test_legacy_mode_generates_correct_shapes`
+  - `test_legacy_mode_deterministic_with_seed`
+  - `test_legacy_mode_different_from_modern`
+  - `test_legacy_mode_uniform_noise_range`
+  - `test_legacy_mode_radii_distribution`
+  - `test_origin_offset_works`
+  - `test_radius_parameter_controls_spread`
+  - `test_algorithm_param_validation`
+
+### Technical Notes: [0.2.0]
+
+- **SemVer impact**: MINOR – New features added; backward compatible
+- **Test count**: 84 tests passing (up from 76)
+- Default behavior unchanged (`algorithm="modern"`)
+
+### Usage: [0.2.0]
+
+```python
+# Modern mode (default, same as before)
+params = SpiralParams(n_spirals=2, n_points_per_spiral=100)
+
+# Legacy Cascor mode (for parity with JuniperCascor)
+params = SpiralParams(
+    n_spirals=2,
+    n_points_per_spiral=100,
+    algorithm="legacy_cascor",
+    radius=10.0,
+    origin=(0.0, 0.0),
+)
+```
+
+---
+
 ## [0.1.2] - 2026-01-31
 
 **Summary**: Added Conda environment configuration for JuniperData development.
@@ -142,6 +193,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date       | Description                    |
 | ------- | ---------- | ------------------------------ |
+| 0.2.0   | 2026-01-31 | Legacy parity mode for spiral  |
 | 0.1.2   | 2026-01-31 | Conda environment setup        |
 | 0.1.1   | 2026-01-30 | CI/CD Pipeline & Pre-commit    |
 | 0.1.0   | 2026-01-29 | Initial release (Phases 0-2)   |
