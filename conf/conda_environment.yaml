@@ -1,0 +1,54 @@
+#####################################################################################################################################################################################################
+# Project:       Juniper
+# Sub-Project:   JuniperData
+# Application:   juniper_data
+# File Name:     conda_environment.yaml
+# Author:        Paul Calnon
+# Version:       0.1.0
+#
+# Date Created:  2026-01-31
+# Last Modified: 2026-01-31
+#
+# License:       MIT License
+# Copyright:     Copyright (c) 2024,2025,2026 Paul Calnon
+#
+# Description:
+#    Conda environment configuration for Juniper Data
+#    Dataset generation and management service for the Juniper ecosystem
+#
+# Usage:
+#    cd /home/pcalnon/Development/python/Juniper/JuniperData/juniper_data
+#    conda env create -f conf/conda_environment.yaml
+#    conda activate JuniperData
+#
+# References:
+#    - JuniperCascor project patterns
+#    - JUNIPER_CASCOR_SPIRAL_DATA_GEN_REFACTOR_PLAN.md
+#####################################################################################################################################################################################################
+
+name: JuniperData
+
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  # Python runtime
+  - python>=3.11
+
+  # Core dependencies (installed via conda for performance)
+  - numpy>=1.24.0
+  - pip
+
+  # Development tools available via conda
+  - pytest>=7.0.0
+  - pytest-cov>=4.0.0
+  - black>=23.0.0
+  - isort>=5.12.0
+  - mypy>=1.0.0
+
+  # Pip-only dependencies installed after environment creation
+  # Run: pip install -e .[all] from the project root after activating
+  #
+  # - pip:
+  #     - -e .[all]

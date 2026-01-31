@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-01-31
+
+**Summary**: Added Conda environment configuration for JuniperData development.
+
+### Added: [0.1.2]
+
+- **Conda Environment** (`conf/conda_environment.yaml`)
+  - Python >=3.11 with numpy, pytest, dev tools via conda-forge
+  - Editable package installation with `pip install -e .[all]`
+  - Full test suite validation (76 tests passing)
+
+### Technical Notes: [0.1.2]
+
+- **SemVer impact**: PATCH – Environment configuration only; no API changes
+- **Environment name**: JuniperData
+- **Test count**: 76 tests passing in new environment
+
+---
+
 ## [0.1.1] - 2026-01-30
 
 **Summary**: Added comprehensive CI/CD pipeline with pre-commit hooks, GitHub Actions workflow, and security scanning. Renamed source directory from `src/` to `juniper_data/` for proper package discovery.
@@ -123,6 +142,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date       | Description                    |
 | ------- | ---------- | ------------------------------ |
+| 0.1.2   | 2026-01-31 | Conda environment setup        |
 | 0.1.1   | 2026-01-30 | CI/CD Pipeline & Pre-commit    |
 | 0.1.0   | 2026-01-29 | Initial release (Phases 0-2)   |
 
