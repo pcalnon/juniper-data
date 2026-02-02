@@ -28,9 +28,7 @@ def shuffle_data(
         ValueError: If X and y have different number of samples.
     """
     if X.shape[0] != y.shape[0]:
-        raise ValueError(
-            f"X and y must have the same number of samples. " f"Got X.shape[0]={X.shape[0]}, y.shape[0]={y.shape[0]}"
-        )
+        raise ValueError(f"X and y must have the same number of samples. " f"Got X.shape[0]={X.shape[0]}, y.shape[0]={y.shape[0]}")
 
     permutation = rng.permutation(X.shape[0])
     return X[permutation], y[permutation]
@@ -57,9 +55,7 @@ def split_data(
         ValueError: If ratios are invalid or X and y have different sample counts.
     """
     if X.shape[0] != y.shape[0]:
-        raise ValueError(
-            f"X and y must have the same number of samples. " f"Got X.shape[0]={X.shape[0]}, y.shape[0]={y.shape[0]}"
-        )
+        raise ValueError(f"X and y must have the same number of samples. " f"Got X.shape[0]={X.shape[0]}, y.shape[0]={y.shape[0]}")
 
     if not (0.0 <= train_ratio <= 1.0):
         raise ValueError(f"train_ratio must be between 0 and 1. Got {train_ratio}")
@@ -68,10 +64,7 @@ def split_data(
         raise ValueError(f"test_ratio must be between 0 and 1. Got {test_ratio}")
 
     if train_ratio + test_ratio > 1.0:
-        raise ValueError(
-            f"train_ratio + test_ratio must not exceed 1.0. "
-            f"Got {train_ratio} + {test_ratio} = {train_ratio + test_ratio}"
-        )
+        raise ValueError(f"train_ratio + test_ratio must not exceed 1.0. " f"Got {train_ratio} + {test_ratio} = {train_ratio + test_ratio}")
 
     n_samples = X.shape[0]
     n_train = int(np.round(n_samples * train_ratio))

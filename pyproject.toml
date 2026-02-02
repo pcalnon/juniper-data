@@ -4,7 +4,7 @@
 # Application:   juniper_data
 # File Name:     pyproject.toml
 # Author:        Paul Calnon
-# Version:       0.1.0
+# Version:       0.1.1
 #
 # Date Created:  2026-01-29
 # Last Modified: 2026-01-30
@@ -27,7 +27,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "juniper-data"
-version = "0.1.0"
+version = "0.1.1"
 description = "Dataset generation and management service for the Juniper ecosystem"
 readme = "README.md"
 license = { text = "MIT" }
@@ -74,7 +74,7 @@ where = ["."]
 include = ["juniper_data*"]
 
 [tool.black]
-line-length = 120
+line-length = 512
 # target-version = ["py311", "py312", "py313", "py314"]  # py314 not yet supported by black
 target-version = ["py311", "py312", "py313"]
 
@@ -95,7 +95,7 @@ extend-exclude = '''
 
 [tool.isort]
 profile = "black"
-line_length = 120
+line_length = 512
 skip = [".git", "__pycache__", ".pytest_cache", ".trunk", "data", "logs", "reports", "htmlcov"]
 skip_glob = ["*/data/*", "*/logs/*", "*/reports/*"]
 known_first_party = ["juniper_data"]
@@ -136,16 +136,19 @@ timeout = 60
 timeout_method = "signal"
 
 [tool.coverage.run]
-source = ["juniper_data"]
+source_pkgs = ["juniper_data"]
 omit = [
     "*/tests/*",
     "*/__pycache__/*",
     "*/data/*",
     "*/logs/*",
+    # "*/__main__.py",
+    # "*/api/*",
 ]
 branch = true
 
 [tool.coverage.report]
+fail_under = 80
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",
@@ -153,6 +156,8 @@ exclude_lines = [
     "raise NotImplementedError",
     "if __name__ == .__main__.:",
     "if TYPE_CHECKING:",
+    "@abstractmethod",
+    "^\\s*pass\\s*$",
 ]
 show_missing = true
 precision = 2
@@ -174,7 +179,7 @@ exclude = [
     "^logs/",
     "^reports/",
     "^htmlcov/",
-    "^tests/",
+    "^juniper_data/tests/",
 ]
 
 [[tool.mypy.overrides]]

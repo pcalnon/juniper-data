@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+#####################################################################################################################################################################################################
+# Project:       Juniper
+# Sub-Project:   JuniperData
+# Application:   juniper_data
+# Purpose:       Juniper Project Cascade Correlation Neural Network
+#
+# Author:        Paul Calnon
+# Version:       0.1.4 (0.7.3)
+# File Name:     run_all_tests.bash
+# File Path:     <Project>/<Sub-Project>/<Application>/util/
+#
+# Date Created:  2025-10-11
+# Last Modified: 2026-02-01
+#
+# License:       MIT License
+# Copyright:     Copyright (c) 2024,2025,2026 Paul Calnon
+#
+# Description:
+#
+#####################################################################################################################################################################################################
+# Notes:
+#
+########################################################################################################)#############################################################################################
+# References:
+#
+#####################################################################################################################################################################################################
+# TODO :
+#
+#####################################################################################################################################################################################################
+# COMPLETED:
+#
+#####################################################################################################################################################################################################
+
+
+#####################################################################################################################################################################################################
+# Source script config file
+#####################################################################################################################################################################################################
+set -o functrace
+# shellcheck disable=SC2155
+export PARENT_PATH_PARAM="$(realpath "${BASH_SOURCE[0]}")" && INIT_CONF="$(dirname "$(dirname "${PARENT_PATH_PARAM}")")/conf/init.conf"
+# shellcheck disable=SC2015,SC1090
+[[ -f "${INIT_CONF}" ]] && source "${INIT_CONF}" || { echo "Init Config File Not Found. Unable to Continue."; exit 1; }
+
+
+#####################################################################################################################################################################################################
+# Verify Operating System
+#####################################################################################################################################################################################################
+log_trace "Verify Operating System"
+# trunk-ignore(shellcheck/SC2015)
+# trunk-ignore(shellcheck/SC2312)
+# shellcheck disable=SC2015
+[[ "$(uname)" == "${OS_NAME_LINUX}" ]]  && export HOME_DIR="/home/${USERNAME}" || { [[ "$(uname)" == "${OS_NAME_MACOS}"  ]] && export HOME_DIR="/Users/${USERNAME}" || { echo "Error: Invalid OS Type! Exiting..."  && set -e && exit 1; }; }
+log_verbose "HOME_DIR: ${HOME_DIR}"
+cd "${PROJ_DIR}"
+log_verbose "Current Directory: $(pwd)"
+
+
+#####################################################################################################################################################################################################
+# Run Tests with designated reports
+#####################################################################################################################################################################################################
+log_trace "Run Tests with designated reports"
+if [[ "${COVERAGE_REPORT}" == "${FALSE}" ]]; then
+
+# TODO: Move these flags to config file
+# python -m pytest -v ./src/tests \
+    RUN_TESTS_NO_COV_RPT="\
+${ACTIVATE_CONDA} ${CONDA_ENV_NAME} && \
+DATA_LOG_LEVEL=${DATA_LOG_LEVEL} \
+timeout=${TESTING_TIMEOUT} \
+python -m pytest -vv ${TESTS_DIR} \
+--slow \
+--integration \
+--junit-xml=src/tests/reports/junit/results.xml \
+--continue-on-collection-errors \
+--ignore=src/tests \
+"
+#     RUN_TESTS_NO_COV_RPT="\
+# pytest \
+# --slow \
+# --integration \
+# --junit-xml=src/tests/reports/junit/results.xml \
+# --continue-on-collection-errors \
+# --ignore=src/tests \
+# -v ./src/tests \
+# "
+    log_verbose "RUN_TESTS_NO_COV_RPT: ${RUN_TESTS_NO_COV_RPT}"
+    eval "${RUN_TESTS_NO_COV_RPT}"; SUCCESS="$?"
+elif [[ "${COVERAGE_REPORT}" == "${TRUE}" ]]; then
+
+SOURCE_FILE_LIST="$(find . | grep -v "__init__" | grep -e ".*py$")"
+
+
+# TODO: Move these flags to config file
+    RUN_TESTS_WITH_COV_RPT="\
+${ACTIVATE_CONDA} ${CONDA_ENV_NAME} && \
+DATA_LOG_LEVEL=${DATA_LOG_LEVEL} && \
+JUNIPER_FAST_SLOW=${JUNIPER_FAST_SLOW} && \
+DATA_BACKEND_AVAILABLE=${DATA_BACKEND_AVAILABLE} && \
+RUN_SERVER_TESTS=${RUN_SERVER_TESTS} && \
+ENABLE_DISPLAY_TESTS=${ENABLE_DISPLAY_TESTS} && \
+python -m pytest -vv ${TESTS_DIR} \
+--timeout=${TESTING_TIMEOUT} \
+--junit-xml=reports/junit/results.xml \
+--continue-on-collection-errors \
+--cov=${APPLICATION_NAME} \
+--cov-report=html:htmlcov \
+--cov-report=xml \
+--cov-report=xml:reports/coverage.xml  \
+--cov-report=term-missing \
+--cov-report=html:reports/coverage \
+--ignore=${TESTS_DIR} \
+"
+
+# --slow \
+# --fast-slow \
+# --integration \
+#
+# --cov=cascade_correlation \
+# --cov=candidate_unit \
+# --cov=data_constants \
+# --cov=data_plotter \
+# --cov=log_config \
+# --cov=remote_client \
+# --cov=spiral_problem \
+# --cov=utils \
+#
+# ${ACTIVATE_CONDA} ${CONDA_ENV_NAME} && \
+# pytest \
+# --slow \
+# --integration \
+# --junit-xml=src/tests/reports/junit/results.xml \
+# --continue-on-collection-errors \
+# --cov=cascade_correlation \
+# --cov=candidate_unit \
+# --cov-report=html:htmlcov \
+# --cov-report=xml \
+# --cov=src \
+# --cov-report=xml:src/tests/reports/coverage.xml  \
+# --cov-report=term-missing \
+# --cov-report=html:src/tests/reports/coverage \
+# --ignore=src/tests \
+# -v ./src/tests \
+# "
+# --run-long \
+
+    log_verbose "RUN_TESTS_WITH_COV_RPT: ${RUN_TESTS_WITH_COV_RPT}"
+    eval "${RUN_TESTS_WITH_COV_RPT}"; SUCCESS="$?"
+else
+    log_critical "Coverage Report flag has an Invalid Value"
+fi
+log_info "Running the Juniper Data project's Full Test Suite $( [[ "${SUCCESS}" == "${TRUE}" ]] && echo "Succeeded!" || echo "Failed." )"
+
+exit $(( SUCCESS ))

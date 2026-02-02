@@ -492,3 +492,35 @@ class TestSpiralGeneratorLegacyMode:
 
         error_str = str(exc_info.value)
         assert "algorithm" in error_str or "Input should be" in error_str
+
+
+@pytest.mark.unit
+@pytest.mark.spiral
+class TestGetSchema:
+    """Tests for the get_schema function."""
+
+    def test_get_schema_returns_dict(self) -> None:
+        """Verify get_schema returns a dictionary."""
+        from juniper_data.generators.spiral.generator import get_schema
+
+        schema = get_schema()
+        assert isinstance(schema, dict)
+
+    def test_get_schema_contains_properties(self) -> None:
+        """Verify schema contains expected properties."""
+        from juniper_data.generators.spiral.generator import get_schema
+
+        schema = get_schema()
+        assert "properties" in schema
+        assert "n_spirals" in schema["properties"]
+        assert "n_points_per_spiral" in schema["properties"]
+        assert "noise" in schema["properties"]
+        assert "seed" in schema["properties"]
+
+    def test_get_schema_contains_title(self) -> None:
+        """Verify schema contains title."""
+        from juniper_data.generators.spiral.generator import get_schema
+
+        schema = get_schema()
+        assert "title" in schema
+        assert schema["title"] == "SpiralParams"

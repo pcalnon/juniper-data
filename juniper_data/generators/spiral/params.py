@@ -8,25 +8,7 @@ from typing import Literal, Optional, Tuple
 
 from pydantic import BaseModel, Field, model_validator
 
-from .defaults import (
-    MAX_NOISE,
-    MAX_POINTS,
-    MAX_ROTATIONS,
-    MAX_SPIRALS,
-    MIN_NOISE,
-    MIN_POINTS,
-    MIN_ROTATIONS,
-    MIN_SPIRALS,
-    SPIRAL_DEFAULT_CLOCKWISE,
-    SPIRAL_DEFAULT_N_POINTS,
-    SPIRAL_DEFAULT_N_ROTATIONS,
-    SPIRAL_DEFAULT_N_SPIRALS,
-    SPIRAL_DEFAULT_NOISE,
-    SPIRAL_DEFAULT_RADIUS,
-    SPIRAL_DEFAULT_SEED,
-    SPIRAL_DEFAULT_TEST_RATIO,
-    SPIRAL_DEFAULT_TRAIN_RATIO,
-)
+from .defaults import MAX_NOISE, MAX_POINTS, MAX_ROTATIONS, MAX_SPIRALS, MIN_NOISE, MIN_POINTS, MIN_ROTATIONS, MIN_SPIRALS, SPIRAL_DEFAULT_CLOCKWISE, SPIRAL_DEFAULT_N_POINTS, SPIRAL_DEFAULT_N_ROTATIONS, SPIRAL_DEFAULT_N_SPIRALS, SPIRAL_DEFAULT_NOISE, SPIRAL_DEFAULT_RADIUS, SPIRAL_DEFAULT_SEED, SPIRAL_DEFAULT_TEST_RATIO, SPIRAL_DEFAULT_TRAIN_RATIO
 
 
 class SpiralParams(BaseModel):
@@ -114,10 +96,7 @@ class SpiralParams(BaseModel):
     def validate_ratios_sum(self) -> "SpiralParams":
         """Validate that train_ratio + test_ratio <= 1.0."""
         if self.train_ratio + self.test_ratio > 1.0:
-            raise ValueError(
-                f"train_ratio ({self.train_ratio}) + test_ratio ({self.test_ratio}) "
-                f"must be <= 1.0, got {self.train_ratio + self.test_ratio}"
-            )
+            raise ValueError(f"train_ratio ({self.train_ratio}) + test_ratio ({self.test_ratio}) " f"must be <= 1.0, got {self.train_ratio + self.test_ratio}")
         return self
 
     def total_points(self) -> int:

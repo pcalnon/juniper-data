@@ -5,6 +5,65 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-02-02
+
+**Summary**: Fixed code coverage configuration and achieved 100% test coverage across all source files.
+
+### Fixed: [0.2.2]
+
+- **Code Coverage Configuration** (`pyproject.toml`, `ci.yml`)
+  - Changed from path-based `source` to package-based `source_pkgs = ["juniper_data"]`
+  - Simplified CI coverage flags from three path-based `--cov` flags to single `--cov=juniper_data`
+  - Coverage now correctly measures at 100% (was 0% due to path mismatch)
+
+### Added: [0.2.2]
+
+- **Comprehensive Unit Tests**
+  - `test_main.py` - Tests for `__main__.py` entry point (argument parsing, uvicorn launch)
+  - `test_api_app.py` - Tests for FastAPI app factory, lifespan, exception handlers
+  - `test_api_routes.py` - Tests for datasets/generators/health route edge cases
+  - `test_api_settings.py` - Tests for Settings class and get_settings function
+  - Added tests for `get_schema()` in spiral generator
+  - Added tests for split edge case when rounding exceeds sample count
+  - Added tests for LocalFS storage edge cases (JSON serializer, partial file deletion)
+  - Added tests verifying abstract base class behavior
+
+### Technical Notes: [0.2.2]
+
+- **SemVer impact**: PATCH – Configuration fix and test additions only; no API changes
+- **Test count**: 207 tests (up from 141)
+- **Coverage**: 100% across all 23 source files
+- **Root cause**: Nested `juniper_data/juniper_data/` structure caused path-based coverage targets to not exist
+- **Documentation**: See `notes/CODE_COVERAGE_FIX.md` for detailed analysis
+
+---
+
+## [0.2.1] - 2026-02-01
+
+**Summary**: CI/CD parity achieved across JuniperCascor, JuniperData, and JuniperCanopy with standardized settings.
+
+### Changed: [0.2.1]
+
+- **CI/CD Configuration Parity**
+  - `.pre-commit-config.yaml` (v0.1.1)
+    - Line length: 512 for black, isort, flake8
+    - Added yamllint hook (v1.35.1, relaxed config)
+    - Enabled mypy in CI (fully active)
+  - `.github/workflows/ci.yml` (v0.1.1)
+    - Coverage threshold: 80% (up from 50%)
+    - Added build job with package verification
+    - Standardized artifact paths: reports/junit/, reports/htmlcov/, reports/coverage.xml
+  - `pyproject.toml` (v0.1.1)
+    - Line length: 512 for black/isort
+    - Coverage fail_under: 80%
+
+### Technical Notes: [0.2.1]
+
+- **SemVer impact**: PATCH – Configuration changes only; no API changes
+- **CI Parity**: All 3 Juniper applications now use identical CI/CD settings
+
+---
+
 ## [0.2.0] - 2026-01-31
 
 **Summary**: Added legacy parity mode for spiral generator to achieve statistical compatibility with JuniperCascor's SpiralProblem implementation.
@@ -15,7 +74,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - New `algorithm` parameter: `"modern"` (default) or `"legacy_cascor"`
   - New `radius` parameter: Maximum radius/distance (default: 10.0)
   - New `origin` parameter: Center point offset as `(x, y)` tuple (default: `(0.0, 0.0)`)
-  
+
 - **Legacy Cascor Algorithm** (`algorithm="legacy_cascor"`)
   - Sqrt-uniform radial sampling: `sqrt(random) * radius`
   - Distance-as-angle formula: `angle = direction * (distance + offset)`
@@ -193,6 +252,8 @@ params = SpiralParams(
 
 | Version | Date       | Description                    |
 | ------- | ---------- | ------------------------------ |
+| 0.2.2   | 2026-02-02 | Code coverage configuration fix|
+| 0.2.1   | 2026-02-01 | CI/CD parity across Juniper    |
 | 0.2.0   | 2026-01-31 | Legacy parity mode for spiral  |
 | 0.1.2   | 2026-01-31 | Conda environment setup        |
 | 0.1.1   | 2026-01-30 | CI/CD Pipeline & Pre-commit    |

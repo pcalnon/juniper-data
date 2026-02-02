@@ -5,7 +5,7 @@
 # Application:   juniper_data
 # File Name:     ci.yml
 # Author:        Paul Calnon
-# Version:       0.1.0
+# Version:       0.1.1
 #
 # Date Created:  2026-01-30
 # Last Modified: 2026-01-30
@@ -52,7 +52,7 @@ permissions:
 env:
   SERVICE_NAME: JuniperData
   PYTHON_TEST_VERSION: "3.14"
-  COVERAGE_FAIL_UNDER: "50"
+  COVERAGE_FAIL_UNDER: "80"
 
 jobs:
   # ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -166,6 +166,49 @@ jobs:
         with:
           name: unit-test-results-py${{ matrix.python-version }}
           path: reports/junit-unit.xml
+          retention-days: 30
+
+  # ═══════════════════════════════════════════════════════════════════════════════════════════════
+  # Build: Build sdist and wheel artifacts
+  # ═══════════════════════════════════════════════════════════════════════════════════════════════
+  build:
+    name: Build Package
+    runs-on: ubuntu-latest
+    needs: [unit-tests]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Install build
+        run: |
+          python -m pip install --upgrade pip
+          pip install build
+
+      - name: Build sdist and wheel
+        run: |
+          echo "╔════════════════════════════════════════════════════════════╗"
+          echo "║       JuniperData - Build Package                          ║"
+          echo "╚════════════════════════════════════════════════════════════╝"
+          python -m build --sdist --wheel
+
+      - name: Verify build artifacts
+        run: |
+          ls -la dist/
+          test -f dist/*.tar.gz
+          test -f dist/*.whl
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: dist/
           retention-days: 30
 
   # ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -300,7 +343,7 @@ jobs:
     name: Quality Gate
     runs-on: ubuntu-latest
     if: always()
-    needs: [pre-commit, unit-tests, integration-tests, security]
+    needs: [pre-commit, unit-tests, build, integration-tests, security]
 
     steps:
       - name: Check Quality Gate Status
@@ -311,6 +354,7 @@ jobs:
           echo ""
           echo "Pre-commit:        ${{ needs.pre-commit.result }}"
           echo "Unit Tests:        ${{ needs.unit-tests.result }}"
+          echo "Build:             ${{ needs.build.result }}"
           echo "Integration Tests: ${{ needs.integration-tests.result }}"
           echo "Security:          ${{ needs.security.result }}"
           echo ""
@@ -323,6 +367,11 @@ jobs:
 
           if [[ "${{ needs.unit-tests.result }}" != "success" ]]; then
             echo "::error::Unit tests failed"
+            exit 1
+          fi
+
+          if [[ "${{ needs.build.result }}" != "success" ]]; then
+            echo "::error::Build failed"
             exit 1
           fi
 

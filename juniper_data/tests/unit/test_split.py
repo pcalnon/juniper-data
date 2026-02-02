@@ -227,3 +227,21 @@ class TestShuffleAndSplit:
         result2 = shuffle_and_split(X, y, 0.8, 0.2, seed=99, shuffle=True)
 
         assert not np.array_equal(result1["X_train"], result2["X_train"])
+
+    def test_split_adjusts_test_size_when_rounding_exceeds_samples(self) -> None:
+        """Verify test size is adjusted when train+test rounding exceeds total samples.
+        
+        With 3 samples, train_ratio=0.5, test_ratio=0.5:
+        - n_train = round(3 * 0.5) = round(1.5) = 2
+        - n_test = round(3 * 0.5) = round(1.5) = 2
+        - n_train + n_test = 4 > 3, so n_test should be adjusted to 1
+        """
+        X = np.arange(6).reshape(3, 2).astype(np.float32)
+        y = np.array([[1, 0], [0, 1], [1, 0]], dtype=np.float32)
+
+        result = split_data(X, y, train_ratio=0.5, test_ratio=0.5)
+
+        total_split = result["X_train"].shape[0] + result["X_test"].shape[0]
+        assert total_split == 3
+        assert result["X_train"].shape[0] == 2
+        assert result["X_test"].shape[0] == 1

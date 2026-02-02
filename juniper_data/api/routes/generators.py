@@ -15,8 +15,7 @@ GENERATOR_REGISTRY: Dict[str, Dict[str, Any]] = {
         "generator": SpiralGenerator,
         "params_class": SpiralParams,
         "version": SPIRAL_VERSION,
-        "description": "Multi-spiral classification dataset generator. "
-        "Generates N interleaved spiral arms with configurable points, rotations, and noise.",
+        "description": "Multi-spiral classification dataset generator. " "Generates N interleaved spiral arms with configurable points, rotations, and noise.",
     },
 }
 

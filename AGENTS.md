@@ -1,10 +1,10 @@
 # AGENTS.md - Juniper Data Project Guide
 
 **Project**: Juniper Data - Dataset Generation Service  
-**Version**: 0.1.0  
+**Version**: 0.2.2  
 **License**: MIT License  
 **Author**: Paul Calnon  
-**Last Updated**: 2026-01-30
+**Last Updated**: 2026-02-02
 
 ---
 
@@ -31,8 +31,8 @@ pytest juniper_data/tests/unit/
 # Run integration tests only
 pytest juniper_data/tests/integration/
 
-# Run tests with coverage
-pytest juniper_data/tests/ --cov=juniper_data --cov-report=html --cov-report=term-missing
+# Run tests with coverage (uses source_pkgs from pyproject.toml)
+pytest juniper_data/tests/ --cov=juniper_data --cov-report=html --cov-report=term-missing --cov-fail-under=80
 
 # Run a specific test file
 pytest juniper_data/tests/unit/test_spiral_generator.py -v
