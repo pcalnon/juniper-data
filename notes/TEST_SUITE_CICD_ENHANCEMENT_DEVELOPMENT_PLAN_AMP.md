@@ -14,14 +14,14 @@ This development plan consolidates findings from two independent test suite and 
 
 ### Key Findings Summary
 
-| Category | Issues Found | Critical | High | Medium | Low |
-|----------|-------------|----------|------|--------|-----|
-| Security Scanning | 4 | 2 | 1 | 1 | 0 |
-| Test Suite Integrity | 3 | 1 | 1 | 1 | 0 |
-| Static Analysis Coverage | 4 | 0 | 2 | 2 | 0 |
-| Configuration Quality | 5 | 0 | 1 | 2 | 2 |
-| Missing Infrastructure | 4 | 0 | 1 | 2 | 1 |
-| **Total** | **20** | **3** | **6** | **8** | **3** |
+| Category                 | Issues Found | Critical | High  | Medium | Low   |
+| ------------------------ | ------------ | -------- | ----- | ------ | ----- |
+| Security Scanning        | 4            | 2        | 1     | 1      | 0     |
+| Test Suite Integrity     | 3            | 1        | 1     | 1      | 0     |
+| Static Analysis Coverage | 4            | 0        | 2     | 2      | 0     |
+| Configuration Quality    | 5            | 0        | 1     | 2      | 2     |
+| Missing Infrastructure   | 4            | 0        | 1     | 2      | 1     |
+| **Total**                | **20**       | **3**    | **6** | **8**  | **3** |
 
 ### Overall Risk Assessment
 
@@ -48,47 +48,47 @@ This development plan consolidates findings from two independent test suite and 
 
 ### 1.1 Issues Validated from Audit Reports
 
-| ID | Issue | Location | Validated | Severity |
-|----|-------|----------|-----------|----------|
-| SEC-001 | Bandit failures suppressed with `\|\| true` | ci.yml:313 | ✓ | **CRITICAL** |
-| SEC-002 | pip-audit vulnerabilities don't fail build | ci.yml:329 | ✓ | **CRITICAL** |
-| SEC-003 | No Dependabot configuration | .github/ | ✓ | **HIGH** |
-| SEC-004 | GitHub Actions not pinned to SHA | ci.yml:70,73,84,etc. | ✓ | **MEDIUM** |
-| TST-001 | Silent test pass via `except ImportError: pass` | test_main.py:37-38 | ✓ | **CRITICAL** |
-| TST-002 | Tests excluded from Flake8 pre-commit | .pre-commit-config.yaml:126 | ✓ | **HIGH** |
-| TST-003 | Tests excluded from MyPy pre-commit | .pre-commit-config.yaml:139 | ✓ | **HIGH** |
-| TST-004 | Pytest warnings globally suppressed | pyproject.toml:119 | ✓ | **MEDIUM** |
-| CFG-001 | Excessive Flake8 ignore rules (E722, F401) | .pre-commit-config.yaml:118 | ✓ | **MEDIUM** |
-| CFG-002 | 512-character line length (excessively permissive) | Multiple files | ✓ | **LOW** |
-| CFG-003 | MyPy type errors in production code (6 errors) | 5 source files | ✓ | **MEDIUM** |
-| CFG-004 | Tests excluded from MyPy in pyproject.toml | pyproject.toml:182 | ✓ | **MEDIUM** |
-| INF-001 | No CodeQL analysis configured | .github/workflows/ | ✓ | **MEDIUM** |
-| INF-002 | No coverage upload to external service | ci.yml | ✓ | **LOW** |
-| INF-003 | No scheduled slow test job | ci.yml | ✓ | **LOW** |
-| INF-004 | SARIF upload uses continue-on-error | ci.yml:320 | ✓ | **LOW** |
+| ID      | Issue                                              | Location                    | Validated | Severity     |
+| ------- | -------------------------------------------------- | --------------------------- | --------- | ------------ |
+| SEC-001 | Bandit failures suppressed with `\|\| true`        | ci.yml:313                  | ✓         | **CRITICAL** |
+| SEC-002 | pip-audit vulnerabilities don't fail build         | ci.yml:329                  | ✓         | **CRITICAL** |
+| SEC-003 | No Dependabot configuration                        | .github/                    | ✓         | **HIGH**     |
+| SEC-004 | GitHub Actions not pinned to SHA                   | ci.yml:70,73,84,etc.        | ✓         | **MEDIUM**   |
+| TST-001 | Silent test pass via `except ImportError: pass`    | test_main.py:37-38          | ✓         | **CRITICAL** |
+| TST-002 | Tests excluded from Flake8 pre-commit              | .pre-commit-config.yaml:126 | ✓         | **HIGH**     |
+| TST-003 | Tests excluded from MyPy pre-commit                | .pre-commit-config.yaml:139 | ✓         | **HIGH**     |
+| TST-004 | Pytest warnings globally suppressed                | pyproject.toml:119          | ✓         | **MEDIUM**   |
+| CFG-001 | Excessive Flake8 ignore rules (E722, F401)         | .pre-commit-config.yaml:118 | ✓         | **MEDIUM**   |
+| CFG-002 | 512-character line length (excessively permissive) | Multiple files              | ✓         | **LOW**      |
+| CFG-003 | MyPy type errors in production code (6 errors)     | 5 source files              | ✓         | **MEDIUM**   |
+| CFG-004 | Tests excluded from MyPy in pyproject.toml         | pyproject.toml:182          | ✓         | **MEDIUM**   |
+| INF-001 | No CodeQL analysis configured                      | .github/workflows/          | ✓         | **MEDIUM**   |
+| INF-002 | No coverage upload to external service             | ci.yml                      | ✓         | **LOW**      |
+| INF-003 | No scheduled slow test job                         | ci.yml                      | ✓         | **LOW**      |
+| INF-004 | SARIF upload uses continue-on-error                | ci.yml:320                  | ✓         | **LOW**      |
 
 ### 1.2 Flake8 Violations in Test Code (Currently Undetected)
 
 Running `flake8 juniper_data/tests` revealed **33+ issues** that are currently hidden due to test exclusion:
 
-| Category | Count | Impact |
-|----------|-------|--------|
-| F401 (unused imports) | 6 | Dead code accumulation |
-| F541 (empty f-strings) | 5 | Potential bugs |
-| E402 (import order) | 1 | Style inconsistency |
-| SIM117 (nested with statements) | 21 | Reduced readability |
-| **Total** | **33** | Code quality degradation |
+| Category                        | Count  | Impact                   |
+| ------------------------------- | ------ | ------------------------ |
+| F401 (unused imports)           | 6      | Dead code accumulation   |
+| F541 (empty f-strings)          | 5      | Potential bugs           |
+| E402 (import order)             | 1      | Style inconsistency      |
+| SIM117 (nested with statements) | 21     | Reduced readability      |
+| **Total**                       | **33** | Code quality degradation |
 
 ### 1.3 MyPy Type Errors in Production Code
 
-| File | Line | Error | Type |
-|------|------|-------|------|
-| `core/artifacts.py` | 18 | `savez` type signature mismatch | arg-type |
-| `core/artifacts.py` | 44 | `savez` type signature mismatch | arg-type |
-| `storage/memory.py` | 65 | `savez_compressed` type signature mismatch | arg-type |
-| `storage/local_fs.py` | 77 | `savez_compressed` type signature mismatch | arg-type |
-| `api/routes/datasets.py` | 19 | Incompatible None assignment | assignment |
-| `api/app.py` | 40 | Implicit Optional not allowed | assignment |
+| File                     | Line | Error                                      | Type       |
+| ------------------------ | ---- | ------------------------------------------ | ---------- |
+| `core/artifacts.py`      | 18   | `savez` type signature mismatch            | arg-type   |
+| `core/artifacts.py`      | 44   | `savez` type signature mismatch            | arg-type   |
+| `storage/memory.py`      | 65   | `savez_compressed` type signature mismatch | arg-type   |
+| `storage/local_fs.py`    | 77   | `savez_compressed` type signature mismatch | arg-type   |
+| `api/routes/datasets.py` | 19   | Incompatible None assignment               | assignment |
+| `api/app.py`             | 40   | Implicit Optional not allowed              | assignment |
 
 ---
 
@@ -96,44 +96,44 @@ Running `flake8 juniper_data/tests` revealed **33+ issues** that are currently h
 
 ### 2.1 Priority Definitions
 
-| Priority | Label | Definition | SLA |
-|----------|-------|------------|-----|
-| P0 | **CRITICAL** | Security vulnerability, CI integrity compromised, or tests that silently pass without validation | Immediate (< 24h) |
-| P1 | **HIGH** | Test quality degradation, missing security infrastructure, or significant code quality blind spots | 1 week |
-| P2 | **MEDIUM** | Configuration improvements, type safety gaps, or reduced signal quality | 2 weeks |
-| P3 | **LOW** | Style preferences, optional enhancements, or nice-to-have features | 1 month |
+| Priority | Label        | Definition                                                                                         | SLA               |
+| -------- | ------------ | -------------------------------------------------------------------------------------------------- | ----------------- |
+| P0       | **CRITICAL** | Security vulnerability, CI integrity compromised, or tests that silently pass without validation   | Immediate (< 24h) |
+| P1       | **HIGH**     | Test quality degradation, missing security infrastructure, or significant code quality blind spots | 1 week            |
+| P2       | **MEDIUM**   | Configuration improvements, type safety gaps, or reduced signal quality                            | 2 weeks           |
+| P3       | **LOW**      | Style preferences, optional enhancements, or nice-to-have features                                 | 1 month           |
 
 ### 2.2 Issue Priority Matrix
 
-```
+```bash
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                        PRIORITY MATRIX                                   │
+│                        PRIORITY MATRIX                                  │
 ├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  P0 CRITICAL (Immediate)                                                 │
+│                                                                         │
+│  P0 CRITICAL (Immediate)                                                │
 │  ├── SEC-001: Bandit || true suppression                                │
 │  ├── SEC-002: pip-audit doesn't fail on vulnerabilities                 │
 │  └── TST-001: Silent ImportError pass in test_main.py                   │
-│                                                                          │
-│  P1 HIGH (1 Week)                                                        │
+│                                                                         │
+│  P1 HIGH (1 Week)                                                       │
 │  ├── SEC-003: Missing Dependabot configuration                          │
 │  ├── TST-002: Tests excluded from Flake8                                │
 │  └── TST-003: Tests excluded from MyPy                                  │
-│                                                                          │
-│  P2 MEDIUM (2 Weeks)                                                     │
+│                                                                         │
+│  P2 MEDIUM (2 Weeks)                                                    │
 │  ├── SEC-004: GitHub Actions not pinned to SHA                          │
 │  ├── TST-004: Pytest warnings suppressed                                │
 │  ├── CFG-001: Excessive Flake8 ignores                                  │
 │  ├── CFG-003: MyPy production code errors                               │
 │  ├── CFG-004: Tests excluded from pyproject.toml MyPy                   │
 │  └── INF-001: Missing CodeQL analysis                                   │
-│                                                                          │
-│  P3 LOW (1 Month)                                                        │
+│                                                                         │
+│  P3 LOW (1 Month)                                                       │
 │  ├── CFG-002: 512-char line length                                      │
 │  ├── INF-002: No coverage upload service                                │
 │  ├── INF-003: No slow test job                                          │
 │  └── INF-004: SARIF upload continue-on-error                            │
-│                                                                          │
+│                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -148,11 +148,13 @@ Running `flake8 juniper_data/tests` revealed **33+ issues** that are currently h
 **Location**: `.github/workflows/ci.yml` line 313
 
 **Current State**:
+
 ```yaml
 bandit -r juniper_data -f sarif -o reports/security/bandit.sarif || true
 ```
 
 **Problem**: The `|| true` suffix guarantees the step exits with code 0 regardless of Bandit's findings. This means:
+
 - High-severity security vulnerabilities are logged but don't fail CI
 - The Quality Gate step checks `needs.security.result`, which will always be "success"
 - Teams have a false sense of security ("all checks pass")
@@ -162,6 +164,7 @@ bandit -r juniper_data -f sarif -o reports/security/bandit.sarif || true
 **Risk**: **SEVERE** - Defeats the entire purpose of security scanning in CI.
 
 **Recommended Fix**:
+
 ```yaml
 - name: Run Bandit (SAST) -> SARIF
   run: |
@@ -179,6 +182,7 @@ The `--exit-zero` flag will still exit 0 on findings (for SARIF generation), but
 **Location**: `.github/workflows/ci.yml` line 329
 
 **Current State**:
+
 ```yaml
 pip-audit -r reports/security/pip-freeze.txt || echo "::warning::Vulnerabilities found in dependencies"
 ```
@@ -188,6 +192,7 @@ pip-audit -r reports/security/pip-freeze.txt || echo "::warning::Vulnerabilities
 **Risk**: **SEVERE** - Known vulnerable dependencies can enter production without any blocking check.
 
 **Recommended Fix**:
+
 ```yaml
 - name: Run pip-audit (Dependency Vulnerabilities)
   run: |
@@ -207,6 +212,7 @@ For graduated adoption, use `--ignore-vuln` for known-acceptable vulnerabilities
 **Location**: `juniper_data/tests/unit/test_main.py` lines 32-38
 
 **Current State**:
+
 ```python
 try:
     importlib.reload(main_module)
@@ -222,6 +228,7 @@ except ImportError:
 **Risk**: **HIGH** - Can mask regressions or broken test infrastructure.
 
 **Recommended Fix**:
+
 ```python
 def test_main_import_error_uvicorn_not_installed(self) -> None:
     """Test main returns 1 when uvicorn is not installed."""
@@ -249,6 +256,7 @@ def test_main_import_error_uvicorn_not_installed(self) -> None:
 ```
 
 Alternatively, use `pytest.importorskip()` if the test should be skipped when uvicorn is unavailable:
+
 ```python
 @pytest.mark.skipif(
     importlib.util.find_spec("uvicorn") is None,
@@ -271,11 +279,13 @@ def test_main_import_error_uvicorn_not_installed(self):
 **Current State**: No `dependabot.yml` file exists.
 
 **Problem**: Without Dependabot:
+
 - Dependencies drift into vulnerable states silently
 - Manual monitoring of security advisories required
 - GitHub Actions versions may become outdated
 
 **Recommended Fix**: Create `.github/dependabot.yml`:
+
 ```yaml
 version: 2
 updates:
@@ -310,12 +320,14 @@ updates:
 **Location**: `.pre-commit-config.yaml` line 126
 
 **Current State**:
+
 ```yaml
 files: ^juniper_data/.*\.py$
 exclude: ^juniper_data/tests/
 ```
 
 **Problem**: 33+ flake8 violations exist in test code that are invisible to developers. Issues include:
+
 - 6 unused imports (F401) - dead code
 - 5 empty f-strings (F541) - potential bugs
 - 21 nested with statements (SIM117) - reduced readability
@@ -323,6 +335,7 @@ exclude: ^juniper_data/tests/
 **Recommended Fix** (Graduated Approach):
 
 **Phase 1**: Add a separate, relaxed hook for tests:
+
 ```yaml
 - id: flake8
   name: Lint tests with Flake8 (relaxed)
@@ -344,16 +357,19 @@ exclude: ^juniper_data/tests/
 **Location**: `.pre-commit-config.yaml` line 139
 
 **Current State**:
+
 ```yaml
 files: ^juniper_data/(?!tests).*\.py$
 ```
 
 **Problem**: Type errors in test code go undetected, leading to:
+
 - Runtime errors in tests that could be caught statically
 - Inconsistent type usage between tests and production code
 - Reduced confidence in test reliability
 
 **Recommended Fix**:
+
 ```yaml
 - id: mypy
   name: Type check with MyPy
@@ -375,6 +391,7 @@ files: ^juniper_data/(?!tests).*\.py$
 **Location**: Throughout `ci.yml`
 
 **Current State**:
+
 ```yaml
 uses: actions/checkout@v4
 uses: actions/setup-python@v5
@@ -384,6 +401,7 @@ uses: actions/cache@v4
 **Problem**: Version tags can be retargeted, creating supply-chain risk. A compromised upstream action could inject malicious code.
 
 **Recommended Fix**:
+
 ```yaml
 uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
@@ -399,6 +417,7 @@ uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684  # v4.2.3
 **Location**: `pyproject.toml` line 119
 
 **Current State**:
+
 ```toml
 addopts = [
     "-p", "no:warnings",
@@ -407,11 +426,13 @@ addopts = [
 ```
 
 **Problem**: All pytest warnings are suppressed, hiding:
+
 - Deprecation warnings from dependencies
 - Future-incompatible code patterns
 - Potential test issues
 
 **Recommended Fix**:
+
 ```toml
 addopts = [
     "-ra",
@@ -436,19 +457,22 @@ filterwarnings = [
 **Location**: `.pre-commit-config.yaml` line 118
 
 **Current State**:
+
 ```yaml
 --extend-ignore=E203,E265,E266,E501,W503,E722,E402,E226,C409,C901,B008,B904,B905,B907,F401
 ```
 
 **Problematic Rules**:
-| Rule | Description | Risk of Ignoring |
-|------|-------------|------------------|
-| E722 | Bare `except:` | Catches unexpected exceptions, masks errors |
-| F401 | Unused imports | Dead code accumulation |
-| B008 | Mutable default args | Common bug pattern |
-| B904 | `raise` without `from` | Lost error context |
+
+| Rule | Description            | Risk of Ignoring                            |
+| ---- | ---------------------- | ------------------------------------------- |
+| E722 | Bare `except:`         | Catches unexpected exceptions, masks errors |
+| F401 | Unused imports         | Dead code accumulation                      |
+| B008 | Mutable default args   | Common bug pattern                          |
+| B904 | `raise` without `from` | Lost error context                          |
 
 **Recommended Fix**: Gradually remove risky ignores:
+
 1. **Immediate**: Remove `E722` (bare except)
 2. **Week 1**: Remove `F401` (unused imports), run autoflake to clean
 3. **Week 2**: Remove `B904` (raise without from)
@@ -462,6 +486,7 @@ filterwarnings = [
 **Location**: 5 source files with 6 errors
 
 **Current Errors**:
+
 1. `core/artifacts.py:18,44` - numpy `savez` signature issues
 2. `storage/memory.py:65` - numpy `savez_compressed` signature
 3. `storage/local_fs.py:77` - numpy `savez_compressed` signature
@@ -471,12 +496,14 @@ filterwarnings = [
 **Recommended Fix**: Address each error category:
 
 **For numpy signature issues** (4 errors):
+
 ```python
 # Add type: ignore comment with explanation
 np.savez(file, **arrays)  # type: ignore[arg-type]  # numpy stubs incomplete
 ```
 
 **For Optional parameter issues** (2 errors):
+
 ```python
 # api/app.py:40 - Make Optional explicit
 def create_app(settings: Optional[Settings] = None) -> FastAPI:
@@ -496,11 +523,13 @@ _store: Optional[DatasetStore] = None
 **Location**: `.github/workflows/`
 
 **Problem**: No CodeQL semantic analysis configured. CodeQL provides deeper security analysis than Bandit for:
+
 - Injection vulnerabilities
 - Data flow issues
 - Complex security patterns
 
 **Recommended Fix**: Create `.github/workflows/codeql.yml`:
+
 ```yaml
 name: CodeQL Analysis
 
@@ -547,6 +576,7 @@ jobs:
 **Problem**: Coverage reports are generated but not uploaded to services like Codecov or Coveralls for tracking trends.
 
 **Recommended Fix**: Add Codecov upload step:
+
 ```yaml
 - name: Upload coverage to Codecov
   uses: codecov/codecov-action@v4
@@ -573,50 +603,50 @@ jobs:
 
 ### 4.1 Phase Overview
 
-```
+```bash
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                    DEVELOPMENT PHASES                                    │
+│                    DEVELOPMENT PHASES                                   │
 ├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  PHASE 1: Security Remediation (Critical)         Duration: 1-2 days   │
+│                                                                         │
+│  PHASE 1: Security Remediation (Critical)          Duration: 1-2 days   │
 │  ├── SEC-001: Fix Bandit || true                                        │
 │  ├── SEC-002: Fix pip-audit warning handling                            │
 │  └── TST-001: Fix silent ImportError test                               │
-│                                                                          │
-│  PHASE 2: Infrastructure Hardening                Duration: 3-5 days   │
+│                                                                         │
+│  PHASE 2: Infrastructure Hardening                 Duration: 3-5 days   │
 │  ├── SEC-003: Add Dependabot configuration                              │
 │  ├── SEC-004: Pin GitHub Actions to SHA                                 │
 │  └── INF-001: Add CodeQL analysis                                       │
-│                                                                          │
-│  PHASE 3: Static Analysis Coverage               Duration: 1 week      │
+│                                                                         │
+│  PHASE 3: Static Analysis Coverage                Duration: 1 week      │
 │  ├── TST-002: Enable Flake8 on tests                                    │
 │  ├── TST-003: Enable MyPy on tests                                      │
 │  ├── CFG-001: Reduce Flake8 ignores                                     │
 │  └── CFG-003: Fix MyPy production errors                                │
-│                                                                          │
-│  PHASE 4: Configuration Quality                  Duration: 1 week      │
+│                                                                         │
+│  PHASE 4: Configuration Quality                   Duration: 1 week      │
 │  ├── TST-004: Enable pytest warnings                                    │
 │  ├── CFG-004: Update pyproject.toml MyPy config                         │
 │  └── Test code cleanup (33+ violations)                                 │
-│                                                                          │
-│  PHASE 5: Enhancements (Optional)                Duration: Ongoing     │
+│                                                                         │
+│  PHASE 5: Enhancements (Optional)                 Duration: Ongoing     │
 │  ├── INF-002: Add coverage upload                                       │
 │  ├── INF-003: Document slow test policy                                 │
 │  └── CFG-002: Review line length policy                                 │
-│                                                                          │
+│                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 4.2 Effort Estimates
 
-| Phase | Issues | Estimated Effort | Expected Duration |
-|-------|--------|------------------|-------------------|
-| Phase 1 | 3 | 2-4 hours | 1-2 days |
-| Phase 2 | 3 | 2-3 hours | 3-5 days |
-| Phase 3 | 4 | 6-10 hours | 5-7 days |
-| Phase 4 | 3 | 4-6 hours | 5-7 days |
-| Phase 5 | 3 | 2-3 hours | Ongoing |
-| **Total** | **16** | **16-26 hours** | **2-4 weeks** |
+| Phase     | Issues | Estimated Effort | Expected Duration |
+| --------- | ------ | ---------------- | ----------------- |
+| Phase 1   | 3      | 2-4 hours        | 1-2 days          |
+| Phase 2   | 3      | 2-3 hours        | 3-5 days          |
+| Phase 3   | 4      | 6-10 hours       | 5-7 days          |
+| Phase 4   | 3      | 4-6 hours        | 5-7 days          |
+| Phase 5   | 3      | 2-3 hours        | Ongoing           |
+| **Total** | **16** | **16-26 hours**  | **2-4 weeks**     |
 
 **Note**: Effort estimates assume no blocking issues (e.g., many security vulnerabilities requiring remediation). Actual duration may vary based on findings.
 
@@ -634,13 +664,13 @@ jobs:
 
 #### Tasks
 
-| Task ID | Description | Owner | Status |
-|---------|-------------|-------|--------|
-| P1-T1 | Update Bandit command to use `--exit-zero` flag | TBD | ☐ |
-| P1-T2 | Update pip-audit to use `--strict` flag | TBD | ☐ |
-| P1-T3 | Refactor test_main.py to remove silent exception handling | TBD | ☐ |
-| P1-T4 | Run security scans to verify failures are detected | TBD | ☐ |
-| P1-T5 | Address any immediate security findings | TBD | ☐ |
+| Task ID | Description                                               | Owner | Status |
+| ------- | --------------------------------------------------------- | ----- | ------ |
+| P1-T1   | Update Bandit command to use `--exit-zero` flag           | TBD   | ☐      |
+| P1-T2   | Update pip-audit to use `--strict` flag                   | TBD   | ☐      |
+| P1-T3   | Refactor test_main.py to remove silent exception handling | TBD   | ☐      |
+| P1-T4   | Run security scans to verify failures are detected        | TBD   | ☐      |
+| P1-T5   | Address any immediate security findings                   | TBD   | ☐      |
 
 #### Acceptance Criteria
 
@@ -663,17 +693,17 @@ If security scans reveal many issues, temporarily use `--exit-zero` for Bandit a
 **Duration**: 3-5 days  
 **Effort**: 2-3 hours
 
-#### Tasks
+#### Tasks: 5.2, Phase 2
 
-| Task ID | Description | Owner | Status |
-|---------|-------------|-------|--------|
-| P2-T1 | Create `.github/dependabot.yml` | TBD | ☐ |
-| P2-T2 | Pin all GitHub Actions to commit SHAs | TBD | ☐ |
-| P2-T3 | Create CodeQL analysis workflow | TBD | ☐ |
-| P2-T4 | Verify Dependabot PRs are generated | TBD | ☐ |
-| P2-T5 | Verify CodeQL scans complete successfully | TBD | ☐ |
+| Task ID | Description                               | Owner | Status |
+| ------- | ----------------------------------------- | ----- | ------ |
+| P2-T1   | Create `.github/dependabot.yml`           | TBD   | ☐      |
+| P2-T2   | Pin all GitHub Actions to commit SHAs     | TBD   | ☐      |
+| P2-T3   | Create CodeQL analysis workflow           | TBD   | ☐      |
+| P2-T4   | Verify Dependabot PRs are generated       | TBD   | ☐      |
+| P2-T5   | Verify CodeQL scans complete successfully | TBD   | ☐      |
 
-#### Acceptance Criteria
+#### Acceptance Criteria: 5.2, Phase 2
 
 - [ ] Dependabot PRs appear for outdated dependencies
 - [ ] All GitHub Actions pinned to specific commit SHAs
@@ -690,20 +720,20 @@ If security scans reveal many issues, temporarily use `--exit-zero` for Bandit a
 **Duration**: 5-7 days  
 **Effort**: 6-10 hours
 
-#### Tasks
+#### Tasks: 5.3, Phase 3
 
-| Task ID | Description | Owner | Status |
-|---------|-------------|-------|--------|
-| P3-T1 | Add Flake8 hook for tests with relaxed rules | TBD | ☐ |
-| P3-T2 | Fix F401 (unused imports) in tests | TBD | ☐ |
-| P3-T3 | Fix F541 (empty f-strings) in tests | TBD | ☐ |
-| P3-T4 | Update MyPy hook to include tests | TBD | ☐ |
-| P3-T5 | Remove E722 from Flake8 ignores | TBD | ☐ |
-| P3-T6 | Remove F401 from Flake8 ignores | TBD | ☐ |
-| P3-T7 | Fix 6 MyPy errors in production code | TBD | ☐ |
-| P3-T8 | Run pre-commit on all files to verify | TBD | ☐ |
+| Task ID | Description                                  | Owner | Status |
+| ------- | -------------------------------------------- | ----- | ------ |
+| P3-T1   | Add Flake8 hook for tests with relaxed rules | TBD   | ☐      |
+| P3-T2   | Fix F401 (unused imports) in tests           | TBD   | ☐      |
+| P3-T3   | Fix F541 (empty f-strings) in tests          | TBD   | ☐      |
+| P3-T4   | Update MyPy hook to include tests            | TBD   | ☐      |
+| P3-T5   | Remove E722 from Flake8 ignores              | TBD   | ☐      |
+| P3-T6   | Remove F401 from Flake8 ignores              | TBD   | ☐      |
+| P3-T7   | Fix 6 MyPy errors in production code         | TBD   | ☐      |
+| P3-T8   | Run pre-commit on all files to verify        | TBD   | ☐      |
 
-#### Acceptance Criteria
+#### Acceptance Criteria: 5.3, Phase 3
 
 - [ ] Flake8 runs on test files in pre-commit
 - [ ] No F401 or F541 violations in tests
@@ -722,17 +752,17 @@ If security scans reveal many issues, temporarily use `--exit-zero` for Bandit a
 **Duration**: 5-7 days  
 **Effort**: 4-6 hours
 
-#### Tasks
+#### Tasks: 5.4, Phase 4
 
-| Task ID | Description | Owner | Status |
-|---------|-------------|-------|--------|
-| P4-T1 | Remove `-p no:warnings` from pytest config | TBD | ☐ |
-| P4-T2 | Add selective filterwarnings configuration | TBD | ☐ |
-| P4-T3 | Fix SIM117 violations (nested with statements) | TBD | ☐ |
-| P4-T4 | Update pyproject.toml MyPy exclude pattern | TBD | ☐ |
-| P4-T5 | Run full test suite to verify no regressions | TBD | ☐ |
+| Task ID | Description                                    | Owner | Status |
+| ------- | ---------------------------------------------- | ----- | ------ |
+| P4-T1   | Remove `-p no:warnings` from pytest config     | TBD   | ☐      |
+| P4-T2   | Add selective filterwarnings configuration     | TBD   | ☐      |
+| P4-T3   | Fix SIM117 violations (nested with statements) | TBD   | ☐      |
+| P4-T4   | Update pyproject.toml MyPy exclude pattern     | TBD   | ☐      |
+| P4-T5   | Run full test suite to verify no regressions   | TBD   | ☐      |
 
-#### Acceptance Criteria
+#### Acceptance Criteria: 5.4, Phase 4
 
 - [ ] Pytest shows relevant warnings (not all suppressed)
 - [ ] No unexpected warnings causing noise
@@ -749,14 +779,14 @@ If security scans reveal many issues, temporarily use `--exit-zero` for Bandit a
 **Duration**: Ongoing  
 **Effort**: 2-3 hours
 
-#### Tasks
+#### Tasks: 5.5, Phase 5
 
-| Task ID | Description | Owner | Status |
-|---------|-------------|-------|--------|
-| P5-T1 | Add Codecov/Coveralls integration | TBD | ☐ |
-| P5-T2 | Document slow test policy in AGENTS.md | TBD | ☐ |
-| P5-T3 | Review and potentially reduce line length | TBD | ☐ |
-| P5-T4 | Consider migration from flake8 to ruff | TBD | ☐ |
+| Task ID | Description                               | Owner | Status |
+| ------- | ----------------------------------------- | ----- | ------ |
+| P5-T1   | Add Codecov/Coveralls integration         | TBD   | ☐      |
+| P5-T2   | Document slow test policy in AGENTS.md    | TBD   | ☐      |
+| P5-T3   | Review and potentially reduce line length | TBD   | ☐      |
+| P5-T4   | Consider migration from flake8 to ruff    | TBD   | ☐      |
 
 ---
 
@@ -764,13 +794,13 @@ If security scans reveal many issues, temporarily use `--exit-zero` for Bandit a
 
 ### 6.1 Implementation Risks
 
-| Risk | Probability | Impact | Mitigation |
-|------|-------------|--------|------------|
-| Security scans reveal many vulnerabilities | Medium | High | Use graduated enforcement (`--only-high-severity` first) |
-| Flake8 on tests creates excessive churn | High | Medium | Start with F401/F541 only, expand gradually |
-| MyPy on tests is too noisy | Medium | Medium | Use `--allow-untyped-defs` for tests initially |
-| Warnings flood pytest output | Medium | Low | Configure filterwarnings carefully |
-| Pre-commit hooks slow down | Low | Low | Monitor performance, adjust as needed |
+| Risk                                       | Probability | Impact | Mitigation                                               |
+| ------------------------------------------ | ----------- | ------ | -------------------------------------------------------- |
+| Security scans reveal many vulnerabilities | Medium      | High   | Use graduated enforcement (`--only-high-severity` first) |
+| Flake8 on tests creates excessive churn    | High        | Medium | Start with F401/F541 only, expand gradually              |
+| MyPy on tests is too noisy                 | Medium      | Medium | Use `--allow-untyped-defs` for tests initially           |
+| Warnings flood pytest output               | Medium      | Low    | Configure filterwarnings carefully                       |
+| Pre-commit hooks slow down                 | Low         | Low    | Monitor performance, adjust as needed                    |
 
 ### 6.2 Rollback Procedures
 
@@ -784,12 +814,12 @@ If security scans reveal many issues, temporarily use `--exit-zero` for Bandit a
 
 ### 7.1 Phase-Specific Success Criteria
 
-| Phase | Criteria | Verification |
-|-------|----------|--------------|
-| Phase 1 | Security scans can fail CI | Trigger scan on known-vulnerable state |
-| Phase 2 | Automated dependency monitoring | Verify Dependabot PR generation |
-| Phase 3 | Test code covered by static analysis | `pre-commit run --all-files` passes |
-| Phase 4 | Warnings visible without noise | Review pytest output for signal quality |
+| Phase   | Criteria                             | Verification                            |
+| ------- | ------------------------------------ | --------------------------------------- |
+| Phase 1 | Security scans can fail CI           | Trigger scan on known-vulnerable state  |
+| Phase 2 | Automated dependency monitoring      | Verify Dependabot PR generation         |
+| Phase 3 | Test code covered by static analysis | `pre-commit run --all-files` passes     |
+| Phase 4 | Warnings visible without noise       | Review pytest output for signal quality |
 
 ### 7.2 Overall Success Criteria
 
@@ -834,17 +864,17 @@ pytest --collect-only -q
 
 ### B. Files Modified by This Plan
 
-| File | Phase | Changes |
-|------|-------|---------|
-| `.github/workflows/ci.yml` | 1, 2 | Security scan commands, action pinning |
-| `.github/dependabot.yml` | 2 | New file |
-| `.github/workflows/codeql.yml` | 2 | New file |
-| `.pre-commit-config.yaml` | 3 | Test inclusion, ignore reduction |
-| `pyproject.toml` | 3, 4 | MyPy config, pytest warnings |
-| `juniper_data/tests/unit/test_main.py` | 1 | Remove silent exception handling |
-| `juniper_data/api/app.py` | 3 | Type annotation fix |
-| `juniper_data/api/routes/datasets.py` | 3 | Type annotation fix |
-| Multiple test files | 3, 4 | Unused imports, f-strings, nested with |
+| File                                   | Phase | Changes                                |
+| -------------------------------------- | ----- | -------------------------------------- |
+| `.github/workflows/ci.yml`             | 1, 2  | Security scan commands, action pinning |
+| `.github/dependabot.yml`               | 2     | New file                               |
+| `.github/workflows/codeql.yml`         | 2     | New file                               |
+| `.pre-commit-config.yaml`              | 3     | Test inclusion, ignore reduction       |
+| `pyproject.toml`                       | 3, 4  | MyPy config, pytest warnings           |
+| `juniper_data/tests/unit/test_main.py` | 1     | Remove silent exception handling       |
+| `juniper_data/api/app.py`              | 3     | Type annotation fix                    |
+| `juniper_data/api/routes/datasets.py`  | 3     | Type annotation fix                    |
+| Multiple test files                    | 3, 4  | Unused imports, f-strings, nested with |
 
 ### C. Reference Documentation
 
@@ -872,4 +902,4 @@ All findings were independently validated against the source configuration files
 
 ---
 
-*Generated by Amp AI Agent - 2026-02-03*
+**Generated by Amp AI Agent - 2026-02-03.**
