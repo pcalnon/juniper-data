@@ -947,13 +947,13 @@ on:
 
 | Task ID | Description                                               | Status |
 | ------- | --------------------------------------------------------- | ------ |
-| P1-T1   | Update Bandit command to use `--exit-zero` flag           | ✅      |
-| P1-T2   | Add blocking Bandit check for medium+ severity            | ✅      |
-| P1-T3   | Update pip-audit to use `--strict` flag                   | ✅      |
-| P1-T4   | Create `.github/dependabot.yml`                           | ✅      |
-| P1-T5   | Refactor test_main.py to remove silent exception handling | ✅      |
-| P1-T6   | Run security scans to verify failures are detected        | ✅      |
-| P1-T7   | Address any immediate security findings                   | ✅      |
+| P1-T1   | Update Bandit command to use `--exit-zero` flag           | ✅     |
+| P1-T2   | Add blocking Bandit check for medium+ severity            | ✅     |
+| P1-T3   | Update pip-audit to use `--strict` flag                   | ✅     |
+| P1-T4   | Create `.github/dependabot.yml`                           | ✅     |
+| P1-T5   | Refactor test_main.py to remove silent exception handling | ✅     |
+| P1-T6   | Run security scans to verify failures are detected        | ✅     |
+| P1-T7   | Address any immediate security findings                   | ✅     |
 
 #### Acceptance Criteria
 
@@ -979,15 +979,15 @@ If security scans reveal many issues, temporarily use `--exit-zero` for Bandit a
 
 | Task ID | Description                                  | Status |
 | ------- | -------------------------------------------- | ------ |
-| P2-T1   | Add Flake8 hook for tests with relaxed rules | ✅      |
-| P2-T2   | Fix F401 (unused imports) in tests (7)       | ✅      |
+| P2-T1   | Add Flake8 hook for tests with relaxed rules | ✅     |
+| P2-T2   | Fix F401 (unused imports) in tests (7)       | ✅     |
 | P2-T3   | Fix F541 (empty f-strings) in tests (5)      | N/A    |
-| P2-T4   | Update MyPy hook to include tests            | ✅      |
-| P2-T5   | Remove `-p no:warnings` from pytest config   | ✅      |
-| P2-T6   | Add selective filterwarnings configuration   | ✅      |
-| P2-T7   | Remove E722 from Flake8 ignores              | ✅      |
-| P2-T8   | Remove F401 from Flake8 ignores              | ✅      |
-| P2-T9   | Run pre-commit on all files to verify        | ✅      |
+| P2-T4   | Update MyPy hook to include tests            | ✅     |
+| P2-T5   | Remove `-p no:warnings` from pytest config   | ✅     |
+| P2-T6   | Add selective filterwarnings configuration   | ✅     |
+| P2-T7   | Remove E722 from Flake8 ignores              | ✅     |
+| P2-T8   | Remove F401 from Flake8 ignores              | ✅     |
+| P2-T9   | Run pre-commit on all files to verify        | ✅     |
 
 #### Acceptance Criteria: 4.3, Phase 2
 
@@ -1008,16 +1008,16 @@ If security scans reveal many issues, temporarily use `--exit-zero` for Bandit a
 
 #### Tasks: 4.4, Phase 3
 
-| Task ID | Description                                      | Status |
-| ------- | ------------------------------------------------ | ------ |
-| P3-T1   | Pin all GitHub Actions to commit SHAs            | ✅      |
-| P3-T2   | Fix 6 MyPy errors in production code             | ✅      |
-| P3-T3   | Remove `--continue-on-collection-errors`         | ✅      |
-| P3-T4   | Create CodeQL analysis workflow                  | ✅      |
-| P3-T5   | Add Codecov/Coveralls integration                | ✅      |
-| P3-T6   | Add slow test job and schedule trigger           | ✅      |
-| P3-T7   | Update pyproject.toml MyPy exclude pattern       | ✅      |
-| P3-T8   | Verify CodeQL scans complete successfully        | Pending |
+| Task ID | Description                                | Status  |
+| ------- | ------------------------------------------ | ------- |
+| P3-T1   | Pin all GitHub Actions to commit SHAs      | ✅      |
+| P3-T2   | Fix 6 MyPy errors in production code       | ✅      |
+| P3-T3   | Remove `--continue-on-collection-errors`   | ✅      |
+| P3-T4   | Create CodeQL analysis workflow            | ✅      |
+| P3-T5   | Add Codecov/Coveralls integration          | ✅      |
+| P3-T6   | Add slow test job and schedule trigger     | ✅      |
+| P3-T7   | Update pyproject.toml MyPy exclude pattern | ✅      |
+| P3-T8   | Verify CodeQL scans complete successfully  | Pending |
 
 #### Acceptance Criteria: 4.4, Phase 3
 
@@ -1039,8 +1039,8 @@ If security scans reveal many issues, temporarily use `--exit-zero` for Bandit a
 
 | Task ID | Description                               | Status   |
 | ------- | ----------------------------------------- | -------- |
-| P4-T1   | Add pyupgrade hook                        | ✅        |
-| P4-T2   | Add shellcheck hook                       | ✅        |
+| P4-T1   | Add pyupgrade hook                        | ✅       |
+| P4-T2   | Add shellcheck hook                       | ✅       |
 | P4-T3   | Fix SIM117 violations (nested with) (21)  | Deferred |
 | P4-T4   | Review and potentially reduce line length | Deferred |
 | P4-T5   | Consider migration from flake8 to ruff    | Deferred |
@@ -1234,6 +1234,7 @@ All phases have been successfully implemented:
 - **Phase 4 (Low)**: pyupgrade and shellcheck hooks added
 
 **Files Modified:**
+
 - `.github/workflows/ci.yml` - Security scanning, action pinning, slow test job, Codecov
 - `.github/dependabot.yml` - New file for automated dependency updates
 - `.github/workflows/codeql.yml` - New file for CodeQL security analysis
@@ -1251,6 +1252,7 @@ All phases have been successfully implemented:
 - `juniper_data/api/app.py` - Fixed Optional type annotation
 
 **Verification:**
+
 - All 207 tests passing
 - Pre-commit hooks validated
 

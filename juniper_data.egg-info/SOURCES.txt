@@ -36,7 +36,14 @@ juniper_data/tests/conftest.py
 juniper_data/tests/fixtures/generate_golden_datasets.py
 juniper_data/tests/integration/__init__.py
 juniper_data/tests/integration/test_api.py
+juniper_data/tests/integration/test_storage_workflow.py
 juniper_data/tests/unit/__init__.py
+juniper_data/tests/unit/test_api_app.py
+juniper_data/tests/unit/test_api_routes.py
+juniper_data/tests/unit/test_api_settings.py
+juniper_data/tests/unit/test_artifacts.py
 juniper_data/tests/unit/test_dataset_id.py
+juniper_data/tests/unit/test_main.py
 juniper_data/tests/unit/test_spiral_generator.py
 juniper_data/tests/unit/test_split.py
+juniper_data/tests/unit/test_storage.py
