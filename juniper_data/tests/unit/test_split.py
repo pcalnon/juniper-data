@@ -230,7 +230,7 @@ class TestShuffleAndSplit:
 
     def test_split_adjusts_test_size_when_rounding_exceeds_samples(self) -> None:
         """Verify test size is adjusted when train+test rounding exceeds total samples.
-        
+
         With 3 samples, train_ratio=0.5, test_ratio=0.5:
         - n_train = round(3 * 0.5) = round(1.5) = 2
         - n_test = round(3 * 0.5) = round(1.5) = 2

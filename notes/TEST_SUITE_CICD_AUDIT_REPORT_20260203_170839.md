@@ -13,19 +13,19 @@ This audit examined the JuniperData test suite (207 tests) and CI/CD pipeline fo
 
 ### Summary Statistics
 
-| Metric | Value |
-|--------|-------|
-| Total Tests | 207 |
-| Unit Tests | 183 |
-| Integration Tests | 24 |
-| Code Coverage | 100% |
-| Tests Passing | 207 (100%) |
-| Skipped Tests | 0 |
-| Excluded/Disabled Tests | 0 |
-| Critical Issues | 3 |
-| High Priority Issues | 4 |
-| Medium Priority Issues | 8 |
-| Low Priority Issues | 6 |
+| Metric                  | Value      |
+| ----------------------- | ---------- |
+| Total Tests             | 207        |
+| Unit Tests              | 183        |
+| Integration Tests       | 24         |
+| Code Coverage           | 100%       |
+| Tests Passing           | 207 (100%) |
+| Skipped Tests           | 0          |
+| Excluded/Disabled Tests | 0          |
+| Critical Issues         | 3          |
+| High Priority Issues    | 4          |
+| Medium Priority Issues  | 8          |
+| Low Priority Issues     | 6          |
 
 ---
 
@@ -41,11 +41,12 @@ No tests were found that have been modified to trivially pass. All assertions in
 
 **Status**: 1 ISSUE FOUND
 
-| File | Test | Issue | Severity |
-|------|------|-------|----------|
+| File                 | Test                                           | Issue                                                                                                                                                    | Severity   |
+| -------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
 | `test_main.py:13-38` | `test_main_import_error_uvicorn_not_installed` | Test uses `try/except ImportError: pass` which silently swallows failures, potentially allowing the test to pass without executing the actual assertions | **MEDIUM** |
 
 **Details**: Lines 32-38 in `test_main.py`:
+
 ```python
 try:
     importlib.reload(main_module)
@@ -99,10 +100,10 @@ All 207 tests pass successfully.
 
 **Status**: 2 ISSUES FOUND
 
-| Issue | Location | Description | Severity |
-|-------|----------|-------------|----------|
+| Issue                            | Location           | Description                                                 | Severity                               |
+| -------------------------------- | ------------------ | ----------------------------------------------------------- | -------------------------------------- |
 | Hardcoded bind to all interfaces | `test_main.py:112` | Test asserts `host == "0.0.0.0"` which Bandit flags as B104 | **LOW** (test-only, expected behavior) |
-| Unused imports | Multiple files | F401 violations indicate potential code quality issues | **LOW** |
+| Unused imports                   | Multiple files     | F401 violations indicate potential code quality issues      | **LOW**                                |
 
 **Bandit Findings**: 6 medium-severity findings (all B104 - hardcoded bind to all interfaces), which are expected behaviors being tested, not actual vulnerabilities.
 
@@ -118,20 +119,20 @@ All 207 tests pass successfully.
 
 **Status**: 2 ISSUES FOUND
 
-| Issue | Location | Description | Severity |
-|-------|----------|-------------|----------|
-| `continue-on-error: true` on SARIF upload | Line 320 | Allows SARIF upload to fail silently | **LOW** (appropriate for non-critical step) |
-| Tests exclude `slow` marker | Lines 141, 254 | Tests marked `slow` are excluded, but no tests currently use this marker | **LOW** (no impact currently) |
+| Issue                                     | Location       | Description                                                              | Severity                                    |
+| ----------------------------------------- | -------------- | ------------------------------------------------------------------------ | ------------------------------------------- |
+| `continue-on-error: true` on SARIF upload | Line 320       | Allows SARIF upload to fail silently                                     | **LOW** (appropriate for non-critical step) |
+| Tests exclude `slow` marker               | Lines 141, 254 | Tests marked `slow` are excluded, but no tests currently use this marker | **LOW** (no impact currently)               |
 
 #### 2.1.2 Comprehensiveness ⚠️
 
 **Status**: 3 ISSUES FOUND
 
-| Issue | Description | Severity |
-|-------|-------------|----------|
-| No dependency caching for pip-audit | Security scan reinstalls dependencies without caching | **LOW** |
-| No separate performance test job | `performance` marker defined but no dedicated job | **MEDIUM** |
-| No code quality badge generation | No badge/status reporting to repository | **LOW** |
+| Issue                               | Description                                           | Severity   |
+| ----------------------------------- | ----------------------------------------------------- | ---------- |
+| No dependency caching for pip-audit | Security scan reinstalls dependencies without caching | **LOW**    |
+| No separate performance test job    | `performance` marker defined but no dedicated job     | **MEDIUM** |
+| No code quality badge generation    | No badge/status reporting to repository               | **LOW**    |
 
 #### 2.1.3 Excluded Application Parts ✅
 
@@ -149,12 +150,13 @@ The workflow has good separation of concerns with no significant redundancy.
 
 **Status**: 2 ISSUES FOUND
 
-| Issue | Location | Description | Severity |
-|-------|----------|-------------|----------|
-| pip-audit warning handling | Line 329 | Uses `echo "::warning::"` but continues execution, potentially masking vulnerabilities | **MEDIUM** |
-| Bandit `|| true` suppression | Line 313 | `bandit ... || true` silently continues on any Bandit failure, not just "no issues" | **MEDIUM** |
+| Issue                          | Location | Description                                                                             | Severity   |
+| ------------------------------ | -------- | --------------------------------------------------------------------------------------- | ---------- |
+| pip-audit warning handling     | Line 329 | Uses `echo "::warning::"` but continues execution, potentially masking vulnerabilities  | **MEDIUM** |
+| Bandit "\|\| true" suppression | Line 313 | 'bandit ... `\|\| true` silently continues on any Bandit failure, not just "no issues"' | **MEDIUM** |
 
 **Recommendation**: Use proper exit code handling:
+
 ```yaml
 bandit -r juniper_data -f sarif -o reports/security/bandit.sarif --exit-zero
 ```
@@ -163,22 +165,22 @@ bandit -r juniper_data -f sarif -o reports/security/bandit.sarif --exit-zero
 
 **Status**: 4 ISSUES FOUND
 
-| Issue | Best Practice | Current Status | Severity |
-|-------|---------------|----------------|----------|
-| Dependabot configuration | Should be configured for automated dependency updates | Missing | **MEDIUM** |
-| CodeQL analysis | Should be enabled for deeper security scanning | Missing | **MEDIUM** |
-| Release/deployment workflow | Should have automated release process | Missing | **LOW** |
-| Workflow dispatch parameters | Could benefit from customizable parameters | Missing | **LOW** |
+| Issue                        | Best Practice                                         | Current Status | Severity   |
+| ---------------------------- | ----------------------------------------------------- | -------------- | ---------- |
+| Dependabot configuration     | Should be configured for automated dependency updates | Missing        | **MEDIUM** |
+| CodeQL analysis              | Should be enabled for deeper security scanning        | Missing        | **MEDIUM** |
+| Release/deployment workflow  | Should have automated release process                 | Missing        | **LOW**    |
+| Workflow dispatch parameters | Could benefit from customizable parameters            | Missing        | **LOW**    |
 
 #### 2.1.7 Missing Required Actions ⚠️
 
 **Status**: 3 ISSUES FOUND
 
-| Missing Action | Description | Priority |
-|----------------|-------------|----------|
-| Dependabot.yml | Automated dependency update configuration | **HIGH** |
+| Missing Action       | Description                                            | Priority   |
+| -------------------- | ------------------------------------------------------ | ---------- |
+| Dependabot.yml       | Automated dependency update configuration              | **HIGH**   |
 | Code coverage upload | No coverage upload to external service (e.g., Codecov) | **MEDIUM** |
-| Documentation checks | No documentation build/validation step | **LOW** |
+| Documentation checks | No documentation build/validation step                 | **LOW**    |
 
 ---
 
@@ -190,11 +192,11 @@ bandit -r juniper_data -f sarif -o reports/security/bandit.sarif --exit-zero
 
 **Status**: 3 ISSUES FOUND
 
-| Issue | Location | Description | Severity |
-|-------|----------|-------------|----------|
-| Flake8 excludes tests | Line 126 | `exclude: ^juniper_data/tests/` means tests aren't linted by flake8 in pre-commit | **MEDIUM** |
-| MyPy excludes tests | Line 139 | `files: ^juniper_data/(?!tests).*\.py$` excludes tests from type checking | **MEDIUM** |
-| Bandit excludes tests | Line 152 | `files: ^juniper_data/(?!tests).*\.py$` excludes tests from security scanning | **LOW** (appropriate) |
+| Issue                 | Location | Description                                                                       | Severity              |
+| --------------------- | -------- | --------------------------------------------------------------------------------- | --------------------- |
+| Flake8 excludes tests | Line 126 | `exclude: ^juniper_data/tests/` means tests aren't linted by flake8 in pre-commit | **MEDIUM**            |
+| MyPy excludes tests   | Line 139 | `files: ^juniper_data/(?!tests).*\.py$` excludes tests from type checking         | **MEDIUM**            |
+| Bandit excludes tests | Line 152 | `files: ^juniper_data/(?!tests).*\.py$` excludes tests from security scanning     | **LOW** (appropriate) |
 
 **Recommendation**: Tests should be linted (flake8) to catch code quality issues. Type checking tests is optional but recommended for complex test suites.
 
@@ -203,6 +205,7 @@ bandit -r juniper_data -f sarif -o reports/security/bandit.sarif --exit-zero
 **Status**: GOOD
 
 The pre-commit configuration includes:
+
 - ✅ YAML/TOML/JSON syntax checking
 - ✅ End-of-file and whitespace fixing
 - ✅ Merge conflict detection
@@ -231,12 +234,13 @@ Tests are excluded from flake8 and mypy pre-commit hooks.
 
 **Status**: 2 ISSUES FOUND
 
-| Issue | Location | Description | Severity |
-|-------|----------|-------------|----------|
-| Extreme line length | Line 92, 105, 117 | `--line-length=512` is excessively permissive | **LOW** |
-| Excessive ignore rules | Line 118 | Many flake8 rules are disabled: `E203,E265,E266,E501,W503,E722,E402,E226,C409,C901,B008,B904,B905,B907,F401` | **MEDIUM** |
+| Issue                  | Location          | Description                                                                                                  | Severity   |
+| ---------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------ | ---------- |
+| Extreme line length    | Line 92, 105, 117 | `--line-length=512` is excessively permissive                                                                | **LOW**    |
+| Excessive ignore rules | Line 118          | Many flake8 rules are disabled: `E203,E265,E266,E501,W503,E722,E402,E226,C409,C901,B008,B904,B905,B907,F401` | **MEDIUM** |
 
 **Detailed analysis of ignored flake8 rules**:
+
 - `E722` - bare `except:` clauses (potential security issue to ignore)
 - `F401` - unused imports (leads to code quality issues, as seen in test files)
 - `C901` - complexity (allows overly complex functions)
@@ -248,19 +252,19 @@ Tests are excluded from flake8 and mypy pre-commit hooks.
 
 **Status**: 2 ISSUES FOUND
 
-| Issue | Best Practice | Current Status | Severity |
-|-------|---------------|----------------|----------|
-| Python version specification | `python3.14` specified but Black doesn't support py314 target | Inconsistency | **LOW** |
-| No shellcheck hook | For shell scripts | Missing | **LOW** |
+| Issue                        | Best Practice                                                 | Current Status | Severity |
+| ---------------------------- | ------------------------------------------------------------- | -------------- | -------- |
+| Python version specification | `python3.14` specified but Black doesn't support py314 target | Inconsistency  | **LOW**  |
+| No shellcheck hook           | For shell scripts                                             | Missing        | **LOW**  |
 
 #### 2.2.7 Missing Recommended Hooks ⚠️
 
 **Status**: 2 ISSUES FOUND
 
-| Missing Hook | Purpose | Priority |
-|--------------|---------|----------|
-| `pyupgrade` | Automatic Python syntax modernization | **LOW** |
-| `ruff` | Fast Python linter (could replace flake8) | **LOW** |
+| Missing Hook | Purpose                                   | Priority |
+| ------------ | ----------------------------------------- | -------- |
+| `pyupgrade`  | Automatic Python syntax modernization     | **LOW**  |
+| `ruff`       | Fast Python linter (could replace flake8) | **LOW**  |
 
 ---
 
@@ -272,27 +276,27 @@ Tests are excluded from flake8 and mypy pre-commit hooks.
 
 **Status**: 2 ISSUES FOUND
 
-| Issue | Location | Description | Severity |
-|-------|----------|-------------|----------|
-| Bandit skips | Line 107 | `skips = ["B101", "B311"]` disables assert and random checks | **LOW** (B101 is appropriate for tests) |
-| MyPy `no_strict_optional` | Line 176 | Commented out but indicates potential relaxed type checking | **LOW** |
+| Issue                     | Location | Description                                                  | Severity                                |
+| ------------------------- | -------- | ------------------------------------------------------------ | --------------------------------------- |
+| Bandit skips              | Line 107 | `skips = ["B101", "B311"]` disables assert and random checks | **LOW** (B101 is appropriate for tests) |
+| MyPy `no_strict_optional` | Line 176 | Commented out but indicates potential relaxed type checking  | **LOW**                                 |
 
 #### 2.3.2 Coverage Configuration ⚠️
 
 **Status**: 1 ISSUE FOUND
 
-| Issue | Description | Severity |
-|-------|-------------|----------|
+| Issue                | Description                                                               | Severity                             |
+| -------------------- | ------------------------------------------------------------------------- | ------------------------------------ |
 | Commented exclusions | Lines 145-147 show commented-out exclusions for `__main__.py` and `api/*` | **INFO** (good they're not excluded) |
 
 #### 2.3.3 Pytest Configuration ⚠️
 
 **Status**: 2 ISSUES FOUND
 
-| Issue | Location | Description | Severity |
-|-------|----------|-------------|----------|
-| Warnings suppressed | Line 119 | `-p no:warnings` suppresses all warnings | **MEDIUM** |
-| Continue on collection errors | Line 122 | `--continue-on-collection-errors` may hide issues | **LOW** |
+| Issue                         | Location | Description                                       | Severity   |
+| ----------------------------- | -------- | ------------------------------------------------- | ---------- |
+| Warnings suppressed           | Line 119 | `-p no:warnings` suppresses all warnings          | **MEDIUM** |
+| Continue on collection errors | Line 122 | `--continue-on-collection-errors` may hide issues | **LOW**    |
 
 **Recommendation**: Remove `-p no:warnings` or use `filterwarnings` to selectively ignore expected warnings.
 
@@ -304,14 +308,14 @@ Tests are excluded from flake8 and mypy pre-commit hooks.
 
 Running `mypy juniper_data --ignore-missing-imports` reveals:
 
-| File | Line | Error | Severity |
-|------|------|-------|----------|
-| `core/artifacts.py` | 18 | `savez` type signature mismatch | **LOW** |
-| `core/artifacts.py` | 44 | `savez` type signature mismatch | **LOW** |
-| `storage/memory.py` | 65 | `savez_compressed` type signature mismatch | **LOW** |
-| `storage/local_fs.py` | 77 | `savez_compressed` type signature mismatch | **LOW** |
-| `api/routes/datasets.py` | 19 | Incompatible None assignment | **MEDIUM** |
-| `api/app.py` | 40 | Implicit Optional not allowed | **MEDIUM** |
+| File                     | Line | Error                                      | Severity   |
+| ------------------------ | ---- | ------------------------------------------ | ---------- |
+| `core/artifacts.py`      | 18   | `savez` type signature mismatch            | **LOW**    |
+| `core/artifacts.py`      | 44   | `savez` type signature mismatch            | **LOW**    |
+| `storage/memory.py`      | 65   | `savez_compressed` type signature mismatch | **LOW**    |
+| `storage/local_fs.py`    | 77   | `savez_compressed` type signature mismatch | **LOW**    |
+| `api/routes/datasets.py` | 19   | Incompatible None assignment               | **MEDIUM** |
+| `api/app.py`             | 40   | Implicit Optional not allowed              | **MEDIUM** |
 
 **Note**: These errors are suppressed by the current mypy configuration but represent real type safety issues.
 
@@ -323,12 +327,12 @@ Running `mypy juniper_data --ignore-missing-imports` reveals:
 
 Running `flake8 juniper_data/tests` reveals:
 
-| Category | Count | Examples |
-|----------|-------|----------|
-| F401 (unused imports) | 6 | `os`, `Dict`, `AsyncMock`, `generators`, `io`, `MagicMock` |
-| E402 (import order) | 1 | `generate_golden_datasets.py` |
-| F541 (empty f-strings) | 5 | `generate_golden_datasets.py` |
-| SIM117 (nested with) | 15+ | Multiple files - nested context managers |
+| Category               | Count | Examples                                                   |
+| ---------------------- | ----- | ---------------------------------------------------------- |
+| F401 (unused imports)  | 6     | `os`, `Dict`, `AsyncMock`, `generators`, `io`, `MagicMock` |
+| E402 (import order)    | 1     | `generate_golden_datasets.py`                              |
+| F541 (empty f-strings) | 5     | `generate_golden_datasets.py`                              |
+| SIM117 (nested with)   | 15+   | Multiple files - nested context managers                   |
 
 **Recommendation**: Run flake8 on tests and fix these issues. The nested `with` statements (SIM117) are particularly verbose and could be simplified.
 
@@ -376,6 +380,7 @@ Running `flake8 juniper_data/tests` reveals:
 ### Immediate Actions (Within 1 Week)
 
 1. **Fix the silent `pass` in `test_main.py`**
+
    ```python
    @pytest.mark.skipif(
        not importlib.util.find_spec("uvicorn"),
@@ -386,12 +391,14 @@ Running `flake8 juniper_data/tests` reveals:
    ```
 
 2. **Enable flake8 on tests** in `.pre-commit-config.yaml`:
+
    ```yaml
    - id: flake8
      files: ^juniper_data/.*\.py$  # Remove test exclusion
    ```
 
 3. **Create `.github/dependabot.yml`**:
+
    ```yaml
    version: 2
    updates:
@@ -406,6 +413,7 @@ Running `flake8 juniper_data/tests` reveals:
    ```
 
 4. **Fix Bandit exit code handling** in CI:
+
    ```yaml
    - name: Run Bandit (SAST) -> SARIF
      run: |
@@ -433,7 +441,7 @@ Running `flake8 juniper_data/tests` reveals:
 
 ### A. Test File Structure
 
-```
+```bash
 juniper_data/tests/
 ├── conftest.py                    # Shared fixtures
 ├── fixtures/
@@ -460,16 +468,16 @@ juniper_data/tests/
 
 ### B. Pytest Markers Defined
 
-| Marker | Description | Usage Count |
-|--------|-------------|-------------|
-| `unit` | Unit tests for individual components | 183 |
-| `integration` | Integration tests for full workflows | 24 |
-| `performance` | Performance and benchmarking tests | 0 |
-| `slow` | Tests that take a long time to run | 0 |
-| `spiral` | Tests specifically for spiral dataset generation | 38 |
-| `api` | Tests for API endpoints | 0 (but covered by other markers) |
-| `generators` | Tests for data generators | 38 |
-| `storage` | Tests for storage operations | 0 (but covered by unit marker) |
+| Marker        | Description                                      | Usage Count                      |
+| ------------- | ------------------------------------------------ | -------------------------------- |
+| `unit`        | Unit tests for individual components             | 183                              |
+| `integration` | Integration tests for full workflows             | 24                               |
+| `performance` | Performance and benchmarking tests               | 0                                |
+| `slow`        | Tests that take a long time to run               | 0                                |
+| `spiral`      | Tests specifically for spiral dataset generation | 38                               |
+| `api`         | Tests for API endpoints                          | 0 (but covered by other markers) |
+| `generators`  | Tests for data generators                        | 38                               |
+| `storage`     | Tests for storage operations                     | 0 (but covered by unit marker)   |
 
 ### C. Coverage Summary
 

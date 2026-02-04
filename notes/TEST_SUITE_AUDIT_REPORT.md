@@ -13,33 +13,57 @@ This report provides a comprehensive audit of the JuniperData testing suite and 
 
 **Overall Assessment**: The test suite is well-structured with legitimate tests that properly exercise the source code. However, several concerns were identified related to test exclusions in CI, linting configuration gaps, and security scan error handling.
 
-| Category | Status | Severity |
-|----------|--------|----------|
-| Test Validity | **PASS** | - |
-| Test Coverage | **PASS** | - |
-| CI/CD Configuration | **NEEDS ATTENTION** | Medium |
-| Pre-commit Hooks | **NEEDS ATTENTION** | Medium |
-| Security Scanning | **NEEDS ATTENTION** | Medium |
+| Category            | Status              | Severity |
+| ------------------- | ------------------- | -------- |
+| Test Validity       | **PASS**            | -        |
+| Test Coverage       | **PASS**            | -        |
+| CI/CD Configuration | **NEEDS ATTENTION** | Medium   |
+| Pre-commit Hooks    | **NEEDS ATTENTION** | Medium   |
+| Security Scanning   | **NEEDS ATTENTION** | Medium   |
 
 ---
 
 ## Table of Contents
 
-1. [Test Suite Analysis](#1-test-suite-analysis)
-   - 1.1 [Tests Modified to Always Pass](#11-tests-modified-to-always-pass)
-   - 1.2 [Tests Not Testing Source Code](#12-tests-not-testing-source-code)
-   - 1.3 [Duplicate Tests](#13-duplicate-tests)
-   - 1.4 [Excluded Tests](#14-excluded-tests)
-   - 1.5 [Logically Invalid Tests](#15-logically-invalid-tests)
-   - 1.6 [Syntax Errors](#16-syntax-errors)
-   - 1.7 [Broken Tests](#17-broken-tests)
-   - 1.8 [Security Vulnerability Detection](#18-security-vulnerability-detection)
-2. [CI/CD Pipeline Analysis](#2-cicd-pipeline-analysis)
-   - 2.1 [GitHub Actions](#21-github-actions)
-   - 2.2 [Pre-commit Checks](#22-pre-commit-checks)
-   - 2.3 [Linting and Static Analysis](#23-linting-and-static-analysis)
-3. [Recommendations](#3-recommendations)
-4. [Appendix](#4-appendix)
+- [JuniperData Test Suite and CI/CD Audit Report](#juniperdata-test-suite-and-cicd-audit-report)
+  - [Executive Summary](#executive-summary)
+  - [Table of Contents](#table-of-contents)
+  - [1. Test Suite Analysis](#1-test-suite-analysis)
+    - [Test Suite Overview](#test-suite-overview)
+    - [1.1 Tests Modified to Always Pass](#11-tests-modified-to-always-pass)
+    - [1.2 Tests Not Testing Source Code](#12-tests-not-testing-source-code)
+    - [1.3 Duplicate Tests](#13-duplicate-tests)
+    - [1.4 Excluded Tests](#14-excluded-tests)
+      - [1.4.1 CI Marker-Based Exclusions](#141-ci-marker-based-exclusions)
+      - [1.4.2 Integration Test Conditional Execution](#142-integration-test-conditional-execution)
+    - [1.5 Logically Invalid Tests](#15-logically-invalid-tests)
+    - [1.6 Syntax Errors](#16-syntax-errors)
+    - [1.7 Broken Tests](#17-broken-tests)
+    - [1.8 Security Vulnerability Detection](#18-security-vulnerability-detection)
+      - [Tests That Should Exist But Don't](#tests-that-should-exist-but-dont)
+      - [Current Security-Related Tests](#current-security-related-tests)
+      - [Recommendation](#recommendation)
+  - [2. CI/CD Pipeline Analysis](#2-cicd-pipeline-analysis)
+    - [2.1 GitHub Actions](#21-github-actions)
+      - [2.1.1 Workflow Structure](#211-workflow-structure)
+      - [2.1.2 Issues Identified](#212-issues-identified)
+      - [2.1.3 Missing GitHub Actions](#213-missing-github-actions)
+    - [2.2 Pre-commit Checks](#22-pre-commit-checks)
+      - [2.2.1 Configured Hooks](#221-configured-hooks)
+      - [2.2.2 Issues Identified](#222-issues-identified)
+      - [2.2.3 Missing Pre-commit Hooks](#223-missing-pre-commit-hooks)
+    - [2.3 Linting and Static Analysis](#23-linting-and-static-analysis)
+      - [2.3.1 pyproject.toml Configuration](#231-pyprojecttoml-configuration)
+      - [2.3.2 Coverage Configuration](#232-coverage-configuration)
+      - [2.3.3 Pytest Configuration](#233-pytest-configuration)
+  - [3. Recommendations](#3-recommendations)
+    - [High Priority](#high-priority)
+    - [Medium Priority](#medium-priority)
+    - [Low Priority](#low-priority)
+  - [4. Appendix](#4-appendix)
+    - [4.1 Test Marker Summary](#41-test-marker-summary)
+    - [4.2 Files Analyzed](#42-files-analyzed)
+    - [4.3 Methodology](#43-methodology)
 
 ---
 
@@ -47,13 +71,14 @@ This report provides a comprehensive audit of the JuniperData testing suite and 
 
 ### Test Suite Overview
 
-| Test Category | File Count | Test Count |
-|---------------|------------|------------|
-| Unit Tests | 9 files | 183 tests |
-| Integration Tests | 2 files | 24 tests |
-| **Total** | **11 files** | **207 tests** |
+| Test Category     | File Count   | Test Count    |
+| ----------------- | ------------ | ------------- |
+| Unit Tests        | 9 files      | 183 tests     |
+| Integration Tests | 2 files      | 24 tests      |
+| **Total**         | **11 files** | **207 tests** |
 
 **Unit Test Files**:
+
 - `test_spiral_generator.py` (38 tests)
 - `test_storage.py` (44 tests)
 - `test_api_routes.py` (18 tests)
@@ -65,6 +90,7 @@ This report provides a comprehensive audit of the JuniperData testing suite and 
 - `test_main.py` (10 tests)
 
 **Integration Test Files**:
+
 - `test_api.py` (16 tests)
 - `test_storage_workflow.py` (8 tests)
 
@@ -75,6 +101,7 @@ This report provides a comprehensive audit of the JuniperData testing suite and 
 **Status**: **NO ISSUES FOUND**
 
 All tests examined use legitimate assertions and proper test patterns. No tests were found that:
+
 - Use unconditional `assert True`
 - Skip critical assertions
 - Catch and suppress all exceptions
@@ -89,11 +116,13 @@ All tests examined use legitimate assertions and proper test patterns. No tests 
 **Status**: **NO MAJOR ISSUES FOUND**
 
 All tests effectively exercise the source code they target. Tests properly:
+
 - Import and use actual module functions/classes
 - Verify real behavior against expected outcomes
 - Test edge cases and boundary conditions
 
 **Minor Observation**:
+
 - `test_main.py:13-38` - The `test_main_import_error_uvicorn_not_installed` test has a try/except block that catches `ImportError` and does `pass`. While this is intentional (testing import error handling), the pattern could mask legitimate test failures in edge cases.
 
 ```python
@@ -117,14 +146,14 @@ except ImportError:
 
 No duplicate tests were identified. Tests are well-organized by functionality:
 
-| Test Class | Purpose | Unique Coverage |
-|------------|---------|-----------------|
-| `TestSpiralShapes` | Output dimensions | Shape verification |
-| `TestOneHotEncoding` | Label encoding | Encoding correctness |
-| `TestDeterminism` | Reproducibility | Seed consistency |
-| `TestParamValidation` | Input validation | Error handling |
-| `TestSpiralGeometry` | Geometric properties | Coordinate bounds |
-| `TestSpiralGeneratorLegacyMode` | Algorithm variants | Legacy algorithm |
+| Test Class                      | Purpose              | Unique Coverage      |
+| ------------------------------- | -------------------- | -------------------- |
+| `TestSpiralShapes`              | Output dimensions    | Shape verification   |
+| `TestOneHotEncoding`            | Label encoding       | Encoding correctness |
+| `TestDeterminism`               | Reproducibility      | Seed consistency     |
+| `TestParamValidation`           | Input validation     | Error handling       |
+| `TestSpiralGeometry`            | Geometric properties | Coordinate bounds    |
+| `TestSpiralGeneratorLegacyMode` | Algorithm variants   | Legacy algorithm     |
 
 Tests cover complementary aspects without redundancy.
 
@@ -139,12 +168,14 @@ Tests cover complementary aspects without redundancy.
 The CI pipeline explicitly excludes tests based on markers:
 
 **Unit Tests** (`ci.yml:140-141`):
+
 ```yaml
 python -m pytest \
   -m "unit and not slow" \
 ```
 
 **Integration Tests** (`ci.yml:253-254`):
+
 ```yaml
 python -m pytest \
   -m "integration and not slow" \
@@ -157,16 +188,19 @@ python -m pytest \
 **Impact**: Medium - Tests marked as `slow` in the future will silently be skipped in CI.
 
 **Recommendation**:
+
 1. Add a separate CI job for slow tests (scheduled or on-demand)
 2. Document the slow marker policy in test guidelines
 
 #### 1.4.2 Integration Test Conditional Execution
 
 Integration tests only run on:
+
 - Pull requests
 - Pushes to `main` or `develop` branches
 
 **CI Configuration** (`ci.yml:221`):
+
 ```yaml
 if: github.event_name == 'pull_request' || github.ref_name == 'main' || github.ref_name == 'develop'
 ```
@@ -182,6 +216,7 @@ if: github.event_name == 'pull_request' || github.ref_name == 'main' || github.r
 **Status**: **NO ISSUES FOUND**
 
 All tests have valid logical structures:
+
 - Pre-conditions are properly established via fixtures
 - Assertions test meaningful properties
 - Expected values are correctly calculated
@@ -204,6 +239,7 @@ All test files passed Python AST validation. Tests run successfully in pytest co
 All tests were successfully collected (207 total). No collection errors or import failures detected.
 
 **Verification Command Used**:
+
 ```bash
 python -m pytest --collect-only -q
 ```
@@ -214,21 +250,24 @@ python -m pytest --collect-only -q
 
 **Status**: **PARTIAL COVERAGE**
 
-#### Tests That Should Exist But Don't:
+#### Tests That Should Exist But Don't
 
-| Security Concern | Test Coverage | Recommendation |
-|------------------|---------------|----------------|
-| Path Traversal | **Missing** | Add tests for storage path validation |
-| Input Injection | **Partial** | Expand param validation edge cases |
-| File Permission | **Missing** | Add tests for file permission handling |
-| Resource Exhaustion | **Missing** | Add tests for large dataset handling |
+| Security Concern    | Test Coverage | Recommendation                         |
+| ------------------- | ------------- | -------------------------------------- |
+| Path Traversal      | **Missing**   | Add tests for storage path validation  |
+| Input Injection     | **Partial**   | Expand param validation edge cases     |
+| File Permission     | **Missing**   | Add tests for file permission handling |
+| Resource Exhaustion | **Missing**   | Add tests for large dataset handling   |
 
-#### Current Security-Related Tests:
+#### Current Security-Related Tests
+
 - Parameter validation (Pydantic) - `test_spiral_generator.py` - **ADEQUATE**
 - API input validation - `test_api_routes.py` - **ADEQUATE**
 
-#### Recommendation:
+#### Recommendation
+
 Add security-focused test cases in a new `test_security.py` file:
+
 ```python
 # Suggested tests:
 def test_storage_path_traversal_blocked()
@@ -247,21 +286,22 @@ def test_parameter_bounds_enforced()
 
 #### 2.1.1 Workflow Structure
 
-| Job | Dependencies | Purpose | Status |
-|-----|--------------|---------|--------|
-| `pre-commit` | None | Code quality checks | **OK** |
-| `unit-tests` | `pre-commit` | Unit tests + coverage | **OK** |
-| `build` | `unit-tests` | Package build | **OK** |
-| `integration-tests` | `unit-tests` | Integration tests | **OK** |
-| `security` | `pre-commit` | Security scans | **NEEDS ATTENTION** |
-| `required-checks` | All | Quality gate | **OK** |
-| `notify` | `required-checks` | Build notification | **OK** |
+| Job                 | Dependencies      | Purpose               | Status              |
+| ------------------- | ----------------- | --------------------- | ------------------- |
+| `pre-commit`        | None              | Code quality checks   | **OK**              |
+| `unit-tests`        | `pre-commit`      | Unit tests + coverage | **OK**              |
+| `build`             | `unit-tests`      | Package build         | **OK**              |
+| `integration-tests` | `unit-tests`      | Integration tests     | **OK**              |
+| `security`          | `pre-commit`      | Security scans        | **NEEDS ATTENTION** |
+| `required-checks`   | All               | Quality gate          | **OK**              |
+| `notify`            | `required-checks` | Build notification    | **OK**              |
 
 #### 2.1.2 Issues Identified
 
-**ISSUE 1: Security Scan Non-Blocking**
+**ISSUE 1: Security Scan Non-Blocking:**
 
 **Location**: `ci.yml:313`
+
 ```yaml
 bandit -r juniper_data -f sarif -o reports/security/bandit.sarif || true
 ```
@@ -271,15 +311,17 @@ bandit -r juniper_data -f sarif -o reports/security/bandit.sarif || true
 **Severity**: Medium
 
 **Recommendation**: Remove `|| true` and configure acceptable severity thresholds:
+
 ```yaml
 bandit -r juniper_data -f sarif -o reports/security/bandit.sarif --severity-level medium
 ```
 
 ---
 
-**ISSUE 2: pip-audit Non-Blocking**
+**ISSUE 2: pip-audit Non-Blocking:**
 
 **Location**: `ci.yml:329`
+
 ```yaml
 pip-audit -r reports/security/pip-freeze.txt || echo "::warning::Vulnerabilities found in dependencies"
 ```
@@ -289,15 +331,17 @@ pip-audit -r reports/security/pip-freeze.txt || echo "::warning::Vulnerabilities
 **Severity**: Medium
 
 **Recommendation**: Make critical vulnerabilities fail the build:
+
 ```yaml
 pip-audit -r reports/security/pip-freeze.txt --strict
 ```
 
 ---
 
-**ISSUE 3: SARIF Upload Continues on Error**
+**ISSUE 3: SARIF Upload Continues on Error:**
 
 **Location**: `ci.yml:320`
+
 ```yaml
 continue-on-error: true
 ```
@@ -310,7 +354,7 @@ continue-on-error: true
 
 ---
 
-**ISSUE 4: Missing Dependency Pinning**
+**ISSUE 4: Missing Dependency Pinning:**
 
 **Location**: `ci.yml` (General)
 
@@ -319,6 +363,7 @@ continue-on-error: true
 **Severity**: Low
 
 **Best Practice**: Pin to specific SHAs for supply chain security:
+
 ```yaml
 # Current
 uses: actions/checkout@v4
@@ -330,12 +375,12 @@ uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
 
 #### 2.1.3 Missing GitHub Actions
 
-| Recommended Action | Purpose | Priority |
-|--------------------|---------|----------|
-| CodeQL Analysis | Deep security scanning | Medium |
-| Dependency Review | PR dependency checks | Medium |
-| Release Automation | Automated versioning | Low |
-| Documentation Build | Auto-generate docs | Low |
+| Recommended Action  | Purpose                | Priority |
+| ------------------- | ---------------------- | -------- |
+| CodeQL Analysis     | Deep security scanning | Medium   |
+| Dependency Review   | PR dependency checks   | Medium   |
+| Release Automation  | Automated versioning   | Low      |
+| Documentation Build | Auto-generate docs     | Low      |
 
 ---
 
@@ -345,31 +390,32 @@ uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
 
 #### 2.2.1 Configured Hooks
 
-| Hook | Version | Status |
-|------|---------|--------|
-| `check-yaml` | v4.6.0 | **OK** |
-| `check-toml` | v4.6.0 | **OK** |
-| `check-json` | v4.6.0 | **OK** |
-| `end-of-file-fixer` | v4.6.0 | **OK** |
-| `trailing-whitespace` | v4.6.0 | **OK** |
-| `check-merge-conflict` | v4.6.0 | **OK** |
-| `check-added-large-files` | v4.6.0 | **OK** |
-| `check-case-conflict` | v4.6.0 | **OK** |
-| `check-ast` | v4.6.0 | **OK** |
-| `debug-statements` | v4.6.0 | **OK** |
-| `detect-private-key` | v4.6.0 | **OK** |
-| `black` | 25.1.0 | **OK** |
-| `isort` | 5.13.2 | **OK** |
-| `flake8` | 7.1.1 | **NEEDS ATTENTION** |
-| `mypy` | v1.13.0 | **NEEDS ATTENTION** |
-| `bandit` | 1.7.9 | **NEEDS ATTENTION** |
-| `yamllint` | v1.35.1 | **OK** |
+| Hook                      | Version | Status              |
+| ------------------------- | ------- | ------------------- |
+| `check-yaml`              | v4.6.0  | **OK**              |
+| `check-toml`              | v4.6.0  | **OK**              |
+| `check-json`              | v4.6.0  | **OK**              |
+| `end-of-file-fixer`       | v4.6.0  | **OK**              |
+| `trailing-whitespace`     | v4.6.0  | **OK**              |
+| `check-merge-conflict`    | v4.6.0  | **OK**              |
+| `check-added-large-files` | v4.6.0  | **OK**              |
+| `check-case-conflict`     | v4.6.0  | **OK**              |
+| `check-ast`               | v4.6.0  | **OK**              |
+| `debug-statements`        | v4.6.0  | **OK**              |
+| `detect-private-key`      | v4.6.0  | **OK**              |
+| `black`                   | 25.1.0  | **OK**              |
+| `isort`                   | 5.13.2  | **OK**              |
+| `flake8`                  | 7.1.1   | **NEEDS ATTENTION** |
+| `mypy`                    | v1.13.0 | **NEEDS ATTENTION** |
+| `bandit`                  | 1.7.9   | **NEEDS ATTENTION** |
+| `yamllint`                | v1.35.1 | **OK**              |
 
 #### 2.2.2 Issues Identified
 
-**ISSUE 1: Tests Excluded from Flake8**
+**ISSUE 1: Tests Excluded from Flake8:**
 
 **Location**: `.pre-commit-config.yaml:126`
+
 ```yaml
 exclude: ^juniper_data/tests/
 ```
@@ -379,6 +425,7 @@ exclude: ^juniper_data/tests/
 **Severity**: Medium
 
 **Recommendation**: Remove exclusion or use a separate, relaxed config for tests:
+
 ```yaml
 files: ^juniper_data/.*\.py$
 # No test exclusion
@@ -386,9 +433,10 @@ files: ^juniper_data/.*\.py$
 
 ---
 
-**ISSUE 2: Tests Excluded from MyPy**
+**ISSUE 2: Tests Excluded from MyPy:**
 
 **Location**: `.pre-commit-config.yaml:139`
+
 ```yaml
 files: ^juniper_data/(?!tests).*\.py$
 ```
@@ -398,6 +446,7 @@ files: ^juniper_data/(?!tests).*\.py$
 **Severity**: Medium
 
 **Recommendation**: Include tests with relaxed type checking:
+
 ```yaml
 files: ^juniper_data/.*\.py$
 args:
@@ -407,9 +456,10 @@ args:
 
 ---
 
-**ISSUE 3: Tests Excluded from Bandit**
+**ISSUE 3: Tests Excluded from Bandit:**
 
 **Location**: `.pre-commit-config.yaml:152`
+
 ```yaml
 files: ^juniper_data/(?!tests).*\.py$
 ```
@@ -422,25 +472,27 @@ files: ^juniper_data/(?!tests).*\.py$
 
 ---
 
-**ISSUE 4: Overly Permissive Flake8 Ignores**
+**ISSUE 4: Overly Permissive Flake8 Ignores:**
 
 **Location**: `.pre-commit-config.yaml:118`
+
 ```yaml
 --extend-ignore=E203,E265,E266,E501,W503,E722,E402,E226,C409,C901,B008,B904,B905,B907,F401
 ```
 
 **Concerning Ignores**:
 
-| Code | Description | Risk |
-|------|-------------|------|
-| `E722` | Bare `except:` | Catches unexpected exceptions |
-| `F401` | Unused imports | Dead code accumulation |
-| `B008` | Mutable default args | Potential bugs |
-| `B904` | `raise` without `from` | Lost error context |
+| Code   | Description            | Risk                          |
+| ------ | ---------------------- | ----------------------------- |
+| `E722` | Bare `except:`         | Catches unexpected exceptions |
+| `F401` | Unused imports         | Dead code accumulation        |
+| `B008` | Mutable default args   | Potential bugs                |
+| `B904` | `raise` without `from` | Lost error context            |
 
 **Severity**: Low-Medium
 
 **Recommendation**: Review and minimize ignores, particularly:
+
 - Remove `E722` - bare excepts should be explicit
 - Remove `F401` - unused imports should be cleaned up
 
@@ -448,12 +500,12 @@ files: ^juniper_data/(?!tests).*\.py$
 
 #### 2.2.3 Missing Pre-commit Hooks
 
-| Recommended Hook | Purpose | Priority |
-|------------------|---------|----------|
-| `pyupgrade` | Python syntax modernization | Low |
-| `autoflake` | Remove unused imports | Medium |
-| `interrogate` | Docstring coverage | Low |
-| `commitizen` | Commit message standards | Low |
+| Recommended Hook | Purpose                     | Priority |
+| ---------------- | --------------------------- | -------- |
+| `pyupgrade`      | Python syntax modernization | Low      |
+| `autoflake`      | Remove unused imports       | Medium   |
+| `interrogate`    | Docstring coverage          | Low      |
+| `commitizen`     | Commit message standards    | Low      |
 
 ---
 
@@ -464,6 +516,7 @@ files: ^juniper_data/(?!tests).*\.py$
 **File**: `pyproject.toml`
 
 **MyPy Test Exclusion** (Line 182-183):
+
 ```toml
 exclude = [
     "^juniper_data/tests/",
@@ -477,6 +530,7 @@ exclude = [
 #### 2.3.2 Coverage Configuration
 
 **Current Settings** (`pyproject.toml:138-147`):
+
 ```toml
 [tool.coverage.run]
 source_pkgs = ["juniper_data"]
@@ -500,6 +554,7 @@ The commented-out exclusions for `__main__.py` and `api/*` indicate these were p
 #### 2.3.3 Pytest Configuration
 
 **Current Settings** (`pyproject.toml:109-136`):
+
 ```toml
 [tool.pytest.ini_options]
 addopts = [
@@ -513,9 +568,10 @@ addopts = [
 ]
 ```
 
-**ISSUE: Warning Suppression**
+**ISSUE: Warning Suppression:**
 
 **Location**: `pyproject.toml:119`
+
 ```toml
 "-p", "no:warnings",
 ```
@@ -525,6 +581,7 @@ addopts = [
 **Severity**: Medium
 
 **Recommendation**: Remove this option or use filterwarnings to selectively suppress:
+
 ```toml
 filterwarnings = [
     "ignore::DeprecationWarning:third_party_module",
@@ -537,28 +594,28 @@ filterwarnings = [
 
 ### High Priority
 
-| # | Issue | Action | Effort |
-|---|-------|--------|--------|
-| 1 | Security scans non-blocking | Remove `\|\| true` from Bandit, add `--strict` to pip-audit | Low |
-| 2 | Pytest warning suppression | Remove `-p no:warnings` or configure filterwarnings | Low |
-| 3 | Flake8 E722 ignore | Remove bare except ignore | Low |
+| #   | Issue                       | Action                                                      | Effort |
+| --- | --------------------------- | ----------------------------------------------------------- | ------ |
+| 1   | Security scans non-blocking | Remove `\|\| true` from Bandit, add `--strict` to pip-audit | Low    |
+| 2   | Pytest warning suppression  | Remove `-p no:warnings` or configure filterwarnings         | Low    |
+| 3   | Flake8 E722 ignore          | Remove bare except ignore                                   | Low    |
 
 ### Medium Priority
 
-| # | Issue | Action | Effort |
-|---|-------|--------|--------|
-| 4 | Tests excluded from linting | Add test linting with relaxed rules | Medium |
-| 5 | Tests excluded from type checking | Add test type checking with `--allow-untyped-defs` | Medium |
-| 6 | Missing security tests | Create `test_security.py` with security-focused tests | Medium |
-| 7 | Slow test exclusion undocumented | Document slow test policy and add scheduled job | Low |
+| #   | Issue                             | Action                                                | Effort |
+| --- | --------------------------------- | ----------------------------------------------------- | ------ |
+| 4   | Tests excluded from linting       | Add test linting with relaxed rules                   | Medium |
+| 5   | Tests excluded from type checking | Add test type checking with `--allow-untyped-defs`    | Medium |
+| 6   | Missing security tests            | Create `test_security.py` with security-focused tests | Medium |
+| 7   | Slow test exclusion undocumented  | Document slow test policy and add scheduled job       | Low    |
 
 ### Low Priority
 
-| # | Issue | Action | Effort |
-|---|-------|--------|--------|
-| 8 | F401 unused import ignore | Remove ignore, clean up unused imports | Low |
-| 9 | Action version pinning | Pin to SHA hashes | Low |
-| 10 | Missing CodeQL | Add CodeQL analysis job | Medium |
+| #   | Issue                     | Action                                 | Effort |
+| --- | ------------------------- | -------------------------------------- | ------ |
+| 8   | F401 unused import ignore | Remove ignore, clean up unused imports | Low    |
+| 9   | Action version pinning    | Pin to SHA hashes                      | Low    |
+| 10  | Missing CodeQL            | Add CodeQL analysis job                | Medium |
 
 ---
 
@@ -566,19 +623,20 @@ filterwarnings = [
 
 ### 4.1 Test Marker Summary
 
-| Marker | Description | Count |
-|--------|-------------|-------|
-| `@pytest.mark.unit` | Unit tests | 183 |
-| `@pytest.mark.integration` | Integration tests | 24 |
-| `@pytest.mark.spiral` | Spiral generator tests | 45 |
-| `@pytest.mark.generators` | Generator tests | 38 |
-| `@pytest.mark.storage` | Storage tests | 44 |
-| `@pytest.mark.api` | API tests | 52 |
-| `@pytest.mark.slow` | Slow tests (excluded from CI) | 0 |
+| Marker                     | Description                   | Count |
+| -------------------------- | ----------------------------- | ----- |
+| `@pytest.mark.unit`        | Unit tests                    | 183   |
+| `@pytest.mark.integration` | Integration tests             | 24    |
+| `@pytest.mark.spiral`      | Spiral generator tests        | 45    |
+| `@pytest.mark.generators`  | Generator tests               | 38    |
+| `@pytest.mark.storage`     | Storage tests                 | 44    |
+| `@pytest.mark.api`         | API tests                     | 52    |
+| `@pytest.mark.slow`        | Slow tests (excluded from CI) | 0     |
 
 ### 4.2 Files Analyzed
 
 **Test Files**:
+
 - `juniper_data/tests/conftest.py`
 - `juniper_data/tests/unit/test_spiral_generator.py`
 - `juniper_data/tests/unit/test_storage.py`
@@ -593,16 +651,19 @@ filterwarnings = [
 - `juniper_data/tests/integration/test_storage_workflow.py`
 
 **Configuration Files**:
+
 - `.github/workflows/ci.yml`
 - `.pre-commit-config.yaml`
 - `pyproject.toml`
 
 **Utility Scripts**:
+
 - `util/run_all_tests.bash`
 
 ### 4.3 Methodology
 
 This audit was conducted by:
+
 1. Reading all test files and analyzing test logic
 2. Reviewing CI/CD configuration for completeness and best practices
 3. Checking for test exclusions and their justifications
@@ -612,4 +673,4 @@ This audit was conducted by:
 
 ---
 
-**End of Report**
+**End of Report:**

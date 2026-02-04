@@ -505,11 +505,7 @@ class TestDatasetStoreAbstractMethods:
         """Test that all abstract methods are defined."""
         import inspect
 
-        abstract_methods = [
-            name
-            for name, method in inspect.getmembers(DatasetStore, predicate=inspect.isfunction)
-            if getattr(method, "__isabstractmethod__", False)
-        ]
+        abstract_methods = [name for name, method in inspect.getmembers(DatasetStore, predicate=inspect.isfunction) if getattr(method, "__isabstractmethod__", False)]
 
         expected_methods = ["save", "get_meta", "get_artifact_bytes", "exists", "delete", "list_datasets"]
         for method in expected_methods:

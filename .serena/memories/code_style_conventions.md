@@ -52,14 +52,14 @@
 ```python
 def generate(self, n_points: int, noise: float = 0.1) -> Dataset:
     """Generate a spiral dataset.
-    
+
     Args:
         n_points: Number of points per spiral.
         noise: Standard deviation of Gaussian noise.
-    
+
     Returns:
         Dataset containing generated points and labels.
-    
+
     Raises:
         ValueError: If n_points is not positive.
     """

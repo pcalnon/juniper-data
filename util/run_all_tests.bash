@@ -89,7 +89,7 @@ python -m pytest -vv ${TESTS_DIR} \
 elif [[ "${COVERAGE_REPORT}" == "${TRUE}" ]]; then
 
 SOURCE_FILE_LIST="$(find . | grep -v "__init__" | grep -e ".*py$")"
-log_verbose "Source file list:  ${SOURCE_FILE_LIST}
+log_verbose "Source file list:  ${SOURCE_FILE_LIST}"
 
 
 # TODO: Move these flags to config file
