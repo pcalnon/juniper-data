@@ -1,13 +1,11 @@
 """Unit tests for API route modules."""
 
-from typing import Dict
-
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from juniper_data.api.app import create_app
-from juniper_data.api.routes import datasets, generators
+from juniper_data.api.routes import datasets
 from juniper_data.api.settings import Settings
 from juniper_data.storage.memory import InMemoryDatasetStore
 
@@ -161,7 +159,6 @@ class TestDatasetsEndpointEdgeCases:
 
     def test_preview_stacks_train_test_when_no_full_arrays(self, memory_store: InMemoryDatasetStore, test_settings: Settings) -> None:
         """Test preview stacks X_train/X_test when X_full/y_full not available."""
-        import io
         from datetime import datetime
 
         import numpy as np

@@ -4,10 +4,10 @@
 # Application:   juniper_data
 # File Name:     .pre-commit-config.yaml
 # Author:        Paul Calnon
-# Version:       0.1.1
+# Version:       0.3.0
 #
 # Date Created:  2026-01-30
-# Last Modified: 2026-01-30
+# Last Modified: 2026-02-04
 #
 # License:       MIT License
 # Copyright:     Copyright (c) 2024-2026 Paul Calnon
@@ -106,24 +106,39 @@ repos:
         files: ^juniper_data/.*\.py$
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # Python Linting - Flake8
+  # Python Linting - Flake8 (Production Code)
   # ═══════════════════════════════════════════════════════════════════════════
   - repo: https://github.com/pycqa/flake8
     rev: 7.1.1
     hooks:
       - id: flake8
-        name: Lint with Flake8
+        name: Lint production code with Flake8
         args:
           - --max-line-length=512
-          - --extend-ignore=E203,E265,E266,E501,W503,E722,E402,E226,C409,C901,B008,B904,B905,B907,F401
+          # Removed E722 (bare except) and F401 (unused imports) from ignores
+          - --extend-ignore=E203,E265,E266,E501,W503,E402,E226,C409,C901,B008,B904,B905,B907
           - --max-complexity=15
           - --select=B,C,E,F,W,T4,B9
         additional_dependencies:
           - flake8-bugbear>=24.0.0
           - flake8-comprehensions>=3.14.0
           - flake8-simplify>=0.21.0
-        files: ^juniper_data/.*\.py$
-        exclude: ^juniper_data/tests/
+        files: ^juniper_data/(?!tests/).*\.py$
+
+      # Flake8 for tests with relaxed rules
+      - id: flake8
+        name: Lint tests with Flake8 (relaxed)
+        args:
+          - --max-line-length=512
+          # More permissive for test code, but still catch unused imports and f-strings
+          - --extend-ignore=E203,E265,E266,E501,W503,E402,E226,C409,C901,B008,B904,B905,B907,SIM117
+          - --max-complexity=20
+          - --select=B,C,E,F,W,T4,B9
+        additional_dependencies:
+          - flake8-bugbear>=24.0.0
+          - flake8-comprehensions>=3.14.0
+          - flake8-simplify>=0.21.0
+        files: ^juniper_data/tests/.*\.py$
 
   # ═══════════════════════════════════════════════════════════════════════════
   # Python Type Checking - MyPy
@@ -132,11 +147,20 @@ repos:
     rev: v1.13.0
     hooks:
       - id: mypy
-        name: Type check with MyPy
+        name: Type check production code with MyPy
         args:
           - --ignore-missing-imports
           - --no-strict-optional
-        files: ^juniper_data/(?!tests).*\.py$
+        files: ^juniper_data/(?!tests/).*\.py$
+
+      # MyPy for tests with relaxed rules
+      - id: mypy
+        name: Type check tests with MyPy (relaxed)
+        args:
+          - --ignore-missing-imports
+          - --no-strict-optional
+          - --allow-untyped-defs
+        files: ^juniper_data/tests/.*\.py$
 
   # ═══════════════════════════════════════════════════════════════════════════
   # Security Scanning - Bandit
@@ -161,6 +185,28 @@ repos:
         name: Lint YAML files
         args: [--format, parsable, -d, relaxed]
         types: [yaml]
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Python Syntax Modernization - pyupgrade
+  # ═══════════════════════════════════════════════════════════════════════════
+  - repo: https://github.com/asottile/pyupgrade
+    rev: v3.19.1
+    hooks:
+      - id: pyupgrade
+        name: Upgrade Python syntax
+        args:
+          - --py311-plus
+        files: ^juniper_data/.*\.py$
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Shell Script Linting - shellcheck
+  # ═══════════════════════════════════════════════════════════════════════════
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        name: Lint shell scripts
+        types: [shell]
 
 # CI configuration (for pre-commit.ci service, if used)
 ci:

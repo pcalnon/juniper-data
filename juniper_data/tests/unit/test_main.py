@@ -1,7 +1,7 @@
 """Unit tests for __main__.py entry point."""
 
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -13,6 +13,7 @@ class TestMain:
     def test_main_import_error_uvicorn_not_installed(self) -> None:
         """Test main returns 1 when uvicorn is not installed."""
         import builtins
+        import importlib
 
         original_import = builtins.__import__
 
@@ -21,21 +22,17 @@ class TestMain:
                 raise ImportError("No module named 'uvicorn'")
             return original_import(name, *args, **kwargs)
 
-        with patch.object(sys, "argv", ["juniper_data"]):
-            with patch("builtins.print") as mock_print:
-                with patch.object(builtins, "__import__", side_effect=mock_import):
-                    with patch.dict(sys.modules, {"uvicorn": None}):
-                        import importlib
+        with patch.object(sys, "argv", ["juniper_data"]), patch("builtins.print") as mock_print, patch.object(builtins, "__import__", side_effect=mock_import), patch.dict(sys.modules, {"uvicorn": None}):
+            from juniper_data import __main__ as main_module
 
-                        from juniper_data import __main__ as main_module
-
-                        try:
-                            importlib.reload(main_module)
-                            result = main_module.main()
-                            assert result == 1
-                            mock_print.assert_called()
-                        except ImportError:
-                            pass
+            try:
+                importlib.reload(main_module)
+                result = main_module.main()
+                assert result == 1
+                mock_print.assert_called()
+            except ImportError as e:
+                # If ImportError occurs during test setup, skip with explanation
+                pytest.skip(f"Cannot test uvicorn import error scenario: {e}")
 
     def test_main_parses_host_argument(self) -> None:
         """Test main correctly parses --host argument."""

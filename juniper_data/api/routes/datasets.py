@@ -2,7 +2,7 @@
 
 import io
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -16,7 +16,7 @@ from .generators import GENERATOR_REGISTRY
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
-_store: DatasetStore = None
+_store: Optional[DatasetStore] = None
 
 
 def get_store() -> DatasetStore:

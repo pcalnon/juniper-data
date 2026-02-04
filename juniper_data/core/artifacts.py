@@ -15,7 +15,7 @@ def save_npz(path: Path, arrays: Dict[str, np.ndarray]) -> None:
         path: Path to save the NPZ file.
         arrays: Dictionary mapping array names to numpy arrays.
     """
-    np.savez(path, **arrays)
+    np.savez(path, **arrays)  # type: ignore[arg-type]  # numpy stubs incomplete for **kwargs
 
 
 def load_npz(path: Path) -> Dict[str, np.ndarray]:
@@ -41,7 +41,7 @@ def arrays_to_bytes(arrays: Dict[str, np.ndarray]) -> bytes:
         Bytes representation of the NPZ file.
     """
     buffer = io.BytesIO()
-    np.savez(buffer, **arrays)
+    np.savez(buffer, **arrays)  # type: ignore[arg-type]  # numpy stubs incomplete for **kwargs
     buffer.seek(0)
     return buffer.read()
 

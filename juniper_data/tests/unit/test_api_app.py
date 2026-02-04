@@ -1,7 +1,7 @@
 """Unit tests for the FastAPI application factory and configuration."""
 
 import logging
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI

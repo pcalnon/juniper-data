@@ -1,0 +1,65 @@
+#####################################################################################################################################################################################################
+# Project:       Juniper
+# Sub-Project:   JuniperData
+# Application:   juniper_data
+# File Name:     dependabot.yml
+# Author:        Paul Calnon
+# Version:       1.0.0
+#
+# Date Created:  2026-02-04
+# Last Modified: 2026-02-04
+#
+# License:       MIT License
+# Copyright:     Copyright (c) 2024-2026 Paul Calnon
+#
+# Description:
+#    Dependabot configuration for JuniperData Dataset Generation Service
+#    Automatically creates PRs for dependency updates to maintain security
+#
+# References:
+#    - https://docs.github.com/en/code-security/dependabot/dependabot-version-updates
+#    - TEST_SUITE_CICD_ENHANCEMENT_DEVELOPMENT_PLAN.md (SEC-003)
+#####################################################################################################################################################################################################
+
+version: 2
+
+updates:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Python Dependencies
+  # ═══════════════════════════════════════════════════════════════════════════
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "security"
+    commit-message:
+      prefix: "deps"
+    groups:
+      # Group minor/patch updates together to reduce PR noise
+      python-minor:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # GitHub Actions
+  # ═══════════════════════════════════════════════════════════════════════════
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "ci"

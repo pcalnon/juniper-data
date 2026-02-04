@@ -62,7 +62,7 @@ class InMemoryDatasetStore(DatasetStore):
             return None
 
         buffer = io.BytesIO()
-        np.savez_compressed(buffer, **arrays)
+        np.savez_compressed(buffer, **arrays)  # type: ignore[arg-type]  # numpy stubs incomplete for **kwargs
         buffer.seek(0)
         return buffer.read()
 

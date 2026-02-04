@@ -5,6 +5,88 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-02-04
+
+**Summary**: Comprehensive Test Suite and CI/CD Enhancement - Security hardening, static analysis expansion, infrastructure improvements.
+
+### Security: [0.3.0]
+
+- **SEC-001: Bandit Security Scanning Now Blocking**
+  - Replaced `|| true` with `--exit-zero` for SARIF generation
+  - Added blocking check for medium+ severity findings
+
+- **SEC-002: pip-audit Now Strict Mode**
+  - Changed from warning-only to `--strict` flag to fail on vulnerabilities
+
+- **SEC-003: Dependabot Configuration**
+  - New `.github/dependabot.yml` for automated dependency updates
+  - Configured for both pip and GitHub Actions ecosystems
+  - Weekly schedule with grouped updates
+
+- **SEC-004: GitHub Actions Pinned to SHA**
+  - All GitHub Actions now pinned to specific commit SHAs for supply chain security
+  - Includes: checkout, setup-python, cache, upload-artifact, codecov, codeql, gitleaks
+
+### Added: [0.3.0]
+
+- **CodeQL Analysis Workflow** (`.github/workflows/codeql.yml`)
+  - Weekly semantic code analysis for security vulnerabilities
+  - Runs on push to main/develop and on PRs
+
+- **Codecov Integration**
+  - Coverage reports now uploaded to Codecov for trend tracking
+  - Added `codecov-action` step in unit-tests job
+
+- **Slow Test Job**
+  - New `slow-tests` job for tests marked with `@pytest.mark.slow`
+  - Runs weekly and on manual trigger
+
+- **Pre-commit Hooks**
+  - Added `pyupgrade` hook for Python syntax modernization (py311+)
+  - Added `shellcheck` hook for shell script linting
+
+### Changed: [0.3.0]
+
+- **Static Analysis Now Covers Tests**
+  - Flake8 now lints test code (with relaxed SIM117 rules)
+  - MyPy now type-checks test code (with `--allow-untyped-defs`)
+  - Removed E722 and F401 from global Flake8 ignores
+
+- **Pytest Warnings Configuration**
+  - Removed global `-p no:warnings` suppression
+  - Added targeted `filterwarnings` for expected dependency warnings
+  - Removed `--continue-on-collection-errors` flag
+
+- **MyPy Configuration** (`pyproject.toml`)
+  - Tests now included in type checking
+  - Added relaxed overrides for test modules
+  - Removed test exclusion pattern
+
+### Fixed: [0.3.0]
+
+- **TST-001: Silent ImportError Test Pass**
+  - Refactored `test_main.py` to use `pytest.skip()` instead of silent `pass`
+
+- **CFG-003: MyPy Type Errors in Production Code**
+  - Added type ignore comments for numpy stubs in `core/artifacts.py`, `storage/memory.py`, `storage/local_fs.py`
+  - Fixed `Optional` type annotations in `api/routes/datasets.py` and `api/app.py`
+
+- **Unused Imports** (7 fixed)
+  - `tests/fixtures/generate_golden_datasets.py`: removed `os`
+  - `tests/integration/test_storage_workflow.py`: removed `Dict`
+  - `tests/unit/test_api_app.py`: removed `AsyncMock`
+  - `tests/unit/test_api_routes.py`: removed `Dict`, `generators`, `io`
+  - `tests/unit/test_main.py`: removed `MagicMock`
+
+### Technical Notes: [0.3.0]
+
+- **SemVer impact**: MINOR – Significant CI/CD infrastructure changes; no API changes
+- **Test count**: 207 tests (unchanged, all passing)
+- **Coverage**: 100% maintained
+- **Documentation**: See `notes/TEST_SUITE_CICD_ENHANCEMENT_DEVELOPMENT_PLAN.md` for full implementation details
+
+---
+
 ## [0.2.2] - 2026-02-02
 
 **Summary**: Fixed code coverage configuration and achieved 100% test coverage across all source files.

@@ -74,7 +74,7 @@ class LocalFSDatasetStore(DatasetStore):
         meta_path.write_text(meta_json, encoding="utf-8")
 
         buffer = io.BytesIO()
-        np.savez_compressed(buffer, **arrays)
+        np.savez_compressed(buffer, **arrays)  # type: ignore[arg-type]  # numpy stubs incomplete for **kwargs
         buffer.seek(0)
         npz_path.write_bytes(buffer.read())
 
