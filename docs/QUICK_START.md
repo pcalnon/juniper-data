@@ -56,10 +56,10 @@ git --version
 
 ```bash
 # Navigate to your workspace
-cd ~/Development/python/JuniperCanopy
+cd ~/Development/python/Juniper/JuniperCanopy
 
-# Repository should already be cloned
-# If not, clone from your repository
+# Clone from Juniper repository
+git clone <https://github.com/pcalnon/Juniper.git>
 ```
 
 ### Step 2: Navigate to Project
@@ -73,8 +73,8 @@ cd juniper_canopy
 #### Option A: Using conda (recommended)
 
 ```bash
-# Activate JuniperPython environment
-conda activate JuniperPython
+# Activate JuniperCanopy environment
+conda activate JuniperCanopy
 ```
 
 #### Option B: Let the demo script handle it
@@ -123,8 +123,12 @@ http://localhost:8050/dashboard/
 
 - ✅ **Training Metrics** tab with live loss/accuracy plots
 - ✅ **Network Topology** tab with network visualization
-- ✅ **Decision Boundary** tab with boundary plot
-- ✅ **Dataset** tab with data points
+- ✅ **Decision Boundaries** tab with boundary plot
+- ✅ **Dataset View** tab with data points
+- ✅ **HDF5 Snapshots** tab with data points
+- ✅ **Redis** tab with data points
+- ✅ **Cassandra** tab with data points
+- ✅ **About** tab with data points
 
 **Congratulations! 🎉 You're running Juniper Canopy!**
 
