@@ -40,6 +40,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **TestE2EErrorHandling**: invalid generator, invalid params, nonexistent dataset, delete verification
   - All tests marked with `@pytest.mark.integration` and `@pytest.mark.slow`
 
+- **DATA-009: API Versioning Strategy Documentation**
+  - Created `docs/api/JUNIPER_DATA_API.md` with comprehensive API reference
+  - Documents versioning policy following SemVer principles
+  - Specifies backward compatibility guarantees and deprecation policy
+
+- **DATA-010: NPZ Artifact Schema Documentation**
+  - Added dedicated "NPZ Artifact Schema" section in API documentation
+  - Documents all 6 required array keys with shapes and dtypes
+  - Includes Python and PyTorch loading examples
+
+- **DATA-011: Parameter Validation Parity with Consumers**
+  - Added parameter aliases using Pydantic `AliasChoices` in `SpiralParams`
+  - `n_points` accepted as alias for `n_points_per_spiral`
+  - `noise_level` accepted as alias for `noise`
+  - Added 5 new unit tests verifying alias behavior
+
 ### Changed: [Unreleased]
 
 - **CLAUDE.md** updated with Integration Context section
@@ -62,11 +78,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Technical Notes: [Unreleased]
 
-- **SemVer impact**: MINOR - New Docker infrastructure and API endpoints; backward compatible
+- **SemVer impact**: MINOR - New Docker infrastructure, API endpoints, and parameter aliases; backward compatible
 - **Source analysis findings**: 0 mypy errors (was 20), ~9 flake8 issues (all B008 - intentional FastAPI patterns)
-- **Test count**: 223 tests (up from 207, all passing)
+- **Test count**: 228 tests (up from 207, all passing)
 - **Coverage**: 100% maintained
-- **New files**: `Dockerfile`, `.dockerignore`, `juniper_data/tests/integration/test_e2e_workflow.py`
+- **New files**: `Dockerfile`, `.dockerignore`, `juniper_data/tests/integration/test_e2e_workflow.py`, `docs/api/JUNIPER_DATA_API.md`
+- **Modified**: `juniper_data/generators/spiral/params.py` (parameter aliases), `juniper_data/api/routes/health.py` (liveness/readiness probes)
 
 ---
 

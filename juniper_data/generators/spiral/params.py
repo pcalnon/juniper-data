@@ -2,13 +2,24 @@
 
 This module defines the Pydantic model for spiral dataset generation parameters
 with validation and computation methods.
+
+Parameter Aliases:
+    Some consumers (JuniperCascor, JuniperCanopy) use different parameter names.
+    This module supports the following aliases:
+    - `n_points` -> `n_points_per_spiral`
+    - `noise_level` -> `noise`
 """
 
-from typing import Literal, Optional, Tuple
+from typing import Any, Dict, Literal, Optional, Tuple
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 from .defaults import MAX_NOISE, MAX_POINTS, MAX_ROTATIONS, MAX_SPIRALS, MIN_NOISE, MIN_POINTS, MIN_ROTATIONS, MIN_SPIRALS, SPIRAL_DEFAULT_CLOCKWISE, SPIRAL_DEFAULT_N_POINTS, SPIRAL_DEFAULT_N_ROTATIONS, SPIRAL_DEFAULT_N_SPIRALS, SPIRAL_DEFAULT_NOISE, SPIRAL_DEFAULT_RADIUS, SPIRAL_DEFAULT_SEED, SPIRAL_DEFAULT_TEST_RATIO, SPIRAL_DEFAULT_TRAIN_RATIO
+
+PARAMETER_ALIASES: Dict[str, str] = {
+    "n_points": "n_points_per_spiral",
+    "noise_level": "noise",
+}
 
 
 class SpiralParams(BaseModel):
@@ -27,7 +38,14 @@ class SpiralParams(BaseModel):
         train_ratio: Fraction of data for training set.
         test_ratio: Fraction of data for test set.
         shuffle: Whether to shuffle the dataset before splitting.
+
+    Parameter Aliases:
+        For compatibility with JuniperCascor and JuniperCanopy:
+        - `n_points` is accepted as an alias for `n_points_per_spiral`
+        - `noise_level` is accepted as an alias for `noise`
     """
+
+    model_config = ConfigDict(populate_by_name=True)
 
     n_spirals: int = Field(
         default=SPIRAL_DEFAULT_N_SPIRALS,
@@ -40,6 +58,7 @@ class SpiralParams(BaseModel):
         ge=MIN_POINTS,
         le=MAX_POINTS,
         description="Number of points per spiral arm",
+        validation_alias=AliasChoices("n_points_per_spiral", "n_points"),
     )
     n_rotations: float = Field(
         default=SPIRAL_DEFAULT_N_ROTATIONS,
@@ -52,6 +71,7 @@ class SpiralParams(BaseModel):
         ge=MIN_NOISE,
         le=MAX_NOISE,
         description="Noise level applied to point positions",
+        validation_alias=AliasChoices("noise", "noise_level"),
     )
     clockwise: bool = Field(
         default=SPIRAL_DEFAULT_CLOCKWISE,

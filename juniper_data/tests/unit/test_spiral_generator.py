@@ -524,3 +524,45 @@ class TestGetSchema:
         schema = get_schema()
         assert "title" in schema
         assert schema["title"] == "SpiralParams"
+
+
+@pytest.mark.unit
+@pytest.mark.spiral
+@pytest.mark.generators
+class TestParameterAliases:
+    """Tests for parameter aliases for consumer compatibility."""
+
+    def test_n_points_alias(self) -> None:
+        """Verify n_points is accepted as alias for n_points_per_spiral."""
+        params = SpiralParams.model_validate({"n_points": 50, "n_spirals": 2, "seed": 42})
+        assert params.n_points_per_spiral == 50
+
+    def test_noise_level_alias(self) -> None:
+        """Verify noise_level is accepted as alias for noise."""
+        params = SpiralParams.model_validate({"noise_level": 0.5, "n_spirals": 2, "seed": 42})
+        assert params.noise == 0.5
+
+    def test_canonical_name_takes_precedence(self) -> None:
+        """Verify canonical name is used when both are provided."""
+        params = SpiralParams(n_points_per_spiral=100, noise=0.2, n_spirals=2, seed=42)
+        assert params.n_points_per_spiral == 100
+        assert params.noise == 0.2
+
+    def test_alias_generates_correct_dataset(self) -> None:
+        """Verify dataset generation works with alias parameters."""
+        params = SpiralParams.model_validate({"n_points": 25, "noise_level": 0.15, "n_spirals": 2, "seed": 42})
+        result = SpiralGenerator.generate(params)
+
+        assert result["X_full"].shape == (50, 2)
+        assert result["y_full"].shape == (50, 2)
+
+    def test_alias_determinism(self) -> None:
+        """Verify same seed produces same results regardless of alias usage."""
+        params1 = SpiralParams(n_points_per_spiral=30, noise=0.1, n_spirals=2, seed=123)
+        params2 = SpiralParams.model_validate({"n_points": 30, "noise_level": 0.1, "n_spirals": 2, "seed": 123})
+
+        result1 = SpiralGenerator.generate(params1)
+        result2 = SpiralGenerator.generate(params2)
+
+        np.testing.assert_array_equal(result1["X_full"], result2["X_full"])
+        np.testing.assert_array_equal(result1["y_full"], result2["y_full"])

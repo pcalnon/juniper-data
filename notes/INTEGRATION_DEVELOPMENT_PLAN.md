@@ -229,8 +229,9 @@ No E2E tests exist that verify the full flow:
 
 ### DATA-009: API Versioning Strategy Documentation
 
-**Priority**: MEDIUM | **Status**: NOT STARTED | **Effort**: Small
+**Priority**: MEDIUM | **Status**: COMPLETE | **Effort**: Small
 **Source**: Source code review
+**Completed**: 2026-02-05
 
 The API uses `/v1/` prefix but there is no documented versioning strategy for:
 
@@ -239,14 +240,21 @@ The API uses `/v1/` prefix but there is no documented versioning strategy for:
 - Deprecation policy for old API versions
 - Client compatibility guarantees
 
-**Resolution**: Document API versioning policy in README.md or a dedicated API docs file.
+**Resolution Applied**:
+
+- Created comprehensive API documentation: `docs/api/JUNIPER_DATA_API.md`
+- Documents versioning policy following SemVer principles
+- Defines backward compatibility guarantees for major versions
+- Specifies deprecation policy (2 minor versions notice, 6 months support)
+- Lists breaking changes that require major version bump
 
 ---
 
 ### DATA-010: NPZ Artifact Schema Documentation
 
-**Priority**: MEDIUM | **Status**: NOT STARTED | **Effort**: Small
+**Priority**: MEDIUM | **Status**: COMPLETE | **Effort**: Small
 **Source**: JuniperCascor/JuniperCanopy integration analysis
+**Completed**: 2026-02-05
 
 The NPZ data contract is implicit. Both JuniperCascor and JuniperCanopy expect specific array keys and dtypes:
 
@@ -259,14 +267,21 @@ X_full:  np.ndarray (n_total, 2) float32
 y_full:  np.ndarray (n_total, n_classes) float32 (one-hot)
 ```
 
-**Resolution**: Add explicit schema documentation and consider adding schema validation on the server side to prevent breaking changes.
+**Resolution Applied**:
+
+- Added dedicated "NPZ Artifact Schema" section in `docs/api/JUNIPER_DATA_API.md`
+- Documents all 6 required array keys with shapes and dtypes
+- Specifies one-hot encoding format for labels
+- Includes schema validation guarantees
+- Provides Python and PyTorch loading examples
 
 ---
 
 ### DATA-011: Parameter Validation Parity with Consumers
 
-**Priority**: MEDIUM | **Status**: NOT STARTED | **Effort**: Small
+**Priority**: MEDIUM | **Status**: COMPLETE | **Effort**: Small
 **Source**: JuniperCascor/JuniperCanopy integration analysis
+**Completed**: 2026-02-05
 
 JuniperCascor maps parameters with different names:
 
@@ -275,7 +290,14 @@ JuniperCascor maps parameters with different names:
 
 JuniperCanopy uses different default values between demo_mode (noise=0.1) and cascor_integration (noise=0.0).
 
-**Resolution**: Document the canonical parameter names and ensure clear error messages when deprecated/incorrect parameter names are used. Consider adding parameter aliases for common consumer patterns.
+**Resolution Applied**:
+
+- Added parameter aliases using Pydantic `AliasChoices` in `SpiralParams`
+- `n_points` accepted as alias for `n_points_per_spiral`
+- `noise_level` accepted as alias for `noise`
+- Canonical names preserved in JSON schema for documentation
+- Added 5 new unit tests verifying alias behavior
+- Documented aliases in module docstring and API documentation
 
 ---
 
@@ -533,15 +555,15 @@ These items appear in the reviewed documentation but are owned by JuniperCascor:
 
 ## Summary Statistics
 
-| Category                  | Count                                 |
-| ------------------------- | ------------------------------------- |
-| Total Items               | 20                                    |
-| COMPLETE                  | 6 (DATA-001, 002, 003, 006, 007, 008) |
-| HIGH Priority (Remaining) | 0                                     |
-| MEDIUM Priority           | 5 (DATA-009, 010, 011, 012, 013)      |
-| LOW Priority              | 6 (DATA-004, 005, 014, 015, 016, 017) |
-| DEFERRED                  | 3 (DATA-018, 019, 020)                |
-| Cross-Project References  | 10 (CAS: 5, CAN: 5)                   |
+| Category                    | Count                                                                |
+| --------------------------- | -------------------------------------------------------------------- |
+| Total Items                 | 20                                                                   |
+| COMPLETE                    | 9 (DATA-001, 002, 003, 006, 007, 008, 009, 010, 011)                 |
+| HIGH Priority (Remaining)   | 0                                                                    |
+| MEDIUM Priority (Remaining) | 2 (DATA-012, 013)                                                    |
+| LOW Priority                | 6 (DATA-004, 005, 014, 015, 016, 017)                                |
+| DEFERRED                    | 3 (DATA-018, 019, 020)                                               |
+| Cross-Project References    | 10 (CAS: 5, CAN: 5)                                                  |
 
 ---
 
@@ -551,3 +573,5 @@ These items appear in the reviewed documentation but are owned by JuniperCascor:
 | ---------- | ----------- | ----------------------------------------------------------------------------------------------------- |
 | 2026-02-05 | Paul Calnon | Initial creation from documentation review and source code analysis                                   |
 | 2026-02-05 | AI Agent    | Completed DATA-001, DATA-002, DATA-003 - All mypy errors fixed, flake8 F401/E402/F541 issues resolved |
+| 2026-02-05 | AI Agent    | Completed DATA-006, 007, 008 - Dockerfile, health probes, E2E tests                                   |
+| 2026-02-05 | AI Agent    | Completed DATA-009, 010, 011 - API docs, NPZ schema docs, parameter aliases                           |
