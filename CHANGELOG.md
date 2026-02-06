@@ -5,11 +5,58 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2026-02-05
+## [Unreleased] - 2026-02-06
 
-**Summary**: Integration Infrastructure - Docker containerization, health probes, and E2E testing for ecosystem integration.
+**Summary**: Integration Infrastructure & Client Library - Docker containerization, health probes, E2E testing, and shared client package for ecosystem integration.
 
 ### Added: [Unreleased]
+
+- **DATA-012: Shared JuniperData Client Package** (`juniper_data_client/`)
+  - Standalone pip-installable package consolidating client code from JuniperCascor and JuniperCanopy
+  - **Package files**: `client.py`, `exceptions.py`, `__init__.py`, `py.typed`, `pyproject.toml`, `README.md`
+  - **JuniperDataClient class** with all API methods:
+    - Health: `health_check()`, `is_ready()`, `wait_for_ready()`
+    - Generators: `list_generators()`, `get_generator_schema()`
+    - Datasets: `create_dataset()`, `create_spiral_dataset()`, `list_datasets()`, `get_dataset_metadata()`, `delete_dataset()`
+    - Artifacts: `download_artifact_npz()`, `download_artifact_bytes()`, `get_preview()`
+  - **Custom exceptions**: `JuniperDataClientError`, `JuniperDataConnectionError`, `JuniperDataTimeoutError`, `JuniperDataNotFoundError`, `JuniperDataValidationError`
+  - **Enhanced features** over original implementations:
+    - Automatic retry logic with configurable backoff (429, 5xx errors)
+    - Connection pooling via `requests.Session` with `HTTPAdapter`
+    - Context manager support (`with JuniperDataClient() as client:`)
+    - Full type hints with mypy strict mode and `py.typed` marker
+  - **Dependencies**: numpy>=1.24.0, requests>=2.28.0, urllib3>=2.0.0
+
+- **DATA-013: Client Test Coverage** (`juniper_data_client/tests/`)
+  - 35 comprehensive unit tests using `responses` library for HTTP mocking
+  - 96% code coverage (no live service required)
+  - Test classes: `TestUrlNormalization`, `TestClientConfiguration`, `TestHealthEndpoints`, `TestGeneratorEndpoints`, `TestDatasetCreation`, `TestDatasetRetrieval`, `TestArtifactDownload`, `TestPreview`, `TestDatasetDeletion`, `TestErrorHandling`
+
+- **DATA-014: XOR Generator** (`juniper_data/generators/xor/`)
+  - New classification dataset generator for XOR problem
+  - `XorParams`: `n_points_per_quadrant`, `x_range`, `y_range`, `margin`, `noise`, `seed`
+  - `XorGenerator`: Stateless generator following `SpiralGenerator` pattern
+  - 4 quadrants around origin with opposite classes in diagonal quadrants
+  - Registered in `GENERATOR_REGISTRY` alongside `spiral`
+  - 18 unit tests with full coverage
+
+- **DATA-016: Dataset Lifecycle Management**
+  - Enhanced `DatasetMeta` model with lifecycle fields:
+    - `tags: List[str]` - Dataset tagging/labeling
+    - `ttl_seconds: Optional[int]` - Time-to-live configuration
+    - `expires_at: Optional[datetime]` - Computed expiration time
+    - `last_accessed_at: Optional[datetime]` - Access tracking
+    - `access_count: int` - Usage counter
+  - Enhanced `DatasetStore` with lifecycle methods:
+    - `update_meta()`, `list_all_metadata()`, `record_access()`
+    - `is_expired()`, `delete_expired()`, `filter_datasets()`, `batch_delete()`, `get_stats()`
+  - New API endpoints:
+    - `GET /v1/datasets/filter` - Filter datasets by generator, tags, dates, sample count
+    - `GET /v1/datasets/stats` - Aggregate statistics
+    - `POST /v1/datasets/batch-delete` - Bulk delete operation
+    - `POST /v1/datasets/cleanup-expired` - Remove expired datasets
+    - `PATCH /v1/datasets/{id}/tags` - Add/remove tags
+  - 44 new tests (27 unit + 17 integration)
 
 - **Integration Development Plan** (`notes/INTEGRATION_DEVELOPMENT_PLAN.md`)
   - Compiled 20 outstanding work items from 4 documentation files and source code analysis
@@ -78,12 +125,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Technical Notes: [Unreleased]
 
-- **SemVer impact**: MINOR - New Docker infrastructure, API endpoints, and parameter aliases; backward compatible
+- **SemVer impact**: MINOR - New Docker infrastructure, API endpoints, parameter aliases, client package, and lifecycle management; backward compatible
 - **Source analysis findings**: 0 mypy errors (was 20), ~9 flake8 issues (all B008 - intentional FastAPI patterns)
-- **Test count**: 228 tests (up from 207, all passing)
-- **Coverage**: 100% maintained
-- **New files**: `Dockerfile`, `.dockerignore`, `juniper_data/tests/integration/test_e2e_workflow.py`, `docs/api/JUNIPER_DATA_API.md`
-- **Modified**: `juniper_data/generators/spiral/params.py` (parameter aliases), `juniper_data/api/routes/health.py` (liveness/readiness probes)
+- **JuniperData test count**: 290 tests (up from 272, all passing)
+- **juniper-data-client test count**: 35 tests (new package, 96% coverage)
+- **Coverage**: 97% for JuniperData core (new lifecycle features)
+- **New package**: `juniper_data_client/` - standalone pip-installable client library
+- **New files**: `Dockerfile`, `.dockerignore`, `juniper_data/tests/integration/test_e2e_workflow.py`, `docs/api/JUNIPER_DATA_API.md`, `juniper_data/tests/unit/test_lifecycle.py`, `juniper_data/tests/integration/test_lifecycle_api.py`
+- **Modified**: `juniper_data/generators/spiral/params.py` (parameter aliases), `juniper_data/api/routes/health.py` (liveness/readiness probes), `juniper_data/core/models.py` (lifecycle fields), `juniper_data/storage/base.py` (lifecycle methods), `juniper_data/api/routes/datasets.py` (new endpoints)
 
 ---
 

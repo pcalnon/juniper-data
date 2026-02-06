@@ -1,12 +1,13 @@
 """In-memory dataset store for testing and development."""
 
 import io
-from typing import Dict, List, Optional
 
 import numpy as np
 
 from juniper_data.core.models import DatasetMeta
 from juniper_data.storage.base import DatasetStore
+
+# from typing import Dict, List, Optional
 
 
 class InMemoryDatasetStore(DatasetStore):
@@ -18,14 +19,14 @@ class InMemoryDatasetStore(DatasetStore):
 
     def __init__(self) -> None:
         """Initialize the in-memory store."""
-        self._metadata: Dict[str, DatasetMeta] = {}
-        self._arrays: Dict[str, Dict[str, np.ndarray]] = {}
+        self._metadata: dict[str, DatasetMeta] = {}
+        self._arrays: dict[str, dict[str, np.ndarray]] = {}
 
     def save(
         self,
         dataset_id: str,
         meta: DatasetMeta,
-        arrays: Dict[str, np.ndarray],
+        arrays: dict[str, np.ndarray],
     ) -> None:
         """Save dataset metadata and arrays to memory.
 
@@ -37,7 +38,7 @@ class InMemoryDatasetStore(DatasetStore):
         self._metadata[dataset_id] = meta
         self._arrays[dataset_id] = {k: v.copy() for k, v in arrays.items()}
 
-    def get_meta(self, dataset_id: str) -> Optional[DatasetMeta]:
+    def get_meta(self, dataset_id: str) -> DatasetMeta | None:
         """Get dataset metadata from memory.
 
         Args:
@@ -48,7 +49,7 @@ class InMemoryDatasetStore(DatasetStore):
         """
         return self._metadata.get(dataset_id)
 
-    def get_artifact_bytes(self, dataset_id: str) -> Optional[bytes]:
+    def get_artifact_bytes(self, dataset_id: str) -> bytes | None:
         """Get dataset artifact as NPZ bytes.
 
         Args:
@@ -93,7 +94,7 @@ class InMemoryDatasetStore(DatasetStore):
         del self._arrays[dataset_id]
         return True
 
-    def list_datasets(self, limit: int = 100, offset: int = 0) -> List[str]:
+    def list_datasets(self, limit: int = 100, offset: int = 0) -> list[str]:
         """List dataset IDs from memory.
 
         Args:
@@ -110,3 +111,26 @@ class InMemoryDatasetStore(DatasetStore):
         """Clear all stored datasets. Useful for test cleanup."""
         self._metadata.clear()
         self._arrays.clear()
+
+    def update_meta(self, dataset_id: str, meta: DatasetMeta) -> bool:
+        """Update dataset metadata in memory.
+
+        Args:
+            dataset_id: Unique identifier for the dataset.
+            meta: Updated dataset metadata.
+
+        Returns:
+            True if the dataset was updated, False if it didn't exist.
+        """
+        if dataset_id not in self._metadata:
+            return False
+        self._metadata[dataset_id] = meta
+        return True
+
+    def list_all_metadata(self) -> list[DatasetMeta]:
+        """List all dataset metadata from memory.
+
+        Returns:
+            List of all DatasetMeta objects.
+        """
+        return list(self._metadata.values())

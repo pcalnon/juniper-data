@@ -1,22 +1,24 @@
 """Dataset endpoints for creating, listing, and retrieving datasets."""
 
 import io
-from datetime import datetime, timezone
-from typing import List, Optional
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from juniper_data.core.dataset_id import generate_dataset_id
-from juniper_data.core.models import CreateDatasetRequest, CreateDatasetResponse, DatasetMeta, PreviewData
+from juniper_data.core.models import BatchDeleteRequest, BatchDeleteResponse, CreateDatasetRequest, CreateDatasetResponse, DatasetListResponse, DatasetMeta, DatasetStats, PreviewData, UpdateTagsRequest
 from juniper_data.storage import DatasetStore
 
 from .generators import GENERATOR_REGISTRY
 
+# from typing import List, Optional
+
+
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
-_store: Optional[DatasetStore] = None
+_store: DatasetStore | None = None
 
 
 def get_store() -> DatasetStore:
@@ -96,6 +98,11 @@ async def create_dataset(
     unique, counts = np.unique(class_labels, return_counts=True)
     class_distribution = {str(int(k)): int(v) for k, v in zip(unique, counts)}
 
+    now = datetime.now(timezone.utc)
+    expires_at = None
+    if request.ttl_seconds is not None:
+        expires_at = now + timedelta(seconds=request.ttl_seconds)
+
     meta = DatasetMeta(
         dataset_id=dataset_id,
         generator=request.generator,
@@ -108,7 +115,10 @@ async def create_dataset(
         n_test=n_test,
         class_distribution=class_distribution,
         artifact_formats=["npz"],
-        created_at=datetime.now(timezone.utc),
+        created_at=now,
+        tags=request.tags,
+        ttl_seconds=request.ttl_seconds,
+        expires_at=expires_at,
     )
 
     if request.persist:
@@ -122,12 +132,12 @@ async def create_dataset(
     )
 
 
-@router.get("", response_model=List[str])
+@router.get("", response_model=list[str])
 async def list_datasets(
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
     store: DatasetStore = Depends(get_store),
-) -> List[str]:
+) -> list[str]:
     """List all dataset IDs.
 
     Args:
@@ -139,6 +149,115 @@ async def list_datasets(
         List of dataset IDs.
     """
     return store.list_datasets(limit=limit, offset=offset)
+
+
+@router.get("/filter", response_model=DatasetListResponse)
+async def filter_datasets(
+    generator: str | None = Query(default=None, description="Filter by generator name"),
+    tags: str | None = Query(default=None, description="Comma-separated list of tags to filter by"),
+    tags_match: str = Query(default="any", pattern="^(any|all)$", description="Tag matching mode: 'any' (OR) or 'all' (AND)"),
+    created_after: datetime | None = Query(default=None, description="Filter by creation date (after)"),
+    created_before: datetime | None = Query(default=None, description="Filter by creation date (before)"),
+    min_samples: int | None = Query(default=None, ge=1, description="Minimum number of samples"),
+    max_samples: int | None = Query(default=None, ge=1, description="Maximum number of samples"),
+    include_expired: bool = Query(default=False, description="Include expired datasets"),
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+    store: DatasetStore = Depends(get_store),
+) -> DatasetListResponse:
+    """Filter datasets by various criteria.
+
+    Args:
+        generator: Filter by generator name.
+        tags: Comma-separated list of tags.
+        tags_match: Tag matching mode: 'any' (OR) or 'all' (AND).
+        created_after: Filter by creation date (after).
+        created_before: Filter by creation date (before).
+        min_samples: Minimum number of samples.
+        max_samples: Maximum number of samples.
+        include_expired: Include expired datasets.
+        limit: Maximum number of results.
+        offset: Number of results to skip.
+        store: Dataset storage backend.
+
+    Returns:
+        Filtered list of dataset metadata with pagination info.
+    """
+    tag_list = [t.strip() for t in tags.split(",")] if tags else None
+
+    datasets, total = store.filter_datasets(
+        generator=generator,
+        tags=tag_list,
+        tags_match=tags_match,
+        created_after=created_after,
+        created_before=created_before,
+        min_samples=min_samples,
+        max_samples=max_samples,
+        include_expired=include_expired,
+        limit=limit,
+        offset=offset,
+    )
+
+    return DatasetListResponse(
+        datasets=datasets,
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/stats", response_model=DatasetStats)
+async def get_dataset_stats(
+    store: DatasetStore = Depends(get_store),
+) -> DatasetStats:
+    """Get aggregate statistics about stored datasets.
+
+    Args:
+        store: Dataset storage backend.
+
+    Returns:
+        Dataset statistics.
+    """
+    stats = store.get_stats()
+    return DatasetStats(**stats)  # type: ignore[arg-type]
+
+
+@router.post("/batch-delete", response_model=BatchDeleteResponse)
+async def batch_delete_datasets(
+    request: BatchDeleteRequest,
+    store: DatasetStore = Depends(get_store),
+) -> BatchDeleteResponse:
+    """Delete multiple datasets in a single request.
+
+    Args:
+        request: Batch delete request with list of dataset IDs.
+        store: Dataset storage backend.
+
+    Returns:
+        Batch delete response with deleted and not found IDs.
+    """
+    deleted, not_found = store.batch_delete(request.dataset_ids)
+
+    return BatchDeleteResponse(
+        deleted=deleted,
+        not_found=not_found,
+        total_deleted=len(deleted),
+    )
+
+
+@router.post("/cleanup-expired", response_model=list[str])
+async def cleanup_expired_datasets(
+    store: DatasetStore = Depends(get_store),
+) -> list[str]:
+    """Delete all expired datasets.
+
+    Args:
+        store: Dataset storage backend.
+
+    Returns:
+        List of deleted dataset IDs.
+    """
+    return store.delete_expired()
 
 
 @router.get("/{dataset_id}", response_model=DatasetMeta)
@@ -249,3 +368,35 @@ async def delete_dataset(
     deleted = store.delete(dataset_id)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Dataset '{dataset_id}' not found")
+
+
+@router.patch("/{dataset_id}/tags", response_model=DatasetMeta)
+async def update_dataset_tags(
+    dataset_id: str,
+    request: UpdateTagsRequest,
+    store: DatasetStore = Depends(get_store),
+) -> DatasetMeta:
+    """Add or remove tags from a dataset.
+
+    Args:
+        dataset_id: Unique dataset identifier.
+        request: Tags to add and/or remove.
+        store: Dataset storage backend.
+
+    Returns:
+        Updated dataset metadata.
+
+    Raises:
+        HTTPException: 404 if dataset not found.
+    """
+    meta = store.get_meta(dataset_id)
+    if meta is None:
+        raise HTTPException(status_code=404, detail=f"Dataset '{dataset_id}' not found")
+
+    current_tags = set(meta.tags)
+    current_tags.update(request.add_tags)
+    current_tags -= set(request.remove_tags)
+    meta.tags = sorted(current_tags)
+
+    store.update_meta(dataset_id, meta)
+    return meta

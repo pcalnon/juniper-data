@@ -308,26 +308,52 @@ JuniperCanopy uses different default values between demo_mode (noise=0.1) and ca
 
 ### DATA-012: Extract Shared JuniperData Client Package
 
-**Priority**: MEDIUM | **Status**: NOT STARTED | **Effort**: Large
+**Priority**: MEDIUM | **Status**: COMPLETE | **Effort**: Large
 **Source**: JUNIPER_CASCOR_SPIRAL_DATA_GEN_REFACTOR_PLAN.md, JuniperCanopy INTEGRATION_DEVELOPMENT_PLAN.md
+**Completed**: 2026-02-06
 
-Both consumers have near-identical client code:
+Both consumers had near-identical client code:
 
-- `JuniperCascor/src/juniper_data_client/client.py`
-- `JuniperCanopy/src/juniper_data_client/client.py`
+- `JuniperCascor/juniper_cascor/src/juniper_data_client/client.py`
+- `JuniperCanopy/juniper_canopy/src/juniper_data_client/client.py`
 
-**Options** (in order of preference):
+**Resolution Applied** (Option 1 - PyPI package):
 
-1. **PyPI package**: Publish `juniper-data-client` as a pip-installable package
-2. **Git submodule**: Share the client as a git submodule in both projects
-3. **Monorepo**: Move all three projects into a single repository
+Created `juniper-data-client` as a standalone pip-installable package in `juniper_data_client/`:
 
-**Recommendation**: Option 1 (PyPI package) provides the cleanest dependency management. The client could live in the JuniperData repository under `client/` and be published separately.
+- **Package structure**: `juniper_data_client/` with `client.py`, `exceptions.py`, `__init__.py`, `py.typed`
+- **pyproject.toml**: Full package configuration with dependencies (numpy, requests, urllib3)
+- **README.md**: Comprehensive documentation with usage examples
+- **Test suite**: 35 unit tests using `responses` library for HTTP mocking (96% coverage)
+- **Type annotations**: Full mypy strict mode compliance with `py.typed` marker
 
-**Scope**:
+**Features consolidated from both implementations**:
 
-- Extract client code into standalone package
-- Add client-specific tests
+- URL normalization (scheme handling, trailing slashes, /v1 suffix removal)
+- Session management with connection pooling
+- All dataset endpoints (create, list, get, delete, preview, artifact download)
+- Generator endpoints (list, schema)
+- Health check endpoints (health, live, ready, wait_for_ready)
+- Convenience method `create_spiral_dataset()` with common parameters
+
+**Enhancements over original implementations**:
+
+- Automatic retry logic with configurable backoff (429, 5xx errors)
+- Connection pooling via `requests.Session` with `HTTPAdapter`
+- Custom exceptions hierarchy (`JuniperDataClientError`, `JuniperDataConnectionError`, etc.)
+- Context manager support for resource cleanup
+- `wait_for_ready()` method for service availability polling
+- Full type hints with mypy strict mode support
+
+**Installation**:
+
+```bash
+pip install -e juniper_data_client/[test]  # Development
+pip install juniper-data-client            # From PyPI (when published)
+```
+
+**Next Steps**: DATA-013 (update JuniperCascor and JuniperCanopy to use shared package)
+
 - Publish to PyPI (or private index)
 - Update JuniperCascor and JuniperCanopy to use the shared package
 - Remove duplicated client code from both projects
@@ -336,18 +362,29 @@ Both consumers have near-identical client code:
 
 ### DATA-013: Client Test Coverage
 
-**Priority**: MEDIUM | **Status**: NOT STARTED | **Effort**: Medium
+**Priority**: MEDIUM | **Status**: COMPLETE | **Effort**: Medium
 **Source**: JuniperCanopy exploration (0% coverage on client module)
+**Completed**: 2026-02-06
 
-JuniperCanopy reports 0% coverage on its `juniper_data_client/` module. JuniperCascor has 17 tests for its copy. When consolidating, ensure comprehensive test coverage.
+JuniperCanopy reported 0% coverage on its `juniper_data_client/` module. JuniperCascor had 17 tests for its copy.
 
-**Requirements**:
+**Resolution Applied**:
 
-- URL normalization tests
-- Request/response handling tests
-- Error handling and timeout tests
-- NPZ download and parsing tests
-- Mock-based (no live service dependency for unit tests)
+The consolidated `juniper-data-client` package includes 35 comprehensive unit tests:
+
+- **TestUrlNormalization** (7 tests): Scheme handling, trailing slashes, /v1 suffix, HTTPS, whitespace
+- **TestClientConfiguration** (3 tests): Default values, custom values, context manager
+- **TestHealthEndpoints** (4 tests): Health check, is_ready true/false, connection errors
+- **TestGeneratorEndpoints** (3 tests): List generators, get schema, not found
+- **TestDatasetCreation** (4 tests): Success, convenience method, validation errors (400/422)
+- **TestDatasetRetrieval** (3 tests): List datasets, get metadata, not found
+- **TestArtifactDownload** (3 tests): NPZ parsing, raw bytes, not found
+- **TestPreview** (1 test): Get preview
+- **TestDatasetDeletion** (2 tests): Delete success, not found
+- **TestErrorHandling** (5 tests): Connection, timeout, generic, server, detail extraction
+
+**Coverage**: 96% (35 tests, 0 failures)
+**Mocking**: Uses `responses` library for HTTP mocking (no live service required)
 
 ---
 
@@ -358,20 +395,43 @@ JuniperCanopy reports 0% coverage on its `juniper_data_client/` module. JuniperC
 
 ### DATA-014: Additional Generator Types
 
-**Priority**: LOW | **Status**: NOT STARTED | **Effort**: Large
+**Priority**: LOW | **Status**: IN PROGRESS | **Effort**: Large
 **Source**: JUNIPER_CASCOR_SPIRAL_DATA_GEN_REFACTOR_PLAN.md (Phase 5: Extended Data Sources)
+**Updated**: 2026-02-06
 
-Current generators: `spiral` only.
+**Current generators**: `spiral`, `xor`
 
-**Potential additions**:
+**XOR Generator Added** (2026-02-06):
 
-- XOR classification dataset
+Created `juniper_data/generators/xor/` package:
+
+- `params.py` - `XorParams` model with:
+  - `n_points_per_quadrant`: Points per quadrant (default: 50)
+  - `x_range`, `y_range`: Coordinate ranges (default: 1.0)
+  - `margin`: Exclusion zone around axes (default: 0.1)
+  - `noise`: Gaussian noise level (default: 0.0)
+  - `seed`, `train_ratio`, `test_ratio`, `shuffle`
+- `generator.py` - `XorGenerator` class following `SpiralGenerator` pattern
+- 18 unit tests with full coverage
+
+**XOR dataset characteristics**:
+
+- 4 quadrants around origin
+- Quadrants 1 and 3 (x*y > 0) → Class 0
+- Quadrants 2 and 4 (x*y < 0) → Class 1
+- Balanced classes (2 quadrants each)
+- Configurable margin prevents points too close to axes
+
+**Remaining potential additions**:
+
 - Gaussian mixture models
 - Concentric circles/rings
 - Checkerboard pattern
 - Custom CSV/JSON import
+- MNIST
+- ARC-AGI datasets
 
-**Framework**: The generator plugin architecture (`generators/` package, `GENERATOR_REGISTRY`) already supports adding new generators following the `SpiralGenerator` pattern.
+**Framework**: The generator plugin architecture (`generators/` package, `GENERATOR_REGISTRY`) supports adding new generators following the established patterns.
 
 ---
 
@@ -395,15 +455,50 @@ Current storage backends: `InMemoryDatasetStore`, `LocalFSDatasetStore`.
 
 ### DATA-016: Dataset Lifecycle Management
 
-**Priority**: LOW | **Status**: NOT STARTED | **Effort**: Medium
+**Priority**: LOW | **Status**: COMPLETE | **Effort**: Medium
 **Source**: Source code review
+**Completed**: 2026-02-06
 
-Current API supports create/read/delete but lacks:
+**Resolution Applied**:
 
-- Dataset expiration / TTL
-- Bulk operations (list with filtering, batch delete)
-- Dataset tagging/labeling
-- Usage tracking / access counts
+Added comprehensive lifecycle management features to JuniperData:
+
+**Enhanced DatasetMeta model** (`core/models.py`):
+
+- `tags: List[str]` - Dataset tagging/labeling
+- `ttl_seconds: Optional[int]` - Time-to-live configuration
+- `expires_at: Optional[datetime]` - Computed expiration time
+- `last_accessed_at: Optional[datetime]` - Access tracking
+- `access_count: int` - Usage tracking
+
+**New API models**:
+
+- `DatasetListFilter` - Filter criteria for listing
+- `DatasetListResponse` - Filtered list with pagination
+- `BatchDeleteRequest/Response` - Bulk delete operations
+- `UpdateTagsRequest` - Tag modification
+- `DatasetStats` - Aggregate statistics
+
+**Enhanced DatasetStore** (`storage/base.py`):
+
+- `update_meta()` - Update metadata
+- `list_all_metadata()` - List all metadata for filtering
+- `record_access()` - Track access count and timestamp
+- `is_expired()` - Check dataset expiration
+- `delete_expired()` - Cleanup expired datasets
+- `filter_datasets()` - Filter by generator, tags, dates, sample count
+- `batch_delete()` - Delete multiple datasets
+- `get_stats()` - Aggregate statistics
+
+**New API endpoints** (`api/routes/datasets.py`):
+
+- `GET /v1/datasets/filter` - Filter datasets with pagination
+- `GET /v1/datasets/stats` - Aggregate statistics
+- `POST /v1/datasets/batch-delete` - Bulk delete
+- `POST /v1/datasets/cleanup-expired` - Remove expired datasets
+- `PATCH /v1/datasets/{id}/tags` - Add/remove tags
+
+**Test coverage**: 44 new tests (27 unit + 17 integration), 97% coverage
 
 ---
 
@@ -555,15 +650,15 @@ These items appear in the reviewed documentation but are owned by JuniperCascor:
 
 ## Summary Statistics
 
-| Category                    | Count                                                                |
-| --------------------------- | -------------------------------------------------------------------- |
-| Total Items                 | 20                                                                   |
-| COMPLETE                    | 9 (DATA-001, 002, 003, 006, 007, 008, 009, 010, 011)                 |
-| HIGH Priority (Remaining)   | 0                                                                    |
-| MEDIUM Priority (Remaining) | 2 (DATA-012, 013)                                                    |
-| LOW Priority                | 6 (DATA-004, 005, 014, 015, 016, 017)                                |
-| DEFERRED                    | 3 (DATA-018, 019, 020)                                               |
-| Cross-Project References    | 10 (CAS: 5, CAN: 5)                                                  |
+| Category                    | Count                                                                          |
+| --------------------------- | ------------------------------------------------------------------------------ |
+| Total Items                 | 20                                                                             |
+| COMPLETE                    | 12 (DATA-001, 002, 003, 006, 007, 008, 009, 010, 011, 012, 013, 016)           |
+| HIGH Priority (Remaining)   | 0                                                                              |
+| MEDIUM Priority (Remaining) | 0                                                                              |
+| LOW Priority                | 5 (DATA-004, 005, 014, 015, 017)                                               |
+| DEFERRED                    | 3 (DATA-018, 019, 020)                                                         |
+| Cross-Project References    | 10 (CAS: 5, CAN: 5)                                                            |
 
 ---
 
@@ -575,3 +670,6 @@ These items appear in the reviewed documentation but are owned by JuniperCascor:
 | 2026-02-05 | AI Agent    | Completed DATA-001, DATA-002, DATA-003 - All mypy errors fixed, flake8 F401/E402/F541 issues resolved |
 | 2026-02-05 | AI Agent    | Completed DATA-006, 007, 008 - Dockerfile, health probes, E2E tests                                   |
 | 2026-02-05 | AI Agent    | Completed DATA-009, 010, 011 - API docs, NPZ schema docs, parameter aliases                           |
+| 2026-02-06 | AI Agent    | Completed DATA-012, 013 - Created juniper-data-client package with 35 tests (96% coverage)            |
+| 2026-02-06 | AI Agent    | Completed DATA-016 - Dataset lifecycle management (TTL, filtering, batch delete, tags, stats)         |
+| 2026-02-06 | AI Agent    | DATA-014 IN PROGRESS - Added XOR generator with 18 tests                                              |

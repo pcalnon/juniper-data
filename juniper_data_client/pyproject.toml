@@ -1,0 +1,126 @@
+#####################################################################################################################################################################################################
+# Project:       Juniper
+# Sub-Project:   JuniperData
+# Package:       juniper-data-client
+# File Name:     pyproject.toml
+# Author:        Paul Calnon
+# Version:       0.1.0
+#
+# Date Created:  2026-02-06
+# Last Modified: 2026-02-06
+#
+# License:       MIT License
+# Copyright:     Copyright (c) 2024-2026 Paul Calnon
+#
+# Description:
+#    Python client library for the JuniperData REST API.
+#    Provides dataset creation and artifact download functionality for
+#    JuniperCascor (neural network backend) and JuniperCanopy (web dashboard).
+#
+#####################################################################################################################################################################################################
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "juniper-data-client"
+version = "0.1.0"
+description = "Python client library for the JuniperData REST API"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Paul Calnon" }]
+requires-python = ">=3.11"
+keywords = ["juniper", "dataset", "machine-learning", "api-client"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+
+dependencies = [
+    "numpy>=1.24.0",
+    "requests>=2.28.0",
+    "urllib3>=2.0.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-timeout>=2.2.0",
+    "responses>=0.23.0",
+]
+dev = [
+    "juniper-data-client[test]",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "mypy>=1.0.0",
+    "flake8>=7.0.0",
+    "types-requests>=2.28.0",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/pcalnon/Juniper"
+"Repository" = "https://github.com/pcalnon/Juniper/tree/main/JuniperData/juniper_data_client"
+"Documentation" = "https://github.com/pcalnon/Juniper/tree/main/JuniperData/docs"
+"Bug Tracker" = "https://github.com/pcalnon/Juniper/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["juniper_data_client*"]
+
+[tool.setuptools.package-data]
+juniper_data_client = ["py.typed"]
+
+[tool.black]
+line-length = 512
+target-version = ["py311", "py312", "py313"]
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+line_length = 512
+known_first_party = ["juniper_data_client"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = false
+warn_unused_configs = true
+ignore_missing_imports = false
+strict = true
+
+[[tool.mypy.overrides]]
+module = ["numpy.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = ["-ra", "-q", "--strict-markers"]
+markers = [
+    "unit: Unit tests",
+    "integration: Integration tests requiring live service",
+]
+timeout = 30
+
+[tool.coverage.run]
+source = ["juniper_data_client"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true

@@ -4,7 +4,9 @@ import io
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+
+# from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 
@@ -31,10 +33,8 @@ class LocalFSDatasetStore(DatasetStore):
 
     def __init__(self, base_path: Path) -> None:
         """Initialize the local filesystem store.
-
         Args:
-            base_path: Base directory for storing datasets.
-                       Created if it doesn't exist.
+            base_path: Base directory for storing datasets. Created if it doesn't exist.
         """
         self._base_path = Path(base_path)
         self._base_path.mkdir(parents=True, exist_ok=True)
@@ -51,7 +51,7 @@ class LocalFSDatasetStore(DatasetStore):
         self,
         dataset_id: str,
         meta: DatasetMeta,
-        arrays: Dict[str, np.ndarray],
+        arrays: dict[str, np.ndarray],
     ) -> None:
         """Save dataset metadata and arrays to filesystem.
 
@@ -78,7 +78,7 @@ class LocalFSDatasetStore(DatasetStore):
         buffer.seek(0)
         npz_path.write_bytes(buffer.read())
 
-    def get_meta(self, dataset_id: str) -> Optional[DatasetMeta]:
+    def get_meta(self, dataset_id: str) -> DatasetMeta | None:
         """Get dataset metadata from filesystem.
 
         Args:
@@ -99,7 +99,7 @@ class LocalFSDatasetStore(DatasetStore):
 
         return DatasetMeta(**meta_dict)
 
-    def get_artifact_bytes(self, dataset_id: str) -> Optional[bytes]:
+    def get_artifact_bytes(self, dataset_id: str) -> bytes | None:
         """Get dataset artifact as NPZ bytes.
 
         Args:
@@ -109,10 +109,7 @@ class LocalFSDatasetStore(DatasetStore):
             NPZ file contents as bytes if found, None otherwise.
         """
         npz_path = self._npz_path(dataset_id)
-        if not npz_path.exists():
-            return None
-
-        return npz_path.read_bytes()
+        return npz_path.read_bytes() if npz_path.exists() else None
 
     def exists(self, dataset_id: str) -> bool:
         """Check if dataset exists on filesystem.
@@ -147,7 +144,7 @@ class LocalFSDatasetStore(DatasetStore):
 
         return True
 
-    def list_datasets(self, limit: int = 100, offset: int = 0) -> List[str]:
+    def list_datasets(self, limit: int = 100, offset: int = 0) -> list[str]:
         """List dataset IDs from filesystem.
 
         Finds datasets by globbing for .meta.json files.
@@ -167,3 +164,39 @@ class LocalFSDatasetStore(DatasetStore):
     def base_path(self) -> Path:
         """Get the base storage path."""
         return self._base_path
+
+    def update_meta(self, dataset_id: str, meta: DatasetMeta) -> bool:
+        """Update dataset metadata on filesystem.
+
+        Args:
+            dataset_id: Unique identifier for the dataset.
+            meta: Updated dataset metadata.
+
+        Returns:
+            True if the dataset was updated, False if it didn't exist.
+        """
+        meta_path = self._meta_path(dataset_id)
+        if not meta_path.exists():
+            return False
+
+        meta_json = json.dumps(
+            meta.model_dump(),
+            default=_json_serializer,
+            indent=2,
+        )
+        meta_path.write_text(meta_json, encoding="utf-8")
+        return True
+
+    def list_all_metadata(self) -> list[DatasetMeta]:
+        """List all dataset metadata from filesystem.
+
+        Returns:
+            List of all DatasetMeta objects.
+        """
+        result = []
+        for meta_file in self._base_path.glob("*.meta.json"):
+            dataset_id = meta_file.stem.replace(".meta", "")
+            meta = self.get_meta(dataset_id)
+            if meta is not None:
+                result.append(meta)
+        return result
