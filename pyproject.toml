@@ -195,6 +195,8 @@ ignore_missing_imports = true
 
 # Relaxed type checking for test code
 [[tool.mypy.overrides]]
-module = "juniper_data.tests.*"
-allow_untyped_defs = true
+module = [
+    "juniper_data.tests.*",
+]
+# allow_untyped_defs = true
 disallow_untyped_defs = false

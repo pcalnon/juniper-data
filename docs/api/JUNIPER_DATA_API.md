@@ -34,13 +34,13 @@ JuniperData is a dataset generation and management service for the Juniper ecosy
 
 ### Configuration
 
-| Environment Variable | Default | Description |
-|---------------------|---------|-------------|
-| `JUNIPER_DATA_HOST` | `0.0.0.0` | Host to bind |
-| `JUNIPER_DATA_PORT` | `8100` | Port to bind |
+| Environment Variable        | Default           | Description               |
+| --------------------------- | ----------------- | ------------------------- |
+| `JUNIPER_DATA_HOST`         | `0.0.0.0`         | Host to bind              |
+| `JUNIPER_DATA_PORT`         | `8100`            | Port to bind              |
 | `JUNIPER_DATA_STORAGE_PATH` | `./data/datasets` | Dataset storage directory |
-| `JUNIPER_DATA_LOG_LEVEL` | `INFO` | Logging level |
-| `JUNIPER_DATA_CORS_ORIGINS` | `["*"]` | Allowed CORS origins |
+| `JUNIPER_DATA_LOG_LEVEL`    | `INFO`            | Logging level             |
+| `JUNIPER_DATA_CORS_ORIGINS` | `["*"]`           | Allowed CORS origins      |
 
 ---
 
@@ -261,28 +261,28 @@ Create a new dataset or retrieve an existing one with matching parameters.
 
 **Request Fields:**
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `generator` | string | Yes | Generator name (e.g., `spiral`) |
-| `params` | object | No | Generator-specific parameters |
-| `persist` | boolean | No | Whether to persist to storage (default: `true`) |
+| Field       | Type    | Required | Description                                     |
+| ----------- | ------- | -------- | ----------------------------------------------- |
+| `generator` | string  | Yes      | Generator name (e.g., `spiral`)                 |
+| `params`    | object  | No       | Generator-specific parameters                   |
+| `persist`   | boolean | No       | Whether to persist to storage (default: `true`) |
 
 **Spiral Generator Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `n_spirals` | int | 2 | Number of spiral classes |
-| `n_points_per_spiral` | int | 100 | Points per spiral |
-| `seed` | int | None | Random seed for reproducibility |
-| `algorithm` | string | `"modern"` | `"modern"` or `"legacy_cascor"` |
-| `noise` | float | 0.1 | Noise level |
-| `radius` | float | 10.0 | Maximum radius (legacy mode) |
-| `origin` | [float, float] | [0.0, 0.0] | Center offset |
-| `n_rotations` | float | 1.5 | Number of full rotations |
-| `clockwise` | bool | true | Spiral direction |
-| `train_ratio` | float | 0.8 | Training set ratio |
-| `test_ratio` | float | 0.2 | Test set ratio |
-| `shuffle` | bool | true | Shuffle before splitting |
+| Parameter             | Type           | Default    | Description                     |
+| --------------------- | -------------- | ---------- | ------------------------------- |
+| `n_spirals`           | int            | 2          | Number of spiral classes        |
+| `n_points_per_spiral` | int            | 100        | Points per spiral               |
+| `seed`                | int            | None       | Random seed for reproducibility |
+| `algorithm`           | string         | `"modern"` | `"modern"` or `"legacy_cascor"` |
+| `noise`               | float          | 0.1        | Noise level                     |
+| `radius`              | float          | 10.0       | Maximum radius (legacy mode)    |
+| `origin`              | [float, float] | [0.0, 0.0] | Center offset                   |
+| `n_rotations`         | float          | 1.5        | Number of full rotations        |
+| `clockwise`           | bool           | true       | Spiral direction                |
+| `train_ratio`         | float          | 0.8        | Training set ratio              |
+| `test_ratio`          | float          | 0.2        | Test set ratio                  |
+| `shuffle`             | bool           | true       | Shuffle before splitting        |
 
 **Response:**
 
@@ -449,14 +449,14 @@ The NPZ artifact is the primary data contract between JuniperData and its consum
 
 ### Keys and Shapes
 
-| Key | Shape | Dtype | Description |
-|-----|-------|-------|-------------|
-| `X_train` | `(n_train, n_features)` | `float32` | Training features |
-| `y_train` | `(n_train, n_classes)` | `float32` | Training labels (one-hot) |
-| `X_test` | `(n_test, n_features)` | `float32` | Test features |
-| `y_test` | `(n_test, n_classes)` | `float32` | Test labels (one-hot) |
-| `X_full` | `(n_samples, n_features)` | `float32` | Full dataset features |
-| `y_full` | `(n_samples, n_classes)` | `float32` | Full dataset labels (one-hot) |
+| Key       | Shape                     | Dtype     | Description                   |
+| --------- | ------------------------- | --------- | ----------------------------- |
+| `X_train` | `(n_train, n_features)`   | `float32` | Training features             |
+| `y_train` | `(n_train, n_classes)`    | `float32` | Training labels (one-hot)     |
+| `X_test`  | `(n_test, n_features)`    | `float32` | Test features                 |
+| `y_test`  | `(n_test, n_classes)`     | `float32` | Test labels (one-hot)         |
+| `X_full`  | `(n_samples, n_features)` | `float32` | Full dataset features         |
+| `y_full`  | `(n_samples, n_classes)`  | `float32` | Full dataset labels (one-hot) |
 
 ### Spiral Dataset Specifics
 
@@ -532,15 +532,15 @@ JuniperData guarantees:
 
 ### Common Status Codes
 
-| Code | Description |
-|------|-------------|
-| `200 OK` | Request succeeded |
-| `201 Created` | Resource created |
-| `204 No Content` | Resource deleted |
-| `400 Bad Request` | Invalid request parameters |
-| `404 Not Found` | Resource not found |
-| `422 Unprocessable Entity` | Validation error |
-| `500 Internal Server Error` | Server error |
+| Code                        | Description                |
+| --------------------------- | -------------------------- |
+| `200 OK`                    | Request succeeded          |
+| `201 Created`               | Resource created           |
+| `204 No Content`            | Resource deleted           |
+| `400 Bad Request`           | Invalid request parameters |
+| `404 Not Found`             | Resource not found         |
+| `422 Unprocessable Entity`  | Validation error           |
+| `500 Internal Server Error` | Server error               |
 
 ---
 
