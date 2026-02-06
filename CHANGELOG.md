@@ -7,17 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-02-05
 
-**Summary**: Integration Development Plan - Comprehensive assessment of outstanding work across the Juniper ecosystem.
+**Summary**: Integration Infrastructure - Docker containerization, health probes, and E2E testing for ecosystem integration.
 
 ### Added: [Unreleased]
 
 - **Integration Development Plan** (`notes/INTEGRATION_DEVELOPMENT_PLAN.md`)
   - Compiled 20 outstanding work items from 4 documentation files and source code analysis
-  - 5 HIGH priority items (mypy fixes, unused imports, Dockerfile, health checks, E2E tests)
-  - 6 MEDIUM priority items (API docs, parameter validation, client consolidation)
+  - 6 HIGH priority items now COMPLETE (mypy fixes, unused imports, Dockerfile, health checks, E2E tests)
+  - 5 MEDIUM priority items remaining (API docs, parameter validation, client consolidation)
   - 6 LOW priority items (generators, storage, lifecycle, auth)
   - 3 DEFERRED items (IPC, GPU, profiling)
   - 10 cross-project references (JuniperCascor: 5, JuniperCanopy: 5)
+
+- **DATA-006: Dockerfile for JuniperData Service**
+  - Multi-stage build (builder + runtime) using `python:3.11-slim`
+  - Installs with `pip install .[api]` for minimal dependencies
+  - Non-root `juniper` user (UID 1000) for security
+  - Exposes port 8100 with environment variable configuration
+  - `.dockerignore` to exclude tests, docs, notes, and development files
+
+- **DATA-007: Health Check Probes for Container Orchestration**
+  - `HEALTHCHECK` instruction in Dockerfile (30s interval, 10s timeout, 5s start period, 3 retries)
+  - `GET /v1/health/live` - Liveness probe (returns `{"status": "alive"}`)
+  - `GET /v1/health/ready` - Readiness probe (returns `{"status": "ready", "version": "..."}`)
+  - Original `/v1/health` endpoint preserved for backward compatibility
+
+- **DATA-008: End-to-End Integration Tests**
+  - `juniper_data/tests/integration/test_e2e_workflow.py` with 14 comprehensive E2E tests
+  - **TestE2EModernAlgorithm**: create/download/verify flow, determinism, seed variation
+  - **TestE2ELegacyCascorAlgorithm**: legacy algorithm flow, legacy vs modern comparison
+  - **TestE2EDataContract**: NPZ keys, feature dimensions, one-hot labels, split ratios, metadata
+  - **TestE2EErrorHandling**: invalid generator, invalid params, nonexistent dataset, delete verification
+  - All tests marked with `@pytest.mark.integration` and `@pytest.mark.slow`
 
 ### Changed: [Unreleased]
 
@@ -25,12 +46,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added integration points documentation (port, feature flag, data contract, consumers)
   - Added key documentation reference table
 
+### Fixed: [Unreleased]
+
+- **DATA-001: mypy Type Errors in Test Files** (20 errors → 0)
+  - Added type narrowing assertions (`assert x is not None`) in test_storage.py and test_storage_workflow.py
+  - Added `# type: ignore[arg-type]` with explanation for negative test in test_spiral_generator.py
+  - Used `getattr()` pattern for dynamic route/middleware attribute access in test_api_app.py
+
+- **DATA-002: flake8 Unused Imports in datasets.py**
+  - Removed unused `Any` and `Dict` imports from `typing` module
+
+- **DATA-003: flake8 Issues in generate_golden_datasets.py**
+  - Added `# noqa: E402` comments for late imports after `sys.path` manipulation
+  - Converted f-strings without placeholders to regular strings (5 instances)
+
 ### Technical Notes: [Unreleased]
 
-- **SemVer impact**: No version bump - Planning documentation only; no API or code changes
-- **Source analysis findings**: 20 mypy errors (test files only), ~30 flake8 issues, black/isort clean
-- **Test count**: 207 tests (unchanged, all passing)
+- **SemVer impact**: MINOR - New Docker infrastructure and API endpoints; backward compatible
+- **Source analysis findings**: 0 mypy errors (was 20), ~9 flake8 issues (all B008 - intentional FastAPI patterns)
+- **Test count**: 223 tests (up from 207, all passing)
 - **Coverage**: 100% maintained
+- **New files**: `Dockerfile`, `.dockerignore`, `juniper_data/tests/integration/test_e2e_workflow.py`
 
 ---
 

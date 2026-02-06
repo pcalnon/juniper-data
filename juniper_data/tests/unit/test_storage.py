@@ -193,6 +193,7 @@ class TestInMemoryDatasetStore:
         sample_arrays["X_train"][0, 0] = 999.0
 
         artifact_bytes = memory_store.get_artifact_bytes("ds-001")
+        assert artifact_bytes is not None
         loaded = np.load(io.BytesIO(artifact_bytes))
         assert loaded["X_train"][0, 0] == original_value
 
@@ -219,6 +220,7 @@ class TestInMemoryDatasetStore:
         memory_store.save("ds-001", new_meta, new_arrays)
 
         retrieved = memory_store.get_meta("ds-001")
+        assert retrieved is not None
         assert retrieved.generator_version == "2.0.0"
 
 
@@ -392,6 +394,7 @@ class TestLocalFSDatasetStore:
         fs_store.save("dt-test", meta, sample_arrays)
         retrieved = fs_store.get_meta("dt-test")
 
+        assert retrieved is not None
         assert retrieved.created_at == specific_time
 
 
@@ -486,6 +489,7 @@ class TestLocalFSEdgeCases:
         fs_store.save("tz-test", meta, sample_arrays)
         retrieved = fs_store.get_meta("tz-test")
 
+        assert retrieved is not None
         assert retrieved.created_at is not None
         assert retrieved.created_at.year == 2026
         assert retrieved.created_at.month == 6

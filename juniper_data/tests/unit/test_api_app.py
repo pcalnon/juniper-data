@@ -59,19 +59,19 @@ class TestCreateApp:
     def test_create_app_includes_health_router(self, test_settings: Settings) -> None:
         """Test health router is included."""
         app = create_app(settings=test_settings)
-        routes = [route.path for route in app.routes]
+        routes = [getattr(route, "path", None) for route in app.routes]
         assert "/v1/health" in routes
 
     def test_create_app_includes_generators_router(self, test_settings: Settings) -> None:
         """Test generators router is included."""
         app = create_app(settings=test_settings)
-        routes = [route.path for route in app.routes]
+        routes = [getattr(route, "path", None) for route in app.routes]
         assert "/v1/generators" in routes
 
     def test_create_app_includes_datasets_router(self, test_settings: Settings) -> None:
         """Test datasets router is included."""
         app = create_app(settings=test_settings)
-        routes = [route.path for route in app.routes]
+        routes = [getattr(route, "path", None) for route in app.routes]
         assert "/v1/datasets" in routes
 
     def test_create_app_uses_default_settings_when_none_provided(self) -> None:
@@ -86,7 +86,7 @@ class TestCreateApp:
     def test_create_app_cors_middleware_added(self, test_settings: Settings) -> None:
         """Test CORS middleware is configured."""
         app = create_app(settings=test_settings)
-        middleware_classes = [m.cls.__name__ for m in app.user_middleware]
+        middleware_classes = [getattr(m.cls, "__name__", None) for m in app.user_middleware]
         assert "CORSMiddleware" in middleware_classes
 
 

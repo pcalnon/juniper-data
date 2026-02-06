@@ -58,7 +58,7 @@ def spiral_request() -> Dict:
 
 @pytest.mark.integration
 class TestHealthEndpoint:
-    """Tests for the /v1/health endpoint."""
+    """Tests for the /v1/health endpoints."""
 
     def test_health_returns_ok(self, client: TestClient) -> None:
         """GET /v1/health returns {"status": "ok"}."""
@@ -75,6 +75,23 @@ class TestHealthEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert "version" in data
+        assert data["version"] == __version__
+
+    def test_liveness_probe(self, client: TestClient) -> None:
+        """GET /v1/health/live returns liveness status."""
+        response = client.get("/v1/health/live")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "alive"
+
+    def test_readiness_probe(self, client: TestClient) -> None:
+        """GET /v1/health/ready returns readiness status with version."""
+        response = client.get("/v1/health/ready")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ready"
         assert data["version"] == __version__
 
 

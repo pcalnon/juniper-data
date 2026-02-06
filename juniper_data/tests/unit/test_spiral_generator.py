@@ -488,7 +488,7 @@ class TestSpiralGeneratorLegacyMode:
     def test_algorithm_param_validation(self) -> None:
         """Verify invalid algorithm values raise ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
-            SpiralParams(algorithm="invalid_algorithm")
+            SpiralParams(algorithm="invalid_algorithm")  # type: ignore[arg-type]  # negative test: ensure runtime validation rejects invalid algorithm
 
         error_str = str(exc_info.value)
         assert "algorithm" in error_str or "Input should be" in error_str

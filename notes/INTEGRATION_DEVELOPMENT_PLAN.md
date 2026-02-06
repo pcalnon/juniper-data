@@ -4,7 +4,8 @@
 **Version**: 0.3.0
 **Author**: Paul Calnon
 **Created**: 2026-02-05
-**Status**: Planning Document - No Code Changes
+**Status**: Active Development
+**Last Updated**: 2026-02-05
 
 ---
 
@@ -20,15 +21,15 @@ This document compiles all outstanding work items for the JuniperData project, s
 
 ### Current State Summary
 
-| Metric | Value |
-|--------|-------|
-| Version | 0.3.0 |
-| Test Count | 207 (all passing) |
-| Code Coverage | 100% |
-| mypy Errors | 20 (all in test files) |
-| flake8 Issues | ~30 (mix of real issues and intentional patterns) |
-| black/isort | Clean |
-| Python Support | >=3.11 (tested 3.11-3.14) |
+| Metric         | Value                                        |
+| -------------- | -------------------------------------------- |
+| Version        | 0.3.0                                        |
+| Test Count     | 207 (all passing)                            |
+| Code Coverage  | 100%                                         |
+| mypy Errors    | 0 (all fixed)                                |
+| flake8 Issues  | ~9 (all B008 - intentional FastAPI patterns) |
+| black/isort    | Clean                                        |
+| Python Support | >=3.11 (tested 3.11-3.14)                    |
 
 ---
 
@@ -51,52 +52,58 @@ This document compiles all outstanding work items for the JuniperData project, s
 
 ### DATA-001: Fix mypy Type Errors in Test Files
 
-**Priority**: HIGH | **Status**: NOT STARTED | **Effort**: Small
+**Priority**: HIGH | **Status**: COMPLETE | **Effort**: Small
 **Source**: Source code review (mypy analysis)
+**Completed**: 2026-02-05
 
-20 type errors across 4 test files. All errors are in test code only; production code is clean.
+20 type errors across 4 test files were fixed. All errors were in test code only; production code was already clean.
 
-**`tests/unit/test_storage.py`** (6 errors):
-- `union-attr`: Accessing `.metadata` / `.artifact_path` on `Optional[DatasetMeta]` without narrowing
-- `arg-type`: Passing `MagicMock` where `DatasetMeta` expected
+**Resolution Applied**:
 
-**`tests/integration/test_storage_workflow.py`** (6 errors):
-- `union-attr`: Same pattern as test_storage.py - accessing attributes on Optional types
-- `arg-type`: Mock type mismatches
+- **`tests/unit/test_storage.py`**: Added `assert ... is not None` type narrowing assertions before accessing Optional attributes
+- **`tests/integration/test_storage_workflow.py`**: Added type narrowing assertions for `DatasetMeta` and `bytes` returns
+- **`tests/unit/test_spiral_generator.py`**: Added `# type: ignore[arg-type]` with explanation for negative test case
+- **`tests/unit/test_api_app.py`**: Used `getattr()` pattern to access dynamic route attributes safely
 
-**`tests/unit/test_spiral_generator.py`** (1 error):
-- `arg-type`: Literal string `"invalid_algorithm"` incompatible with `Literal["modern", "legacy_cascor"]`
-
-**`tests/unit/test_api_app.py`** (4 errors):
-- `attr-defined`: Accessing `app` attribute on lifespan context manager return type
-
-**Resolution**: Add type narrowing assertions, use `cast()`, or add targeted `# type: ignore` comments with explanations. Consider updating mypy overrides in `pyproject.toml` for test modules.
+**Verification**: `mypy` now reports "Success: no issues found in 4 source files"
 
 ---
 
 ### DATA-002: Fix flake8 Unused Imports in datasets.py
 
-**Priority**: HIGH | **Status**: NOT STARTED | **Effort**: Small
+**Priority**: HIGH | **Status**: COMPLETE | **Effort**: Small
 **Source**: Source code review (flake8 analysis)
+**Completed**: 2026-02-05
 
 **File**: `juniper_data/api/routes/datasets.py`
+
 - F401: `typing.Any` imported but unused
 - F401: `typing.Dict` imported but unused
 
-**Resolution**: Remove unused imports.
+**Resolution Applied**: Removed unused `Any` and `Dict` imports from typing module.
+
+**Verification**: `flake8 --select=F401` now reports no issues.
 
 ---
 
 ### DATA-003: Fix flake8 Issues in generate_golden_datasets.py
 
-**Priority**: MEDIUM | **Status**: NOT STARTED | **Effort**: Small
+**Priority**: MEDIUM | **Status**: COMPLETE | **Effort**: Small
 **Source**: Source code review (flake8 analysis)
+**Completed**: 2026-02-05
 
 **File**: `juniper_data/tests/fixtures/generate_golden_datasets.py`
-- E402: Module-level import not at top of file (5 instances)
+6 (DATA-001, 002, 003, 006, 007, 008)
+
+- E402: Module-level import not at top of file (2 instances - `SpiralProblem`, `torch`)
 - F541: f-string without placeholders (5 instances)
 
-**Resolution**: Reorganize imports and fix f-string expressions.
+**Resolution Applied**:
+
+- Added `# noqa: E402` comments with explanations for late imports (required due to `sys.path` manipulation for JuniperCascor import)
+- Converted f-strings without placeholders to regular strings
+
+**Verification**: `flake8 --select=F541,E402` now reports no issues.
 
 ---
 
@@ -106,6 +113,7 @@ This document compiles all outstanding work items for the JuniperData project, s
 **Source**: Source code review (flake8 analysis)
 
 **File**: `juniper_data/api/routes/datasets.py`
+
 - B008: 9 instances of function calls in argument defaults (e.g., `Query(default=...)`, `Depends(...)`)
 
 **Resolution**: These are **intentional FastAPI patterns**. No action needed. Consider adding `# noqa: B008` comments or adding B008 to the per-file flake8 ignore list in `pyproject.toml` for route files.
@@ -130,12 +138,14 @@ Multiple test files have SIM117 suggestions to combine nested `with` statements.
 
 ### DATA-006: Create Dockerfile for JuniperData Service
 
-**Priority**: HIGH | **Status**: NOT STARTED | **Effort**: Medium
+**Priority**: HIGH | **Status**: COMPLETE | **Effort**: Medium
 **Source**: Source code review, JUNIPER_CASCOR_SPIRAL_DATA_GEN_REFACTOR_PLAN.md
+**Completed**: 2026-02-05
 
 JuniperData has no Dockerfile despite being designed as a microservice. The refactoring plan documents a Docker Compose configuration where `juniper-data` runs on port 8100, but no Dockerfile exists to build the image.
 
 **Requirements**:
+
 - Multi-stage build (builder + runtime)
 - Python >=3.11 base image
 - Install with `pip install .[api]` (minimal dependencies)
@@ -144,36 +154,59 @@ JuniperData has no Dockerfile despite being designed as a microservice. The refa
 - Non-root user for security
 - `.dockerignore` to exclude tests, docs, notes
 
+**Resolution Applied**:
+
+- Created `Dockerfile` with multi-stage build (builder + runtime stages)
+- Uses `python:3.11-slim` base image for minimal footprint
+- Installs with `pip install .[api]` for minimal dependencies
+- Creates non-root `juniper` user (UID 1000) for security
+- Exposes port 8100 with environment variable configuration
+- Includes HEALTHCHECK instruction for container orchestration
+- Created `.dockerignore` to exclude tests, docs, notes, and other development files
+
 **Consumers**: Both JuniperCascor and JuniperCanopy docker-compose configurations reference a `juniper-data` service.
 
 ---
 
 ### DATA-007: Add Health Check Probes for Container Orchestration
 
-**Priority**: HIGH | **Status**: NOT STARTED | **Effort**: Small
+**Priority**: HIGH | **Status**: COMPLETE | **Effort**: Small
 **Source**: Source code review, Docker Compose requirements
+**Completed**: 2026-02-05
 
 The `GET /v1/health` endpoint exists but there is no standardized health check configuration for Docker/Kubernetes readiness and liveness probes.
 
 **Requirements**:
+
 - Dockerfile `HEALTHCHECK` instruction using `GET /v1/health`
 - Document probe configuration for docker-compose
 - Consider adding `/v1/health/ready` (readiness) vs `/v1/health/live` (liveness) distinction
+
+**Resolution Applied**:
+
+- Added `HEALTHCHECK` instruction to Dockerfile (30s interval, 10s timeout, 5s start period, 3 retries)
+- Added `/v1/health/live` endpoint for liveness probes (returns `{"status": "alive"}`)
+- Added `/v1/health/ready` endpoint for readiness probes (returns `{"status": "ready", "version": "..."}`)
+- Original `/v1/health` endpoint preserved for backward compatibility
+- Added 4 new integration tests for health probe endpoints
 
 ---
 
 ### DATA-008: End-to-End Integration Tests with Live Service
 
-**Priority**: HIGH | **Status**: NOT STARTED | **Effort**: Large
+**Priority**: HIGH | **Status**: COMPLETE | **Effort**: Large
 **Source**: JUNIPER_CASCOR_SPIRAL_DATA_GEN_REFACTOR_PLAN.md (remaining work), INTEGRATION_ROADMAP.md
+**Completed**: 2026-02-05
 
 No E2E tests exist that verify the full flow:
+
 1. Start JuniperData service
 2. Client creates dataset via REST API
 3. Client downloads NPZ artifact
 4. Verify data integrity (shapes, dtypes, determinism)
 
 **Requirements**:
+
 - Test fixture that starts/stops JuniperData server (or uses `TestClient`)
 - Verify `POST /v1/datasets` with spiral generator params
 - Verify `GET /v1/datasets/{id}/artifact` returns valid NPZ
@@ -181,6 +214,16 @@ No E2E tests exist that verify the full flow:
 - Verify array shapes, dtypes (`float32`), and deterministic output with seed
 - Mark with `@pytest.mark.slow` for weekly CI runs
 - Verify both `algorithm="modern"` and `algorithm="legacy_cascor"` modes
+
+**Resolution Applied**:
+
+- Created `juniper_data/tests/integration/test_e2e_workflow.py` with 14 comprehensive E2E tests
+- **TestE2EModernAlgorithm** (3 tests): create/download/verify flow, determinism with seed, different seed produces different data
+- **TestE2ELegacyCascorAlgorithm** (2 tests): legacy algorithm flow, legacy vs modern comparison
+- **TestE2EDataContract** (5 tests): NPZ keys contract, feature dimensions, one-hot labels, train/test split ratios, metadata consistency
+- **TestE2EErrorHandling** (4 tests): invalid generator, invalid params, nonexistent dataset, delete verification
+- All tests marked with `@pytest.mark.integration` and `@pytest.mark.slow`
+- Uses FastAPI `TestClient` with in-memory storage for isolation
 
 ---
 
@@ -190,6 +233,7 @@ No E2E tests exist that verify the full flow:
 **Source**: Source code review
 
 The API uses `/v1/` prefix but there is no documented versioning strategy for:
+
 - When to increment API version
 - How to handle backward-incompatible changes
 - Deprecation policy for old API versions
@@ -206,7 +250,7 @@ The API uses `/v1/` prefix but there is no documented versioning strategy for:
 
 The NPZ data contract is implicit. Both JuniperCascor and JuniperCanopy expect specific array keys and dtypes:
 
-```
+```bash
 X_train: np.ndarray (n_train, 2) float32
 y_train: np.ndarray (n_train, n_classes) float32 (one-hot)
 X_test:  np.ndarray (n_test, 2) float32
@@ -225,6 +269,7 @@ y_full:  np.ndarray (n_total, n_classes) float32 (one-hot)
 **Source**: JuniperCascor/JuniperCanopy integration analysis
 
 JuniperCascor maps parameters with different names:
+
 - `n_points` -> `n_points_per_spiral`
 - `noise_level` -> `noise`
 
@@ -245,10 +290,12 @@ JuniperCanopy uses different default values between demo_mode (noise=0.1) and ca
 **Source**: JUNIPER_CASCOR_SPIRAL_DATA_GEN_REFACTOR_PLAN.md, JuniperCanopy INTEGRATION_DEVELOPMENT_PLAN.md
 
 Both consumers have near-identical client code:
+
 - `JuniperCascor/src/juniper_data_client/client.py`
 - `JuniperCanopy/src/juniper_data_client/client.py`
 
 **Options** (in order of preference):
+
 1. **PyPI package**: Publish `juniper-data-client` as a pip-installable package
 2. **Git submodule**: Share the client as a git submodule in both projects
 3. **Monorepo**: Move all three projects into a single repository
@@ -256,6 +303,7 @@ Both consumers have near-identical client code:
 **Recommendation**: Option 1 (PyPI package) provides the cleanest dependency management. The client could live in the JuniperData repository under `client/` and be published separately.
 
 **Scope**:
+
 - Extract client code into standalone package
 - Add client-specific tests
 - Publish to PyPI (or private index)
@@ -272,6 +320,7 @@ Both consumers have near-identical client code:
 JuniperCanopy reports 0% coverage on its `juniper_data_client/` module. JuniperCascor has 17 tests for its copy. When consolidating, ensure comprehensive test coverage.
 
 **Requirements**:
+
 - URL normalization tests
 - Request/response handling tests
 - Error handling and timeout tests
@@ -293,6 +342,7 @@ JuniperCanopy reports 0% coverage on its `juniper_data_client/` module. JuniperC
 Current generators: `spiral` only.
 
 **Potential additions**:
+
 - XOR classification dataset
 - Gaussian mixture models
 - Concentric circles/rings
@@ -311,6 +361,7 @@ Current generators: `spiral` only.
 Current storage backends: `InMemoryDatasetStore`, `LocalFSDatasetStore`.
 
 **Potential additions**:
+
 - S3/GCS object storage
 - Database-backed metadata store (SQLite/PostgreSQL)
 - HuggingFace Datasets integration
@@ -326,6 +377,7 @@ Current storage backends: `InMemoryDatasetStore`, `LocalFSDatasetStore`.
 **Source**: Source code review
 
 Current API supports create/read/delete but lacks:
+
 - Dataset expiration / TTL
 - Bulk operations (list with filtering, batch delete)
 - Dataset tagging/labeling
@@ -339,6 +391,7 @@ Current API supports create/read/delete but lacks:
 **Source**: Source code review, PRE-DEPLOYMENT_ROADMAP.md
 
 The API has no authentication or rate limiting. For internal use this is acceptable, but for any external exposure:
+
 - Add API key authentication
 - Add rate limiting middleware
 - Add request logging/auditing
@@ -356,6 +409,7 @@ The API has no authentication or rate limiting. For internal use this is accepta
 **Source**: PRE-DEPLOYMENT_ROADMAP-2.md (P1-NEW-001)
 
 Currently, integration is REST-only via HTTP. A full IPC architecture would add:
+
 - gRPC support for high-performance binary streaming
 - Message queue integration (for async dataset generation)
 - Shared memory for co-located services
@@ -381,6 +435,7 @@ Current generation is CPU-only via NumPy. For very large datasets, GPU accelerat
 **Source**: PRE-DEPLOYMENT_ROADMAP-2.md (P3-NEW-004)
 
 Add performance monitoring for the JuniperData service:
+
 - Response time tracking per endpoint
 - Memory usage profiling
 - Dataset generation time metrics
@@ -392,12 +447,11 @@ Add performance monitoring for the JuniperData service:
 
 These items are explicitly deferred and will be revisited based on project needs.
 
-| ID | Item | Source | Reason |
-|----|------|--------|--------|
-| DATA-018 | IPC Architecture | PRE-DEPLOYMENT_ROADMAP-2.md | REST sufficient for research workloads |
-| DATA-014 | Extended Generators | Refactor Plan Phase 5 | Current spiral generator meets all needs |
-| DATA-015 | Storage Extensions | Refactor Plan Phase 5 | LocalFS adequate for single-machine use |
-| DATA-019 | GPU Acceleration | PRE-DEPLOYMENT_ROADMAP-2.md | Dataset sizes too small to benefit |
+| ID       | Item                | Source                      | Reason                                   |
+| -------- | ------------------- | --------------------------- | ---------------------------------------- |
+| DATA-018 | IPC Architecture    | PRE-DEPLOYMENT_ROADMAP-2.md | REST sufficient for research workloads   |
+| DATA-014 | Extended Generators | Refactor Plan Phase 5       | Current spiral generator meets all needs |
+| DATA-019 | GPU Acceleration    | PRE-DEPLOYMENT_ROADMAP-2.md | Dataset sizes too small to benefit       |
 
 ---
 
@@ -407,31 +461,31 @@ These items are explicitly deferred and will be revisited based on project needs
 
 These items appear in the reviewed documentation but are owned by JuniperCascor:
 
-| ID | Item | Status | Source |
-|----|------|--------|--------|
-| CAS-REF-001 | Code coverage below 90% | IN PROGRESS | PRE-DEPLOYMENT_ROADMAP-2.md (P2-NEW-001) |
+| ID          | Item                              | Status      | Source                                   |
+| ----------- | --------------------------------- | ----------- | ---------------------------------------- |
+| CAS-REF-001 | Code coverage below 90%           | IN PROGRESS | PRE-DEPLOYMENT_ROADMAP-2.md (P2-NEW-001) |
 | CAS-REF-002 | CI/CD coverage gates not enforced | NOT STARTED | PRE-DEPLOYMENT_ROADMAP-2.md (P2-NEW-002) |
-| CAS-REF-003 | Type errors gradual fix | IN PROGRESS | PRE-DEPLOYMENT_ROADMAP-2.md (P2-NEW-006) |
-| CAS-REF-004 | Legacy spiral code removal | NOT STARTED | Refactor Plan |
-| CAS-REF-005 | RemoteWorkerClient integration | NOT STARTED | PRE-DEPLOYMENT_ROADMAP.md (INTEG-002) |
+| CAS-REF-003 | Type errors gradual fix           | IN PROGRESS | PRE-DEPLOYMENT_ROADMAP-2.md (P2-NEW-006) |
+| CAS-REF-004 | Legacy spiral code removal        | NOT STARTED | Refactor Plan                            |
+| CAS-REF-005 | RemoteWorkerClient integration    | NOT STARTED | PRE-DEPLOYMENT_ROADMAP.md (INTEG-002)    |
 
 ### Items Owned by JuniperCanopy (Not JuniperData Scope)
 
-| ID | Item | Status | Source |
-|----|------|--------|--------|
-| CAN-REF-001 | JuniperData client not actively used | NOT STARTED | Canopy INTEGRATION_DEVELOPMENT_PLAN.md |
-| CAN-REF-002 | No JUNIPER_DATA_URL in app_config.yaml | NOT STARTED | Canopy exploration |
-| CAN-REF-003 | No JuniperData in docker-compose.yaml | NOT STARTED | Canopy exploration |
-| CAN-REF-004 | Parameter inconsistencies (noise) | NOT STARTED | Canopy exploration |
-| CAN-REF-005 | CAN-001 through CAN-021 enhancements | Various | PRE-DEPLOYMENT_ROADMAP.md Section 7 |
+| ID          | Item                                   | Status      | Source                                 |
+| ----------- | -------------------------------------- | ----------- | -------------------------------------- |
+| CAN-REF-001 | JuniperData client not actively used   | NOT STARTED | Canopy INTEGRATION_DEVELOPMENT_PLAN.md |
+| CAN-REF-002 | No JUNIPER_DATA_URL in app_config.yaml | NOT STARTED | Canopy exploration                     |
+| CAN-REF-003 | No JuniperData in docker-compose.yaml  | NOT STARTED | Canopy exploration                     |
+| CAN-REF-004 | Parameter inconsistencies (noise)      | NOT STARTED | Canopy exploration                     |
+| CAN-REF-005 | CAN-001 through CAN-021 enhancements   | Various     | PRE-DEPLOYMENT_ROADMAP.md Section 7    |
 
 ### Items Shared Across Projects
 
-| ID | Item | Owners | Status |
-|----|------|--------|--------|
-| DATA-012 | Client package consolidation | Data, Cascor, Canopy | NOT STARTED |
-| DATA-008 | E2E integration tests | Data (primary), Cascor, Canopy | NOT STARTED |
-| DATA-006 | Dockerfile | Data (primary), Cascor/Canopy (consumers) | NOT STARTED |
+| ID       | Item                         | Owners                                    | Status      |
+| -------- | ---------------------------- | ----------------------------------------- | ----------- |
+| DATA-012 | Client package consolidation | Data, Cascor, Canopy                      | NOT STARTED |
+| DATA-008 | E2E integration tests        | Data (primary), Cascor, Canopy            | NOT STARTED |
+| DATA-006 | Dockerfile                   | Data (primary), Cascor/Canopy (consumers) | NOT STARTED |
 
 ---
 
@@ -439,59 +493,61 @@ These items appear in the reviewed documentation but are owned by JuniperCascor:
 
 ### Immediate (Next Sprint)
 
-| ID | Item | Priority | Effort | Impact |
-|----|------|----------|--------|--------|
-| DATA-001 | Fix mypy type errors in tests | HIGH | Small | Code quality |
-| DATA-002 | Fix unused imports in datasets.py | HIGH | Small | Code quality |
-| DATA-003 | Fix golden dataset fixture issues | MEDIUM | Small | Code quality |
+| ID       | Item                              | Priority | Effort | Impact       |
+| -------- | --------------------------------- | -------- | ------ | ------------ |
+| DATA-001 | Fix mypy type errors in tests     | HIGH     | Small  | Code quality |
+| DATA-002 | Fix unused imports in datasets.py | HIGH     | Small  | Code quality |
+| DATA-003 | Fix golden dataset fixture issues | MEDIUM   | Small  | Code quality |
 
 ### Short-Term (1-2 Sprints)
 
-| ID | Item | Priority | Effort | Impact |
-|----|------|----------|--------|--------|
-| DATA-006 | Create Dockerfile | HIGH | Medium | Deployment |
-| DATA-007 | Health check probes | HIGH | Small | Operations |
-| DATA-008 | E2E integration tests | HIGH | Large | Reliability |
-| DATA-010 | NPZ schema documentation | MEDIUM | Small | Integration |
+| ID       | Item                     | Priority | Effort | Impact      |
+| -------- | ------------------------ | -------- | ------ | ----------- |
+| DATA-006 | Create Dockerfile        | HIGH     | Medium | Deployment  |
+| DATA-007 | Health check probes      | HIGH     | Small  | Operations  |
+| DATA-008 | E2E integration tests    | HIGH     | Large  | Reliability |
+| DATA-010 | NPZ schema documentation | MEDIUM   | Small  | Integration |
 
 ### Medium-Term (3-4 Sprints)
 
-| ID | Item | Priority | Effort | Impact |
-|----|------|----------|--------|--------|
-| DATA-009 | API versioning documentation | MEDIUM | Small | Maintainability |
-| DATA-011 | Parameter validation parity | MEDIUM | Small | Integration |
-| DATA-012 | Client package consolidation | MEDIUM | Large | Maintainability |
-| DATA-013 | Client test coverage | MEDIUM | Medium | Reliability |
+| ID       | Item                         | Priority | Effort | Impact          |
+| -------- | ---------------------------- | -------- | ------ | --------------- |
+| DATA-009 | API versioning documentation | MEDIUM   | Small  | Maintainability |
+| DATA-011 | Parameter validation parity  | MEDIUM   | Small  | Integration     |
+| DATA-012 | Client package consolidation | MEDIUM   | Large  | Maintainability |
+| DATA-013 | Client test coverage         | MEDIUM   | Medium | Reliability     |
 
 ### Long-Term (Backlog)
 
-| ID | Item | Priority | Effort | Impact |
-|----|------|----------|--------|--------|
-| DATA-014 | Additional generators | LOW | Large | Capability |
-| DATA-015 | Storage extensions | LOW | Large | Scalability |
-| DATA-016 | Dataset lifecycle management | LOW | Medium | Operations |
-| DATA-017 | API rate limiting/auth | LOW | Medium | Security |
-| DATA-018 | IPC architecture | LOW | Large | Performance |
-| DATA-019 | GPU acceleration | LOW | Large | Performance |
-| DATA-020 | Continuous profiling | LOW | Medium | Operations |
+| ID       | Item                         | Priority | Effort | Impact      |
+| -------- | ---------------------------- | -------- | ------ | ----------- |
+| DATA-014 | Additional generators        | LOW      | Large  | Capability  |
+| DATA-015 | Storage extensions           | LOW      | Large  | Scalability |
+| DATA-016 | Dataset lifecycle management | LOW      | Medium | Operations  |
+| DATA-017 | API rate limiting/auth       | LOW      | Medium | Security    |
+| DATA-018 | IPC architecture             | LOW      | Large  | Performance |
+| DATA-019 | GPU acceleration             | LOW      | Large  | Performance |
+| DATA-020 | Continuous profiling         | LOW      | Medium | Operations  |
 
 ---
 
 ## Summary Statistics
 
-| Category | Count |
-|----------|-------|
-| Total Items | 20 |
-| HIGH Priority | 5 (DATA-001, 002, 006, 007, 008) |
-| MEDIUM Priority | 6 (DATA-003, 009, 010, 011, 012, 013) |
-| LOW Priority | 6 (DATA-004, 005, 014, 015, 016, 017) |
-| DEFERRED | 3 (DATA-018, 019, 020) |
-| Cross-Project References | 10 (CAS: 5, CAN: 5) |
+| Category                  | Count                                 |
+| ------------------------- | ------------------------------------- |
+| Total Items               | 20                                    |
+| COMPLETE                  | 6 (DATA-001, 002, 003, 006, 007, 008) |
+| HIGH Priority (Remaining) | 0                                     |
+| MEDIUM Priority           | 5 (DATA-009, 010, 011, 012, 013)      |
+| LOW Priority              | 6 (DATA-004, 005, 014, 015, 016, 017) |
+| DEFERRED                  | 3 (DATA-018, 019, 020)                |
+| Cross-Project References  | 10 (CAS: 5, CAN: 5)                   |
 
 ---
 
 ## Document History
 
-| Date | Author | Changes |
-|------|--------|---------|
-| 2026-02-05 | Paul Calnon | Initial creation from documentation review and source code analysis |
+| Date       | Author      | Changes                                                                                               |
+| ---------- | ----------- | ----------------------------------------------------------------------------------------------------- |
+| 2026-02-05 | Paul Calnon | Initial creation from documentation review and source code analysis                                   |
+| 2026-02-05 | AI Agent    | Completed DATA-001, DATA-002, DATA-003 - All mypy errors fixed, flake8 F401/E402/F541 issues resolved |

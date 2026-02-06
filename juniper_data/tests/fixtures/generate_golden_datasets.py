@@ -18,9 +18,10 @@ from pathlib import Path
 
 import numpy as np
 
+# Append JuniperCascor source directory for local script execution
 sys.path.insert(0, "/home/pcalnon/Development/python/Juniper/JuniperCascor/juniper_cascor/src")
 
-from spiral_problem.spiral_problem import SpiralProblem
+from spiral_problem.spiral_problem import SpiralProblem  # noqa: E402
 
 GOLDEN_DATASETS_DIR = Path("/home/pcalnon/Development/python/Juniper/JuniperData/tests/fixtures/golden_datasets")
 
@@ -50,7 +51,7 @@ def generate_golden_dataset(config: dict) -> dict:
     """Generate a golden dataset with the specified configuration."""
     np.random.seed(config["seed"])
 
-    import torch
+    import torch  # noqa: E402
 
     torch.manual_seed(config["seed"])
 
@@ -142,19 +143,19 @@ def print_dataset_info(data: dict, name: str) -> None:
     print(f"\n{'='*60}")
     print(f"Dataset: {name}")
     print(f"{'='*60}")
-    print(f"Configuration:")
+    print("Configuration:")
     for key, value in meta["config"].items():
         print(f"  {key}: {value}")
-    print(f"\nShapes:")
+    print("\nShapes:")
     for key, shape in meta["shapes"].items():
         print(f"  {key}: {shape}")
-    print(f"\nDtypes:")
+    print("\nDtypes:")
     for key, dtype in meta["dtypes"].items():
         print(f"  {key}: {dtype}")
-    print(f"\nClass Distribution:")
+    print("\nClass Distribution:")
     for split, dist in meta["class_distribution"].items():
         print(f"  {split}: {dist}")
-    print(f"\nValue Ranges:")
+    print("\nValue Ranges:")
     for key, ranges in meta["value_ranges"].items():
         print(f"  {key}: min={ranges['min']:.6f}, max={ranges['max']:.6f}")
 

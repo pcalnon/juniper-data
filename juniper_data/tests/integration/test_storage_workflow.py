@@ -79,10 +79,12 @@ class TestGenerateStoreRetrieveWorkflow:
 
         assert store.exists("spiral-mem-001")
         retrieved_meta = store.get_meta("spiral-mem-001")
+        assert retrieved_meta is not None
         assert retrieved_meta.dataset_id == "spiral-mem-001"
         assert retrieved_meta.n_samples == 200
 
         artifact_bytes = store.get_artifact_bytes("spiral-mem-001")
+        assert artifact_bytes is not None
         loaded = np.load(io.BytesIO(artifact_bytes))
         np.testing.assert_array_equal(loaded["X_train"], X_train)
         np.testing.assert_array_equal(loaded["y_train"], y_train)
@@ -107,10 +109,12 @@ class TestGenerateStoreRetrieveWorkflow:
         assert (temp_storage_dir / "spiral-fs-001.npz").exists()
 
         retrieved_meta = store.get_meta("spiral-fs-001")
+        assert retrieved_meta is not None
         assert retrieved_meta.dataset_id == "spiral-fs-001"
         assert retrieved_meta.n_samples == 200
 
         artifact_bytes = store.get_artifact_bytes("spiral-fs-001")
+        assert artifact_bytes is not None
         loaded = np.load(io.BytesIO(artifact_bytes))
         np.testing.assert_array_equal(loaded["X_train"], X_train)
 
@@ -132,6 +136,7 @@ class TestGenerateStoreRetrieveWorkflow:
 
         assert store2.exists("persist-test")
         retrieved = store2.get_meta("persist-test")
+        assert retrieved is not None
         assert retrieved.dataset_id == "persist-test"
 
         datasets = store2.list_datasets()
@@ -213,9 +218,11 @@ class TestChecksumVerification:
         store.save("checksum-test", meta, arrays)
 
         retrieved_meta = store.get_meta("checksum-test")
+        assert retrieved_meta is not None
         assert retrieved_meta.checksum == original_checksum
 
         artifact_bytes = store.get_artifact_bytes("checksum-test")
+        assert artifact_bytes is not None
         loaded = np.load(io.BytesIO(artifact_bytes))
         loaded_arrays = {k: loaded[k] for k in loaded.files}
 
