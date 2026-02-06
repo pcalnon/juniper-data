@@ -4,7 +4,7 @@
 **Version**: 0.3.0
 **License**: MIT License
 **Author**: Paul Calnon
-**Last Updated**: 2026-02-04
+**Last Updated**: 2026-02-05
 
 ---
 
@@ -256,3 +256,26 @@ Following JuniperCascor patterns:
 2. Implement generator class following `SpiralGenerator` pattern
 3. Add API routes in `api/routes/`
 4. Add comprehensive tests
+
+---
+
+## Integration Context
+
+JuniperData is part of the Juniper ecosystem alongside **JuniperCascor** (CasCor neural network backend) and **JuniperCanopy** (web frontend dashboard).
+
+### Integration Points
+
+- **Port**: 8100 (default)
+- **Feature Flag**: `JUNIPER_DATA_URL` environment variable enables JuniperData mode in consumers
+- **Data Contract**: NPZ artifacts with keys `X_train`, `y_train`, `X_test`, `y_test`, `X_full`, `y_full` (all `float32`)
+- **API Prefix**: `/v1/`
+- **Consumers**: JuniperCascor (`SpiralDataProvider`), JuniperCanopy (`DemoMode`, `CascorIntegration`)
+
+### Key Documentation
+
+| Document | Location | Purpose |
+|----------|----------|---------|
+| Integration Development Plan | `notes/INTEGRATION_DEVELOPMENT_PLAN.md` | Outstanding work items and priorities |
+| Integration Roadmap | `notes/INTEGRATION_ROADMAP.md` | Cascor/Canopy integration status (symlink) |
+| Pre-Deployment Roadmap | `notes/PRE-DEPLOYMENT_ROADMAP.md` | Pre-deployment assessment (symlink) |
+| Pre-Deployment Roadmap 2 | `notes/PRE-DEPLOYMENT_ROADMAP-2.md` | Phase 2 remaining items (symlink) |

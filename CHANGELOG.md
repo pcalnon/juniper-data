@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2026-02-05
+
+**Summary**: Integration Development Plan - Comprehensive assessment of outstanding work across the Juniper ecosystem.
+
+### Added: [Unreleased]
+
+- **Integration Development Plan** (`notes/INTEGRATION_DEVELOPMENT_PLAN.md`)
+  - Compiled 20 outstanding work items from 4 documentation files and source code analysis
+  - 5 HIGH priority items (mypy fixes, unused imports, Dockerfile, health checks, E2E tests)
+  - 6 MEDIUM priority items (API docs, parameter validation, client consolidation)
+  - 6 LOW priority items (generators, storage, lifecycle, auth)
+  - 3 DEFERRED items (IPC, GPU, profiling)
+  - 10 cross-project references (JuniperCascor: 5, JuniperCanopy: 5)
+
+### Changed: [Unreleased]
+
+- **CLAUDE.md** updated with Integration Context section
+  - Added integration points documentation (port, feature flag, data contract, consumers)
+  - Added key documentation reference table
+
+### Technical Notes: [Unreleased]
+
+- **SemVer impact**: No version bump - Planning documentation only; no API or code changes
+- **Source analysis findings**: 20 mypy errors (test files only), ~30 flake8 issues, black/isort clean
+- **Test count**: 207 tests (unchanged, all passing)
+- **Coverage**: 100% maintained
+
+---
+
 ## [0.3.0] - 2026-02-04
 
 **Summary**: Comprehensive Test Suite and CI/CD Enhancement - Security hardening, static analysis expansion, infrastructure improvements.
@@ -332,14 +361,16 @@ params = SpiralParams(
 
 ## Version History
 
-| Version | Date       | Description                    |
-| ------- | ---------- | ------------------------------ |
-| 0.2.2   | 2026-02-02 | Code coverage configuration fix|
-| 0.2.1   | 2026-02-01 | CI/CD parity across Juniper    |
-| 0.2.0   | 2026-01-31 | Legacy parity mode for spiral  |
-| 0.1.2   | 2026-01-31 | Conda environment setup        |
-| 0.1.1   | 2026-01-30 | CI/CD Pipeline & Pre-commit    |
-| 0.1.0   | 2026-01-29 | Initial release (Phases 0-2)   |
+| Version    | Date       | Description                        |
+| ---------- | ---------- | ---------------------------------- |
+| Unreleased | 2026-02-05 | Integration Development Plan       |
+| 0.3.0      | 2026-02-04 | Test suite & CI/CD enhancement     |
+| 0.2.2      | 2026-02-02 | Code coverage configuration fix    |
+| 0.2.1      | 2026-02-01 | CI/CD parity across Juniper        |
+| 0.2.0      | 2026-01-31 | Legacy parity mode for spiral      |
+| 0.1.2      | 2026-01-31 | Conda environment setup            |
+| 0.1.1      | 2026-01-30 | CI/CD Pipeline & Pre-commit        |
+| 0.1.0      | 2026-01-29 | Initial release (Phases 0-2)       |
 
 ---
 
