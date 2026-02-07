@@ -21,17 +21,17 @@ This document compiles all outstanding work items for the JuniperData project, s
 
 ### Current State Summary
 
-| Metric         | Value                                                         |
-| -------------- | ------------------------------------------------------------- |
-| Version        | 0.4.0                                                         |
-| Test Count     | 411 (all passing)                                             |
-| Code Coverage  | ~95% (core modules)                                           |
-| mypy Errors    | 0 (all fixed)                                                 |
-| flake8 Issues  | ~9 (all B008 - intentional FastAPI patterns)                  |
-| black/isort    | Clean                                                         |
-| Python Support | >=3.11 (tested 3.11-3.14)                                     |
+| Metric         | Value                                                                 |
+| -------------- | --------------------------------------------------------------------- |
+| Version        | 0.4.0                                                                 |
+| Test Count     | 411 (all passing)                                                     |
+| Code Coverage  | ~95% (core modules)                                                   |
+| mypy Errors    | 0 (all fixed)                                                         |
+| flake8 Issues  | ~9 (all B008 - intentional FastAPI patterns)                          |
+| black/isort    | Clean                                                                 |
+| Python Support | >=3.11 (tested 3.11-3.14)                                             |
 | Generators     | 8 (spiral, xor, gaussian, circles, checkerboard, csv, mnist, arc_agi) |
-| Storage        | 7 (memory, localfs, cached, redis, hf, postgres, kaggle)      |
+| Storage        | 7 (memory, localfs, cached, redis, hf, postgres, kaggle)              |
 
 ---
 
