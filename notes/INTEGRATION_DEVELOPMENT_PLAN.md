@@ -21,39 +21,39 @@ This document compiles all outstanding work items for the JuniperData project, s
 
 ### Current State Summary
 
-| Metric         | Value                                                                                     |
-| -------------- | ----------------------------------------------------------------------------------------- |
-| Version        | 0.4.0                                                                                     |
-| Test Count     | 411 (342 unit + 69 integration, all passing)                                              |
-| Code Coverage  | 60.57% total (**FAILS 80% threshold**); core modules ~95%+; see coverage gaps below       |
-| mypy Errors    | 0 (78 source files)                                                                       |
-| flake8 Issues  | 16 (7 F401 unused imports, 4 E741 ambiguous vars, 1 W293, 1 B007, + B008 intentional)    |
-| black/isort    | Clean                                                                                     |
-| Python Support | >=3.11 (tested 3.11-3.14)                                                                 |
+| Metric         | Value                                                                                                 |
+| -------------- | ----------------------------------------------------------------------------------------------------- |
+| Version        | 0.4.0                                                                                                 |
+| Test Count     | 411 (342 unit + 69 integration, all passing)                                                          |
+| Code Coverage  | 60.57% total (**FAILS 80% threshold**); core modules ~95%+; see coverage gaps below                   |
+| mypy Errors    | 0 (78 source files)                                                                                   |
+| flake8 Issues  | 16 (7 F401 unused imports, 4 E741 ambiguous vars, 1 W293, 1 B007, + B008 intentional)                 |
+| black/isort    | Clean                                                                                                 |
+| Python Support | >=3.11 (tested 3.11-3.14)                                                                             |
 | Generators     | 5 registered (spiral, xor, gaussian, circles, checkerboard); 3 code-only (csv_import, mnist, arc_agi) |
-| Storage        | 3 tested (memory, localfs, cached); 4 code-only/0% coverage (redis, hf, postgres, kaggle) |
+| Storage        | 3 tested (memory, localfs, cached); 4 code-only/0% coverage (redis, hf, postgres, kaggle)             |
 
 ### Coverage Gaps (Modules at 0% Coverage)
 
-| Module | Lines | Status |
-| ------ | ----- | ------ |
-| `generators/arc_agi/` (3 files) | 133 | Code only - no tests, not in GENERATOR_REGISTRY |
-| `generators/mnist/` (3 files) | 63 | Code only - no tests, not in GENERATOR_REGISTRY |
-| `storage/hf_store.py` | 96 | Code only - no tests |
-| `storage/kaggle_store.py` | 127 | Code only - no tests, has F401 unused imports |
-| `storage/postgres_store.py` | 101 | Code only - no tests, has F401 unused imports |
-| `storage/redis_store.py` | 103 | Code only - no tests, has F401 unused imports |
+| Module                          | Lines | Status                                          |
+| ------------------------------- | ----- | ----------------------------------------------- |
+| `generators/arc_agi/` (3 files) | 133   | Code only - no tests, not in GENERATOR_REGISTRY |
+| `generators/mnist/` (3 files)   | 63    | Code only - no tests, not in GENERATOR_REGISTRY |
+| `storage/hf_store.py`           | 96    | Code only - no tests                            |
+| `storage/kaggle_store.py`       | 127   | Code only - no tests, has F401 unused imports   |
+| `storage/postgres_store.py`     | 101   | Code only - no tests, has F401 unused imports   |
+| `storage/redis_store.py`        | 103   | Code only - no tests, has F401 unused imports   |
 
 ### Partial Coverage Concerns
 
-| Module | Coverage | Notes |
-| ------ | -------- | ----- |
-| `storage/__init__.py` | 52.94% | Conditional imports for optional backends |
-| `storage/cached.py` | 76.47% | Has 11 unit tests but gaps remain |
-| `storage/local_fs.py` | 79.57% | Missing coverage on some error paths |
-| `generators/csv_import/generator.py` | 88.14% | Has 14 unit tests, not in GENERATOR_REGISTRY |
-| `generators/checkerboard/generator.py` | 94.44% | Minor gap on line 88 |
-| `generators/gaussian/generator.py` | 95.52% | Minor gap on line 143 |
+| Module                                 | Coverage | Notes                                        |
+| -------------------------------------- | -------- | -------------------------------------------- |
+| `storage/__init__.py`                  | 52.94%   | Conditional imports for optional backends    |
+| `storage/cached.py`                    | 76.47%   | Has 11 unit tests but gaps remain            |
+| `storage/local_fs.py`                  | 79.57%   | Missing coverage on some error paths         |
+| `generators/csv_import/generator.py`   | 88.14%   | Has 14 unit tests, not in GENERATOR_REGISTRY |
+| `generators/checkerboard/generator.py` | 94.44%   | Minor gap on line 88                         |
+| `generators/gaussian/generator.py`     | 95.52%   | Minor gap on line 143                        |
 
 ---
 
@@ -721,22 +721,23 @@ These items appear in the reviewed documentation but are owned by JuniperCascor:
 
 The overall coverage has dropped to 60.57% (below the 80% threshold) due to new modules with 0% test coverage. These must be addressed before any release.
 
-| ID       | Item                                           | Priority | Effort | Impact      |
-| -------- | ---------------------------------------------- | -------- | ------ | ----------- |
-| DATA-015 | Write tests for storage backends (4 at 0%)     | **HIGH** | Large  | Coverage    |
-| DATA-014 | Write tests for mnist/arc_agi generators (0%)  | **HIGH** | Medium | Coverage    |
-| DATA-014 | Register csv_import/mnist/arc_agi in registry  | MEDIUM   | Small  | Capability  |
-| ---      | Fix 16 flake8 issues in new modules            | MEDIUM   | Small  | Code quality |
+| ID       | Item                                          | Priority | Effort | Impact       |
+| -------- | --------------------------------------------- | -------- | ------ | ------------ |
+| DATA-015 | Write tests for storage backends (4 at 0%)    | **HIGH** | Large  | Coverage     |
+| DATA-014 | Write tests for mnist/arc_agi generators (0%) | **HIGH** | Medium | Coverage     |
+| DATA-014 | Register csv_import/mnist/arc_agi in registry | MEDIUM   | Small  | Capability   |
+| ---      | Fix 16 flake8 issues in new modules           | MEDIUM   | Small  | Code quality |
+|          |                                               |          |        |              |
 
 ### Low Priority (Backlog)
 
-| ID       | Item                    | Priority | Effort | Impact      |
-| -------- | ----------------------- | -------- | ------ | ----------- |
+| ID       | Item                    | Priority | Effort | Impact       |
+| -------- | ----------------------- | -------- | ------ | ------------ |
 | DATA-004 | Address B008 warnings   | LOW      | Small  | Code quality |
 | DATA-005 | Address SIM117 in tests | LOW      | Small  | Code quality |
-| DATA-018 | IPC architecture        | LOW      | Large  | Performance |
-| DATA-019 | GPU acceleration        | LOW      | Large  | Performance |
-| DATA-020 | Continuous profiling    | LOW      | Medium | Operations  |
+| DATA-018 | IPC architecture        | LOW      | Large  | Performance  |
+| DATA-019 | GPU acceleration        | LOW      | Large  | Performance  |
+| DATA-020 | Continuous profiling    | LOW      | Medium | Operations   |
 
 ### Completed Items
 
@@ -755,20 +756,21 @@ The overall coverage has dropped to 60.57% (below the 80% threshold) due to new 
 | DATA-013 | Client test coverage         | 2026-02-06 |
 | DATA-016 | Dataset lifecycle management | 2026-02-06 |
 | DATA-017 | API rate limiting/auth       | 2026-02-06 |
+|          |                              |            |
 
 ---
 
 ## Summary Statistics
 
-| Category                    | Count                                                                          |
-| --------------------------- | ------------------------------------------------------------------------------ |
-| Total Items                 | 20                                                                             |
-| COMPLETE                    | 13 (DATA-001, 002, 003, 006, 007, 008, 009, 010, 011, 012, 013, 016, 017)     |
-| IN PROGRESS                 | 2 (DATA-014, 015) - code exists but missing tests/registration/coverage        |
-| NOT STARTED (Low Priority)  | 2 (DATA-004, 005)                                                              |
-| DEFERRED                    | 3 (DATA-018, 019, 020)                                                         |
-| Cross-Project References    | 10 (CAS: 5, CAN: 5)                                                           |
-| **Coverage Status**         | **60.57% total (FAILS 80% threshold)** - 623 untested lines in 6 new modules  |
+| Category                   | Count                                                                        |
+| -------------------------- | ---------------------------------------------------------------------------- |
+| Total Items                | 20                                                                           |
+| COMPLETE                   | 13 (DATA-001, 002, 003, 006, 007, 008, 009, 010, 011, 012, 013, 016, 017)    |
+| IN PROGRESS                | 2 (DATA-014, 015) - code exists but missing tests/registration/coverage      |
+| NOT STARTED (Low Priority) | 2 (DATA-004, 005)                                                            |
+| DEFERRED                   | 3 (DATA-018, 019, 020)                                                       |
+| Cross-Project References   | 10 (CAS: 5, CAN: 5)                                                          |
+| **Coverage Status**        | **60.57% total (FAILS 80% threshold)** - 623 untested lines in 6 new modules |
 
 ---
 
@@ -792,4 +794,4 @@ The overall coverage has dropped to 60.57% (below the 80% threshold) due to new 
 | 2026-02-07 | AI Agent    | **Validation audit**: DATA-015 reverted to IN PROGRESS (4 backends at 0% coverage, no tests)          |
 | 2026-02-07 | AI Agent    | Updated Current State Summary with actual metrics: 60.57% coverage, 16 flake8 issues, coverage gaps   |
 | 2026-02-07 | AI Agent    | Fixed stale cross-project references (DATA-006/008/012 were COMPLETE, not NOT STARTED)                |
-| 2026-02-07 | AI Agent    | Removed DATA-014 from Deferred Items table (it's IN PROGRESS, not deferred)                            |
+| 2026-02-07 | AI Agent    | Removed DATA-014 from Deferred Items table (it's IN PROGRESS, not deferred)                           |
