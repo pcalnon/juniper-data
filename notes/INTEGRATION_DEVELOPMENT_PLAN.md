@@ -1,11 +1,11 @@
 # JuniperData Integration Development Plan
 
 **Project**: Juniper Data - Dataset Generation Service
-**Version**: 0.3.0
+**Version**: 0.4.0
 **Author**: Paul Calnon
 **Created**: 2026-02-05
 **Status**: Active Development
-**Last Updated**: 2026-02-05
+**Last Updated**: 2026-02-06
 
 ---
 
@@ -23,9 +23,9 @@ This document compiles all outstanding work items for the JuniperData project, s
 
 | Metric         | Value                                        |
 | -------------- | -------------------------------------------- |
-| Version        | 0.3.0                                        |
-| Test Count     | 207 (all passing)                            |
-| Code Coverage  | 100%                                         |
+| Version        | 0.4.0                                        |
+| Test Count     | 290 (233 unit + 57 integration, all passing) |
+| Code Coverage  | 97.47%                                       |
 | mypy Errors    | 0 (all fixed)                                |
 | flake8 Issues  | ~9 (all B008 - intentional FastAPI patterns) |
 | black/isort    | Clean                                        |
@@ -352,7 +352,7 @@ pip install -e juniper_data_client/[test]  # Development
 pip install juniper-data-client            # From PyPI (when published)
 ```
 
-**Next Steps**: DATA-013 (update JuniperCascor and JuniperCanopy to use shared package)
+**Next Steps**: DATA-012-A (update JuniperCascor and JuniperCanopy to use shared package)
 
 - Publish to PyPI (or private index)
 - Update JuniperCascor and JuniperCanopy to use the shared package
@@ -428,8 +428,8 @@ Created `juniper_data/generators/xor/` package:
 - Concentric circles/rings
 - Checkerboard pattern
 - Custom CSV/JSON import
-- MNIST
-- ARC-AGI datasets
+- MNIST and related datasets
+- ARC-AGI-1, ARC-AGI-2, ARC-AGI-3 datasets
 
 **Framework**: The generator plugin architecture (`generators/` package, `GENERATOR_REGISTRY`) supports adding new generators following the established patterns.
 
@@ -447,6 +447,9 @@ Current storage backends: `InMemoryDatasetStore`, `LocalFSDatasetStore`.
 - S3/GCS object storage
 - Database-backed metadata store (SQLite/PostgreSQL)
 - HuggingFace Datasets integration
+- Kaggle Dataset API
+  - API Connection info located in file:
+    - JuniperData/Kaggle_Dataset_API.md
 - Redis-based caching layer
 
 **Framework**: The `DatasetStore` abstract base class already defines the interface for new backends.

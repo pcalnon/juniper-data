@@ -1,7 +1,7 @@
 # JuniperData API Reference
 
-**Version:** 0.3.0  
-**Last Updated:** 2026-02-05  
+**Version:** 0.4.0
+**Last Updated:** 2026-02-06  
 **Base URL:** `http://localhost:8100`  
 **API Prefix:** `/v1`
 
@@ -90,7 +90,7 @@ Combined health check endpoint (backward compatible).
 ```json
 {
   "status": "ok",
-  "version": "0.3.0"
+  "version": "0.4.0"
 }
 ```
 
@@ -142,7 +142,7 @@ Used by Kubernetes/Docker to determine if the container can accept traffic.
 ```json
 {
   "status": "ready",
-  "version": "0.3.0"
+  "version": "0.4.0"
 }
 ```
 

@@ -5,11 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2026-02-06
+## [0.4.0] - 2026-02-06
 
-**Summary**: Integration Infrastructure & Client Library - Docker containerization, health probes, E2E testing, and shared client package for ecosystem integration.
+**Summary**: Integration Infrastructure & Client Library - Docker containerization, health probes, E2E testing, shared client package, dataset lifecycle management, XOR generator, and comprehensive API documentation for ecosystem integration.
 
-### Added: [Unreleased]
+### Added: [0.4.0]
 
 - **DATA-012: Shared JuniperData Client Package** (`juniper_data_client/`)
   - Standalone pip-installable package consolidating client code from JuniperCascor and JuniperCanopy
@@ -103,13 +103,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `noise_level` accepted as alias for `noise`
   - Added 5 new unit tests verifying alias behavior
 
-### Changed: [Unreleased]
+### Changed: [0.4.0]
 
 - **CLAUDE.md** updated with Integration Context section
   - Added integration points documentation (port, feature flag, data contract, consumers)
   - Added key documentation reference table
 
-### Fixed: [Unreleased]
+### Fixed: [0.4.0]
 
 - **DATA-001: mypy Type Errors in Test Files** (20 errors → 0)
   - Added type narrowing assertions (`assert x is not None`) in test_storage.py and test_storage_workflow.py
@@ -123,16 +123,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added `# noqa: E402` comments for late imports after `sys.path` manipulation
   - Converted f-strings without placeholders to regular strings (5 instances)
 
-### Technical Notes: [Unreleased]
+### Technical Notes: [0.4.0]
 
-- **SemVer impact**: MINOR - New Docker infrastructure, API endpoints, parameter aliases, client package, and lifecycle management; backward compatible
+- **SemVer impact**: MINOR - New Docker infrastructure, API endpoints, parameter aliases, client package, lifecycle management, and XOR generator; backward compatible
 - **Source analysis findings**: 0 mypy errors (was 20), ~9 flake8 issues (all B008 - intentional FastAPI patterns)
-- **JuniperData test count**: 290 tests (up from 272, all passing)
+- **JuniperData test count**: 290 tests (233 unit + 57 integration, all passing)
 - **juniper-data-client test count**: 35 tests (new package, 96% coverage)
-- **Coverage**: 97% for JuniperData core (new lifecycle features)
+- **Total test count**: 325 tests (290 service + 35 client), all passing
+- **Coverage**: 97.47% for JuniperData core (26 source files, 24 at 100%)
 - **New package**: `juniper_data_client/` - standalone pip-installable client library
-- **New files**: `Dockerfile`, `.dockerignore`, `juniper_data/tests/integration/test_e2e_workflow.py`, `docs/api/JUNIPER_DATA_API.md`, `juniper_data/tests/unit/test_lifecycle.py`, `juniper_data/tests/integration/test_lifecycle_api.py`
-- **Modified**: `juniper_data/generators/spiral/params.py` (parameter aliases), `juniper_data/api/routes/health.py` (liveness/readiness probes), `juniper_data/core/models.py` (lifecycle fields), `juniper_data/storage/base.py` (lifecycle methods), `juniper_data/api/routes/datasets.py` (new endpoints)
+- **New generator**: `juniper_data/generators/xor/` - XOR classification dataset generator (18 tests)
+- **New files**: `Dockerfile`, `.dockerignore`, `juniper_data/tests/integration/test_e2e_workflow.py`, `docs/api/JUNIPER_DATA_API.md`, `juniper_data/tests/unit/test_lifecycle.py`, `juniper_data/tests/integration/test_lifecycle_api.py`, `juniper_data/generators/xor/`, `juniper_data/tests/unit/test_xor_generator.py`
+- **Modified**: `juniper_data/generators/spiral/params.py` (parameter aliases), `juniper_data/api/routes/health.py` (liveness/readiness probes), `juniper_data/core/models.py` (lifecycle fields), `juniper_data/storage/base.py` (lifecycle methods), `juniper_data/api/routes/datasets.py` (new endpoints), `juniper_data/api/routes/generators.py` (XOR registration)
 
 ---
 
@@ -463,10 +465,10 @@ params = SpiralParams(
 
 ## Version History
 
-| Version    | Date       | Description                        |
-| ---------- | ---------- | ---------------------------------- |
-| Unreleased | 2026-02-05 | Integration Development Plan       |
-| 0.3.0      | 2026-02-04 | Test suite & CI/CD enhancement     |
+| Version    | Date       | Description                                    |
+| ---------- | ---------- | ---------------------------------------------- |
+| 0.4.0      | 2026-02-06 | Integration infrastructure & client library    |
+| 0.3.0      | 2026-02-04 | Test suite & CI/CD enhancement                 |
 | 0.2.2      | 2026-02-02 | Code coverage configuration fix    |
 | 0.2.1      | 2026-02-01 | CI/CD parity across Juniper        |
 | 0.2.0      | 2026-01-31 | Legacy parity mode for spiral      |
