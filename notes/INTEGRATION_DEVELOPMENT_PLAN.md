@@ -5,7 +5,7 @@
 **Author**: Paul Calnon
 **Created**: 2026-02-05
 **Status**: Active Development
-**Last Updated**: 2026-02-06
+**Last Updated**: 2026-02-07
 
 ---
 
@@ -21,17 +21,39 @@ This document compiles all outstanding work items for the JuniperData project, s
 
 ### Current State Summary
 
-| Metric         | Value                                                                 |
-| -------------- | --------------------------------------------------------------------- |
-| Version        | 0.4.0                                                                 |
-| Test Count     | 411 (all passing)                                                     |
-| Code Coverage  | ~95% (core modules)                                                   |
-| mypy Errors    | 0 (all fixed)                                                         |
-| flake8 Issues  | ~9 (all B008 - intentional FastAPI patterns)                          |
-| black/isort    | Clean                                                                 |
-| Python Support | >=3.11 (tested 3.11-3.14)                                             |
-| Generators     | 8 (spiral, xor, gaussian, circles, checkerboard, csv, mnist, arc_agi) |
-| Storage        | 7 (memory, localfs, cached, redis, hf, postgres, kaggle)              |
+| Metric         | Value                                                                                     |
+| -------------- | ----------------------------------------------------------------------------------------- |
+| Version        | 0.4.0                                                                                     |
+| Test Count     | 411 (342 unit + 69 integration, all passing)                                              |
+| Code Coverage  | 60.57% total (**FAILS 80% threshold**); core modules ~95%+; see coverage gaps below       |
+| mypy Errors    | 0 (78 source files)                                                                       |
+| flake8 Issues  | 16 (7 F401 unused imports, 4 E741 ambiguous vars, 1 W293, 1 B007, + B008 intentional)    |
+| black/isort    | Clean                                                                                     |
+| Python Support | >=3.11 (tested 3.11-3.14)                                                                 |
+| Generators     | 5 registered (spiral, xor, gaussian, circles, checkerboard); 3 code-only (csv_import, mnist, arc_agi) |
+| Storage        | 3 tested (memory, localfs, cached); 4 code-only/0% coverage (redis, hf, postgres, kaggle) |
+
+### Coverage Gaps (Modules at 0% Coverage)
+
+| Module | Lines | Status |
+| ------ | ----- | ------ |
+| `generators/arc_agi/` (3 files) | 133 | Code only - no tests, not in GENERATOR_REGISTRY |
+| `generators/mnist/` (3 files) | 63 | Code only - no tests, not in GENERATOR_REGISTRY |
+| `storage/hf_store.py` | 96 | Code only - no tests |
+| `storage/kaggle_store.py` | 127 | Code only - no tests, has F401 unused imports |
+| `storage/postgres_store.py` | 101 | Code only - no tests, has F401 unused imports |
+| `storage/redis_store.py` | 103 | Code only - no tests, has F401 unused imports |
+
+### Partial Coverage Concerns
+
+| Module | Coverage | Notes |
+| ------ | -------- | ----- |
+| `storage/__init__.py` | 52.94% | Conditional imports for optional backends |
+| `storage/cached.py` | 76.47% | Has 11 unit tests but gaps remain |
+| `storage/local_fs.py` | 79.57% | Missing coverage on some error paths |
+| `generators/csv_import/generator.py` | 88.14% | Has 14 unit tests, not in GENERATOR_REGISTRY |
+| `generators/checkerboard/generator.py` | 94.44% | Minor gap on line 88 |
+| `generators/gaussian/generator.py` | 95.52% | Minor gap on line 143 |
 
 ---
 
@@ -397,11 +419,26 @@ The consolidated `juniper-data-client` package includes 35 comprehensive unit te
 
 ### DATA-014: Additional Generator Types
 
-**Priority**: LOW | **Status**: COMPLETE | **Effort**: Large
+**Priority**: LOW | **Status**: IN PROGRESS | **Effort**: Large
 **Source**: JUNIPER_CASCOR_SPIRAL_DATA_GEN_REFACTOR_PLAN.md (Phase 5: Extended Data Sources)
-**Completed**: 2026-02-06
 
-**Current generators**: `spiral`, `xor`, `gaussian`, `circles`, `checkerboard`, `csv_import`, `mnist`, `arc_agi`
+**GENERATOR_REGISTRY** (5 registered, fully functional):
+
+| Generator | Directory | Registered | Tests | Coverage |
+| --------- | --------- | ---------- | ----- | -------- |
+| spiral | `generators/spiral/` | Yes | 43 | 100% |
+| xor | `generators/xor/` | Yes | 18 | 100% |
+| gaussian | `generators/gaussian/` | Yes | 26 | ~96% |
+| circles | `generators/circles/` | Yes | 22 | 100% |
+| checkerboard | `generators/checkerboard/` | Yes | 17 | ~94% |
+
+**Code-only generators** (3 not registered, incomplete):
+
+| Generator | Directory | Registered | Tests | Coverage | Issue |
+| --------- | --------- | ---------- | ----- | -------- | ----- |
+| csv_import | `generators/csv_import/` | **No** | 14 | 88.14% | Not in GENERATOR_REGISTRY; has E741 flake8 warnings |
+| mnist | `generators/mnist/` | **No** | 0 | **0%** | No tests, not registered, requires `datasets` package |
+| arc_agi | `generators/arc_agi/` | **No** | 0 | **0%** | No tests, not registered, requires `datasets` package |
 
 **XOR Generator Added** (2026-02-06):
 
@@ -424,18 +461,25 @@ Created `juniper_data/generators/xor/` package:
 - Balanced classes (2 quadrants each)
 - Configurable margin prevents points too close to axes
 
-**Completed generators** (2026-02-06/07):
+**Other completed generators** (2026-02-06/07):
 
 - **Gaussian blobs** (`generators/gaussian/`): Mixture-of-Gaussians classification with configurable centers, covariance, and noise. 26 unit tests.
 - **Concentric circles** (`generators/circles/`): Binary classification with inner and outer circle classes. 22 unit tests.
 - **Checkerboard** (`generators/checkerboard/`): 2D grid with alternating class squares. 17 unit tests.
-- **CSV/JSON Import** (`generators/csv_import/`): Import custom datasets from CSV/JSON files. 14 unit tests.
-- **MNIST** (`generators/mnist/`): MNIST and Fashion-MNIST via HuggingFace. Requires `datasets` package.
-- **ARC-AGI** (`generators/arc_agi/`): Abstraction and Reasoning Corpus tasks via HuggingFace or local JSON. Requires `datasets` package.
 
-**Remaining potential additions**:
+**Partially complete generators** (code exists, needs finishing):
 
-- Additional specialized datasets (CIFAR, ImageNet subsets, etc.)
+- **CSV/JSON Import** (`generators/csv_import/`): Import custom datasets from CSV/JSON files. 14 unit tests. **Needs: registration in GENERATOR_REGISTRY, fix E741 flake8 warnings.**
+- **MNIST** (`generators/mnist/`): MNIST and Fashion-MNIST via HuggingFace. **Needs: unit tests, registration in GENERATOR_REGISTRY.** Requires `datasets` package.
+- **ARC-AGI** (`generators/arc_agi/`): Abstraction and Reasoning Corpus tasks via HuggingFace or local JSON. **Needs: unit tests, registration in GENERATOR_REGISTRY.** Requires `datasets` package.
+
+**Remaining work to complete DATA-014**:
+
+1. Register `csv_import` in `GENERATOR_REGISTRY` (in `api/routes/generators.py`)
+2. Fix E741 flake8 warnings in `csv_import/generator.py` (lines 172, 176)
+3. Write unit tests for `mnist` generator
+4. Write unit tests for `arc_agi` generator
+5. Register `mnist` and `arc_agi` in `GENERATOR_REGISTRY` (conditional on `datasets` package availability)
 
 **Framework**: The generator plugin architecture (`generators/` package, `GENERATOR_REGISTRY`) supports adding new generators following the established patterns.
 
@@ -443,19 +487,44 @@ Created `juniper_data/generators/xor/` package:
 
 ### DATA-015: Storage Backend Extensions
 
-**Priority**: LOW | **Status**: COMPLETE | **Effort**: Large
+**Priority**: LOW | **Status**: IN PROGRESS | **Effort**: Large
 **Source**: JUNIPER_CASCOR_SPIRAL_DATA_GEN_REFACTOR_PLAN.md (Phase 5)
-**Completed**: 2026-02-07
 
-Current storage backends: `InMemoryDatasetStore`, `LocalFSDatasetStore`.
+Core storage backends: `InMemoryDatasetStore` (100%), `LocalFSDatasetStore` (79.57%).
 
-**Completed implementations** (2026-02-06/07):
+**Storage backend status**:
 
-- **CachedDatasetStore** (`storage/cached.py`): Composable caching wrapper that wraps a primary store with a cache store for read-through caching. Supports write-through mode, cache invalidation, and cache warming. 11 unit tests.
+| Backend | File | Tests | Coverage | Status |
+| ------- | ---- | ----- | -------- | ------ |
+| InMemoryDatasetStore | `storage/memory.py` | 44 (shared) | 100% | Complete |
+| LocalFSDatasetStore | `storage/local_fs.py` | 44 (shared) | 79.57% | Complete (minor gaps) |
+| CachedDatasetStore | `storage/cached.py` | 11 | 76.47% | Partial - needs more test coverage |
+| RedisDatasetStore | `storage/redis_store.py` | 0 | **0%** | Code only - no tests, has F401 warnings |
+| HuggingFaceDatasetStore | `storage/hf_store.py` | 0 | **0%** | Code only - no tests |
+| PostgresDatasetStore | `storage/postgres_store.py` | 0 | **0%** | Code only - no tests, has F401/W293 warnings |
+| KaggleDatasetStore | `storage/kaggle_store.py` | 0 | **0%** | Code only - no tests, has F401/E741 warnings |
+
+**Completed implementations**:
+
+- **CachedDatasetStore** (`storage/cached.py`): Composable caching wrapper that wraps a primary store with a cache store for read-through caching. Supports write-through mode, cache invalidation, and cache warming. 11 unit tests (76.47% coverage).
+
+**Code-only implementations** (0% coverage, no tests):
+
 - **RedisDatasetStore** (`storage/redis_store.py`): Redis-backed storage for distributed deployments. Supports TTL, key prefixes, and connection pooling. Requires optional `redis` package.
 - **HuggingFaceDatasetStore** (`storage/hf_store.py`): Integration with Hugging Face datasets hub. Can load MNIST, Fashion-MNIST, and other datasets. Supports feature extraction, normalization, and one-hot encoding. Requires optional `datasets` package.
 - **PostgresDatasetStore** (`storage/postgres_store.py`): PostgreSQL-backed metadata storage with filesystem artifacts. Full CRUD operations with JSONB params. Requires optional `psycopg2-binary` package.
 - **KaggleDatasetStore** (`storage/kaggle_store.py`): Kaggle API integration for downloading and caching datasets. Supports dataset download, CSV parsing, and competition listing. Requires optional `kaggle` package.
+
+**Remaining work to complete DATA-015**:
+
+1. Write unit tests for `RedisDatasetStore` (mock `redis` package)
+2. Write unit tests for `HuggingFaceDatasetStore` (mock `datasets` package)
+3. Write unit tests for `PostgresDatasetStore` (mock `psycopg2`)
+4. Write unit tests for `KaggleDatasetStore` (mock `kaggle` API)
+5. Fix F401 unused imports in `redis_store.py`, `postgres_store.py`, `kaggle_store.py`
+6. Fix W293 whitespace in `postgres_store.py`
+7. Fix E741 ambiguous variable names in `kaggle_store.py`
+8. Improve `CachedDatasetStore` test coverage from 76.47% to 90%+
 
 **Remaining potential additions**:
 
@@ -605,11 +674,10 @@ Add performance monitoring for the JuniperData service:
 
 These items are explicitly deferred and will be revisited based on project needs.
 
-| ID       | Item                | Source                      | Reason                                   |
-| -------- | ------------------- | --------------------------- | ---------------------------------------- |
-| DATA-018 | IPC Architecture    | PRE-DEPLOYMENT_ROADMAP-2.md | REST sufficient for research workloads   |
-| DATA-014 | Extended Generators | Refactor Plan Phase 5       | Current spiral generator meets all needs |
-| DATA-019 | GPU Acceleration    | PRE-DEPLOYMENT_ROADMAP-2.md | Dataset sizes too small to benefit       |
+| ID       | Item             | Source                      | Reason                                 |
+| -------- | ---------------- | --------------------------- | -------------------------------------- |
+| DATA-018 | IPC Architecture | PRE-DEPLOYMENT_ROADMAP-2.md | REST sufficient for research workloads |
+| DATA-019 | GPU Acceleration | PRE-DEPLOYMENT_ROADMAP-2.md | Dataset sizes too small to benefit     |
 
 ---
 
@@ -639,67 +707,68 @@ These items appear in the reviewed documentation but are owned by JuniperCascor:
 
 ### Items Shared Across Projects
 
-| ID       | Item                         | Owners                                    | Status      |
-| -------- | ---------------------------- | ----------------------------------------- | ----------- |
-| DATA-012 | Client package consolidation | Data, Cascor, Canopy                      | NOT STARTED |
-| DATA-008 | E2E integration tests        | Data (primary), Cascor, Canopy            | NOT STARTED |
-| DATA-006 | Dockerfile                   | Data (primary), Cascor/Canopy (consumers) | NOT STARTED |
+| ID       | Item                         | Owners                                    | Status   |
+| -------- | ---------------------------- | ----------------------------------------- | -------- |
+| DATA-012 | Client package consolidation | Data, Cascor, Canopy                      | COMPLETE |
+| DATA-008 | E2E integration tests        | Data (primary), Cascor, Canopy            | COMPLETE |
+| DATA-006 | Dockerfile                   | Data (primary), Cascor/Canopy (consumers) | COMPLETE |
 
 ---
 
 ## Implementation Priority Matrix
 
-### Immediate (Next Sprint)
+### Immediate (Next Sprint) - Coverage Recovery
 
-| ID       | Item                              | Priority | Effort | Impact       |
-| -------- | --------------------------------- | -------- | ------ | ------------ |
-| DATA-001 | Fix mypy type errors in tests     | HIGH     | Small  | Code quality |
-| DATA-002 | Fix unused imports in datasets.py | HIGH     | Small  | Code quality |
-| DATA-003 | Fix golden dataset fixture issues | MEDIUM   | Small  | Code quality |
+The overall coverage has dropped to 60.57% (below the 80% threshold) due to new modules with 0% test coverage. These must be addressed before any release.
 
-### Short-Term (1-2 Sprints)
+| ID       | Item                                           | Priority | Effort | Impact      |
+| -------- | ---------------------------------------------- | -------- | ------ | ----------- |
+| DATA-015 | Write tests for storage backends (4 at 0%)     | **HIGH** | Large  | Coverage    |
+| DATA-014 | Write tests for mnist/arc_agi generators (0%)  | **HIGH** | Medium | Coverage    |
+| DATA-014 | Register csv_import/mnist/arc_agi in registry  | MEDIUM   | Small  | Capability  |
+| ---      | Fix 16 flake8 issues in new modules            | MEDIUM   | Small  | Code quality |
 
-| ID       | Item                     | Priority | Effort | Impact      |
-| -------- | ------------------------ | -------- | ------ | ----------- |
-| DATA-006 | Create Dockerfile        | HIGH     | Medium | Deployment  |
-| DATA-007 | Health check probes      | HIGH     | Small  | Operations  |
-| DATA-008 | E2E integration tests    | HIGH     | Large  | Reliability |
-| DATA-010 | NPZ schema documentation | MEDIUM   | Small  | Integration |
+### Low Priority (Backlog)
 
-### Medium-Term (3-4 Sprints)
+| ID       | Item                    | Priority | Effort | Impact      |
+| -------- | ----------------------- | -------- | ------ | ----------- |
+| DATA-004 | Address B008 warnings   | LOW      | Small  | Code quality |
+| DATA-005 | Address SIM117 in tests | LOW      | Small  | Code quality |
+| DATA-018 | IPC architecture        | LOW      | Large  | Performance |
+| DATA-019 | GPU acceleration        | LOW      | Large  | Performance |
+| DATA-020 | Continuous profiling    | LOW      | Medium | Operations  |
 
-| ID       | Item                         | Priority | Effort | Impact          |
-| -------- | ---------------------------- | -------- | ------ | --------------- |
-| DATA-009 | API versioning documentation | MEDIUM   | Small  | Maintainability |
-| DATA-011 | Parameter validation parity  | MEDIUM   | Small  | Integration     |
-| DATA-012 | Client package consolidation | MEDIUM   | Large  | Maintainability |
-| DATA-013 | Client test coverage         | MEDIUM   | Medium | Reliability     |
+### Completed Items
 
-### Long-Term (Backlog)
-
-| ID       | Item                         | Priority | Effort | Impact      |
-| -------- | ---------------------------- | -------- | ------ | ----------- |
-| DATA-014 | Additional generators        | LOW      | Large  | Capability  |
-| DATA-015 | Storage extensions           | LOW      | Large  | Scalability |
-| DATA-016 | Dataset lifecycle management | LOW      | Medium | Operations  |
-| DATA-017 | API rate limiting/auth       | LOW      | Medium | Security    |
-| DATA-018 | IPC architecture             | LOW      | Large  | Performance |
-| DATA-019 | GPU acceleration             | LOW      | Large  | Performance |
-| DATA-020 | Continuous profiling         | LOW      | Medium | Operations  |
+| ID       | Item                         | Completed  |
+| -------- | ---------------------------- | ---------- |
+| DATA-001 | Fix mypy type errors         | 2026-02-05 |
+| DATA-002 | Fix unused imports           | 2026-02-05 |
+| DATA-003 | Fix golden dataset issues    | 2026-02-05 |
+| DATA-006 | Create Dockerfile            | 2026-02-05 |
+| DATA-007 | Health check probes          | 2026-02-05 |
+| DATA-008 | E2E integration tests        | 2026-02-05 |
+| DATA-009 | API versioning docs          | 2026-02-05 |
+| DATA-010 | NPZ schema docs              | 2026-02-05 |
+| DATA-011 | Parameter validation parity  | 2026-02-05 |
+| DATA-012 | Client package consolidation | 2026-02-06 |
+| DATA-013 | Client test coverage         | 2026-02-06 |
+| DATA-016 | Dataset lifecycle management | 2026-02-06 |
+| DATA-017 | API rate limiting/auth       | 2026-02-06 |
 
 ---
 
 ## Summary Statistics
 
-| Category                    | Count                                                                               |
-| --------------------------- | ----------------------------------------------------------------------------------- |
-| Total Items                 | 20                                                                                  |
-| COMPLETE                    | 15 (DATA-001, 002, 003, 006, 007, 008, 009, 010, 011, 012, 013, 014, 015, 016, 017) |
-| HIGH Priority (Remaining)   | 0                                                                                   |
-| MEDIUM Priority (Remaining) | 0                                                                                   |
-| LOW Priority                | 2 (DATA-004, 005)                                                                   |
-| DEFERRED                    | 3 (DATA-018, 019, 020)                                                              |
-| Cross-Project References    | 10 (CAS: 5, CAN: 5)                                                                 |
+| Category                    | Count                                                                          |
+| --------------------------- | ------------------------------------------------------------------------------ |
+| Total Items                 | 20                                                                             |
+| COMPLETE                    | 13 (DATA-001, 002, 003, 006, 007, 008, 009, 010, 011, 012, 013, 016, 017)     |
+| IN PROGRESS                 | 2 (DATA-014, 015) - code exists but missing tests/registration/coverage        |
+| NOT STARTED (Low Priority)  | 2 (DATA-004, 005)                                                              |
+| DEFERRED                    | 3 (DATA-018, 019, 020)                                                         |
+| Cross-Project References    | 10 (CAS: 5, CAN: 5)                                                           |
+| **Coverage Status**         | **60.57% total (FAILS 80% threshold)** - 623 untested lines in 6 new modules  |
 
 ---
 
@@ -719,3 +788,8 @@ These items appear in the reviewed documentation but are owned by JuniperCascor:
 | 2026-02-06 | AI Agent    | DATA-015 IN PROGRESS - Added CachedDatasetStore, RedisDatasetStore, HuggingFaceDatasetStore           |
 | 2026-02-07 | AI Agent    | Completed DATA-014 - Added Checkerboard, CSV/JSON import, MNIST, ARC-AGI generators                   |
 | 2026-02-07 | AI Agent    | Completed DATA-015 - Added PostgresDatasetStore and KaggleDatasetStore                                |
+| 2026-02-07 | AI Agent    | **Validation audit**: DATA-014 reverted to IN PROGRESS (3 generators not registered, 2 have 0% tests) |
+| 2026-02-07 | AI Agent    | **Validation audit**: DATA-015 reverted to IN PROGRESS (4 backends at 0% coverage, no tests)          |
+| 2026-02-07 | AI Agent    | Updated Current State Summary with actual metrics: 60.57% coverage, 16 flake8 issues, coverage gaps   |
+| 2026-02-07 | AI Agent    | Fixed stale cross-project references (DATA-006/008/012 were COMPLETE, not NOT STARTED)                |
+| 2026-02-07 | AI Agent    | Removed DATA-014 from Deferred Items table (it's IN PROGRESS, not deferred)                            |
