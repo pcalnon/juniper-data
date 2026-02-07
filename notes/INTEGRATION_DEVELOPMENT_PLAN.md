@@ -24,12 +24,14 @@ This document compiles all outstanding work items for the JuniperData project, s
 | Metric         | Value                                        |
 | -------------- | -------------------------------------------- |
 | Version        | 0.4.0                                        |
-| Test Count     | 290 (233 unit + 57 integration, all passing) |
-| Code Coverage  | 97.47%                                       |
+| Test Count     | 380 (296 unit + 84 integration, all passing) |
+| Code Coverage  | 96.26% (core modules)                        |
 | mypy Errors    | 0 (all fixed)                                |
 | flake8 Issues  | ~9 (all B008 - intentional FastAPI patterns) |
 | black/isort    | Clean                                        |
 | Python Support | >=3.11 (tested 3.11-3.14)                    |
+| Generators     | 4 (spiral, xor, gaussian, circles)           |
+| Storage        | 5 (memory, localfs, cached, redis, hf)       |
 
 ---
 
@@ -395,11 +397,11 @@ The consolidated `juniper-data-client` package includes 35 comprehensive unit te
 
 ### DATA-014: Additional Generator Types
 
-**Priority**: LOW | **Status**: IN PROGRESS | **Effort**: Large
+**Priority**: LOW | **Status**: COMPLETE | **Effort**: Large
 **Source**: JUNIPER_CASCOR_SPIRAL_DATA_GEN_REFACTOR_PLAN.md (Phase 5: Extended Data Sources)
-**Updated**: 2026-02-06
+**Completed**: 2026-02-06
 
-**Current generators**: `spiral`, `xor`
+**Current generators**: `spiral`, `xor`, `gaussian`, `circles`
 
 **XOR Generator Added** (2026-02-06):
 
@@ -422,13 +424,16 @@ Created `juniper_data/generators/xor/` package:
 - Balanced classes (2 quadrants each)
 - Configurable margin prevents points too close to axes
 
+**Completed generators** (2026-02-06):
+
+- **Gaussian blobs** (`generators/gaussian/`): Mixture-of-Gaussians classification with configurable centers, covariance, and noise. 26 unit tests.
+- **Concentric circles** (`generators/circles/`): Binary classification with inner and outer circle classes. 22 unit tests.
+
 **Remaining potential additions**:
 
-- Gaussian mixture models
-- Concentric circles/rings
 - Checkerboard pattern
 - Custom CSV/JSON import
-- MNIST and related datasets
+- MNIST and related datasets (via HuggingFace integration in DATA-015)
 - ARC-AGI-1, ARC-AGI-2, ARC-AGI-3 datasets
 
 **Framework**: The generator plugin architecture (`generators/` package, `GENERATOR_REGISTRY`) supports adding new generators following the established patterns.
@@ -437,20 +442,25 @@ Created `juniper_data/generators/xor/` package:
 
 ### DATA-015: Storage Backend Extensions
 
-**Priority**: LOW | **Status**: NOT STARTED | **Effort**: Large
+**Priority**: LOW | **Status**: IN PROGRESS | **Effort**: Large
 **Source**: JUNIPER_CASCOR_SPIRAL_DATA_GEN_REFACTOR_PLAN.md (Phase 5)
+**Updated**: 2026-02-06
 
 Current storage backends: `InMemoryDatasetStore`, `LocalFSDatasetStore`.
 
-**Potential additions**:
+**Completed implementations** (2026-02-06):
+
+- **CachedDatasetStore** (`storage/cached.py`): Composable caching wrapper that wraps a primary store with a cache store for read-through caching. Supports write-through mode, cache invalidation, and cache warming. 11 unit tests.
+- **RedisDatasetStore** (`storage/redis_store.py`): Redis-backed storage for distributed deployments. Supports TTL, key prefixes, and connection pooling. Requires optional `redis` package.
+- **HuggingFaceDatasetStore** (`storage/hf_store.py`): Integration with Hugging Face datasets hub. Can load MNIST, Fashion-MNIST, and other datasets. Supports feature extraction, normalization, and one-hot encoding. Requires optional `datasets` package.
+
+**Remaining potential additions**:
 
 - S3/GCS object storage
 - Database-backed metadata store (SQLite/PostgreSQL)
-- HuggingFace Datasets integration
 - Kaggle Dataset API
   - API Connection info located in file:
     - JuniperData/Kaggle_Dataset_API.md
-- Redis-based caching layer
 
 **Framework**: The `DatasetStore` abstract base class already defines the interface for new backends.
 
@@ -507,14 +517,42 @@ Added comprehensive lifecycle management features to JuniperData:
 
 ### DATA-017: API Rate Limiting and Authentication
 
-**Priority**: LOW | **Status**: NOT STARTED | **Effort**: Medium
+**Priority**: LOW | **Status**: COMPLETE | **Effort**: Medium
 **Source**: Source code review, PRE-DEPLOYMENT_ROADMAP.md
+**Completed**: 2026-02-06
 
-The API has no authentication or rate limiting. For internal use this is acceptable, but for any external exposure:
+**Resolution Applied**:
 
-- Add API key authentication
-- Add rate limiting middleware
-- Add request logging/auditing
+Implemented comprehensive API security features:
+
+**API Key Authentication** (`api/security.py`):
+
+- `APIKeyAuth` class validates requests against configured API keys
+- Header-based authentication: `X-API-Key: <key>`
+- Configurable via `JUNIPER_DATA_API_KEYS` environment variable (comma-separated)
+- Disabled by default for development (open access mode)
+
+**Rate Limiting** (`api/security.py`):
+
+- `RateLimiter` class implements fixed-window rate limiting
+- Configurable via `JUNIPER_DATA_RATE_LIMIT_ENABLED` and `JUNIPER_DATA_RATE_LIMIT_REQUESTS_PER_MINUTE`
+- Per-client tracking (by API key or IP address)
+- Thread-safe implementation for single-process deployments
+- Returns standard rate limit headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
+
+**Security Middleware** (`api/middleware.py`):
+
+- `SecurityMiddleware` applies auth and rate limiting to all requests
+- Exempt paths: `/v1/health`, `/v1/health/live`, `/v1/health/ready`, `/docs`, `/openapi.json`, `/redoc`
+- Proper error responses with JSON body and appropriate headers
+
+**Settings** (`api/settings.py`):
+
+- `api_keys: Optional[list[str]]` - List of valid API keys
+- `rate_limit_enabled: bool` - Enable/disable rate limiting
+- `rate_limit_requests_per_minute: int` - Max requests per minute
+
+**Test coverage**: 31 tests (19 unit + 12 integration)
 
 ---
 
@@ -656,10 +694,11 @@ These items appear in the reviewed documentation but are owned by JuniperCascor:
 | Category                    | Count                                                                          |
 | --------------------------- | ------------------------------------------------------------------------------ |
 | Total Items                 | 20                                                                             |
-| COMPLETE                    | 12 (DATA-001, 002, 003, 006, 007, 008, 009, 010, 011, 012, 013, 016)           |
+| COMPLETE                    | 14 (DATA-001, 002, 003, 006, 007, 008, 009, 010, 011, 012, 013, 014, 016, 017) |
+| IN PROGRESS                 | 1 (DATA-015)                                                                   |
 | HIGH Priority (Remaining)   | 0                                                                              |
 | MEDIUM Priority (Remaining) | 0                                                                              |
-| LOW Priority                | 5 (DATA-004, 005, 014, 015, 017)                                               |
+| LOW Priority                | 2 (DATA-004, 005)                                                              |
 | DEFERRED                    | 3 (DATA-018, 019, 020)                                                         |
 | Cross-Project References    | 10 (CAS: 5, CAN: 5)                                                            |
 
@@ -676,3 +715,6 @@ These items appear in the reviewed documentation but are owned by JuniperCascor:
 | 2026-02-06 | AI Agent    | Completed DATA-012, 013 - Created juniper-data-client package with 35 tests (96% coverage)            |
 | 2026-02-06 | AI Agent    | Completed DATA-016 - Dataset lifecycle management (TTL, filtering, batch delete, tags, stats)         |
 | 2026-02-06 | AI Agent    | DATA-014 IN PROGRESS - Added XOR generator with 18 tests                                              |
+| 2026-02-06 | AI Agent    | Completed DATA-014 - Added Gaussian blobs (26 tests) and Concentric circles (22 tests) generators     |
+| 2026-02-06 | AI Agent    | Completed DATA-017 - API security (API key auth, rate limiting middleware, 31 tests)                  |
+| 2026-02-06 | AI Agent    | DATA-015 IN PROGRESS - Added CachedDatasetStore, RedisDatasetStore, HuggingFaceDatasetStore           |

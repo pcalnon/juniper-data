@@ -12,7 +12,9 @@ from fastapi.responses import JSONResponse
 from juniper_data import __version__
 from juniper_data.storage import LocalFSDatasetStore
 
+from .middleware import SecurityMiddleware
 from .routes import datasets, generators, health
+from .security import APIKeyAuth, RateLimiter
 from .settings import Settings, get_settings
 
 
@@ -65,6 +67,17 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+    )
+
+    api_key_auth = APIKeyAuth(settings.api_keys)
+    rate_limiter = RateLimiter(
+        requests_per_minute=settings.rate_limit_requests_per_minute,
+        enabled=settings.rate_limit_enabled,
+    )
+    app.add_middleware(
+        SecurityMiddleware,
+        api_key_auth=api_key_auth,
+        rate_limiter=rate_limiter,
     )
 
     app.include_router(health.router, prefix="/v1")

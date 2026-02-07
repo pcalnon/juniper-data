@@ -1,11 +1,14 @@
 """Generator endpoints for listing and describing available generators."""
 
-# from typing import Any, Dict, List
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
 from juniper_data.core.models import GeneratorInfo
+from juniper_data.generators.circles import VERSION as CIRCLES_VERSION
+from juniper_data.generators.circles import CirclesGenerator, CirclesParams
+from juniper_data.generators.gaussian import VERSION as GAUSSIAN_VERSION
+from juniper_data.generators.gaussian import GaussianGenerator, GaussianParams
 from juniper_data.generators.spiral import VERSION as SPIRAL_VERSION
 from juniper_data.generators.spiral import SpiralGenerator, SpiralParams
 from juniper_data.generators.xor import VERSION as XOR_VERSION
@@ -18,13 +21,29 @@ GENERATOR_REGISTRY: dict[str, dict[str, Any]] = {
         "generator": SpiralGenerator,
         "params_class": SpiralParams,
         "version": SPIRAL_VERSION,
-        "description": "Multi-spiral classification dataset generator. " "Generates N interleaved spiral arms with configurable points, rotations, and noise.",
+        "description": "Multi-spiral classification dataset generator. "
+        "Generates N interleaved spiral arms with configurable points, rotations, and noise.",
     },
     "xor": {
         "generator": XorGenerator,
         "params_class": XorParams,
         "version": XOR_VERSION,
-        "description": "XOR classification dataset generator. " "Generates points in 4 quadrants with opposite classes in diagonal quadrants.",
+        "description": "XOR classification dataset generator. "
+        "Generates points in 4 quadrants with opposite classes in diagonal quadrants.",
+    },
+    "gaussian": {
+        "generator": GaussianGenerator,
+        "params_class": GaussianParams,
+        "version": GAUSSIAN_VERSION,
+        "description": "Gaussian blobs classification dataset generator. "
+        "Generates mixture-of-Gaussians with configurable centers and covariance.",
+    },
+    "circles": {
+        "generator": CirclesGenerator,
+        "params_class": CirclesParams,
+        "version": CIRCLES_VERSION,
+        "description": "Concentric circles classification dataset generator. "
+        "Generates binary classification with inner and outer circle classes.",
     },
 }
 
