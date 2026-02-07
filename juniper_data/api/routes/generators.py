@@ -5,6 +5,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 
 from juniper_data.core.models import GeneratorInfo
+from juniper_data.generators.checkerboard import VERSION as CHECKERBOARD_VERSION
+from juniper_data.generators.checkerboard import CheckerboardGenerator, CheckerboardParams
 from juniper_data.generators.circles import VERSION as CIRCLES_VERSION
 from juniper_data.generators.circles import CirclesGenerator, CirclesParams
 from juniper_data.generators.gaussian import VERSION as GAUSSIAN_VERSION
@@ -44,6 +46,13 @@ GENERATOR_REGISTRY: dict[str, dict[str, Any]] = {
         "version": CIRCLES_VERSION,
         "description": "Concentric circles classification dataset generator. "
         "Generates binary classification with inner and outer circle classes.",
+    },
+    "checkerboard": {
+        "generator": CheckerboardGenerator,
+        "params_class": CheckerboardParams,
+        "version": CHECKERBOARD_VERSION,
+        "description": "Checkerboard pattern classification dataset generator. "
+        "Generates 2D grid with alternating class squares.",
     },
 }
 

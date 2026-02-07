@@ -21,17 +21,17 @@ This document compiles all outstanding work items for the JuniperData project, s
 
 ### Current State Summary
 
-| Metric         | Value                                        |
-| -------------- | -------------------------------------------- |
-| Version        | 0.4.0                                        |
-| Test Count     | 380 (296 unit + 84 integration, all passing) |
-| Code Coverage  | 96.26% (core modules)                        |
-| mypy Errors    | 0 (all fixed)                                |
-| flake8 Issues  | ~9 (all B008 - intentional FastAPI patterns) |
-| black/isort    | Clean                                        |
-| Python Support | >=3.11 (tested 3.11-3.14)                    |
-| Generators     | 4 (spiral, xor, gaussian, circles)           |
-| Storage        | 5 (memory, localfs, cached, redis, hf)       |
+| Metric         | Value                                                         |
+| -------------- | ------------------------------------------------------------- |
+| Version        | 0.4.0                                                         |
+| Test Count     | 411 (all passing)                                             |
+| Code Coverage  | ~95% (core modules)                                           |
+| mypy Errors    | 0 (all fixed)                                                 |
+| flake8 Issues  | ~9 (all B008 - intentional FastAPI patterns)                  |
+| black/isort    | Clean                                                         |
+| Python Support | >=3.11 (tested 3.11-3.14)                                     |
+| Generators     | 8 (spiral, xor, gaussian, circles, checkerboard, csv, mnist, arc_agi) |
+| Storage        | 7 (memory, localfs, cached, redis, hf, postgres, kaggle)      |
 
 ---
 
@@ -401,7 +401,7 @@ The consolidated `juniper-data-client` package includes 35 comprehensive unit te
 **Source**: JUNIPER_CASCOR_SPIRAL_DATA_GEN_REFACTOR_PLAN.md (Phase 5: Extended Data Sources)
 **Completed**: 2026-02-06
 
-**Current generators**: `spiral`, `xor`, `gaussian`, `circles`
+**Current generators**: `spiral`, `xor`, `gaussian`, `circles`, `checkerboard`, `csv_import`, `mnist`, `arc_agi`
 
 **XOR Generator Added** (2026-02-06):
 
@@ -424,17 +424,18 @@ Created `juniper_data/generators/xor/` package:
 - Balanced classes (2 quadrants each)
 - Configurable margin prevents points too close to axes
 
-**Completed generators** (2026-02-06):
+**Completed generators** (2026-02-06/07):
 
 - **Gaussian blobs** (`generators/gaussian/`): Mixture-of-Gaussians classification with configurable centers, covariance, and noise. 26 unit tests.
 - **Concentric circles** (`generators/circles/`): Binary classification with inner and outer circle classes. 22 unit tests.
+- **Checkerboard** (`generators/checkerboard/`): 2D grid with alternating class squares. 17 unit tests.
+- **CSV/JSON Import** (`generators/csv_import/`): Import custom datasets from CSV/JSON files. 14 unit tests.
+- **MNIST** (`generators/mnist/`): MNIST and Fashion-MNIST via HuggingFace. Requires `datasets` package.
+- **ARC-AGI** (`generators/arc_agi/`): Abstraction and Reasoning Corpus tasks via HuggingFace or local JSON. Requires `datasets` package.
 
 **Remaining potential additions**:
 
-- Checkerboard pattern
-- Custom CSV/JSON import
-- MNIST and related datasets (via HuggingFace integration in DATA-015)
-- ARC-AGI-1, ARC-AGI-2, ARC-AGI-3 datasets
+- Additional specialized datasets (CIFAR, ImageNet subsets, etc.)
 
 **Framework**: The generator plugin architecture (`generators/` package, `GENERATOR_REGISTRY`) supports adding new generators following the established patterns.
 
@@ -442,25 +443,24 @@ Created `juniper_data/generators/xor/` package:
 
 ### DATA-015: Storage Backend Extensions
 
-**Priority**: LOW | **Status**: IN PROGRESS | **Effort**: Large
+**Priority**: LOW | **Status**: COMPLETE | **Effort**: Large
 **Source**: JUNIPER_CASCOR_SPIRAL_DATA_GEN_REFACTOR_PLAN.md (Phase 5)
-**Updated**: 2026-02-06
+**Completed**: 2026-02-07
 
 Current storage backends: `InMemoryDatasetStore`, `LocalFSDatasetStore`.
 
-**Completed implementations** (2026-02-06):
+**Completed implementations** (2026-02-06/07):
 
 - **CachedDatasetStore** (`storage/cached.py`): Composable caching wrapper that wraps a primary store with a cache store for read-through caching. Supports write-through mode, cache invalidation, and cache warming. 11 unit tests.
 - **RedisDatasetStore** (`storage/redis_store.py`): Redis-backed storage for distributed deployments. Supports TTL, key prefixes, and connection pooling. Requires optional `redis` package.
 - **HuggingFaceDatasetStore** (`storage/hf_store.py`): Integration with Hugging Face datasets hub. Can load MNIST, Fashion-MNIST, and other datasets. Supports feature extraction, normalization, and one-hot encoding. Requires optional `datasets` package.
+- **PostgresDatasetStore** (`storage/postgres_store.py`): PostgreSQL-backed metadata storage with filesystem artifacts. Full CRUD operations with JSONB params. Requires optional `psycopg2-binary` package.
+- **KaggleDatasetStore** (`storage/kaggle_store.py`): Kaggle API integration for downloading and caching datasets. Supports dataset download, CSV parsing, and competition listing. Requires optional `kaggle` package.
 
 **Remaining potential additions**:
 
 - S3/GCS object storage
-- Database-backed metadata store (SQLite/PostgreSQL)
-- Kaggle Dataset API
-  - API Connection info located in file:
-    - JuniperData/Kaggle_Dataset_API.md
+- SQLite database backend (lightweight alternative to PostgreSQL)
 
 **Framework**: The `DatasetStore` abstract base class already defines the interface for new backends.
 
@@ -691,16 +691,15 @@ These items appear in the reviewed documentation but are owned by JuniperCascor:
 
 ## Summary Statistics
 
-| Category                    | Count                                                                          |
-| --------------------------- | ------------------------------------------------------------------------------ |
-| Total Items                 | 20                                                                             |
-| COMPLETE                    | 14 (DATA-001, 002, 003, 006, 007, 008, 009, 010, 011, 012, 013, 014, 016, 017) |
-| IN PROGRESS                 | 1 (DATA-015)                                                                   |
-| HIGH Priority (Remaining)   | 0                                                                              |
-| MEDIUM Priority (Remaining) | 0                                                                              |
-| LOW Priority                | 2 (DATA-004, 005)                                                              |
-| DEFERRED                    | 3 (DATA-018, 019, 020)                                                         |
-| Cross-Project References    | 10 (CAS: 5, CAN: 5)                                                            |
+| Category                    | Count                                                                               |
+| --------------------------- | ----------------------------------------------------------------------------------- |
+| Total Items                 | 20                                                                                  |
+| COMPLETE                    | 15 (DATA-001, 002, 003, 006, 007, 008, 009, 010, 011, 012, 013, 014, 015, 016, 017) |
+| HIGH Priority (Remaining)   | 0                                                                                   |
+| MEDIUM Priority (Remaining) | 0                                                                                   |
+| LOW Priority                | 2 (DATA-004, 005)                                                                   |
+| DEFERRED                    | 3 (DATA-018, 019, 020)                                                              |
+| Cross-Project References    | 10 (CAS: 5, CAN: 5)                                                                 |
 
 ---
 
@@ -718,3 +717,5 @@ These items appear in the reviewed documentation but are owned by JuniperCascor:
 | 2026-02-06 | AI Agent    | Completed DATA-014 - Added Gaussian blobs (26 tests) and Concentric circles (22 tests) generators     |
 | 2026-02-06 | AI Agent    | Completed DATA-017 - API security (API key auth, rate limiting middleware, 31 tests)                  |
 | 2026-02-06 | AI Agent    | DATA-015 IN PROGRESS - Added CachedDatasetStore, RedisDatasetStore, HuggingFaceDatasetStore           |
+| 2026-02-07 | AI Agent    | Completed DATA-014 - Added Checkerboard, CSV/JSON import, MNIST, ARC-AGI generators                   |
+| 2026-02-07 | AI Agent    | Completed DATA-015 - Added PostgresDatasetStore and KaggleDatasetStore                                |

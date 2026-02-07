@@ -43,3 +43,35 @@ def get_hf_store(**kwargs):  # type: ignore[no-untyped-def]
     """
     from juniper_data.storage.hf_store import HuggingFaceDatasetStore
     return HuggingFaceDatasetStore(**kwargs)
+
+
+def get_postgres_store(**kwargs):  # type: ignore[no-untyped-def]
+    """Get a PostgreSQL dataset store (requires psycopg2 package).
+
+    Args:
+        **kwargs: Arguments passed to PostgresDatasetStore.
+
+    Returns:
+        PostgresDatasetStore instance.
+
+    Raises:
+        ImportError: If psycopg2 package is not installed.
+    """
+    from juniper_data.storage.postgres_store import PostgresDatasetStore
+    return PostgresDatasetStore(**kwargs)
+
+
+def get_kaggle_store(**kwargs):  # type: ignore[no-untyped-def]
+    """Get a Kaggle dataset store (requires kaggle package).
+
+    Args:
+        **kwargs: Arguments passed to KaggleDatasetStore.
+
+    Returns:
+        KaggleDatasetStore instance.
+
+    Raises:
+        ImportError: If kaggle package is not installed.
+    """
+    from juniper_data.storage.kaggle_store import KaggleDatasetStore
+    return KaggleDatasetStore(**kwargs)
