@@ -315,7 +315,8 @@ class TestLocalFSDatasetStore:
     @pytest.mark.unit
     def test_delete_nonexistent(self, fs_store: LocalFSDatasetStore):
         """Test deleting a nonexistent dataset returns False."""
-        assert fs_store.delete("nonexistent") is False
+        deleted = fs_store.delete("nonexistent")
+        assert deleted is False
 
     @pytest.mark.unit
     def test_delete_partial_files(self, fs_store: LocalFSDatasetStore, sample_meta: DatasetMeta, sample_arrays: Dict[str, np.ndarray]):
