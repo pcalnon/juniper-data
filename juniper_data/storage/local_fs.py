@@ -8,6 +8,7 @@ from pathlib import Path
 # from typing import Any, Dict, List, Optional
 from typing import Any
 
+import logging
 import numpy as np
 
 from juniper_data.core.models import DatasetMeta
@@ -95,11 +96,19 @@ class LocalFSDatasetStore(DatasetStore):
             try:
                 tmp_meta_path.unlink(missing_ok=True)
             except OSError:
-                pass
+                logging.debug(
+                    "Failed to remove temporary metadata file %s during cleanup",
+                    tmp_meta_path,
+                    exc_info=True,
+                )
             try:
                 tmp_npz_path.unlink(missing_ok=True)
             except OSError:
-                pass
+                logging.debug(
+                    "Failed to remove temporary NPZ file %s during cleanup",
+                    tmp_npz_path,
+                    exc_info=True,
+                )
             raise
     def get_meta(self, dataset_id: str) -> DatasetMeta | None:
         """Get dataset metadata from filesystem.
