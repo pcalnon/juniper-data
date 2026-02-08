@@ -1,9 +1,9 @@
 """Health check endpoints for container orchestration.
 
 Provides three health check endpoints:
-- /health: Combined health check (backward compatible)
-- /health/live: Liveness probe - is the process running?
-- /health/ready: Readiness probe - is the service ready to accept traffic?
+- /v1/health: Combined health check (backward compatible)
+- /v1/health/live: Liveness probe - is the process running?
+- /v1/health/ready: Readiness probe - is the service ready to accept traffic?
 """
 
 from fastapi import APIRouter
