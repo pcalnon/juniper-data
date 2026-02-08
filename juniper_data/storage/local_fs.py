@@ -117,9 +117,6 @@ class LocalFSDatasetStore(DatasetStore):
         meta_json = meta_path.read_text(encoding="utf-8")
         meta_dict = json.loads(meta_json)
 
-        if "created_at" in meta_dict and isinstance(meta_dict["created_at"], str):
-            meta_dict["created_at"] = datetime.fromisoformat(meta_dict["created_at"])
-
         return DatasetMeta(**meta_dict)
 
     def get_artifact_bytes(self, dataset_id: str) -> bytes | None:
