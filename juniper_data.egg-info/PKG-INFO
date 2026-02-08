@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: juniper-data
-Version: 0.2.0
+Version: 0.0.0+local
 Summary: Dataset generation and management service for the Juniper ecosystem
 Author: Paul Calnon
 License: MIT
