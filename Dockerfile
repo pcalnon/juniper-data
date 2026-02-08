@@ -31,7 +31,7 @@ FROM python:3.11-slim AS runtime
 # Labels for container metadata
 LABEL org.opencontainers.image.title="JuniperData"
 LABEL org.opencontainers.image.description="Dataset generation service for the Juniper ecosystem"
-LABEL org.opencontainers.image.version="0.3.0"
+LABEL org.opencontainers.image.version="0.4.0"
 LABEL org.opencontainers.image.authors="Paul Calnon"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.source="https://github.com/pcalnon/Juniper"
