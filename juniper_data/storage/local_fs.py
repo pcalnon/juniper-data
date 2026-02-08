@@ -66,18 +66,41 @@ class LocalFSDatasetStore(DatasetStore):
         meta_path = self._meta_path(dataset_id)
         npz_path = self._npz_path(dataset_id)
 
+        # Write to temporary files first, then atomically replace the final files
+        tmp_meta_path = meta_path.with_suffix(meta_path.suffix + ".tmp")
+        tmp_npz_path = npz_path.with_suffix(npz_path.suffix + ".tmp")
+
         meta_json = json.dumps(
             meta.model_dump(),
             default=_json_serializer,
             indent=2,
         )
-        meta_path.write_text(meta_json, encoding="utf-8")
 
-        buffer = io.BytesIO()
-        np.savez_compressed(buffer, **arrays)  # type: ignore[arg-type]  # numpy stubs incomplete for **kwargs
-        buffer.seek(0)
-        npz_path.write_bytes(buffer.read())
+        try:
+            # Write metadata JSON to temporary file
+            tmp_meta_path.write_text(meta_json, encoding="utf-8")
 
+            # Write NPZ data to temporary file
+            buffer = io.BytesIO()
+            np.savez_compressed(buffer, **arrays)  # type: ignore[arg-type]  # numpy stubs incomplete for **kwargs
+            buffer.seek(0)
+            tmp_npz_path.write_bytes(buffer.read())
+
+            # Atomically replace final files with the temporary ones.
+            # Write NPZ first so we never have metadata without its NPZ.
+            tmp_npz_path.replace(npz_path)
+            tmp_meta_path.replace(meta_path)
+        except Exception:
+            # Best-effort cleanup of temporary files on failure
+            try:
+                tmp_meta_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            try:
+                tmp_npz_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise
     def get_meta(self, dataset_id: str) -> DatasetMeta | None:
         """Get dataset metadata from filesystem.
 
