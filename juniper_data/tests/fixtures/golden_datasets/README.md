@@ -80,8 +80,13 @@ Note: Due to shuffling and train/test split, exact distributions may vary slight
 To regenerate the golden datasets from JuniperCascor:
 
 ```bash
-cd /home/pcalnon/Development/python/Juniper/JuniperCascor/juniper_cascor/src
-python /home/pcalnon/Development/python/Juniper/JuniperData/tests/fixtures/generate_golden_datasets.py
+# Set these to the appropriate locations on your system or in CI:
+export JUNIPER_CASCOR_SRC=/path/to/JuniperCascor/juniper_cascor/src
+export JUNIPER_DATA_ROOT=/path/to/JuniperData
+
+# From the JuniperCascor source directory, run the generator script from this repo:
+cd "$JUNIPER_CASCOR_SRC"
+python "$JUNIPER_DATA_ROOT/juniper_data/tests/fixtures/generate_golden_datasets.py"
 ```
 
 ## Usage in Tests
