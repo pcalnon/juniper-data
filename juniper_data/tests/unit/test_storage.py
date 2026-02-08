@@ -323,7 +323,8 @@ class TestLocalFSDatasetStore:
         """Test deleting when only meta file exists."""
         fs_store.save("ds-001", sample_meta, sample_arrays)
 
-        (fs_store.base_path / "ds-001.npz").unlink()
+        deleted = fs_store.delete("ds-001")
+        assert deleted is True
         assert fs_store.delete("ds-001") is True
         assert not (fs_store.base_path / "ds-001.meta.json").exists()
 
