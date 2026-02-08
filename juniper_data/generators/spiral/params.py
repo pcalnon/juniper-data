@@ -10,7 +10,7 @@ Parameter Aliases:
     - `noise_level` -> `noise`
 """
 
-from typing import Any, Dict, Literal, Optional, Tuple
+from typing import Dict, Literal, Optional, Tuple
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
