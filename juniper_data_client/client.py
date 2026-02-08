@@ -149,7 +149,9 @@ class JuniperDataClient:
             if "detail" in error_json:
                 error_detail = error_json["detail"]
         except (ValueError, KeyError):
-            pass
+            # If the response body is not valid JSON or lacks a 'detail' field,
+            # fall back to using the raw response text as the error detail.
+            error_detail = response.text
 
         if response.status_code == 404:
             raise JuniperDataNotFoundError(f"Resource not found: {error_detail}")
