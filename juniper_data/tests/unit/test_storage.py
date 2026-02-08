@@ -129,7 +129,8 @@ class TestInMemoryDatasetStore:
     @pytest.mark.unit
     def test_delete_nonexistent(self, memory_store: InMemoryDatasetStore):
         """Test deleting a nonexistent dataset returns False."""
-        assert memory_store.delete("nonexistent") is False
+        deleted = memory_store.delete("nonexistent")
+        assert deleted is False
 
     @pytest.mark.unit
     def test_list_datasets_empty(self, memory_store: InMemoryDatasetStore):
