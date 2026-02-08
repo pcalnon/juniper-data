@@ -121,7 +121,8 @@ class TestInMemoryDatasetStore:
     def test_delete_existing(self, memory_store: InMemoryDatasetStore, sample_meta: DatasetMeta, sample_arrays: Dict[str, np.ndarray]):
         """Test deleting an existing dataset returns True."""
         memory_store.save("ds-001", sample_meta, sample_arrays)
-        assert memory_store.delete("ds-001") is True
+        deleted = memory_store.delete("ds-001")
+        assert deleted is True
         assert memory_store.exists("ds-001") is False
         assert memory_store.get_meta("ds-001") is None
 
