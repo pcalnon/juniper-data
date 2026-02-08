@@ -59,7 +59,7 @@ git --version
 cd ~/Development/python/Juniper/JuniperCanopy
 
 # Clone from Juniper repository
-git clone <https://github.com/pcalnon/Juniper.git>
+git clone https://github.com/pcalnon/Juniper.git
 ```
 
 ### Step 2: Navigate to Project
