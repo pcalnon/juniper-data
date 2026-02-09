@@ -465,16 +465,16 @@ params = SpiralParams(
 
 ## Version History
 
-| Version    | Date       | Description                                    |
-| ---------- | ---------- | ---------------------------------------------- |
-| 0.4.0      | 2026-02-06 | Integration infrastructure & client library    |
-| 0.3.0      | 2026-02-04 | Test suite & CI/CD enhancement                 |
-| 0.2.2      | 2026-02-02 | Code coverage configuration fix    |
-| 0.2.1      | 2026-02-01 | CI/CD parity across Juniper        |
-| 0.2.0      | 2026-01-31 | Legacy parity mode for spiral      |
-| 0.1.2      | 2026-01-31 | Conda environment setup            |
-| 0.1.1      | 2026-01-30 | CI/CD Pipeline & Pre-commit        |
-| 0.1.0      | 2026-01-29 | Initial release (Phases 0-2)       |
+| Version | Date       | Description                                 |
+| ------- | ---------- | ------------------------------------------- |
+| 0.4.0   | 2026-02-06 | Integration infrastructure & client library |
+| 0.3.0   | 2026-02-04 | Test suite & CI/CD enhancement              |
+| 0.2.2   | 2026-02-02 | Code coverage configuration fix             |
+| 0.2.1   | 2026-02-01 | CI/CD parity across Juniper                 |
+| 0.2.0   | 2026-01-31 | Legacy parity mode for spiral               |
+| 0.1.2   | 2026-01-31 | Conda environment setup                     |
+| 0.1.1   | 2026-01-30 | CI/CD Pipeline & Pre-commit                 |
+| 0.1.0   | 2026-01-29 | Initial release (Phases 0-2)                |
 
 ---
 

@@ -1,11 +1,11 @@
 # Quick Start Guide
 
-## Get Juniper Canopy running in 5 minutes
+## Get Juniper Data running in 5 minutes
 
 **Version:** 0.4.0  
 **Status:** ✅ Production Ready  
 **Last Updated:** November 11, 2025  
-**Project:** Juniper - Cascade Correlation Neural Network Monitoring  
+**Project:** Juniper - Data Generator and Manager for the Cascade Correlation Neural Network and Monitoring Applications
 
 ---
 
@@ -56,7 +56,7 @@ git --version
 
 ```bash
 # Navigate to your workspace
-cd ~/Development/python/Juniper/JuniperCanopy
+cd ~/Development/python/Juniper/JuniperData
 
 # Clone from Juniper repository
 git clone <https://github.com/pcalnon/Juniper.git>
@@ -65,7 +65,7 @@ git clone <https://github.com/pcalnon/Juniper.git>
 ### Step 2: Navigate to Project
 
 ```bash
-cd juniper_canopy
+cd juniper_data
 ```
 
 ### Step 3: Activate Environment
@@ -73,8 +73,8 @@ cd juniper_canopy
 #### Option A: Using conda (recommended)
 
 ```bash
-# Activate JuniperCanopy environment
-conda activate JuniperCanopy
+# Activate JuniperData environment
+conda activate JuniperData
 ```
 
 #### Option B: Let the demo script handle it
@@ -98,17 +98,7 @@ The `./demo` script automatically activates the conda environment.
 #### Expected output
 
 ```bash
-Starting Juniper Canopy in demo mode...
-Activating conda environment: JuniperPython
-INFO:     Started server process [12345]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:8050 (Press CTRL+C to quit)
-Dash is running on http://127.0.0.1:8050/
-
- * Serving Flask app 'demo_mode'
- * Debug mode: off
-WARNING: This is a development server. Do not use it in a production deployment.
+d
 ```
 
 ### Step 5: Open Dashboard
@@ -130,7 +120,7 @@ http://localhost:8050/dashboard/
 - ✅ **Cassandra** tab with data points
 - ✅ **About** tab with data points
 
-**Congratulations! 🎉 You're running Juniper Canopy!**
+**Congratulations! 🎉 You're running Juniper Data!**
 
 ---
 
@@ -657,7 +647,7 @@ ws://localhost:8050/ws/control
 - [ ] Dependencies installed? (`pip install -r conf/requirements.txt`)
 - [ ] Port 8050 available? (`lsof -i :8050`)
 - [ ] Demo mode enabled? (`export CASCOR_DEMO_MODE=1`)
-- [ ] Running from correct directory? (`pwd` should end with juniper_canopy)
+- [ ] Running from correct directory? (`pwd` should end with juniper_data)
 - [ ] Logs showing errors? (`tail -f logs/system.log`)
 
 **Still stuck?** See [AGENTS.md](AGENTS.md) Common Issues section.
@@ -714,7 +704,7 @@ conda list | grep -E "(fastapi|dash|uvicorn)"
 - ✅ API endpoints respond correctly
 - ✅ Logs show no errors
 
-### Congratulations! You're ready to use Juniper Canopy! 🎉
+### Congratulations! You're ready to use Juniper Data! 🎉
 
 ---
 
@@ -729,10 +719,7 @@ conda list | grep -E "(fastapi|dash|uvicorn)"
 
 ### For Users
 
-1. Explore all dashboard tabs
-2. Experiment with demo mode parameters
-3. Try connecting to real CasCor backend
-4. Review [feature documentation](README.md#key-features)
+1. Review [feature documentation](README.md#key-features)
 
 ### For Contributors
 
@@ -743,7 +730,7 @@ conda list | grep -E "(fastapi|dash|uvicorn)"
 
 ---
 
-**Last Updated:** November 7, 2025  
+**Last Updated:** February 8, 2026  
 **Version:** 0.4.0  
 **Status:** ✅ Production Ready
 

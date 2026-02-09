@@ -39,6 +39,10 @@ __pycache__/*
 __init__.cpython*
 **/__init__.cpython*
 
+*.egg-info/
+**.egg-info/
+**.egg-info/*
+
 # CascadeCorrelationNetwork class snapshots
 **/cascor/cascor_snapshots/*
 cascor_snapshot_*.h5
