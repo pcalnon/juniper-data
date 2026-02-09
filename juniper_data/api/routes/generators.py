@@ -30,21 +30,21 @@ GENERATOR_REGISTRY: dict[str, dict[str, Any]] = {
 
 
 @router.get("", response_model=list[GeneratorInfo])
-async def list_generators() -> list[dict[str, Any]]:
+async def list_generators() -> list[GeneratorInfo]:
     """List all available dataset generators with their info.
 
     Returns:
         List of generator information objects including name, version,
         description, and parameter schema.
     """
-    generators: list[dict] = []
+    generators: list[GeneratorInfo] = []
     generators.extend(
-        {
-            "name": name,
-            "version": info["version"],
-            "description": info["description"],
-            "schema": info["params_class"].model_json_schema(),
-        }
+        GeneratorInfo(
+            name=name,
+            version=info["version"],
+            description=info["description"],
+            schema=info["params_class"].model_json_schema(),
+        )
         for name, info in GENERATOR_REGISTRY.items()
     )
     return generators
