@@ -100,8 +100,8 @@ class CachedDatasetStore(DatasetStore):
                 if meta is not None:
                     import io
 
-                    npz = np.load(io.BytesIO(artifact))
-                    arrays = {k: npz[k] for k in npz.files}
+                    with np.load(io.BytesIO(artifact)) as npz:
+                        arrays = {k: npz[k] for k in npz.files}
                     self._cache.save(dataset_id, meta, arrays)
             except Exception:
                 pass
