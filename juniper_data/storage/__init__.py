@@ -30,7 +30,7 @@ def get_redis_store(**kwargs):  # type: ignore[no-untyped-def]
     return RedisDatasetStore(**kwargs)
 
 
-def get_hf_store(**kwargs):  # type: ignore[no-untyped-def]
+def get_hf_store(**kwargs) -> 'HuggingFaceDatasetStore':  # type: ignore[no-untyped-def]
     """Get a Hugging Face dataset store (requires datasets package).
 
     Args:
