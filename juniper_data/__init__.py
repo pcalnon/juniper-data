@@ -2,7 +2,16 @@
 Juniper Data - Dataset generation and management service for the Juniper ecosystem.
 """
 
+import os
+
 __version__ = "0.4.0"
 __author__ = "Paul Calnon"
 
-ARC_AGI_API = "c430885f-6092-4001-be60-617562ce89d8"
+def get_arc_agi_api() -> str | None:
+    """
+    Return the current value of the ARC_AGI_API environment variable.
+
+    Reading the environment at call time avoids import-time side effects
+    and makes it easier to adjust configuration in tests.
+    """
+    return os.getenv("ARC_AGI_API")

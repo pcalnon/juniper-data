@@ -46,7 +46,7 @@ dataset = generator.generate(n_points=100, n_spirals=2, noise=0.1)
 ### Start the API Server
 
 ```bash
-uvicorn juniper_data.api.main:app --reload
+uvicorn juniper_data.api.app:app --reload
 ```
 
 ## API Endpoints

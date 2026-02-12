@@ -31,7 +31,7 @@ FROM python:3.11-slim AS runtime
 # Labels for container metadata
 LABEL org.opencontainers.image.title="JuniperData"
 LABEL org.opencontainers.image.description="Dataset generation service for the Juniper ecosystem"
-LABEL org.opencontainers.image.version="0.3.0"
+LABEL org.opencontainers.image.version="0.4.0"
 LABEL org.opencontainers.image.authors="Paul Calnon"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.source="https://github.com/pcalnon/Juniper"
@@ -66,7 +66,7 @@ EXPOSE 8100
 # Health check for container orchestration (liveness + readiness)
 # Checks every 30s, timeout 10s, start period 5s, 3 retries before unhealthy
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8100/v1/health')" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8100/v1/health', timeout=5)" || exit 1
 
 # Run the application
 CMD ["python", "-m", "juniper_data"]

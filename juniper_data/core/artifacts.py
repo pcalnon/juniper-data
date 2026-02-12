@@ -41,7 +41,9 @@ def arrays_to_bytes(arrays: Dict[str, np.ndarray]) -> bytes:
         Bytes representation of the NPZ file.
     """
     buffer = io.BytesIO()
-    np.savez(buffer, **arrays)  # type: ignore[arg-type]  # numpy stubs incomplete for **kwargs
+    # Ensure a stable serialization order by sorting keys before saving.
+    ordered_arrays = {key: arrays[key] for key in sorted(arrays.keys())}
+    np.savez(buffer, **ordered_arrays)  # type: ignore[arg-type]  # numpy stubs incomplete for **kwargs
     buffer.seek(0)
     return buffer.read()
 

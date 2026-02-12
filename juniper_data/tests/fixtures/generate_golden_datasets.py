@@ -8,22 +8,43 @@ SpiralProblem implementation for use in validating the new JuniperData implement
 Run this script from the JuniperCascor environment to generate the golden datasets.
 
 Usage:
-    cd /home/pcalnon/Development/python/Juniper/JuniperCascor/juniper_cascor/src
-    python /home/pcalnon/Development/python/Juniper/JuniperData/tests/fixtures/generate_golden_datasets.py
+    # Optionally set environment variables to configure paths:
+    #   JUNIPER_CASCOR_SRC   - path to the JuniperCascor 'src' directory
+    #   GOLDEN_DATASETS_DIR  - output directory for generated golden datasets
+    #
+    # Example:
+    #   export JUNIPER_CASCOR_SRC=/path/to/JuniperCascor/juniper_cascor/src
+    #   export GOLDEN_DATASETS_DIR=/path/to/JuniperData/tests/fixtures/golden_datasets
+    #   python -m juniper_data.tests.fixtures.generate_golden_datasets
 """
 
 import json
 import sys
 from pathlib import Path
+import os
 
 import numpy as np
 
-# Append JuniperCascor source directory for local script execution
-sys.path.insert(0, "/home/pcalnon/Development/python/Juniper/JuniperCascor/juniper_cascor/src")
+# Append JuniperCascor source directory for local script execution.
+# The path can be configured via the JUNIPER_CASCOR_SRC environment variable.
+# If not set, we fall back to a path derived relative to this file.
+_default_cascor_src = (
+    Path(__file__).resolve().parents[3] / "JuniperCascor" / "juniper_cascor" / "src"
+)
+JUNIPER_CASCOR_SRC = Path(os.environ.get("JUNIPER_CASCOR_SRC", str(_default_cascor_src)))
+sys.path.insert(0, str(JUNIPER_CASCOR_SRC))
 
 from spiral_problem.spiral_problem import SpiralProblem  # noqa: E402
 
-GOLDEN_DATASETS_DIR = Path("/home/pcalnon/Development/python/Juniper/JuniperData/tests/fixtures/golden_datasets")
+# Directory where golden datasets will be written. Can be overridden via the
+# GOLDEN_DATASETS_DIR environment variable; by default, we use a directory
+# named 'golden_datasets' alongside this script.
+GOLDEN_DATASETS_DIR = Path(
+    os.environ.get(
+        "GOLDEN_DATASETS_DIR",
+        str(Path(__file__).resolve().parent / "golden_datasets"),
+    )
+)
 
 DATASET_CONFIGS = [
     {

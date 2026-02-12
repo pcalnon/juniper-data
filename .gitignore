@@ -43,6 +43,19 @@ __init__.cpython*
 **.egg-info/
 **.egg-info/*
 
+juniper_data.egg-info
+juniper_data.egg-info/*
+**/juniper_data.egg-info
+**/juniper_data.egg-info/*
+juniper_data.egg-info/PKG-INFO
+
+juniper_data_client/juniper_data_client.egg-info
+juniper_data_client/juniper_data_client.egg-info/*
+juniper_data_client/juniper_data_client.egg-info/SOURCES.txt
+juniper_data_client/juniper_data_client.egg-info/requires.txt
+**/juniper_data_client/juniper_data_client.egg-info
+**/juniper_data_client/juniper_data_client.egg-info/*
+
 # CascadeCorrelationNetwork class snapshots
 **/cascor/cascor_snapshots/*
 cascor_snapshot_*.h5

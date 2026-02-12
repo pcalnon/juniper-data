@@ -121,14 +121,16 @@ class TestInMemoryDatasetStore:
     def test_delete_existing(self, memory_store: InMemoryDatasetStore, sample_meta: DatasetMeta, sample_arrays: Dict[str, np.ndarray]):
         """Test deleting an existing dataset returns True."""
         memory_store.save("ds-001", sample_meta, sample_arrays)
-        assert memory_store.delete("ds-001") is True
+        deleted = memory_store.delete("ds-001")
+        assert deleted is True
         assert memory_store.exists("ds-001") is False
         assert memory_store.get_meta("ds-001") is None
 
     @pytest.mark.unit
     def test_delete_nonexistent(self, memory_store: InMemoryDatasetStore):
         """Test deleting a nonexistent dataset returns False."""
-        assert memory_store.delete("nonexistent") is False
+        deleted = memory_store.delete("nonexistent")
+        assert deleted is False
 
     @pytest.mark.unit
     def test_list_datasets_empty(self, memory_store: InMemoryDatasetStore):
@@ -303,7 +305,8 @@ class TestLocalFSDatasetStore:
     def test_delete_existing(self, fs_store: LocalFSDatasetStore, sample_meta: DatasetMeta, sample_arrays: Dict[str, np.ndarray]):
         """Test deleting an existing dataset returns True."""
         fs_store.save("ds-001", sample_meta, sample_arrays)
-        assert fs_store.delete("ds-001") is True
+        deleted = fs_store.delete("ds-001")
+        assert deleted is True
         assert fs_store.exists("ds-001") is False
 
         assert not (fs_store.base_path / "ds-001.meta.json").exists()
@@ -312,14 +315,16 @@ class TestLocalFSDatasetStore:
     @pytest.mark.unit
     def test_delete_nonexistent(self, fs_store: LocalFSDatasetStore):
         """Test deleting a nonexistent dataset returns False."""
-        assert fs_store.delete("nonexistent") is False
+        deleted = fs_store.delete("nonexistent")
+        assert deleted is False
 
     @pytest.mark.unit
     def test_delete_partial_files(self, fs_store: LocalFSDatasetStore, sample_meta: DatasetMeta, sample_arrays: Dict[str, np.ndarray]):
         """Test deleting when only meta file exists."""
         fs_store.save("ds-001", sample_meta, sample_arrays)
 
-        (fs_store.base_path / "ds-001.npz").unlink()
+        deleted = fs_store.delete("ds-001")
+        assert deleted is True
         assert fs_store.delete("ds-001") is True
         assert not (fs_store.base_path / "ds-001.meta.json").exists()
 

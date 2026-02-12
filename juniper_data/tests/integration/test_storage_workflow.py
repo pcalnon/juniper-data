@@ -163,7 +163,8 @@ class TestDatasetLifecycle:
         assert store.exists("lifecycle-test")
         assert "lifecycle-test" in store.list_datasets()
 
-        assert store.delete("lifecycle-test")
+        deleted = store.delete("lifecycle-test")
+        assert deleted
         assert not store.exists("lifecycle-test")
         assert "lifecycle-test" not in store.list_datasets()
         assert store.get_meta("lifecycle-test") is None

@@ -10,7 +10,7 @@ Parameter Aliases:
     - `noise_level` -> `noise`
 """
 
-from typing import Any, Dict, Literal, Optional, Tuple
+from typing import Dict, Literal, Optional, Tuple
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
@@ -83,14 +83,14 @@ class SpiralParams(BaseModel):
     )
     train_ratio: float = Field(
         default=SPIRAL_DEFAULT_TRAIN_RATIO,
-        gt=0.0,
-        lt=1.0,
+        ge=0.0,
+        le=1.0,
         description="Fraction of data for training set",
     )
     test_ratio: float = Field(
         default=SPIRAL_DEFAULT_TEST_RATIO,
-        gt=0.0,
-        lt=1.0,
+        ge=0.0,
+        le=1.0,
         description="Fraction of data for test set",
     )
     shuffle: bool = Field(
