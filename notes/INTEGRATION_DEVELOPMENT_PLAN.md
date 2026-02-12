@@ -424,21 +424,21 @@ The consolidated `juniper-data-client` package includes 35 comprehensive unit te
 
 **GENERATOR_REGISTRY** (5 registered, fully functional):
 
-| Generator | Directory | Registered | Tests | Coverage |
-| --------- | --------- | ---------- | ----- | -------- |
-| spiral | `generators/spiral/` | Yes | 43 | 100% |
-| xor | `generators/xor/` | Yes | 18 | 100% |
-| gaussian | `generators/gaussian/` | Yes | 26 | ~96% |
-| circles | `generators/circles/` | Yes | 22 | 100% |
-| checkerboard | `generators/checkerboard/` | Yes | 17 | ~94% |
+| Generator    | Directory                  | Registered | Tests | Coverage |
+| ------------ | -------------------------- | ---------- | ----- | -------- |
+| spiral       | `generators/spiral/`       | Yes        | 43    | 100%     |
+| xor          | `generators/xor/`          | Yes        | 18    | 100%     |
+| gaussian     | `generators/gaussian/`     | Yes        | 26    | ~96%     |
+| circles      | `generators/circles/`      | Yes        | 22    | 100%     |
+| checkerboard | `generators/checkerboard/` | Yes        | 17    | ~94%     |
 
 **Code-only generators** (3 not registered, incomplete):
 
-| Generator | Directory | Registered | Tests | Coverage | Issue |
-| --------- | --------- | ---------- | ----- | -------- | ----- |
-| csv_import | `generators/csv_import/` | **No** | 14 | 88.14% | Not in GENERATOR_REGISTRY; has E741 flake8 warnings |
-| mnist | `generators/mnist/` | **No** | 0 | **0%** | No tests, not registered, requires `datasets` package |
-| arc_agi | `generators/arc_agi/` | **No** | 0 | **0%** | No tests, not registered, requires `datasets` package |
+| Generator  | Directory                | Registered | Tests | Coverage | Issue                                                 |
+| ---------- | ------------------------ | ---------- | ----- | -------- | ----------------------------------------------------- |
+| csv_import | `generators/csv_import/` | **No**     | 14    | 88.14%   | Not in GENERATOR_REGISTRY; has E741 flake8 warnings   |
+| mnist      | `generators/mnist/`      | **No**     | 0     | **0%**   | No tests, not registered, requires `datasets` package |
+| arc_agi    | `generators/arc_agi/`    | **No**     | 0     | **0%**   | No tests, not registered, requires `datasets` package |
 
 **XOR Generator Added** (2026-02-06):
 
@@ -494,15 +494,15 @@ Core storage backends: `InMemoryDatasetStore` (100%), `LocalFSDatasetStore` (79.
 
 **Storage backend status**:
 
-| Backend | File | Tests | Coverage | Status |
-| ------- | ---- | ----- | -------- | ------ |
-| InMemoryDatasetStore | `storage/memory.py` | 44 (shared) | 100% | Complete |
-| LocalFSDatasetStore | `storage/local_fs.py` | 44 (shared) | 79.57% | Complete (minor gaps) |
-| CachedDatasetStore | `storage/cached.py` | 11 | 76.47% | Partial - needs more test coverage |
-| RedisDatasetStore | `storage/redis_store.py` | 0 | **0%** | Code only - no tests, has F401 warnings |
-| HuggingFaceDatasetStore | `storage/hf_store.py` | 0 | **0%** | Code only - no tests |
-| PostgresDatasetStore | `storage/postgres_store.py` | 0 | **0%** | Code only - no tests, has F401/W293 warnings |
-| KaggleDatasetStore | `storage/kaggle_store.py` | 0 | **0%** | Code only - no tests, has F401/E741 warnings |
+| Backend                 | File                        | Tests       | Coverage | Status                                       |
+| ----------------------- | --------------------------- | ----------- | -------- | -------------------------------------------- |
+| InMemoryDatasetStore    | `storage/memory.py`         | 44 (shared) | 100%     | Complete                                     |
+| LocalFSDatasetStore     | `storage/local_fs.py`       | 44 (shared) | 79.57%   | Complete (minor gaps)                        |
+| CachedDatasetStore      | `storage/cached.py`         | 11          | 76.47%   | Partial - needs more test coverage           |
+| RedisDatasetStore       | `storage/redis_store.py`    | 0           | **0%**   | Code only - no tests, has F401 warnings      |
+| HuggingFaceDatasetStore | `storage/hf_store.py`       | 0           | **0%**   | Code only - no tests                         |
+| PostgresDatasetStore    | `storage/postgres_store.py` | 0           | **0%**   | Code only - no tests, has F401/W293 warnings |
+| KaggleDatasetStore      | `storage/kaggle_store.py`   | 0           | **0%**   | Code only - no tests, has F401/E741 warnings |
 
 **Completed implementations**:
 
