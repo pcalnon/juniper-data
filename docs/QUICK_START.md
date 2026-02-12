@@ -98,7 +98,12 @@ The `./demo` script automatically activates the conda environment.
 #### Expected output
 
 ```bash
-# Demo mode starting...
+$ ./demo
+[INFO] Activating conda environment 'JuniperData'...
+[INFO] Setting CASCOR_DEMO_MODE=1
+[INFO] Starting Juniper Data demo server...
+[INFO] FastAPI running at http://127.0.0.1:8000
+[INFO] Dash dashboard available at http://localhost:8050/dashboard/
 # Loading configuration and environment...
 # Demo server is now running.
 ```
