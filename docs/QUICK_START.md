@@ -98,7 +98,9 @@ The `./demo` script automatically activates the conda environment.
 #### Expected output
 
 ```bash
-d
+# Demo mode starting...
+# Loading configuration and environment...
+# Demo server is now running.
 ```
 
 ### Step 5: Open Dashboard
