@@ -216,9 +216,9 @@ class CachedDatasetStore(DatasetStore):
                 if meta is not None and artifact is not None:
                     import io
 
-                    npz = np.load(io.BytesIO(artifact))
-                    arrays = {k: npz[k] for k in npz.files}
-                    self._cache.save(dataset_id, meta, arrays)
+                    with np.load(io.BytesIO(artifact)) as npz:
+                        arrays = {k: npz[k] for k in npz.files}
+                        self._cache.save(dataset_id, meta, arrays)
                     cached_count += 1
             except Exception:
                 continue
