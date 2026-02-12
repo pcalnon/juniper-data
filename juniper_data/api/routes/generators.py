@@ -5,12 +5,18 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 
 from juniper_data.core.models import GeneratorInfo
+from juniper_data.generators.arc_agi import VERSION as ARC_AGI_VERSION
+from juniper_data.generators.arc_agi import ArcAgiGenerator, ArcAgiParams
 from juniper_data.generators.checkerboard import VERSION as CHECKERBOARD_VERSION
 from juniper_data.generators.checkerboard import CheckerboardGenerator, CheckerboardParams
 from juniper_data.generators.circles import VERSION as CIRCLES_VERSION
 from juniper_data.generators.circles import CirclesGenerator, CirclesParams
+from juniper_data.generators.csv_import import VERSION as CSV_IMPORT_VERSION
+from juniper_data.generators.csv_import import CsvImportGenerator, CsvImportParams
 from juniper_data.generators.gaussian import VERSION as GAUSSIAN_VERSION
 from juniper_data.generators.gaussian import GaussianGenerator, GaussianParams
+from juniper_data.generators.mnist import VERSION as MNIST_VERSION
+from juniper_data.generators.mnist import MnistGenerator, MnistParams
 from juniper_data.generators.spiral import VERSION as SPIRAL_VERSION
 from juniper_data.generators.spiral import SpiralGenerator, SpiralParams
 from juniper_data.generators.xor import VERSION as XOR_VERSION
@@ -48,6 +54,24 @@ GENERATOR_REGISTRY: dict[str, dict[str, Any]] = {
         "params_class": CheckerboardParams,
         "version": CHECKERBOARD_VERSION,
         "description": "Checkerboard pattern classification dataset generator. " "Generates 2D grid with alternating class squares.",
+    },
+    "csv_import": {
+        "generator": CsvImportGenerator,
+        "params_class": CsvImportParams,
+        "version": CSV_IMPORT_VERSION,
+        "description": "CSV/JSON import generator for custom datasets. " "Import data from CSV or JSON files with configurable feature and label columns.",
+    },
+    "mnist": {
+        "generator": MnistGenerator,
+        "params_class": MnistParams,
+        "version": MNIST_VERSION,
+        "description": "MNIST and Fashion-MNIST dataset generator. " "Downloads and prepares standard handwritten digit or fashion item classification datasets.",
+    },
+    "arc_agi": {
+        "generator": ArcAgiGenerator,
+        "params_class": ArcAgiParams,
+        "version": ARC_AGI_VERSION,
+        "description": "ARC-AGI (Abstraction and Reasoning Corpus) dataset generator. " "Generates visual reasoning tasks from the ARC benchmark.",
     },
 }
 
