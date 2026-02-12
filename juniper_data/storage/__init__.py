@@ -47,7 +47,7 @@ def get_hf_store(**kwargs) -> 'HuggingFaceDatasetStore':  # type: ignore[no-unty
     return HuggingFaceDatasetStore(**kwargs)
 
 
-def get_postgres_store(**kwargs):  # type: ignore[no-untyped-def]
+def get_postgres_store(**kwargs) -> "PostgresDatasetStore":  # type: ignore[no-untyped-def]
     """Get a PostgreSQL dataset store (requires psycopg2 package).
 
     Args:
