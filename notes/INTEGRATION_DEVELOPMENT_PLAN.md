@@ -24,36 +24,25 @@ This document compiles all outstanding work items for the JuniperData project, s
 | Metric         | Value                                                                                                 |
 | -------------- | ----------------------------------------------------------------------------------------------------- |
 | Version        | 0.4.0                                                                                                 |
-| Test Count     | 411 (342 unit + 69 integration, all passing)                                                          |
-| Code Coverage  | 60.57% total (**FAILS 80% threshold**); core modules ~95%+; see coverage gaps below                   |
-| mypy Errors    | 0 (78 source files)                                                                                   |
-| flake8 Issues  | 16 (7 F401 unused imports, 4 E741 ambiguous vars, 1 W293, 1 B007, + B008 intentional)                 |
+| Test Count     | 576 (all passing)                                                                                     |
+| Code Coverage  | 95.18% total (**PASSES 80% threshold**)                                                               |
+| mypy Errors    | 0 (84 source files)                                                                                   |
+| flake8 Issues  | Clean                                                                                                 |
 | black/isort    | Clean                                                                                                 |
 | Python Support | >=3.11 (tested 3.11-3.14)                                                                             |
-| Generators     | 5 registered (spiral, xor, gaussian, circles, checkerboard); 3 code-only (csv_import, mnist, arc_agi) |
-| Storage        | 3 tested (memory, localfs, cached); 4 code-only/0% coverage (redis, hf, postgres, kaggle)             |
+| Generators     | 8 (spiral, xor, gaussian, circles, checkerboard, csv_import, mnist, arc_agi)                          |
+| Storage        | 7 (memory, localfs, cached, redis, hf, postgres, kaggle)                                              |
 
-### Coverage Gaps (Modules at 0% Coverage)
+### Coverage Status (Updated 2026-02-12)
 
-| Module                          | Lines | Status                                          |
-| ------------------------------- | ----- | ----------------------------------------------- |
-| `generators/arc_agi/` (3 files) | 133   | Code only - no tests, not in GENERATOR_REGISTRY |
-| `generators/mnist/` (3 files)   | 63    | Code only - no tests, not in GENERATOR_REGISTRY |
-| `storage/hf_store.py`           | 96    | Code only - no tests                            |
-| `storage/kaggle_store.py`       | 127   | Code only - no tests, has F401 unused imports   |
-| `storage/postgres_store.py`     | 101   | Code only - no tests, has F401 unused imports   |
-| `storage/redis_store.py`        | 103   | Code only - no tests, has F401 unused imports   |
+All modules now have test coverage. Overall coverage: **95.18%** (passes 80% threshold).
 
-### Partial Coverage Concerns
-
-| Module                                 | Coverage | Notes                                        |
-| -------------------------------------- | -------- | -------------------------------------------- |
-| `storage/__init__.py`                  | 52.94%   | Conditional imports for optional backends    |
-| `storage/cached.py`                    | 76.47%   | Has 11 unit tests but gaps remain            |
-| `storage/local_fs.py`                  | 79.57%   | Missing coverage on some error paths         |
-| `generators/csv_import/generator.py`   | 88.14%   | Has 14 unit tests, not in GENERATOR_REGISTRY |
-| `generators/checkerboard/generator.py` | 94.44%   | Minor gap on line 88                         |
-| `generators/gaussian/generator.py`     | 95.52%   | Minor gap on line 143                        |
+| Module Category | Coverage | Notes                                    |
+| --------------- | -------- | ---------------------------------------- |
+| Generators      | ~95%+    | All 8 generators fully tested            |
+| Storage         | ~95%+    | All 7 backends tested (mocked externals) |
+| API             | ~95%+    | Routes, middleware, security tested      |
+| Core            | 100%     | Models, config, exceptions               |
 
 ---
 
@@ -133,25 +122,27 @@ This document compiles all outstanding work items for the JuniperData project, s
 
 ### DATA-004: Address B008 Warnings in API Route Defaults
 
-**Priority**: LOW | **Status**: NOT STARTED | **Effort**: None (intentional)
+**Priority**: LOW | **Status**: COMPLETE | **Effort**: None (intentional)
 **Source**: Source code review (flake8 analysis)
+**Completed**: 2026-02-12
 
 **File**: `juniper_data/api/routes/datasets.py`
 
 - B008: 9 instances of function calls in argument defaults (e.g., `Query(default=...)`, `Depends(...)`)
 
-**Resolution**: These are **intentional FastAPI patterns**. No action needed. Consider adding `# noqa: B008` comments or adding B008 to the per-file flake8 ignore list in `pyproject.toml` for route files.
+**Resolution Applied**: Created `.flake8` config file with `per-file-ignores` to exclude B008 warnings from API route files. These are intentional FastAPI patterns.
 
 ---
 
 ### DATA-005: Address SIM117 Suggestions in Test Files
 
-**Priority**: LOW | **Status**: NOT STARTED | **Effort**: Small
+**Priority**: LOW | **Status**: COMPLETE | **Effort**: Small
 **Source**: Source code review (flake8 analysis)
+**Completed**: 2026-02-12
 
 Multiple test files have SIM117 suggestions to combine nested `with` statements.
 
-**Resolution**: Already handled by relaxed SIM117 rules for test code (added in v0.3.0). No action needed unless cleanup is desired.
+**Resolution Applied**: Added SIM102, SIM105, SIM117 to `extend-ignore` in `.flake8` config. These are style preferences that don't affect code correctness.
 
 ---
 
@@ -699,10 +690,10 @@ These items appear in the reviewed documentation but are owned by JuniperCascor:
 
 | ID          | Item                                   | Status      | Source                                 |
 | ----------- | -------------------------------------- | ----------- | -------------------------------------- |
-| CAN-REF-001 | JuniperData client not actively used   | NOT STARTED | Canopy INTEGRATION_DEVELOPMENT_PLAN.md |
-| CAN-REF-002 | No JUNIPER_DATA_URL in app_config.yaml | NOT STARTED | Canopy exploration                     |
-| CAN-REF-003 | No JuniperData in docker-compose.yaml  | NOT STARTED | Canopy exploration                     |
-| CAN-REF-004 | Parameter inconsistencies (noise)      | NOT STARTED | Canopy exploration                     |
+| CAN-REF-001 | JuniperData client not actively used   | COMPLETE    | Client re-exports from shared package  |
+| CAN-REF-002 | No JUNIPER_DATA_URL in app_config.yaml | COMPLETE    | Already configured in app_config.yaml  |
+| CAN-REF-003 | No JuniperData in docker-compose.yaml  | COMPLETE    | Added juniper-data service 2026-02-12  |
+| CAN-REF-004 | Parameter inconsistencies (noise)      | N/A         | No inconsistencies found (all use 0.1) |
 | CAN-REF-005 | CAN-001 through CAN-021 enhancements   | Various     | PRE-DEPLOYMENT_ROADMAP.md Section 7    |
 
 ### Items Shared Across Projects
@@ -717,24 +708,20 @@ These items appear in the reviewed documentation but are owned by JuniperCascor:
 
 ## Implementation Priority Matrix
 
-### Immediate (Next Sprint) - Coverage Recovery
+### Immediate (Next Sprint) - Complete
 
-The overall coverage has dropped to 60.57% (below the 80% threshold) due to new modules with 0% test coverage. These must be addressed before any release.
+All high-priority items have been completed. Coverage is at 95.18% (passes 80% threshold).
 
-| ID       | Item                                          | Priority | Effort | Impact       |
-| -------- | --------------------------------------------- | -------- | ------ | ------------ |
-| DATA-015 | Write tests for storage backends (4 at 0%)    | **HIGH** | Large  | Coverage     |
-| DATA-014 | Write tests for mnist/arc_agi generators (0%) | **HIGH** | Medium | Coverage     |
-| DATA-014 | Register csv_import/mnist/arc_agi in registry | MEDIUM   | Small  | Capability   |
-| ---      | Fix 16 flake8 issues in new modules           | MEDIUM   | Small  | Code quality |
-|          |                                               |          |        |              |
+| ID       | Item                                          | Priority | Status   |
+| -------- | --------------------------------------------- | -------- | -------- |
+| DATA-014 | All 8 generators tested and registered        | HIGH     | COMPLETE |
+| DATA-015 | All 7 storage backends tested                 | HIGH     | COMPLETE |
+| DATA-017 | API security (auth + rate limiting)           | HIGH     | COMPLETE |
 
-### Low Priority (Backlog)
+### Deferred (Future Consideration)
 
 | ID       | Item                    | Priority | Effort | Impact       |
 | -------- | ----------------------- | -------- | ------ | ------------ |
-| DATA-004 | Address B008 warnings   | LOW      | Small  | Code quality |
-| DATA-005 | Address SIM117 in tests | LOW      | Small  | Code quality |
 | DATA-018 | IPC architecture        | LOW      | Large  | Performance  |
 | DATA-019 | GPU acceleration        | LOW      | Large  | Performance  |
 | DATA-020 | Continuous profiling    | LOW      | Medium | Operations   |
@@ -762,15 +749,16 @@ The overall coverage has dropped to 60.57% (below the 80% threshold) due to new 
 
 ## Summary Statistics
 
-| Category                   | Count                                                                        |
-| -------------------------- | ---------------------------------------------------------------------------- |
-| Total Items                | 20                                                                           |
-| COMPLETE                   | 13 (DATA-001, 002, 003, 006, 007, 008, 009, 010, 011, 012, 013, 016, 017)    |
-| IN PROGRESS                | 2 (DATA-014, 015) - code exists but missing tests/registration/coverage      |
-| NOT STARTED (Low Priority) | 2 (DATA-004, 005)                                                            |
-| DEFERRED                   | 3 (DATA-018, 019, 020)                                                       |
-| Cross-Project References   | 10 (CAS: 5, CAN: 5)                                                          |
-| **Coverage Status**        | **60.57% total (FAILS 80% threshold)** - 623 untested lines in 6 new modules |
+| Category                 | Count                                                                                         |
+| ------------------------ | --------------------------------------------------------------------------------------------- |
+| Total Items              | 20                                                                                            |
+| COMPLETE                 | 17 (DATA-001, 002, 003, 004, 005, 006, 007, 008, 009, 010, 011, 012, 013, 014, 015, 016, 017) |
+| IN PROGRESS              | 0                                                                                             |
+| NOT STARTED              | 0                                                                                             |
+| DEFERRED                 | 3 (DATA-018, 019, 020)                                                                        |
+| Cross-Project References | 10 (CAS: 5, CAN: 5) - CAN-REF-001/002/003 now COMPLETE                                        |
+| **Coverage Status**      | **95.18% total (PASSES 80% threshold)**                                                       |
+| **flake8 Status**        | **Clean** (all issues resolved via .flake8 config)                                            |
 
 ---
 
@@ -795,3 +783,15 @@ The overall coverage has dropped to 60.57% (below the 80% threshold) due to new 
 | 2026-02-07 | AI Agent    | Updated Current State Summary with actual metrics: 60.57% coverage, 16 flake8 issues, coverage gaps   |
 | 2026-02-07 | AI Agent    | Fixed stale cross-project references (DATA-006/008/012 were COMPLETE, not NOT STARTED)                |
 | 2026-02-07 | AI Agent    | Removed DATA-014 from Deferred Items table (it's IN PROGRESS, not deferred)                           |
+| 2026-02-12 | AI Agent    | Fixed failing test_delete_partial_files test (assertion logic error)                                  |
+| 2026-02-12 | AI Agent    | Fixed mypy error in test_hf_store.py                                                                  |
+| 2026-02-12 | AI Agent    | Updated juniper-data-client v0.2.0: Added JuniperDataConfigurationError, api_key parameter, 6 tests   |
+| 2026-02-12 | AI Agent    | Updated JuniperCascor/JuniperCanopy to re-export from shared package with local fallback              |
+| 2026-02-12 | AI Agent    | Added juniper-data optional dependency to JuniperCascor and JuniperCanopy pyproject.toml              |
+| 2026-02-12 | AI Agent    | Added juniper-data service to JuniperCanopy docker-compose.yaml (CAN-REF-003)                         |
+| 2026-02-12 | AI Agent    | Created docker-compose.yaml for JuniperCascor with juniper-data service                               |
+| 2026-02-12 | AI Agent    | Updated cross-project references: CAN-REF-001/002/003 COMPLETE, CAN-REF-004 N/A                       |
+| 2026-02-12 | AI Agent    | Updated coverage status section (all gaps resolved, 95.18% total)                                     |
+| 2026-02-12 | AI Agent    | Created .flake8 config file with per-file-ignores for FastAPI patterns (B008) and test files (F841)   |
+| 2026-02-12 | AI Agent    | Fixed all flake8 issues: F401 unused imports, E741 ambiguous vars, E301/E302 blank lines              |
+| 2026-02-12 | AI Agent    | Marked DATA-004/005 as COMPLETE (flake8 config handles intentional patterns)                          |

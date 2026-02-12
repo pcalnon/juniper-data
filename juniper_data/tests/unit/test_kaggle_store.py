@@ -1,7 +1,6 @@
 """Unit tests for KaggleDatasetStore."""
 
 import csv
-import io
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch

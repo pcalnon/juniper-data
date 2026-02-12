@@ -6,10 +6,10 @@ generator name, version, and parameters.
 
 import hashlib
 import json
-from typing import Any, Dict
+from typing import Any
 
 
-def generate_dataset_id(generator: str, version: str, params: Dict[str, Any]) -> str:
+def generate_dataset_id(generator: str, version: str, params: dict[str, Any]) -> str:
     """Generate a deterministic hash-based ID from generator metadata and params.
 
     Creates a unique, reproducible identifier for a dataset configuration by

@@ -19,18 +19,16 @@ Usage:
 """
 
 import json
+import os
 import sys
 from pathlib import Path
-import os
 
 import numpy as np
 
 # Append JuniperCascor source directory for local script execution.
 # The path can be configured via the JUNIPER_CASCOR_SRC environment variable.
 # If not set, we fall back to a path derived relative to this file.
-_default_cascor_src = (
-    Path(__file__).resolve().parents[3] / "JuniperCascor" / "juniper_cascor" / "src"
-)
+_default_cascor_src = Path(__file__).resolve().parents[3] / "JuniperCascor" / "juniper_cascor" / "src"
 JUNIPER_CASCOR_SRC = Path(os.environ.get("JUNIPER_CASCOR_SRC", str(_default_cascor_src)))
 sys.path.insert(0, str(JUNIPER_CASCOR_SRC))
 

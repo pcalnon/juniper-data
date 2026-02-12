@@ -1,0 +1,25 @@
+[flake8]
+max-line-length = 120
+# E203: whitespace before ':' (conflicts with black)
+# E266: too many leading '#' for block comment
+# E501: line too long (handled by black)
+# W503: line break before binary operator
+# SIM102: nested if-statements (style preference)
+# SIM105: contextlib.suppress suggestion (style preference)
+# SIM117: multiple with statements (style preference, keeps code clearer)
+extend-ignore = E203,E266,E501,W503,SIM102,SIM105,SIM117
+exclude =
+    .git,
+    __pycache__,
+    .pytest_cache,
+    .mypy_cache,
+    *.egg-info,
+    data,
+    logs,
+    reports
+
+# B008: Function calls in argument defaults - intentional FastAPI pattern
+# F841: Unused variables in tests are common (trigger side effects)
+per-file-ignores =
+    juniper_data/api/routes/*.py:B008
+    juniper_data/tests/*.py:F841

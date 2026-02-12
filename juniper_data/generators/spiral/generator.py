@@ -4,7 +4,7 @@ This module provides the SpiralGenerator class for generating multi-spiral
 classification datasets using only NumPy operations.
 """
 
-from typing import Dict, Literal, Tuple
+from typing import Literal
 
 import numpy as np
 
@@ -22,7 +22,7 @@ class SpiralGenerator:
     """
 
     @staticmethod
-    def generate(params: SpiralParams) -> Dict[str, np.ndarray]:
+    def generate(params: SpiralParams) -> dict[str, np.ndarray]:
         """Generate a complete spiral dataset with train/test splits.
 
         Main public API for spiral dataset generation.
@@ -62,7 +62,7 @@ class SpiralGenerator:
         }
 
     @staticmethod
-    def _generate_raw(params: SpiralParams, rng: np.random.Generator) -> Tuple[np.ndarray, np.ndarray]:
+    def _generate_raw(params: SpiralParams, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:
         """Generate raw spiral coordinates and labels.
 
         Args:
@@ -109,7 +109,7 @@ class SpiralGenerator:
         noise: float,
         rng: np.random.Generator,
         algorithm: Literal["modern", "legacy_cascor"] = "modern",
-        origin: Tuple[float, float] = (0.0, 0.0),
+        origin: tuple[float, float] = (0.0, 0.0),
     ) -> np.ndarray:
         """Generate coordinates for a single spiral arm.
 

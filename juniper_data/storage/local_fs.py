@@ -2,13 +2,13 @@
 
 import io
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 
 # from typing import Any, Dict, List, Optional
 from typing import Any
 
-import logging
 import numpy as np
 
 from juniper_data.core.models import DatasetMeta
@@ -110,6 +110,7 @@ class LocalFSDatasetStore(DatasetStore):
                     exc_info=True,
                 )
             raise
+
     def get_meta(self, dataset_id: str) -> DatasetMeta | None:
         """Get dataset metadata from filesystem.
 

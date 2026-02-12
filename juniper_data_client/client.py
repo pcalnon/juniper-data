@@ -5,6 +5,7 @@ for JuniperCascor and JuniperCanopy applications.
 """
 
 import io
+import os
 import time
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
@@ -46,6 +47,7 @@ class JuniperDataClient:
         timeout: int = DEFAULT_TIMEOUT,
         retries: int = DEFAULT_RETRIES,
         backoff_factor: float = DEFAULT_BACKOFF_FACTOR,
+        api_key: Optional[str] = None,
     ):
         """Initialize the JuniperData client.
 
@@ -54,12 +56,18 @@ class JuniperDataClient:
             timeout: Request timeout in seconds (default: 30)
             retries: Number of retry attempts for failed requests (default: 3)
             backoff_factor: Backoff factor for retry delays (default: 0.5)
+            api_key: API key for authentication. If not provided, reads from
+                JUNIPER_DATA_API_KEY environment variable.
         """
         self.base_url = self._normalize_url(base_url)
         self.timeout = timeout
         self.retries = retries
         self.backoff_factor = backoff_factor
         self.session = self._create_session()
+
+        resolved_api_key = api_key or os.environ.get("JUNIPER_DATA_API_KEY")
+        if resolved_api_key:
+            self.session.headers["X-API-Key"] = resolved_api_key
 
     def _normalize_url(self, url: str) -> str:
         """Normalize the base URL for consistent API calls.

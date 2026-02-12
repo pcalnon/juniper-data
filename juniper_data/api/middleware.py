@@ -1,7 +1,5 @@
 """FastAPI middleware for security and request processing."""
 
-from typing import Awaitable, Callable
-
 from fastapi import HTTPException, Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import JSONResponse

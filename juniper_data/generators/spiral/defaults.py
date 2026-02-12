@@ -4,15 +4,13 @@ This module defines all default constants and validation bounds for the spiral
 dataset generator, migrated from JuniperCascor constants_problem.py.
 """
 
-from typing import Tuple
-
 # Spiral Geometry Defaults
 SPIRAL_DEFAULT_N_SPIRALS: int = 2
 SPIRAL_DEFAULT_N_POINTS: int = 97
 SPIRAL_DEFAULT_N_ROTATIONS: float = 3.0
 SPIRAL_DEFAULT_CLOCKWISE: bool = True
 SPIRAL_DEFAULT_DISTRIBUTION: float = 0.80
-SPIRAL_DEFAULT_ORIGIN: Tuple[float, float] = (0.0, 0.0)
+SPIRAL_DEFAULT_ORIGIN: tuple[float, float] = (0.0, 0.0)
 SPIRAL_DEFAULT_RADIUS: float = 10.0
 
 # Noise & Randomness Defaults

@@ -102,7 +102,7 @@ class CsvImportGenerator:
     def _load_csv(path: Path, params: CsvImportParams) -> list[dict]:
         """Load data from CSV file."""
         data = []
-        with open(path, "r", newline="", encoding="utf-8") as f:
+        with open(path, newline="", encoding="utf-8") as f:
             if params.header:
                 reader = csv.DictReader(f, delimiter=params.delimiter)
             else:
@@ -119,7 +119,7 @@ class CsvImportGenerator:
     @staticmethod
     def _load_json(path: Path, params: CsvImportParams) -> list[dict]:
         """Load data from JSON file."""
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             content = f.read().strip()
 
             if content.startswith("["):
@@ -130,9 +130,7 @@ class CsvImportGenerator:
         return data
 
     @staticmethod
-    def _convert_to_arrays(
-        data: list[dict], params: CsvImportParams
-    ) -> tuple[np.ndarray, np.ndarray]:
+    def _convert_to_arrays(data: list[dict], params: CsvImportParams) -> tuple[np.ndarray, np.ndarray]:
         """Convert loaded data to numpy arrays."""
         if not data:
             raise ValueError("No data found in file")
@@ -169,11 +167,11 @@ class CsvImportGenerator:
             X_range[X_range == 0] = 1
             X = (X - X_min) / X_range
 
-        unique_labels = sorted([str(l) for l in set(labels)])
+        unique_labels = sorted([str(lbl) for lbl in set(labels)])
         label_to_idx = {label: idx for idx, label in enumerate(unique_labels)}
         n_classes = len(unique_labels)
 
-        label_indices = np.array([label_to_idx[str(l)] for l in labels])
+        label_indices = np.array([label_to_idx[str(lbl)] for lbl in labels])
 
         if params.one_hot_labels:
             y = np.zeros((len(labels), n_classes), dtype=np.float32)

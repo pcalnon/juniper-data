@@ -110,13 +110,9 @@ class GaussianGenerator:
         if params.centers is not None:
             centers = np.array(params.centers, dtype=np.float32)
             if centers.shape[0] != params.n_classes:
-                raise ValueError(
-                    f"Number of centers ({centers.shape[0]}) must match n_classes ({params.n_classes})"
-                )
+                raise ValueError(f"Number of centers ({centers.shape[0]}) must match n_classes ({params.n_classes})")
             if centers.shape[1] != params.n_features:
-                raise ValueError(
-                    f"Center dimensions ({centers.shape[1]}) must match n_features ({params.n_features})"
-                )
+                raise ValueError(f"Center dimensions ({centers.shape[1]}) must match n_features ({params.n_features})")
             return centers
 
         centers = np.zeros((params.n_classes, params.n_features), dtype=np.float32)

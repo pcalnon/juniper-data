@@ -4,10 +4,10 @@
 # Package:       juniper-data-client
 # File Name:     pyproject.toml
 # Author:        Paul Calnon
-# Version:       0.1.0
+# Version:       0.2.0
 #
 # Date Created:  2026-02-06
-# Last Modified: 2026-02-06
+# Last Modified: 2026-02-12
 #
 # License:       MIT License
 # Copyright:     Copyright (c) 2024-2026 Paul Calnon
@@ -25,7 +25,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "juniper-data-client"
-version = "0.1.0"
+version = "0.2.0"
 description = "Python client library for the JuniperData REST API"
 readme = "README.md"
 license = { text = "MIT" }

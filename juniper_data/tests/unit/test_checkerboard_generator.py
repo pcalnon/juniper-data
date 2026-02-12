@@ -4,9 +4,9 @@ import numpy as np
 import pytest
 
 from juniper_data.generators.checkerboard import (
+    VERSION,
     CheckerboardGenerator,
     CheckerboardParams,
-    VERSION,
     get_schema,
 )
 

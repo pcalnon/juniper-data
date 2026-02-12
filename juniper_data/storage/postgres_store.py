@@ -2,9 +2,9 @@
 
 import io
 import json
-from datetime import datetime, timezone
+from datetime import datetime  # noqa: F401 - used by DatasetMeta serialization
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -52,7 +52,7 @@ class PostgresDatasetStore(DatasetStore):
         last_accessed_at TIMESTAMP WITH TIME ZONE,
         access_count INTEGER NOT NULL DEFAULT 0
     );
-    
+
     CREATE INDEX IF NOT EXISTS idx_datasets_generator ON datasets(generator);
     CREATE INDEX IF NOT EXISTS idx_datasets_created_at ON datasets(created_at);
     CREATE INDEX IF NOT EXISTS idx_datasets_expires_at ON datasets(expires_at);
@@ -64,9 +64,9 @@ class PostgresDatasetStore(DatasetStore):
         port: int = 5432,
         database: str = "juniper_data",
         user: str = "postgres",
-        password: Optional[str] = None,
-        artifact_path: Optional[Path] = None,
-        connection_string: Optional[str] = None,
+        password: str | None = None,
+        artifact_path: Path | None = None,
+        connection_string: str | None = None,
         auto_create_schema: bool = True,
     ) -> None:
         """Initialize PostgreSQL connection.
@@ -85,10 +85,7 @@ class PostgresDatasetStore(DatasetStore):
             ImportError: If psycopg2 package is not installed.
         """
         if not POSTGRES_AVAILABLE:
-            raise ImportError(
-                "psycopg2 package not installed. "
-                "Install with: pip install psycopg2-binary"
-            )
+            raise ImportError("psycopg2 package not installed. " "Install with: pip install psycopg2-binary")
 
         self._artifact_path = artifact_path or Path("./data/datasets")
         self._artifact_path.mkdir(parents=True, exist_ok=True)
@@ -157,9 +154,7 @@ class PostgresDatasetStore(DatasetStore):
             n_classes=row["n_classes"],
             n_train=row["n_train"],
             n_test=row["n_test"],
-            class_distribution=row["class_distribution"]
-            if isinstance(row["class_distribution"], dict)
-            else json.loads(row["class_distribution"]),
+            class_distribution=row["class_distribution"] if isinstance(row["class_distribution"], dict) else json.loads(row["class_distribution"]),
             artifact_formats=list(row["artifact_formats"]),
             created_at=row["created_at"],
             checksum=row["checksum"],
@@ -270,9 +265,7 @@ class PostgresDatasetStore(DatasetStore):
         """
         with self._get_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT 1 FROM datasets WHERE dataset_id = %s", (dataset_id,)
-                )
+                cur.execute("SELECT 1 FROM datasets WHERE dataset_id = %s", (dataset_id,))
                 return cur.fetchone() is not None
 
     def delete(self, dataset_id: str) -> bool:

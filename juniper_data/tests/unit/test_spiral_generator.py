@@ -7,8 +7,6 @@ Tests cover:
 - Parameter validation
 """
 
-from typing import Dict
-
 import numpy as np
 import pytest
 from pydantic import ValidationError
@@ -67,7 +65,7 @@ class TestSpiralShapes:
         assert abs(result["X_train"].shape[0] - expected_train) <= 1
         assert abs(result["X_test"].shape[0] - expected_test) <= 1
 
-    def test_output_keys_present(self, generated_minimal_dataset: Dict[str, np.ndarray]) -> None:
+    def test_output_keys_present(self, generated_minimal_dataset: dict[str, np.ndarray]) -> None:
         """Verify all expected keys are present in output."""
         expected_keys = {"X_train", "y_train", "X_test", "y_test", "X_full", "y_full"}
         assert set(generated_minimal_dataset.keys()) == expected_keys
@@ -79,7 +77,7 @@ class TestSpiralShapes:
 class TestOneHotEncoding:
     """Tests for one-hot label encoding correctness."""
 
-    def test_row_sums_to_one(self, generated_two_spiral_dataset: Dict[str, np.ndarray]) -> None:
+    def test_row_sums_to_one(self, generated_two_spiral_dataset: dict[str, np.ndarray]) -> None:
         """Verify each row of y sums to 1.0."""
         y_full = generated_two_spiral_dataset["y_full"]
 
@@ -103,7 +101,7 @@ class TestOneHotEncoding:
         expected_counts = np.array([50, 50, 50])
         np.testing.assert_array_equal(class_counts, expected_counts)
 
-    def test_dtype_is_float32(self, generated_two_spiral_dataset: Dict[str, np.ndarray]) -> None:
+    def test_dtype_is_float32(self, generated_two_spiral_dataset: dict[str, np.ndarray]) -> None:
         """Verify arrays are float32 dtype."""
         assert generated_two_spiral_dataset["X_full"].dtype == np.float32
         assert generated_two_spiral_dataset["y_full"].dtype == np.float32
@@ -112,7 +110,7 @@ class TestOneHotEncoding:
         assert generated_two_spiral_dataset["X_test"].dtype == np.float32
         assert generated_two_spiral_dataset["y_test"].dtype == np.float32
 
-    def test_one_hot_values_binary(self, generated_minimal_dataset: Dict[str, np.ndarray]) -> None:
+    def test_one_hot_values_binary(self, generated_minimal_dataset: dict[str, np.ndarray]) -> None:
         """Verify one-hot encoding contains only 0.0 and 1.0 values."""
         y_full = generated_minimal_dataset["y_full"]
         unique_values = np.unique(y_full)
@@ -270,7 +268,7 @@ class TestParamValidation:
 class TestSpiralGeometry:
     """Tests for spiral geometric properties."""
 
-    def test_coordinates_centered_near_origin(self, generated_two_spiral_dataset: Dict[str, np.ndarray]) -> None:
+    def test_coordinates_centered_near_origin(self, generated_two_spiral_dataset: dict[str, np.ndarray]) -> None:
         """Verify spiral coordinates are centered roughly around origin."""
         X_full = generated_two_spiral_dataset["X_full"]
         mean_x = X_full[:, 0].mean()

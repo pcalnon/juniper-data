@@ -10,7 +10,6 @@ Marked with @pytest.mark.slow for weekly CI runs.
 """
 
 import io
-from typing import Dict
 
 import numpy as np
 import pytest
@@ -48,7 +47,7 @@ class TestE2EModernAlgorithm:
     """E2E tests for the modern spiral generation algorithm."""
 
     @pytest.fixture
-    def modern_request(self) -> Dict:
+    def modern_request(self) -> dict:
         """Request for modern algorithm spiral dataset."""
         return {
             "generator": "spiral",
@@ -64,7 +63,7 @@ class TestE2EModernAlgorithm:
             "persist": True,
         }
 
-    def test_e2e_create_download_verify_modern(self, e2e_client: TestClient, modern_request: Dict) -> None:
+    def test_e2e_create_download_verify_modern(self, e2e_client: TestClient, modern_request: dict) -> None:
         """Complete E2E flow: create dataset, download NPZ, verify integrity."""
         create_response = e2e_client.post("/v1/datasets", json=modern_request)
         assert create_response.status_code == 201
@@ -108,7 +107,7 @@ class TestE2EModernAlgorithm:
             assert X_full.shape == (n_total, 2)
             assert y_full.shape == (n_total, n_spirals)
 
-    def test_e2e_deterministic_with_seed(self, e2e_client: TestClient, modern_request: Dict) -> None:
+    def test_e2e_deterministic_with_seed(self, e2e_client: TestClient, modern_request: dict) -> None:
         """Same seed produces identical data (determinism verification)."""
         create_response1 = e2e_client.post("/v1/datasets", json=modern_request)
         dataset_id1 = create_response1.json()["dataset_id"]
@@ -126,7 +125,7 @@ class TestE2EModernAlgorithm:
                 np.testing.assert_array_equal(data1["X_full"], data2["X_full"])
                 np.testing.assert_array_equal(data1["y_full"], data2["y_full"])
 
-    def test_e2e_different_seed_different_data(self, e2e_client: TestClient, modern_request: Dict) -> None:
+    def test_e2e_different_seed_different_data(self, e2e_client: TestClient, modern_request: dict) -> None:
         """Different seeds produce different data."""
         modern_request["params"]["seed"] = 42
         create_response1 = e2e_client.post("/v1/datasets", json=modern_request)
@@ -151,7 +150,7 @@ class TestE2ELegacyCascorAlgorithm:
     """E2E tests for the legacy_cascor spiral generation algorithm."""
 
     @pytest.fixture
-    def legacy_request(self) -> Dict:
+    def legacy_request(self) -> dict:
         """Request for legacy_cascor algorithm spiral dataset."""
         return {
             "generator": "spiral",
@@ -169,7 +168,7 @@ class TestE2ELegacyCascorAlgorithm:
             "persist": True,
         }
 
-    def test_e2e_create_download_verify_legacy(self, e2e_client: TestClient, legacy_request: Dict) -> None:
+    def test_e2e_create_download_verify_legacy(self, e2e_client: TestClient, legacy_request: dict) -> None:
         """Complete E2E flow for legacy_cascor algorithm."""
         create_response = e2e_client.post("/v1/datasets", json=legacy_request)
         assert create_response.status_code == 201
@@ -235,7 +234,7 @@ class TestE2EDataContract:
     """E2E tests verifying the NPZ data contract for consumers."""
 
     @pytest.fixture
-    def contract_request(self) -> Dict:
+    def contract_request(self) -> dict:
         """Standard request for data contract verification."""
         return {
             "generator": "spiral",
@@ -249,7 +248,7 @@ class TestE2EDataContract:
             "persist": True,
         }
 
-    def test_e2e_npz_keys_contract(self, e2e_client: TestClient, contract_request: Dict) -> None:
+    def test_e2e_npz_keys_contract(self, e2e_client: TestClient, contract_request: dict) -> None:
         """Verify NPZ contains exactly the expected keys per data contract."""
         create_response = e2e_client.post("/v1/datasets", json=contract_request)
         dataset_id = create_response.json()["dataset_id"]
@@ -260,7 +259,7 @@ class TestE2EDataContract:
             actual_keys = set(data.files)
             assert actual_keys == expected_keys, f"Keys mismatch: expected {expected_keys}, got {actual_keys}"
 
-    def test_e2e_feature_dimensions(self, e2e_client: TestClient, contract_request: Dict) -> None:
+    def test_e2e_feature_dimensions(self, e2e_client: TestClient, contract_request: dict) -> None:
         """Verify features have 2 dimensions (x, y coordinates)."""
         create_response = e2e_client.post("/v1/datasets", json=contract_request)
         dataset_id = create_response.json()["dataset_id"]
@@ -271,7 +270,7 @@ class TestE2EDataContract:
             assert data["X_test"].shape[1] == 2
             assert data["X_full"].shape[1] == 2
 
-    def test_e2e_one_hot_labels(self, e2e_client: TestClient, contract_request: Dict) -> None:
+    def test_e2e_one_hot_labels(self, e2e_client: TestClient, contract_request: dict) -> None:
         """Verify labels are one-hot encoded with correct class count."""
         create_response = e2e_client.post("/v1/datasets", json=contract_request)
         dataset_id = create_response.json()["dataset_id"]
@@ -288,7 +287,7 @@ class TestE2EDataContract:
 
             assert set(np.unique(y_full)) == {0.0, 1.0}
 
-    def test_e2e_train_test_split_ratios(self, e2e_client: TestClient, contract_request: Dict) -> None:
+    def test_e2e_train_test_split_ratios(self, e2e_client: TestClient, contract_request: dict) -> None:
         """Verify train/test split matches requested ratios."""
         create_response = e2e_client.post("/v1/datasets", json=contract_request)
         dataset_id = create_response.json()["dataset_id"]
@@ -305,7 +304,7 @@ class TestE2EDataContract:
             actual_train_ratio = n_train / n_full
             assert abs(actual_train_ratio - expected_train_ratio) < 0.05
 
-    def test_e2e_metadata_consistency(self, e2e_client: TestClient, contract_request: Dict) -> None:
+    def test_e2e_metadata_consistency(self, e2e_client: TestClient, contract_request: dict) -> None:
         """Verify metadata matches actual data dimensions."""
         create_response = e2e_client.post("/v1/datasets", json=contract_request)
         data = create_response.json()

@@ -52,10 +52,7 @@ class MnistGenerator:
             ImportError: If datasets package is not installed.
         """
         if not HF_AVAILABLE:
-            raise ImportError(
-                "Hugging Face datasets package not installed. "
-                "Install with: pip install datasets"
-            )
+            raise ImportError("Hugging Face datasets package not installed. " "Install with: pip install datasets")
 
         X, y = MnistGenerator._load_and_preprocess(params)
 

@@ -3,12 +3,11 @@
 import hashlib
 import io
 from pathlib import Path
-from typing import Dict
 
 import numpy as np
 
 
-def save_npz(path: Path, arrays: Dict[str, np.ndarray]) -> None:
+def save_npz(path: Path, arrays: dict[str, np.ndarray]) -> None:
     """Save arrays to NPZ file.
 
     Args:
@@ -18,7 +17,7 @@ def save_npz(path: Path, arrays: Dict[str, np.ndarray]) -> None:
     np.savez(path, **arrays)  # type: ignore[arg-type]  # numpy stubs incomplete for **kwargs
 
 
-def load_npz(path: Path) -> Dict[str, np.ndarray]:
+def load_npz(path: Path) -> dict[str, np.ndarray]:
     """Load arrays from NPZ file.
 
     Args:
@@ -31,7 +30,7 @@ def load_npz(path: Path) -> Dict[str, np.ndarray]:
         return {key: data[key] for key in data.files}
 
 
-def arrays_to_bytes(arrays: Dict[str, np.ndarray]) -> bytes:
+def arrays_to_bytes(arrays: dict[str, np.ndarray]) -> bytes:
     """Convert arrays to NPZ bytes for streaming response.
 
     Args:
@@ -48,7 +47,7 @@ def arrays_to_bytes(arrays: Dict[str, np.ndarray]) -> bytes:
     return buffer.read()
 
 
-def compute_checksum(arrays: Dict[str, np.ndarray]) -> str:
+def compute_checksum(arrays: dict[str, np.ndarray]) -> str:
     """Compute SHA-256 checksum of arrays for integrity verification.
 
     The checksum is computed over the NPZ byte representation of the arrays,

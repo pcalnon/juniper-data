@@ -1,7 +1,6 @@
 """API configuration settings using pydantic-settings."""
 
 from functools import lru_cache
-from typing import Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -33,7 +32,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     cors_origins: list[str] = ["*"]
 
-    api_keys: Optional[list[str]] = None
+    api_keys: list[str] | None = None
     rate_limit_enabled: bool = False
     rate_limit_requests_per_minute: int = 60
 

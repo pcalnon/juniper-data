@@ -26,6 +26,7 @@ def get_redis_store(**kwargs):  # type: ignore[no-untyped-def]
         ImportError: If redis package is not installed.
     """
     from juniper_data.storage.redis_store import RedisDatasetStore
+
     return RedisDatasetStore(**kwargs)
 
 
@@ -42,6 +43,7 @@ def get_hf_store(**kwargs):  # type: ignore[no-untyped-def]
         ImportError: If datasets package is not installed.
     """
     from juniper_data.storage.hf_store import HuggingFaceDatasetStore
+
     return HuggingFaceDatasetStore(**kwargs)
 
 
@@ -58,6 +60,7 @@ def get_postgres_store(**kwargs):  # type: ignore[no-untyped-def]
         ImportError: If psycopg2 package is not installed.
     """
     from juniper_data.storage.postgres_store import PostgresDatasetStore
+
     return PostgresDatasetStore(**kwargs)
 
 
@@ -74,4 +77,5 @@ def get_kaggle_store(**kwargs):  # type: ignore[no-untyped-def]
         ImportError: If kaggle package is not installed.
     """
     from juniper_data.storage.kaggle_store import KaggleDatasetStore
+
     return KaggleDatasetStore(**kwargs)

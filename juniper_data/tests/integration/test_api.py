@@ -9,7 +9,6 @@ Tests cover all endpoints:
 """
 
 import io
-from typing import Dict
 
 import numpy as np
 import pytest
@@ -43,7 +42,7 @@ def client(memory_store: InMemoryDatasetStore, test_settings: Settings) -> TestC
 
 
 @pytest.fixture
-def spiral_request() -> Dict:
+def spiral_request() -> dict:
     """Default spiral dataset creation request."""
     return {
         "generator": "spiral",
@@ -136,7 +135,7 @@ class TestGeneratorsEndpoint:
 class TestDatasetsEndpoint:
     """Tests for the /v1/datasets endpoints."""
 
-    def test_create_spiral_dataset(self, client: TestClient, spiral_request: Dict) -> None:
+    def test_create_spiral_dataset(self, client: TestClient, spiral_request: dict) -> None:
         """POST /v1/datasets creates dataset and returns meta."""
         response = client.post("/v1/datasets", json=spiral_request)
 
@@ -148,7 +147,7 @@ class TestDatasetsEndpoint:
         assert data["meta"]["generator"] == "spiral"
         assert data["meta"]["n_samples"] == 100
 
-    def test_create_returns_artifact_url(self, client: TestClient, spiral_request: Dict) -> None:
+    def test_create_returns_artifact_url(self, client: TestClient, spiral_request: dict) -> None:
         """Response includes artifact_url."""
         response = client.post("/v1/datasets", json=spiral_request)
 
@@ -158,7 +157,7 @@ class TestDatasetsEndpoint:
         assert "/v1/datasets/" in data["artifact_url"]
         assert "/artifact" in data["artifact_url"]
 
-    def test_list_datasets(self, client: TestClient, spiral_request: Dict) -> None:
+    def test_list_datasets(self, client: TestClient, spiral_request: dict) -> None:
         """GET /v1/datasets returns list after creation."""
         client.post("/v1/datasets", json=spiral_request)
 
@@ -169,7 +168,7 @@ class TestDatasetsEndpoint:
         assert isinstance(data, list)
         assert len(data) >= 1
 
-    def test_get_dataset_meta(self, client: TestClient, spiral_request: Dict) -> None:
+    def test_get_dataset_meta(self, client: TestClient, spiral_request: dict) -> None:
         """GET /v1/datasets/{id} returns metadata."""
         create_response = client.post("/v1/datasets", json=spiral_request)
         dataset_id = create_response.json()["dataset_id"]
@@ -190,7 +189,7 @@ class TestDatasetsEndpoint:
         data = response.json()
         assert "detail" in data
 
-    def test_delete_dataset(self, client: TestClient, spiral_request: Dict) -> None:
+    def test_delete_dataset(self, client: TestClient, spiral_request: dict) -> None:
         """DELETE /v1/datasets/{id} returns 204."""
         create_response = client.post("/v1/datasets", json=spiral_request)
         dataset_id = create_response.json()["dataset_id"]
@@ -202,7 +201,7 @@ class TestDatasetsEndpoint:
         get_response = client.get(f"/v1/datasets/{dataset_id}")
         assert get_response.status_code == 404
 
-    def test_caching_same_params(self, client: TestClient, spiral_request: Dict) -> None:
+    def test_caching_same_params(self, client: TestClient, spiral_request: dict) -> None:
         """Same params twice returns same dataset_id (no regeneration)."""
         response1 = client.post("/v1/datasets", json=spiral_request)
         response2 = client.post("/v1/datasets", json=spiral_request)
@@ -219,7 +218,7 @@ class TestDatasetsEndpoint:
 class TestArtifactEndpoint:
     """Tests for the /v1/datasets/{id}/artifact endpoint."""
 
-    def test_download_artifact(self, client: TestClient, spiral_request: Dict) -> None:
+    def test_download_artifact(self, client: TestClient, spiral_request: dict) -> None:
         """GET /v1/datasets/{id}/artifact returns NPZ bytes."""
         create_response = client.post("/v1/datasets", json=spiral_request)
         dataset_id = create_response.json()["dataset_id"]
@@ -233,7 +232,7 @@ class TestArtifactEndpoint:
         with np.load(io.BytesIO(response.content)) as data:
             assert len(data.files) > 0
 
-    def test_artifact_contains_expected_keys(self, client: TestClient, spiral_request: Dict) -> None:
+    def test_artifact_contains_expected_keys(self, client: TestClient, spiral_request: dict) -> None:
         """NPZ has X_train, y_train, X_test, y_test."""
         create_response = client.post("/v1/datasets", json=spiral_request)
         dataset_id = create_response.json()["dataset_id"]
@@ -253,7 +252,7 @@ class TestArtifactEndpoint:
 class TestPreviewEndpoint:
     """Tests for the /v1/datasets/{id}/preview endpoint."""
 
-    def test_preview_returns_samples(self, client: TestClient, spiral_request: Dict) -> None:
+    def test_preview_returns_samples(self, client: TestClient, spiral_request: dict) -> None:
         """GET /v1/datasets/{id}/preview returns JSON with samples."""
         create_response = client.post("/v1/datasets", json=spiral_request)
         dataset_id = create_response.json()["dataset_id"]
@@ -270,7 +269,7 @@ class TestPreviewEndpoint:
         assert len(data["X_sample"]) > 0
         assert len(data["y_sample"]) > 0
 
-    def test_preview_respects_n_param(self, client: TestClient, spiral_request: Dict) -> None:
+    def test_preview_respects_n_param(self, client: TestClient, spiral_request: dict) -> None:
         """?n=10 returns 10 samples."""
         create_response = client.post("/v1/datasets", json=spiral_request)
         dataset_id = create_response.json()["dataset_id"]

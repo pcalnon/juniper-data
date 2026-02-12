@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from juniper_data.generators.gaussian import GaussianGenerator, GaussianParams, VERSION, get_schema
+from juniper_data.generators.gaussian import VERSION, GaussianGenerator, GaussianParams, get_schema
 
 
 class TestGaussianParams:

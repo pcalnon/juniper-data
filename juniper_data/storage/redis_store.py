@@ -2,8 +2,8 @@
 
 import io
 import json
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import datetime  # noqa: F401 - used by DatasetMeta serialization
+from typing import Any
 
 import numpy as np
 
@@ -13,6 +13,7 @@ from .base import DatasetStore
 
 try:
     import redis
+
     REDIS_AVAILABLE = True
 except ImportError:
     REDIS_AVAILABLE = False
@@ -33,10 +34,10 @@ class RedisDatasetStore(DatasetStore):
         host: str = "localhost",
         port: int = 6379,
         db: int = 0,
-        password: Optional[str] = None,
+        password: str | None = None,
         key_prefix: str = "juniper:dataset:",
-        default_ttl: Optional[int] = None,
-        connection_pool: Optional[Any] = None,
+        default_ttl: int | None = None,
+        connection_pool: Any | None = None,
     ) -> None:
         """Initialize Redis connection.
 
@@ -53,9 +54,7 @@ class RedisDatasetStore(DatasetStore):
             ImportError: If redis package is not installed.
         """
         if not REDIS_AVAILABLE:
-            raise ImportError(
-                "Redis package not installed. Install with: pip install redis"
-            )
+            raise ImportError("Redis package not installed. Install with: pip install redis")
 
         self._key_prefix = key_prefix
         self._default_ttl = default_ttl

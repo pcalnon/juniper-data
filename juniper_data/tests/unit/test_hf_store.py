@@ -51,6 +51,7 @@ def _make_mock_hf_dataset(n_samples=20, n_classes=3, feature_type="tabular"):
     mock_ds.__getitem__ = MagicMock()
 
     if feature_type == "tabular":
+
         def getitem(key):
             if key == "feature1":
                 return list(range(n_samples))
@@ -59,6 +60,7 @@ def _make_mock_hf_dataset(n_samples=20, n_classes=3, feature_type="tabular"):
             elif key == "label":
                 return labels
             return []
+
         mock_ds.__getitem__.side_effect = getitem
     else:
         mock_images = []
@@ -244,9 +246,8 @@ class TestHuggingFaceDatasetStoreExtractImages:
 
         store = HuggingFaceDatasetStore()
 
-        mock_tensor = MagicMock()
+        mock_tensor = MagicMock(spec=["numpy"])
         mock_tensor.numpy.return_value = np.random.randint(0, 255, (28, 28), dtype=np.uint8)
-        delattr(mock_tensor, "convert")
         mock_ds = [{"image": mock_tensor}, {"image": mock_tensor}]
 
         result = store._extract_images(mock_ds, "image", flatten=False, normalize=False)
@@ -314,7 +315,7 @@ class TestHuggingFaceDatasetStoreExtractFeaturesLabels:
         mock_ds = MagicMock()
         mock_ds.column_names = ["feat", "label"]
 
-        mock_ds.__getitem__.side_effect = lambda key: [mock_tensor, mock_tensor] if key == "feat" else [0, 1]
+        mock_ds.__getitem__.side_effect = lambda key: [mock_tensor, mock_tensor] if key == "feat" else [0, 1]  # type: ignore[list-item]
 
         X, y, n_classes = store._extract_features_labels(mock_ds, feature_columns=["feat"], label_column="label", flatten=True, normalize=False, one_hot_labels=False)
         assert y.shape[1] == 1

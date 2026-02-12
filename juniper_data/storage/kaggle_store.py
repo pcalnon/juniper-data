@@ -1,10 +1,8 @@
 """Kaggle datasets integration for downloading and caching datasets."""
 
-import os
-import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -35,8 +33,8 @@ class KaggleDatasetStore(DatasetStore):
 
     def __init__(
         self,
-        download_path: Optional[Path] = None,
-        cache_store: Optional[DatasetStore] = None,
+        download_path: Path | None = None,
+        cache_store: DatasetStore | None = None,
         auto_authenticate: bool = True,
     ) -> None:
         """Initialize the Kaggle store.
@@ -50,16 +48,13 @@ class KaggleDatasetStore(DatasetStore):
             ImportError: If kaggle package is not installed.
         """
         if not KAGGLE_AVAILABLE:
-            raise ImportError(
-                "Kaggle package not installed. "
-                "Install with: pip install kaggle"
-            )
+            raise ImportError("Kaggle package not installed. " "Install with: pip install kaggle")
 
         self._download_path = download_path or Path("./data/kaggle")
         self._download_path.mkdir(parents=True, exist_ok=True)
         self._cache_store = cache_store or InMemoryDatasetStore()
 
-        self._api: Optional[Any] = None
+        self._api: Any | None = None
         if auto_authenticate:
             self._authenticate()
 
@@ -110,11 +105,11 @@ class KaggleDatasetStore(DatasetStore):
         self,
         dataset_ref: str,
         file_name: str,
-        feature_columns: Optional[list[str]] = None,
+        feature_columns: list[str] | None = None,
         label_column: str = "label",
         delimiter: str = ",",
-        n_samples: Optional[int] = None,
-        seed: Optional[int] = None,
+        n_samples: int | None = None,
+        seed: int | None = None,
         one_hot_labels: bool = True,
         normalize_features: bool = False,
         train_ratio: float = 0.8,
@@ -145,15 +140,12 @@ class KaggleDatasetStore(DatasetStore):
             if csv_files:
                 file_path = csv_files[0]
             else:
-                raise FileNotFoundError(
-                    f"File '{file_name}' not found in dataset. "
-                    f"Available files: {[f.name for f in all_files]}"
-                )
+                raise FileNotFoundError(f"File '{file_name}' not found in dataset. " f"Available files: {[f.name for f in all_files]}")
 
         import csv
 
         data = []
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             reader = csv.DictReader(f, delimiter=delimiter)
             for row in reader:
                 data.append(row)
@@ -197,11 +189,11 @@ class KaggleDatasetStore(DatasetStore):
             X_range[X_range == 0] = 1
             X = (X - X_min) / X_range
 
-        unique_labels = sorted([str(l) for l in set(labels)])
+        unique_labels = sorted([str(lbl) for lbl in set(labels)])
         label_to_idx = {label: idx for idx, label in enumerate(unique_labels)}
         n_classes = len(unique_labels)
 
-        label_indices = np.array([label_to_idx[str(l)] for l in labels])
+        label_indices = np.array([label_to_idx[str(lbl)] for lbl in labels])
 
         if one_hot_labels:
             y = np.zeros((len(labels), n_classes), dtype=np.float32)
@@ -254,7 +246,7 @@ class KaggleDatasetStore(DatasetStore):
 
         return dataset_id, meta, arrays
 
-    def list_competitions(self, search: Optional[str] = None) -> list[dict]:
+    def list_competitions(self, search: str | None = None) -> list[dict]:
         """List available Kaggle competitions.
 
         Args:
@@ -277,9 +269,7 @@ class KaggleDatasetStore(DatasetStore):
             for c in competitions
         ]
 
-    def list_kaggle_datasets(
-        self, search: Optional[str] = None, page: int = 1
-    ) -> list[dict]:
+    def list_kaggle_datasets(self, search: str | None = None, page: int = 1) -> list[dict]:
         """List available Kaggle datasets.
 
         Args:

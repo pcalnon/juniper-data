@@ -245,7 +245,7 @@ def test_main_import_error_uvicorn_not_installed(self) -> None:
          patch("builtins.print") as mock_print, \
          patch.object(builtins, "__import__", side_effect=mock_import), \
          patch.dict(sys.modules, {"uvicorn": None}):
-        
+
         import importlib
         from juniper_data import __main__ as main_module
 

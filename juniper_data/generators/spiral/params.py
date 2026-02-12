@@ -10,13 +10,13 @@ Parameter Aliases:
     - `noise_level` -> `noise`
 """
 
-from typing import Dict, Literal, Optional, Tuple
+from typing import Literal
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 from .defaults import MAX_NOISE, MAX_POINTS, MAX_ROTATIONS, MAX_SPIRALS, MIN_NOISE, MIN_POINTS, MIN_ROTATIONS, MIN_SPIRALS, SPIRAL_DEFAULT_CLOCKWISE, SPIRAL_DEFAULT_N_POINTS, SPIRAL_DEFAULT_N_ROTATIONS, SPIRAL_DEFAULT_N_SPIRALS, SPIRAL_DEFAULT_NOISE, SPIRAL_DEFAULT_RADIUS, SPIRAL_DEFAULT_SEED, SPIRAL_DEFAULT_TEST_RATIO, SPIRAL_DEFAULT_TRAIN_RATIO
 
-PARAMETER_ALIASES: Dict[str, str] = {
+PARAMETER_ALIASES: dict[str, str] = {
     "n_points": "n_points_per_spiral",
     "noise_level": "noise",
 }
@@ -77,7 +77,7 @@ class SpiralParams(BaseModel):
         default=SPIRAL_DEFAULT_CLOCKWISE,
         description="Whether spirals rotate clockwise",
     )
-    seed: Optional[int] = Field(
+    seed: int | None = Field(
         default=SPIRAL_DEFAULT_SEED,
         description="Random seed for reproducibility",
     )
@@ -107,7 +107,7 @@ class SpiralParams(BaseModel):
         le=100.0,
         description="Maximum radius for modern mode, or max distance parameter for legacy mode",
     )
-    origin: Tuple[float, float] = Field(
+    origin: tuple[float, float] = Field(
         default=(0.0, 0.0),
         description="Origin point (x, y) for spiral center",
     )

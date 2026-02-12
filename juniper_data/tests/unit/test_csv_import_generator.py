@@ -7,9 +7,9 @@ import numpy as np
 import pytest
 
 from juniper_data.generators.csv_import import (
+    VERSION,
     CsvImportGenerator,
     CsvImportParams,
-    VERSION,
     get_schema,
 )
 

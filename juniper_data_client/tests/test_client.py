@@ -14,6 +14,7 @@ import responses
 from juniper_data_client import (
     JuniperDataClient,
     JuniperDataClientError,
+    JuniperDataConfigurationError,
     JuniperDataConnectionError,
     JuniperDataNotFoundError,
     JuniperDataTimeoutError,
@@ -89,6 +90,44 @@ class TestClientConfiguration:
         with JuniperDataClient() as client:
             assert client.session is not None
         # Session should be closed after context exit
+
+    def test_api_key_from_parameter(self) -> None:
+        """API key from parameter is set in session headers."""
+        client = JuniperDataClient(api_key="test-api-key-123")
+        assert client.session.headers.get("X-API-Key") == "test-api-key-123"
+
+    def test_api_key_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """API key from environment variable is set in session headers."""
+        monkeypatch.setenv("JUNIPER_DATA_API_KEY", "env-api-key-456")
+        client = JuniperDataClient()
+        assert client.session.headers.get("X-API-Key") == "env-api-key-456"
+
+    def test_api_key_parameter_takes_precedence(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """API key from parameter takes precedence over environment variable."""
+        monkeypatch.setenv("JUNIPER_DATA_API_KEY", "env-api-key")
+        client = JuniperDataClient(api_key="param-api-key")
+        assert client.session.headers.get("X-API-Key") == "param-api-key"
+
+    def test_no_api_key_header_when_not_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """No X-API-Key header when API key is not provided."""
+        monkeypatch.delenv("JUNIPER_DATA_API_KEY", raising=False)
+        client = JuniperDataClient()
+        assert "X-API-Key" not in client.session.headers
+
+
+@pytest.mark.unit
+class TestConfigurationError:
+    """Tests for JuniperDataConfigurationError exception."""
+
+    def test_configuration_error_is_subclass_of_client_error(self) -> None:
+        """ConfigurationError is a subclass of ClientError."""
+        assert issubclass(JuniperDataConfigurationError, JuniperDataClientError)
+
+    def test_configuration_error_can_be_raised_and_caught(self) -> None:
+        """ConfigurationError can be raised and caught."""
+        with pytest.raises(JuniperDataConfigurationError) as exc_info:
+            raise JuniperDataConfigurationError("Missing required configuration")
+        assert "Missing required configuration" in str(exc_info.value)
 
 
 @pytest.mark.unit

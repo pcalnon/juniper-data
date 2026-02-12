@@ -6,8 +6,6 @@ Tests cover:
 - shuffle_and_split integration
 """
 
-from typing import Dict
-
 import numpy as np
 import pytest
 
@@ -18,7 +16,7 @@ from juniper_data.core.split import shuffle_and_split, shuffle_data, split_data
 class TestShuffleData:
     """Tests for shuffle_data function."""
 
-    def test_shuffle_maintains_correspondence(self, sample_arrays: Dict[str, np.ndarray]) -> None:
+    def test_shuffle_maintains_correspondence(self, sample_arrays: dict[str, np.ndarray]) -> None:
         """Verify shuffling maintains correspondence between X and y."""
         X = sample_arrays["X"]
         y = sample_arrays["y"]
@@ -37,7 +35,7 @@ class TestShuffleData:
             original_idx = np.where((X_original == x_row).all(axis=1))[0][0]
             np.testing.assert_array_equal(y_row, sample_arrays["y"][original_idx])
 
-    def test_shuffle_changes_order(self, sample_arrays: Dict[str, np.ndarray]) -> None:
+    def test_shuffle_changes_order(self, sample_arrays: dict[str, np.ndarray]) -> None:
         """Verify shuffling actually changes the order."""
         X = sample_arrays["X"]
         y = sample_arrays["y"]
@@ -47,7 +45,7 @@ class TestShuffleData:
 
         assert not np.array_equal(X, X_shuffled)
 
-    def test_shuffle_preserves_all_values(self, sample_arrays: Dict[str, np.ndarray]) -> None:
+    def test_shuffle_preserves_all_values(self, sample_arrays: dict[str, np.ndarray]) -> None:
         """Verify shuffling preserves all original values."""
         X = sample_arrays["X"]
         y = sample_arrays["y"]
@@ -67,7 +65,7 @@ class TestShuffleData:
         with pytest.raises(ValueError, match="same number of samples"):
             shuffle_data(X, y, rng)
 
-    def test_shuffle_deterministic_with_same_seed(self, sample_arrays: Dict[str, np.ndarray]) -> None:
+    def test_shuffle_deterministic_with_same_seed(self, sample_arrays: dict[str, np.ndarray]) -> None:
         """Verify same seed produces same shuffle order."""
         X = sample_arrays["X"]
         y = sample_arrays["y"]
@@ -86,7 +84,7 @@ class TestShuffleData:
 class TestSplitData:
     """Tests for split_data function."""
 
-    def test_split_produces_correct_sizes(self, sample_arrays: Dict[str, np.ndarray]) -> None:
+    def test_split_produces_correct_sizes(self, sample_arrays: dict[str, np.ndarray]) -> None:
         """Verify split produces correct train/test sizes."""
         X = sample_arrays["X"]
         y = sample_arrays["y"]
@@ -98,7 +96,7 @@ class TestSplitData:
         assert result["X_test"].shape[0] == 2
         assert result["y_test"].shape[0] == 2
 
-    def test_split_maintains_feature_dimensions(self, sample_arrays: Dict[str, np.ndarray]) -> None:
+    def test_split_maintains_feature_dimensions(self, sample_arrays: dict[str, np.ndarray]) -> None:
         """Verify split maintains feature dimensions."""
         X = sample_arrays["X"]
         y = sample_arrays["y"]
@@ -123,7 +121,7 @@ class TestSplitData:
         assert abs(result["X_train"].shape[0] - expected_train) <= 1
         assert abs(result["X_test"].shape[0] - expected_test) <= 1
 
-    def test_split_no_overlap(self, sample_arrays: Dict[str, np.ndarray]) -> None:
+    def test_split_no_overlap(self, sample_arrays: dict[str, np.ndarray]) -> None:
         """Verify train and test sets do not overlap."""
         X = sample_arrays["X"]
         y = sample_arrays["y"]
@@ -146,7 +144,7 @@ class TestSplitData:
         with pytest.raises(ValueError, match="same number of samples"):
             split_data(X, y, train_ratio=0.8, test_ratio=0.2)
 
-    def test_split_invalid_train_ratio_raises(self, sample_arrays: Dict[str, np.ndarray]) -> None:
+    def test_split_invalid_train_ratio_raises(self, sample_arrays: dict[str, np.ndarray]) -> None:
         """Verify invalid train_ratio raises ValueError."""
         X = sample_arrays["X"]
         y = sample_arrays["y"]
@@ -154,7 +152,7 @@ class TestSplitData:
         with pytest.raises(ValueError, match="train_ratio"):
             split_data(X, y, train_ratio=1.5, test_ratio=0.2)
 
-    def test_split_invalid_test_ratio_raises(self, sample_arrays: Dict[str, np.ndarray]) -> None:
+    def test_split_invalid_test_ratio_raises(self, sample_arrays: dict[str, np.ndarray]) -> None:
         """Verify invalid test_ratio raises ValueError."""
         X = sample_arrays["X"]
         y = sample_arrays["y"]
@@ -162,7 +160,7 @@ class TestSplitData:
         with pytest.raises(ValueError, match="test_ratio"):
             split_data(X, y, train_ratio=0.8, test_ratio=1.5)
 
-    def test_split_ratios_exceed_one_raises(self, sample_arrays: Dict[str, np.ndarray]) -> None:
+    def test_split_ratios_exceed_one_raises(self, sample_arrays: dict[str, np.ndarray]) -> None:
         """Verify train_ratio + test_ratio > 1.0 raises ValueError."""
         X = sample_arrays["X"]
         y = sample_arrays["y"]
@@ -175,7 +173,7 @@ class TestSplitData:
 class TestShuffleAndSplit:
     """Tests for shuffle_and_split integration function."""
 
-    def test_shuffle_and_split_integration(self, sample_arrays: Dict[str, np.ndarray]) -> None:
+    def test_shuffle_and_split_integration(self, sample_arrays: dict[str, np.ndarray]) -> None:
         """Verify shuffle_and_split combines both operations correctly."""
         X = sample_arrays["X"]
         y = sample_arrays["y"]
@@ -197,7 +195,7 @@ class TestShuffleAndSplit:
         assert result["X_train"].shape[0] == 8
         assert result["X_test"].shape[0] == 2
 
-    def test_shuffle_and_split_deterministic(self, sample_arrays: Dict[str, np.ndarray]) -> None:
+    def test_shuffle_and_split_deterministic(self, sample_arrays: dict[str, np.ndarray]) -> None:
         """Verify same seed produces identical results."""
         X = sample_arrays["X"]
         y = sample_arrays["y"]
@@ -208,7 +206,7 @@ class TestShuffleAndSplit:
         np.testing.assert_array_equal(result1["X_train"], result2["X_train"])
         np.testing.assert_array_equal(result1["X_test"], result2["X_test"])
 
-    def test_shuffle_and_split_no_shuffle(self, sample_arrays: Dict[str, np.ndarray]) -> None:
+    def test_shuffle_and_split_no_shuffle(self, sample_arrays: dict[str, np.ndarray]) -> None:
         """Verify shuffle=False preserves original order."""
         X = sample_arrays["X"]
         y = sample_arrays["y"]
@@ -218,7 +216,7 @@ class TestShuffleAndSplit:
         np.testing.assert_array_equal(result["X_train"], X[:8])
         np.testing.assert_array_equal(result["X_test"], X[8:])
 
-    def test_shuffle_and_split_different_seeds(self, sample_arrays: Dict[str, np.ndarray]) -> None:
+    def test_shuffle_and_split_different_seeds(self, sample_arrays: dict[str, np.ndarray]) -> None:
         """Verify different seeds produce different shuffles."""
         X = sample_arrays["X"]
         y = sample_arrays["y"]

@@ -29,3 +29,9 @@ class JuniperDataValidationError(JuniperDataClientError):
     """Raised when request parameters fail validation (400/422)."""
 
     pass
+
+
+class JuniperDataConfigurationError(JuniperDataClientError):
+    """Raised when JuniperData configuration is missing or invalid."""
+
+    pass

@@ -1,7 +1,5 @@
 """Common pytest fixtures for juniper_data tests."""
 
-from typing import Dict
-
 import numpy as np
 import pytest
 
@@ -45,25 +43,25 @@ def minimal_spiral_params() -> SpiralParams:
 
 
 @pytest.fixture
-def generated_two_spiral_dataset(two_spiral_params: SpiralParams) -> Dict[str, np.ndarray]:
+def generated_two_spiral_dataset(two_spiral_params: SpiralParams) -> dict[str, np.ndarray]:
     """Generate a 2-spiral dataset for testing."""
     return SpiralGenerator.generate(two_spiral_params)
 
 
 @pytest.fixture
-def generated_three_spiral_dataset(three_spiral_params: SpiralParams) -> Dict[str, np.ndarray]:
+def generated_three_spiral_dataset(three_spiral_params: SpiralParams) -> dict[str, np.ndarray]:
     """Generate a 3-spiral dataset for testing."""
     return SpiralGenerator.generate(three_spiral_params)
 
 
 @pytest.fixture
-def generated_minimal_dataset(minimal_spiral_params: SpiralParams) -> Dict[str, np.ndarray]:
+def generated_minimal_dataset(minimal_spiral_params: SpiralParams) -> dict[str, np.ndarray]:
     """Generate a minimal dataset for fast tests."""
     return SpiralGenerator.generate(minimal_spiral_params)
 
 
 @pytest.fixture
-def sample_arrays() -> Dict[str, np.ndarray]:
+def sample_arrays() -> dict[str, np.ndarray]:
     """Simple sample arrays for split/shuffle testing."""
     X = np.arange(20).reshape(10, 2).astype(np.float32)
     y = np.eye(2, dtype=np.float32)[np.arange(10) % 2]

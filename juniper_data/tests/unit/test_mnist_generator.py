@@ -323,7 +323,7 @@ class TestMnistImports:
 
     def test_init_exports(self) -> None:
         """__init__.py exports expected symbols."""
-        from juniper_data.generators.mnist import MnistGenerator, MnistParams, VERSION, get_schema
+        from juniper_data.generators.mnist import VERSION, MnistGenerator, MnistParams, get_schema
 
         assert MnistGenerator is not None
         assert MnistParams is not None

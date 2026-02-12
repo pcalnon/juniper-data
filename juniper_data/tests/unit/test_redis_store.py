@@ -103,7 +103,7 @@ class TestRedisDatasetStoreInit:
         from juniper_data.storage.redis_store import RedisDatasetStore
 
         mock_pool = MagicMock()
-        store = RedisDatasetStore(connection_pool=mock_pool)
+        _store = RedisDatasetStore(connection_pool=mock_pool)
         mock_redis.Redis.assert_called_once_with(connection_pool=mock_pool)
 
     def test_init_raises_without_redis(self) -> None:

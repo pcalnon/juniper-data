@@ -90,10 +90,7 @@ class ArcAgiGenerator:
     def _load_from_huggingface(params: ArcAgiParams) -> list[dict]:
         """Load ARC tasks from Hugging Face Hub."""
         if not HF_AVAILABLE:
-            raise ImportError(
-                "Hugging Face datasets package not installed. "
-                "Install with: pip install datasets"
-            )
+            raise ImportError("Hugging Face datasets package not installed. " "Install with: pip install datasets")
 
         assert hf_load_dataset is not None
 
@@ -158,16 +155,14 @@ class ArcAgiGenerator:
         """Load all JSON task files from a directory."""
         tasks = []
         for json_file in sorted(dir_path.glob("*.json")):
-            with open(json_file, "r", encoding="utf-8") as f:
+            with open(json_file, encoding="utf-8") as f:
                 task_data = json.load(f)
                 task_data["task_id"] = json_file.stem
                 tasks.append(task_data)
         return tasks
 
     @staticmethod
-    def _convert_tasks_to_arrays(
-        tasks: list[dict], params: ArcAgiParams
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def _convert_tasks_to_arrays(tasks: list[dict], params: ArcAgiParams) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Convert ARC tasks to padded numpy arrays."""
         inputs = []
         outputs = []
@@ -177,21 +172,15 @@ class ArcAgiGenerator:
             task_id = task.get("task_id", "unknown")
 
             for pair in task.get("train", []):
-                input_grid = ArcAgiGenerator._pad_grid(
-                    pair["input"], params.pad_to, params.pad_value
-                )
-                output_grid = ArcAgiGenerator._pad_grid(
-                    pair["output"], params.pad_to, params.pad_value
-                )
+                input_grid = ArcAgiGenerator._pad_grid(pair["input"], params.pad_to, params.pad_value)
+                output_grid = ArcAgiGenerator._pad_grid(pair["output"], params.pad_to, params.pad_value)
                 inputs.append(input_grid)
                 outputs.append(output_grid)
                 task_ids.append(task_id)
 
             if params.include_test:
                 for pair in task.get("test", []):
-                    input_grid = ArcAgiGenerator._pad_grid(
-                        pair["input"], params.pad_to, params.pad_value
-                    )
+                    input_grid = ArcAgiGenerator._pad_grid(pair["input"], params.pad_to, params.pad_value)
                     output_grid = ArcAgiGenerator._pad_grid(
                         pair.get("output", [[params.pad_value]]),
                         params.pad_to,

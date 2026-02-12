@@ -3,7 +3,6 @@
 import time
 from collections import defaultdict
 from threading import Lock
-from typing import Callable, Optional
 
 from fastapi import HTTPException, Request, status
 from fastapi.security import APIKeyHeader
@@ -20,7 +19,7 @@ class APIKeyAuth:
     configured, authentication is disabled (open access mode for development).
     """
 
-    def __init__(self, api_keys: Optional[list[str]] = None) -> None:
+    def __init__(self, api_keys: list[str] | None = None) -> None:
         """Initialize with optional list of valid API keys.
 
         Args:
@@ -34,7 +33,7 @@ class APIKeyAuth:
         """Check if authentication is enabled."""
         return self._enabled
 
-    def validate(self, api_key: Optional[str]) -> bool:
+    def validate(self, api_key: str | None) -> bool:
         """Validate an API key.
 
         Args:
@@ -49,7 +48,7 @@ class APIKeyAuth:
             return False
         return api_key in self._api_keys
 
-    async def __call__(self, request: Request) -> Optional[str]:
+    async def __call__(self, request: Request) -> str | None:
         """FastAPI dependency for API key validation.
 
         Args:
@@ -122,7 +121,7 @@ class RateLimiter:
         """Get the window duration in seconds."""
         return self._window
 
-    def _get_key(self, request: Request, api_key: Optional[str]) -> str:
+    def _get_key(self, request: Request, api_key: str | None) -> str:
         """Generate a rate limit key for the request.
 
         Uses API key if available, otherwise falls back to client IP.
@@ -167,7 +166,7 @@ class RateLimiter:
             self._counters[key] = (count + 1, window_start)
             return (True, self._limit - count - 1, int(self._window - (now - window_start)))
 
-    async def __call__(self, request: Request, api_key: Optional[str] = None) -> None:
+    async def __call__(self, request: Request, api_key: str | None = None) -> None:
         """FastAPI dependency for rate limit checking.
 
         Args:
@@ -204,8 +203,8 @@ class RateLimiter:
             self._counters.clear()
 
 
-_api_key_auth: Optional[APIKeyAuth] = None
-_rate_limiter: Optional[RateLimiter] = None
+_api_key_auth: APIKeyAuth | None = None
+_rate_limiter: RateLimiter | None = None
 
 
 def get_api_key_auth() -> APIKeyAuth:

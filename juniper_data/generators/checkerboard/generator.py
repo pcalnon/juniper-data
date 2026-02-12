@@ -62,9 +62,7 @@ class CheckerboardGenerator:
         }
 
     @staticmethod
-    def _generate_raw(
-        params: CheckerboardParams, rng: np.random.Generator
-    ) -> tuple[np.ndarray, np.ndarray]:
+    def _generate_raw(params: CheckerboardParams, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:
         """Generate raw checkerboard coordinates and labels.
 
         Args:

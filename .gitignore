@@ -20,8 +20,8 @@ images/*
 # boost*/*
 # src/pytorch_static/data/*
 # torchexplorer_standalone/*
-# **/reports
-# **/reports/*
+**/reports
+**/reports/*
 **/logs
 **/backup
 **/backups

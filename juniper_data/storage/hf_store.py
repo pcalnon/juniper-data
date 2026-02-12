@@ -1,7 +1,7 @@
 """Hugging Face datasets integration for loading external datasets."""
 
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -12,6 +12,7 @@ from .memory import InMemoryDatasetStore
 
 try:
     from datasets import load_dataset as hf_load_dataset
+
     HF_AVAILABLE = True
 except ImportError:
     HF_AVAILABLE = False
@@ -29,8 +30,8 @@ class HuggingFaceDatasetStore(DatasetStore):
 
     def __init__(
         self,
-        cache_store: Optional[DatasetStore] = None,
-        cache_dir: Optional[str] = None,
+        cache_store: DatasetStore | None = None,
+        cache_dir: str | None = None,
     ) -> None:
         """Initialize the HF store.
 
@@ -42,10 +43,7 @@ class HuggingFaceDatasetStore(DatasetStore):
             ImportError: If datasets package is not installed.
         """
         if not HF_AVAILABLE:
-            raise ImportError(
-                "Hugging Face datasets package not installed. "
-                "Install with: pip install datasets"
-            )
+            raise ImportError("Hugging Face datasets package not installed. " "Install with: pip install datasets")
 
         self._cache_store = cache_store or InMemoryDatasetStore()
         self._cache_dir = cache_dir
@@ -53,12 +51,12 @@ class HuggingFaceDatasetStore(DatasetStore):
     def load_hf_dataset(
         self,
         dataset_name: str,
-        config_name: Optional[str] = None,
+        config_name: str | None = None,
         split: str = "train",
-        feature_columns: Optional[list[str]] = None,
+        feature_columns: list[str] | None = None,
         label_column: str = "label",
-        n_samples: Optional[int] = None,
-        seed: Optional[int] = None,
+        n_samples: int | None = None,
+        seed: int | None = None,
         flatten: bool = True,
         normalize: bool = True,
         one_hot_labels: bool = True,
@@ -161,7 +159,7 @@ class HuggingFaceDatasetStore(DatasetStore):
     def _extract_features_labels(
         self,
         ds: Any,
-        feature_columns: Optional[list[str]],
+        feature_columns: list[str] | None,
         label_column: str,
         flatten: bool,
         normalize: bool,
@@ -173,10 +171,7 @@ class HuggingFaceDatasetStore(DatasetStore):
             Tuple of (X, y, n_classes).
         """
         if feature_columns is None:
-            feature_columns = [
-                col for col in ds.column_names
-                if col != label_column and col not in ("idx", "id")
-            ]
+            feature_columns = [col for col in ds.column_names if col != label_column and col not in ("idx", "id")]
 
         if len(feature_columns) == 1 and "image" in feature_columns[0].lower():
             X = self._extract_images(ds, feature_columns[0], flatten, normalize)

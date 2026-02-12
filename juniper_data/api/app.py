@@ -1,9 +1,9 @@
 """FastAPI application factory and configuration."""
 
 import logging
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import AsyncGenerator, Optional
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("JuniperData API shutting down")
 
 
-def create_app(settings: Optional[Settings] = None) -> FastAPI:
+def create_app(settings: Settings | None = None) -> FastAPI:
     """Create and configure the FastAPI application.
 
     Args:

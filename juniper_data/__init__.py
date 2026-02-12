@@ -7,6 +7,7 @@ import os
 __version__ = "0.4.0"
 __author__ = "Paul Calnon"
 
+
 def get_arc_agi_api() -> str | None:
     """
     Return the current value of the ARC_AGI_API environment variable.

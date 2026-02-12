@@ -4,8 +4,6 @@ This module provides pure NumPy utilities for shuffling and splitting datasets
 into train/test sets with reproducible random number generation.
 """
 
-from typing import Dict, Optional, Tuple
-
 import numpy as np
 
 
@@ -13,7 +11,7 @@ def shuffle_data(
     X: np.ndarray,
     y: np.ndarray,
     rng: np.random.Generator,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """Shuffle X and y arrays together using the same permutation.
 
     Args:
@@ -39,7 +37,7 @@ def split_data(
     y: np.ndarray,
     train_ratio: float,
     test_ratio: float,
-) -> Dict[str, np.ndarray]:
+) -> dict[str, np.ndarray]:
     """Split arrays into train and test sets based on ratios.
 
     Args:
@@ -86,9 +84,9 @@ def shuffle_and_split(
     y: np.ndarray,
     train_ratio: float,
     test_ratio: float,
-    seed: Optional[int] = None,
+    seed: int | None = None,
     shuffle: bool = True,
-) -> Dict[str, np.ndarray]:
+) -> dict[str, np.ndarray]:
     """Optionally shuffle and then split data into train/test sets.
 
     High-level function that combines shuffling and splitting operations.

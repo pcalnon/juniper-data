@@ -4,7 +4,7 @@ import io
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -48,7 +48,7 @@ def mock_psycopg2():
     mock_pg = MagicMock()
     mock_conn = MagicMock()
     mock_cursor = MagicMock()
-    mock_dict_cursor = MagicMock()
+    _mock_dict_cursor = MagicMock()
 
     mock_pg.connect.return_value = mock_conn
     mock_conn.__enter__ = MagicMock(return_value=mock_conn)
@@ -107,7 +107,7 @@ class TestPostgresDatasetStoreInit:
         from juniper_data.storage.postgres_store import PostgresDatasetStore
 
         call_count_before = mock_pg.connect.call_count
-        store = PostgresDatasetStore(auto_create_schema=False, artifact_path=tmp_path / "data")
+        _store = PostgresDatasetStore(auto_create_schema=False, artifact_path=tmp_path / "data")
         assert mock_pg.connect.call_count == call_count_before
 
     def test_init_raises_without_psycopg2(self) -> None:

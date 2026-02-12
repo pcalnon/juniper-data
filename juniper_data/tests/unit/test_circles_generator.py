@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from juniper_data.generators.circles import CirclesGenerator, CirclesParams, VERSION, get_schema
+from juniper_data.generators.circles import VERSION, CirclesGenerator, CirclesParams, get_schema
 
 
 class TestCirclesParams:

@@ -1,7 +1,6 @@
 """Unit tests for the ARC-AGI dataset generator."""
 
 import json
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -485,7 +484,7 @@ class TestArcAgiImports:
 
     def test_init_exports(self) -> None:
         """__init__.py exports expected symbols."""
-        from juniper_data.generators.arc_agi import ArcAgiGenerator, ArcAgiParams, VERSION, get_schema
+        from juniper_data.generators.arc_agi import VERSION, ArcAgiGenerator, ArcAgiParams, get_schema
 
         assert ArcAgiGenerator is not None
         assert ArcAgiParams is not None

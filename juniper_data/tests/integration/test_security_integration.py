@@ -158,7 +158,7 @@ class TestCombinedSecurity:
 
     def test_rate_limit_applied_after_auth(self, fully_secured_client: TestClient) -> None:
         """Rate limiting should be applied after successful auth."""
-        for i in range(10):
+        for _ in range(10):
             response = fully_secured_client.get(
                 "/v1/generators",
                 headers={"X-API-Key": "secure-key"},
