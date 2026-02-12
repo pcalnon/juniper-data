@@ -24,4 +24,3 @@ def get_arc_agi_api() -> str | None:
     removed in a future release. Use :func:`get_arc_agi_api_url` instead.
     """
     return get_arc_agi_api_url()
-    return os.getenv("ARC_AGI_API")
