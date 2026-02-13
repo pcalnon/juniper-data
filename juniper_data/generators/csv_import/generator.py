@@ -106,7 +106,11 @@ class CsvImportGenerator:
             if params.header:
                 reader = csv.DictReader(f, delimiter=params.delimiter)
             else:
-                first_row = next(csv.reader(f, delimiter=params.delimiter))
+                csv_reader = csv.reader(f, delimiter=params.delimiter)
+                try:
+                    first_row = next(csv_reader)
+                except StopIteration:
+                    raise ValueError("No data found in file")
                 f.seek(0)
                 fieldnames = [f"col_{i}" for i in range(len(first_row))]
                 reader = csv.DictReader(f, fieldnames=fieldnames, delimiter=params.delimiter)
