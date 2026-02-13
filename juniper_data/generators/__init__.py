@@ -11,4 +11,5 @@ __all__ = [
     "SpiralGenerator",
     "SpiralParams",
     "get_spiral_schema",
+    "get_schema",
 ]
