@@ -63,7 +63,9 @@ class InMemoryDatasetStore(DatasetStore):
             return None
 
         buffer = io.BytesIO()
-        np.savez_compressed(buffer, **arrays)
+        # Sort keys to ensure stable NPZ artifact bytes regardless of dict construction order.
+        sorted_arrays = {key: arrays[key] for key in sorted(arrays.keys())}
+        np.savez_compressed(buffer, **sorted_arrays)
         buffer.seek(0)
         return buffer.read()
 
