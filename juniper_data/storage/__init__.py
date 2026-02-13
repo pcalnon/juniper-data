@@ -28,7 +28,6 @@ except ImportError:
 __all__ = [
     "DatasetStore",
     "CachedDatasetStore",
-    "InMemoryDatasetStore",
     "LocalFSDatasetStore",
 ]
 
