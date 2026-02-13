@@ -22,7 +22,7 @@ def main() -> int:
         "--host",
         type=str,
         default=None,
-        help="Host to bind to (default: from settings or 0.0.0.0)",
+        help="Host to bind to (default: from settings, which default to 127.0.0.1)",
     )
     parser.add_argument(
         "--port",
