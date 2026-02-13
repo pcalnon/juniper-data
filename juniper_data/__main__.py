@@ -53,11 +53,12 @@ def main() -> int:
 
     settings = Settings()
 
-    host = args.host or settings.host
-    port = args.port or settings.port
-    log_level = (args.log_level or settings.log_level).lower()
+    host = args.host if args.host is not None else settings.host
+    port = args.port if args.port is not None else settings.port
+    log_level_source = args.log_level if args.log_level is not None else settings.log_level
+    log_level = log_level_source.lower()
 
-    if args.storage_path:
+    if args.storage_path is not None:
         import os
 
         os.environ["JUNIPER_DATA_STORAGE_PATH"] = args.storage_path
