@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     Security Settings:
         - api_keys: Comma-separated list of valid API keys (e.g., "key1,key2").
-          If empty, authentication is disabled (open access).
+        - If empty, authentication is disabled (open access).
         - rate_limit_enabled: Enable/disable rate limiting.
         - rate_limit_requests_per_minute: Max requests per minute per client.
     """
@@ -27,7 +27,8 @@ class Settings(BaseSettings):
     )
 
     storage_path: str = "./data/datasets"
-    host: str = "0.0.0.0"
+    # host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
     port: int = 8100
     log_level: str = "INFO"
     cors_origins: list[str] = ["*"]

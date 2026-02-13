@@ -1,5 +1,7 @@
 """Cached dataset storage wrapper for composable caching layers."""
 
+
+import contextlib
 import numpy as np
 
 from juniper_data.core.models import DatasetMeta
@@ -31,7 +33,7 @@ class CachedDatasetStore(DatasetStore):
             primary: Primary (persistent) storage backend.
             cache: Cache storage backend (e.g., Redis, InMemory).
             write_through: If True, writes go to both stores. If False,
-                          writes only go to primary and cache is populated on read.
+            writes only go to primary and cache is populated on read.
         """
         self._primary = primary
         self._cache = cache
@@ -53,10 +55,8 @@ class CachedDatasetStore(DatasetStore):
         self._primary.save(dataset_id, meta, arrays)
 
         if self._write_through:
-            try:
+            with contextlib.suppress(Exception):
                 self._cache.save(dataset_id, meta, arrays)
-            except Exception:
-                pass
 
     def get_meta(self, dataset_id: str) -> DatasetMeta | None:
         """Get metadata, checking cache first.
@@ -67,13 +67,10 @@ class CachedDatasetStore(DatasetStore):
         Returns:
             Dataset metadata if found, None otherwise.
         """
-        try:
+        with contextlib.suppress(Exception):
             cached = self._cache.get_meta(dataset_id)
             if cached is not None:
                 return cached
-        except Exception:
-            pass
-
         return self._primary.get_meta(dataset_id)
 
     def get_artifact_bytes(self, dataset_id: str) -> bytes | None:
@@ -85,17 +82,14 @@ class CachedDatasetStore(DatasetStore):
         Returns:
             NPZ bytes if found, None otherwise.
         """
-        try:
+        with contextlib.suppress(Exception):
             cached = self._cache.get_artifact_bytes(dataset_id)
             if cached is not None:
                 return cached
-        except Exception:
-            pass
-
         artifact = self._primary.get_artifact_bytes(dataset_id)
 
         if artifact is not None:
-            try:
+            with contextlib.suppress(Exception):
                 meta = self._primary.get_meta(dataset_id)
                 if meta is not None:
                     import io
@@ -103,9 +97,6 @@ class CachedDatasetStore(DatasetStore):
                     with np.load(io.BytesIO(artifact)) as npz:
                         arrays = {k: npz[k] for k in npz.files}
                     self._cache.save(dataset_id, meta, arrays)
-            except Exception:
-                pass
-
         return artifact
 
     def exists(self, dataset_id: str) -> bool:
@@ -117,12 +108,9 @@ class CachedDatasetStore(DatasetStore):
         Returns:
             True if the dataset exists, False otherwise.
         """
-        try:
+        with contextlib.suppress(Exception):
             if self._cache.exists(dataset_id):
                 return True
-        except Exception:
-            pass
-
         return self._primary.exists(dataset_id)
 
     def delete(self, dataset_id: str) -> bool:
@@ -134,11 +122,8 @@ class CachedDatasetStore(DatasetStore):
         Returns:
             True if the dataset was deleted from primary, False otherwise.
         """
-        try:
+        with contextlib.suppress(Exception):
             self._cache.delete(dataset_id)
-        except Exception:
-            pass
-
         return self._primary.delete(dataset_id)
 
     def list_datasets(self, limit: int = 100, offset: int = 0) -> list[str]:
@@ -166,11 +151,8 @@ class CachedDatasetStore(DatasetStore):
         result = self._primary.update_meta(dataset_id, meta)
 
         if result:
-            try:
+            with contextlib.suppress(Exception):
                 self._cache.update_meta(dataset_id, meta)
-            except Exception:
-                pass
-
         return result
 
     def list_all_metadata(self) -> list[DatasetMeta]:
