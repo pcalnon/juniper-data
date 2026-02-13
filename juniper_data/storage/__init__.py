@@ -43,6 +43,9 @@ if "PostgresDatasetStore" in globals() and PostgresDatasetStore is not None:
 
 if "KaggleDatasetStore" in globals() and KaggleDatasetStore is not None:
     __all__.append("KaggleDatasetStore")
+
+
+def get_redis_store(**kwargs) -> "RedisDatasetStore":  # type: ignore[no-untyped-def]
     """Get a Redis dataset store (requires redis package).
 
     Args:
