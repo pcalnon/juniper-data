@@ -134,7 +134,7 @@ class SpiralParams(BaseModel):
     def validate_ratios_sum(self) -> "SpiralParams":
         """Validate that train_ratio + test_ratio <= 1.0."""
         if self.train_ratio + self.test_ratio > 1.0:
-            raise ValueError(f"train_ratio ({self.train_ratio}) + test_ratio ({self.test_ratio}) " f"must be <= 1.0, got {self.train_ratio + self.test_ratio}")
+            raise ValueError(f"train_ratio ({self.train_ratio}) + test_ratio ({self.test_ratio}) must be <= 1.0, got {self.train_ratio + self.test_ratio}")
         return self
 
     def total_points(self) -> int:
