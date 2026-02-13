@@ -2,9 +2,9 @@
 
 from juniper_data.storage.base import DatasetStore
 from juniper_data.storage.cached import CachedDatasetStore
-from juniper_data.storage.hf_store import HuggingFaceDatasetStore
-from juniper_data.storage.kaggle_store import KaggleDatasetStore
 from juniper_data.storage.local_fs import LocalFSDatasetStore
+from juniper_data.storage.memory import InMemoryDatasetStore
+
 try:
     from juniper_data.storage.redis_store import RedisDatasetStore
 except ImportError:
@@ -29,6 +29,7 @@ __all__ = [
     "DatasetStore",
     "CachedDatasetStore",
     "LocalFSDatasetStore",
+    "InMemoryDatasetStore",
 ]
 
 if "RedisDatasetStore" in globals() and RedisDatasetStore is not None:
