@@ -2,14 +2,23 @@
 
 from juniper_data.storage.base import DatasetStore
 from juniper_data.storage.cached import CachedDatasetStore
-from juniper_data.storage.local_fs import LocalFSDatasetStore
 from juniper_data.storage.memory import InMemoryDatasetStore
+from juniper_data.storage.local_fs import LocalFSDatasetStore
+
+from juniper_data.storage.redis_store import RedisDatasetStore
+from juniper_data.storage.hf_store import HuggingFaceDatasetStore
+from juniper_data.storage.postgres_store import PostgresDatasetStore
+from juniper_data.storage.kaggle_store import KaggleDatasetStore
 
 __all__ = [
     "DatasetStore",
     "CachedDatasetStore",
     "InMemoryDatasetStore",
     "LocalFSDatasetStore",
+    "RedisDatasetStore",
+    "HuggingFaceDatasetStore",
+    "PostgresDatasetStore",
+    "KaggleDatasetStore",
 ]
 
 
