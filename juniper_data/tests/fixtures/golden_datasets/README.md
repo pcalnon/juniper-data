@@ -92,10 +92,18 @@ python "$JUNIPER_DATA_ROOT/juniper_data/tests/fixtures/generate_golden_datasets.
 ## Usage in Tests
 
 ```python
+import os
 import numpy as np
 
+_GOLDEN_DATASETS_DIR = os.path.join(
+    os.path.dirname(__file__),
+    "fixtures",
+    "golden_datasets",
+)
+
 def load_golden_dataset(name: str):
-    data = np.load(f"tests/fixtures/golden_datasets/{name}.npz")
+    path = os.path.join(_GOLDEN_DATASETS_DIR, f"{name}.npz")
+    data = np.load(path)
     return {
         "X_train": data["X_train"],
         "y_train": data["y_train"],
