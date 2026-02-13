@@ -428,11 +428,13 @@ The consolidated `juniper-data-client` package includes 35 comprehensive unit te
 | arc_agi      | `generators/arc_agi/`      | Yes        | 31    | ~95%     |
 
 **Resolution Applied** (2026-02-12):
+
 - All 8 generators registered in `GENERATOR_REGISTRY` (`api/routes/generators.py`)
 - All generators have unit tests with good coverage
 - E741 flake8 warnings fixed (changed `l` to `lbl` in list comprehensions)
 
 **Generator Types**:
+
 - **spiral**: Multi-spiral classification (legacy CasCor compatible)
 - **xor**: XOR classification (4 quadrants)
 - **gaussian**: Mixture-of-Gaussians blobs
@@ -463,12 +465,14 @@ The consolidated `juniper-data-client` package includes 35 comprehensive unit te
 | KaggleDatasetStore      | `storage/kaggle_store.py`   | 31    | ~99%     | Complete |
 
 **Resolution Applied** (2026-02-12):
+
 - All 7 storage backends have unit tests with mocked external dependencies
 - F401 unused imports fixed in redis_store.py, postgres_store.py, kaggle_store.py
 - W293 whitespace fixed in postgres_store.py
 - E741 ambiguous variable names fixed in kaggle_store.py
 
 **Backend Types**:
+
 - **memory**: Fast in-memory storage for testing and development
 - **localfs**: File system storage with JSON metadata and NPZ artifacts
 - **cached**: Composable caching wrapper for any storage backend
@@ -748,6 +752,6 @@ All high-priority items have been completed. Coverage is at 95.18% (passes 80% t
 | 2026-02-12 | AI Agent    | Created .flake8 config file with per-file-ignores for FastAPI patterns (B008) and test files (F841)   |
 | 2026-02-12 | AI Agent    | Fixed all flake8 issues: F401 unused imports, E741 ambiguous vars, E301/E302 blank lines              |
 | 2026-02-12 | AI Agent    | Marked DATA-004/005 as COMPLETE (flake8 config handles intentional patterns)                          |
-| 2026-02-12 | AI Agent    | Registered csv_import, mnist, arc_agi generators in GENERATOR_REGISTRY - DATA-014 now fully COMPLETE |
+| 2026-02-12 | AI Agent    | Registered csv_import, mnist, arc_agi generators in GENERATOR_REGISTRY - DATA-014 now fully COMPLETE  |
 | 2026-02-12 | AI Agent    | Verified DATA-015 COMPLETE - all 7 storage backends tested (210+ tests total)                         |
 | 2026-02-12 | AI Agent    | **All 17 DATA items COMPLETE**, 3 DEFERRED (DATA-018, 019, 020)                                       |
