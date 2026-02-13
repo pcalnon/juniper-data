@@ -5,23 +5,44 @@ from juniper_data.storage.cached import CachedDatasetStore
 from juniper_data.storage.hf_store import HuggingFaceDatasetStore
 from juniper_data.storage.kaggle_store import KaggleDatasetStore
 from juniper_data.storage.local_fs import LocalFSDatasetStore
-from juniper_data.storage.memory import InMemoryDatasetStore
-from juniper_data.storage.postgres_store import PostgresDatasetStore
-from juniper_data.storage.redis_store import RedisDatasetStore
+try:
+    from juniper_data.storage.redis_store import RedisDatasetStore
+except ImportError:
+    RedisDatasetStore = None  # type: ignore[assignment]
+
+try:
+    from juniper_data.storage.hf_store import HuggingFaceDatasetStore
+except ImportError:
+    HuggingFaceDatasetStore = None  # type: ignore[assignment]
+
+try:
+    from juniper_data.storage.postgres_store import PostgresDatasetStore
+except ImportError:
+    PostgresDatasetStore = None  # type: ignore[assignment]
+
+try:
+    from juniper_data.storage.kaggle_store import KaggleDatasetStore
+except ImportError:
+    KaggleDatasetStore = None  # type: ignore[assignment]
 
 __all__ = [
     "DatasetStore",
     "CachedDatasetStore",
     "InMemoryDatasetStore",
     "LocalFSDatasetStore",
-    "RedisDatasetStore",
-    "HuggingFaceDatasetStore",
-    "PostgresDatasetStore",
-    "KaggleDatasetStore",
 ]
 
+if "RedisDatasetStore" in globals() and RedisDatasetStore is not None:
+    __all__.append("RedisDatasetStore")
 
-def get_redis_store(**kwargs):  # type: ignore[no-untyped-def]
+if "HuggingFaceDatasetStore" in globals() and HuggingFaceDatasetStore is not None:
+    __all__.append("HuggingFaceDatasetStore")
+
+if "PostgresDatasetStore" in globals() and PostgresDatasetStore is not None:
+    __all__.append("PostgresDatasetStore")
+
+if "KaggleDatasetStore" in globals() and KaggleDatasetStore is not None:
+    __all__.append("KaggleDatasetStore")
     """Get a Redis dataset store (requires redis package).
 
     Args:
