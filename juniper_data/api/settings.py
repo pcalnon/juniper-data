@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     )
 
     storage_path: str = "./data/datasets"
+    # Default to localhost for safer local development; bind only to the loopback interface.
+    # In production (e.g., Docker deployments), set JUNIPER_DATA_HOST=0.0.0.0 to listen on all interfaces.
     # host: str = "0.0.0.0"
     host: str = "127.0.0.1"
     port: int = 8100
