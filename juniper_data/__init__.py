@@ -7,6 +7,7 @@ import os
 __version__ = "0.4.0"
 __author__ = "Paul Calnon"
 
+
 def get_arc_agi_api_url() -> str | None:
     """
     Return the current value of the ARC_AGI_API environment variable as a URL/endpoint string.
@@ -15,6 +16,7 @@ def get_arc_agi_api_url() -> str | None:
     and makes it easier to adjust configuration in tests.
     """
     return os.getenv("ARC_AGI_API")
+
 
 def get_arc_agi_api() -> str | None:
     """
