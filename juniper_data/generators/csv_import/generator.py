@@ -76,17 +76,22 @@ class CsvImportGenerator:
         Returns:
             Tuple of (X, y) arrays.
         """
+
+        ##########################################################################################################################################################################
+        # TODO:  restrict reads to an explicitly configured allowlisted base directory (e.g., JUNIPER_DATA_IMPORT_DIR) and reject absolute paths and path traversal (..) that escape that directory.
+        ##########################################################################################################################################################################
         path = Path(params.file_path)
 
         if not path.exists():
             raise FileNotFoundError(f"File not found: {params.file_path}")
+        ##########################################################################################################################################################################
 
         file_format = params.file_format
         if file_format == "auto":
             suffix = path.suffix.lower()
             if suffix == ".csv":
                 file_format = "csv"
-            elif suffix in (".json", ".jsonl"):
+            elif suffix in {".json", ".jsonl"}:
                 file_format = "json"
             else:
                 raise ValueError(f"Cannot auto-detect format for extension: {suffix}")
@@ -109,15 +114,13 @@ class CsvImportGenerator:
                 csv_reader = csv.reader(f, delimiter=params.delimiter)
                 try:
                     first_row = next(csv_reader)
-                except StopIteration:
-                    raise ValueError("CSV file is empty or contains only a header row")
+                except StopIteration as e:
+                    raise ValueError("CSV file is empty or contains only a header row") from e
                 f.seek(0)
                 fieldnames = [f"col_{i}" for i in range(len(first_row))]
                 reader = csv.DictReader(f, fieldnames=fieldnames, delimiter=params.delimiter)
 
-            for row in reader:
-                data.append(row)
-
+            data.extend(iter(reader))
         return data
 
     @staticmethod
