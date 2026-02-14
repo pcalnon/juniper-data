@@ -59,10 +59,6 @@ handlers:
     # level: INFO
     formatter: formatter_file
     # filename: logs/dynamic_nn.log
-    # filename: ~/Development/python/juniper/src/prototypes/cascor/logs/juniper_data.log
-    # filepath: /home/pcalnon/Development/python/Juniper/src/prototypes/cascor/logs/spiral_problem.log
-    # filepath: /home/pcalnon/Development/python/Juniper/src/prototypes/cascor/logs
-    # filepath: /home/pcalnon/Development/python/Juniper/src/prototypes/cascor/logs/juniper_data.log
     filename: juniper_data.log
     encoding: utf-8
     mode: a
