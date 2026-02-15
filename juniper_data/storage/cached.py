@@ -1,7 +1,7 @@
 """Cached dataset storage wrapper for composable caching layers."""
 
-
 import contextlib
+
 import numpy as np
 
 from juniper_data.core.models import DatasetMeta

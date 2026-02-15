@@ -8,22 +8,23 @@ from juniper_data.storage.memory import InMemoryDatasetStore
 try:
     from juniper_data.storage.redis_store import RedisDatasetStore
 except ImportError:
-    RedisDatasetStore = None  # type: ignore[assignment]
+    RedisDatasetStore = None  # type: ignore[misc,assignment]
+
 
 try:
     from juniper_data.storage.hf_store import HuggingFaceDatasetStore
 except ImportError:
-    HuggingFaceDatasetStore = None  # type: ignore[assignment]
+    HuggingFaceDatasetStore = None  # type: ignore[misc,assignment]
 
 try:
     from juniper_data.storage.postgres_store import PostgresDatasetStore
 except ImportError:
-    PostgresDatasetStore = None  # type: ignore[assignment]
+    PostgresDatasetStore = None  # type: ignore[misc,assignment]
 
 try:
     from juniper_data.storage.kaggle_store import KaggleDatasetStore
 except ImportError:
-    KaggleDatasetStore = None  # type: ignore[assignment]
+    KaggleDatasetStore = None  # type: ignore[misc,assignment]
 
 __all__ = [
     "DatasetStore",

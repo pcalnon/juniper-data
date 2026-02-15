@@ -106,7 +106,7 @@ class CsvImportGenerator:
     @staticmethod
     def _load_csv(path: Path, params: CsvImportParams) -> list[dict]:
         """Load data from CSV file."""
-        data = []
+        data: list[dict] = []
         with open(path, newline="", encoding="utf-8") as f:
             if params.header:
                 reader = csv.DictReader(f, delimiter=params.delimiter)

@@ -32,9 +32,11 @@ images/*
 __pycache__
 __pycache__/
 __pycache__/*
+__pycache__/**
 **/__pycache__
 **/__pycache__/
 **/__pycache__/*
+**/__pycache__/**
 
 __init__.cpython*
 **/__init__.cpython*
