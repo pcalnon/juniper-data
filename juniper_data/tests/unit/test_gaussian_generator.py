@@ -254,6 +254,42 @@ class TestGaussianGenerator:
             distance_from_origin = np.linalg.norm(class_mean)
             np.testing.assert_almost_equal(distance_from_origin, 5.0, decimal=0)
 
+    def test_generate_with_list_class_std(self) -> None:
+        """Per-class std list should apply different stds to each class."""
+        params = GaussianParams(
+            n_classes=3,
+            n_samples_per_class=100,
+            class_std=[0.1, 0.5, 2.0],
+            seed=42,
+        )
+        result = GaussianGenerator.generate(params)
+
+        assert result["X_full"].shape == (300, 2)
+
+    def test_generate_single_feature(self) -> None:
+        """Single feature should skip sin component in center placement."""
+        params = GaussianParams(
+            n_classes=2,
+            n_samples_per_class=50,
+            n_features=1,
+            seed=42,
+        )
+        result = GaussianGenerator.generate(params)
+
+        assert result["X_full"].shape == (100, 1)
+
+    def test_get_stds_scalar(self) -> None:
+        """Scalar class_std should return a list of repeated values."""
+        params = GaussianParams(n_classes=3, class_std=0.5)
+        stds = GaussianGenerator._get_stds(params)
+        assert stds == [0.5, 0.5, 0.5]
+
+    def test_get_stds_list(self) -> None:
+        """List class_std should be returned as-is."""
+        params = GaussianParams(n_classes=3, class_std=[0.1, 0.5, 2.0])
+        stds = GaussianGenerator._get_stds(params)
+        assert stds == [0.1, 0.5, 2.0]
+
 
 class TestGetSchema:
     """Tests for get_schema function."""

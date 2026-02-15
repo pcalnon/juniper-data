@@ -202,6 +202,19 @@ class TestCirclesGenerator:
 
         np.testing.assert_array_almost_equal(inner_distances, np.full(50, 1.0))
 
+    def test_generate_with_noise_covers_branch(self) -> None:
+        """Noise > 0 should exercise the noise addition branch."""
+        params = CirclesParams(
+            n_samples=100,
+            noise=0.3,
+            seed=42,
+            shuffle=False,
+        )
+        result = CirclesGenerator.generate(params)
+
+        outer_distances = np.linalg.norm(result["X_full"][:50], axis=1)
+        assert not np.allclose(outer_distances, np.full(50, 1.0))
+
 
 class TestGetSchema:
     """Tests for get_schema function."""

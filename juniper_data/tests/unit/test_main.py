@@ -106,7 +106,8 @@ class TestMain:
 
                 mock_run.assert_called_once()
                 call_kwargs = mock_run.call_args
-                assert call_kwargs[1]["host"] == "0.0.0.0"
+                # assert call_kwargs[1]["host"] == "0.0.0.0"
+                assert call_kwargs[1]["host"] == "127.0.0.1"
                 assert call_kwargs[1]["port"] == 8100
 
     def test_main_returns_zero_on_success(self) -> None:

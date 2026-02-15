@@ -206,6 +206,19 @@ class TestRateLimiter:
 
         await limiter(request, api_key="key2")
 
+    def test_rate_limiter_window_property(self) -> None:
+        """Window property should return configured window seconds."""
+        limiter = RateLimiter(requests_per_minute=10, window_seconds=30)
+        assert limiter.window == 30
+
+    def test_get_key_with_no_client(self) -> None:
+        """_get_key should return 'ip:unknown' when request has no client."""
+        limiter = RateLimiter()
+        request = MagicMock()
+        request.client = None
+        key = limiter._get_key(request, None)
+        assert key == "ip:unknown"
+
     @pytest.mark.asyncio
     async def test_call_noop_when_disabled(self) -> None:
         """Dependency should do nothing when disabled."""
@@ -215,3 +228,54 @@ class TestRateLimiter:
 
         for _ in range(100):
             await limiter(request, api_key=None)
+
+
+class TestSecurityModuleFunctions:
+    """Tests for module-level security functions."""
+
+    def test_get_api_key_auth_returns_instance(self) -> None:
+        """get_api_key_auth should return an APIKeyAuth instance."""
+        from juniper_data.api.security import get_api_key_auth, reset_security_state
+
+        reset_security_state()
+        auth = get_api_key_auth()
+        assert isinstance(auth, APIKeyAuth)
+
+    def test_get_api_key_auth_returns_same_instance(self) -> None:
+        """get_api_key_auth should return same instance on second call."""
+        from juniper_data.api.security import get_api_key_auth, reset_security_state
+
+        reset_security_state()
+        auth1 = get_api_key_auth()
+        auth2 = get_api_key_auth()
+        assert auth1 is auth2
+
+    def test_get_rate_limiter_returns_instance(self) -> None:
+        """get_rate_limiter should return a RateLimiter instance."""
+        from juniper_data.api.security import get_rate_limiter, reset_security_state
+
+        reset_security_state()
+        limiter = get_rate_limiter()
+        assert isinstance(limiter, RateLimiter)
+
+    def test_get_rate_limiter_returns_same_instance(self) -> None:
+        """get_rate_limiter should return same instance on second call."""
+        from juniper_data.api.security import get_rate_limiter, reset_security_state
+
+        reset_security_state()
+        limiter1 = get_rate_limiter()
+        limiter2 = get_rate_limiter()
+        assert limiter1 is limiter2
+
+    def test_reset_security_state(self) -> None:
+        """reset_security_state should clear cached instances."""
+        from juniper_data.api.security import get_api_key_auth, get_rate_limiter, reset_security_state
+
+        reset_security_state()
+        auth1 = get_api_key_auth()
+        limiter1 = get_rate_limiter()
+        reset_security_state()
+        auth2 = get_api_key_auth()
+        limiter2 = get_rate_limiter()
+        assert auth1 is not auth2
+        assert limiter1 is not limiter2

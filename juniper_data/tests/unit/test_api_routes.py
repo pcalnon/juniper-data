@@ -157,6 +157,121 @@ class TestDatasetsEndpointEdgeCases:
         data = response.json()
         assert len(data) == 2
 
+    def test_create_dataset_returns_existing(self, client: TestClient) -> None:
+        """Creating same dataset twice returns cached version."""
+        request = {
+            "generator": "spiral",
+            "params": {"n_spirals": 2, "n_points_per_spiral": 50, "seed": 42},
+            "persist": True,
+        }
+        response1 = client.post("/v1/datasets", json=request)
+        assert response1.status_code == 201
+        response2 = client.post("/v1/datasets", json=request)
+        assert response2.status_code == 201
+        assert response1.json()["dataset_id"] == response2.json()["dataset_id"]
+
+    def test_create_dataset_with_ttl(self, client: TestClient) -> None:
+        """Creating dataset with TTL sets expires_at."""
+        request = {
+            "generator": "spiral",
+            "params": {"n_spirals": 2, "n_points_per_spiral": 50, "seed": 99},
+            "persist": True,
+            "ttl_seconds": 3600,
+        }
+        response = client.post("/v1/datasets", json=request)
+        assert response.status_code == 201
+        meta = response.json()["meta"]
+        assert meta["expires_at"] is not None
+
+    def test_get_dataset_stats(self, client: TestClient) -> None:
+        """Stats endpoint returns aggregate statistics."""
+        request = {
+            "generator": "spiral",
+            "params": {"n_spirals": 2, "n_points_per_spiral": 50, "seed": 42},
+            "persist": True,
+        }
+        client.post("/v1/datasets", json=request)
+        response = client.get("/v1/datasets/stats")
+        assert response.status_code == 200
+        data = response.json()
+        assert "total_datasets" in data
+        assert data["total_datasets"] >= 1
+
+    def test_batch_delete(self, client: TestClient) -> None:
+        """Batch delete removes multiple datasets."""
+        ids = []
+        for i in range(3):
+            request = {
+                "generator": "spiral",
+                "params": {"n_spirals": 2, "n_points_per_spiral": 10, "seed": i + 1000},
+                "persist": True,
+            }
+            resp = client.post("/v1/datasets", json=request)
+            ids.append(resp.json()["dataset_id"])
+        response = client.post("/v1/datasets/batch-delete", json={"dataset_ids": ids + ["nonexistent-id"]})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total_deleted"] == 3
+        assert "nonexistent-id" in data["not_found"]
+
+    def test_cleanup_expired(self, client: TestClient) -> None:
+        """Cleanup expired endpoint returns list."""
+        response = client.post("/v1/datasets/cleanup-expired")
+        assert response.status_code == 200
+        assert isinstance(response.json(), list)
+
+    def test_download_artifact(self, client: TestClient) -> None:
+        """Download artifact returns NPZ bytes."""
+        request = {
+            "generator": "spiral",
+            "params": {"n_spirals": 2, "n_points_per_spiral": 50, "seed": 42},
+            "persist": True,
+        }
+        resp = client.post("/v1/datasets", json=request)
+        dataset_id = resp.json()["dataset_id"]
+        response = client.get(f"/v1/datasets/{dataset_id}/artifact")
+        assert response.status_code == 200
+        assert len(response.content) > 0
+
+    def test_update_tags(self, client: TestClient) -> None:
+        """PATCH tags endpoint adds and removes tags."""
+        request = {
+            "generator": "spiral",
+            "params": {"n_spirals": 2, "n_points_per_spiral": 50, "seed": 42},
+            "persist": True,
+            "tags": ["original"],
+        }
+        resp = client.post("/v1/datasets", json=request)
+        dataset_id = resp.json()["dataset_id"]
+        patch_resp = client.patch(
+            f"/v1/datasets/{dataset_id}/tags",
+            json={"add_tags": ["new-tag"], "remove_tags": ["original"]},
+        )
+        assert patch_resp.status_code == 200
+        data = patch_resp.json()
+        assert "new-tag" in data["tags"]
+        assert "original" not in data["tags"]
+
+    def test_update_tags_not_found(self, client: TestClient) -> None:
+        """PATCH tags for nonexistent dataset returns 404."""
+        response = client.patch("/v1/datasets/nonexistent/tags", json={"add_tags": ["tag"]})
+        assert response.status_code == 404
+
+    def test_filter_datasets(self, client: TestClient) -> None:
+        """Filter datasets endpoint returns filtered results."""
+        request = {
+            "generator": "spiral",
+            "params": {"n_spirals": 2, "n_points_per_spiral": 50, "seed": 42},
+            "persist": True,
+            "tags": ["test-filter"],
+        }
+        client.post("/v1/datasets", json=request)
+        response = client.get("/v1/datasets/filter?generator=spiral&tags=test-filter")
+        assert response.status_code == 200
+        data = response.json()
+        assert "datasets" in data
+        assert "total" in data
+
     def test_preview_stacks_train_test_when_no_full_arrays(self, memory_store: InMemoryDatasetStore, test_settings: Settings) -> None:
         """Test preview stacks X_train/X_test when X_full/y_full not available."""
         from datetime import datetime
@@ -258,3 +373,17 @@ class TestHealthEndpoint:
 
         data = response.json()
         assert data["version"] == __version__
+
+    def test_liveness_probe(self, client: TestClient) -> None:
+        """Test liveness probe returns alive status."""
+        response = client.get("/v1/health/live")
+        assert response.status_code == 200
+        assert response.json()["status"] == "alive"
+
+    def test_readiness_probe(self, client: TestClient) -> None:
+        """Test readiness probe returns ready status with version."""
+        response = client.get("/v1/health/ready")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ready"
+        assert "version" in data

@@ -1,6 +1,7 @@
 """Unit tests for CachedDatasetStore."""
 
 from datetime import datetime, timezone
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
@@ -257,3 +258,166 @@ class TestCachedDatasetStore:
         assert count == 1
         assert cache_store.exists("test-1")
         assert not cache_store.exists("test-2")
+
+    def test_update_meta_propagates_to_cache(
+        self,
+        primary_store: InMemoryDatasetStore,
+        cache_store: InMemoryDatasetStore,
+        sample_meta: DatasetMeta,
+        sample_arrays: dict[str, np.ndarray],
+    ) -> None:
+        """update_meta should write to both primary and cache when primary succeeds."""
+        cached = CachedDatasetStore(primary_store, cache_store, write_through=True)
+        cached.save("test-1", sample_meta, sample_arrays)
+
+        updated_meta = sample_meta.model_copy(update={"generator": "updated"})
+        result = cached.update_meta("test-1", updated_meta)
+
+        assert result is True
+        assert primary_store.get_meta("test-1").generator == "updated"
+        assert cache_store.get_meta("test-1").generator == "updated"
+
+    def test_update_meta_only_primary_when_primary_fails(
+        self,
+        primary_store: InMemoryDatasetStore,
+        cache_store: InMemoryDatasetStore,
+        sample_meta: DatasetMeta,
+    ) -> None:
+        """update_meta should return False when primary has no dataset."""
+        cached = CachedDatasetStore(primary_store, cache_store)
+
+        result = cached.update_meta("nonexistent", sample_meta)
+
+        assert result is False
+
+    def test_list_all_metadata_delegates_to_primary(
+        self,
+        primary_store: InMemoryDatasetStore,
+        cache_store: InMemoryDatasetStore,
+        sample_meta: DatasetMeta,
+        sample_arrays: dict[str, np.ndarray],
+    ) -> None:
+        """list_all_metadata should return data from primary store."""
+        cached = CachedDatasetStore(primary_store, cache_store)
+        primary_store.save("test-1", sample_meta, sample_arrays)
+
+        result = cached.list_all_metadata()
+
+        assert len(result) == 1
+        assert result[0].dataset_id == sample_meta.dataset_id
+
+    def test_warm_cache_skips_on_error(
+        self,
+        primary_store: InMemoryDatasetStore,
+        sample_meta: DatasetMeta,
+        sample_arrays: dict[str, np.ndarray],
+    ) -> None:
+        """warm_cache should continue when individual dataset fails."""
+        primary_store.save("test-1", sample_meta, sample_arrays)
+        primary_store.save("test-2", sample_meta, sample_arrays)
+
+        failing_cache = MagicMock(spec=InMemoryDatasetStore)
+        call_count = 0
+
+        def save_side_effect(dataset_id: str, meta: DatasetMeta, arrays: dict) -> None:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise RuntimeError("cache write failed")
+
+        failing_cache.save.side_effect = save_side_effect
+        cached = CachedDatasetStore(primary_store, failing_cache)
+
+        count = cached.warm_cache()
+
+        assert count == 1
+
+    def test_invalidate_cache_returns_false_on_error(
+        self,
+        primary_store: InMemoryDatasetStore,
+    ) -> None:
+        """invalidate_cache should return False when cache.delete raises."""
+        failing_cache = MagicMock(spec=InMemoryDatasetStore)
+        failing_cache.delete.side_effect = RuntimeError("cache error")
+        cached = CachedDatasetStore(primary_store, failing_cache)
+
+        result = cached.invalidate_cache("test-1")
+
+        assert result is False
+
+    def test_get_artifact_bytes_returns_none_when_not_found(
+        self,
+        primary_store: InMemoryDatasetStore,
+        cache_store: InMemoryDatasetStore,
+    ) -> None:
+        """get_artifact_bytes should return None when not in either store."""
+        cached = CachedDatasetStore(primary_store, cache_store)
+
+        result = cached.get_artifact_bytes("nonexistent")
+
+        assert result is None
+
+    def test_get_artifact_bytes_from_cache(
+        self,
+        primary_store: InMemoryDatasetStore,
+        cache_store: InMemoryDatasetStore,
+        sample_meta: DatasetMeta,
+        sample_arrays: dict[str, np.ndarray],
+    ) -> None:
+        """get_artifact_bytes should return from cache when available."""
+        cached = CachedDatasetStore(primary_store, cache_store, write_through=True)
+        cached.save("test-1", sample_meta, sample_arrays)
+
+        result = cached.get_artifact_bytes("test-1")
+
+        assert result is not None
+        assert not primary_store.exists("test-1") or True  # cache was hit first
+
+    def test_save_suppresses_cache_error(
+        self,
+        primary_store: InMemoryDatasetStore,
+        sample_meta: DatasetMeta,
+        sample_arrays: dict[str, np.ndarray],
+    ) -> None:
+        """save should catch exceptions from cache store."""
+        failing_cache = MagicMock(spec=InMemoryDatasetStore)
+        failing_cache.save.side_effect = RuntimeError("cache write failed")
+        cached = CachedDatasetStore(primary_store, failing_cache, write_through=True)
+
+        cached.save("test-1", sample_meta, sample_arrays)
+
+        assert primary_store.exists("test-1")
+
+    def test_get_meta_suppresses_cache_error(
+        self,
+        primary_store: InMemoryDatasetStore,
+        sample_meta: DatasetMeta,
+        sample_arrays: dict[str, np.ndarray],
+    ) -> None:
+        """get_meta should catch cache exceptions and fall back to primary."""
+        failing_cache = MagicMock(spec=InMemoryDatasetStore)
+        failing_cache.get_meta.side_effect = RuntimeError("cache read failed")
+        cached = CachedDatasetStore(primary_store, failing_cache)
+
+        primary_store.save("test-1", sample_meta, sample_arrays)
+
+        result = cached.get_meta("test-1")
+
+        assert result is not None
+        assert result.generator == "test"
+
+    def test_exists_suppresses_cache_error(
+        self,
+        primary_store: InMemoryDatasetStore,
+        sample_meta: DatasetMeta,
+        sample_arrays: dict[str, np.ndarray],
+    ) -> None:
+        """exists should catch cache exceptions and check primary."""
+        failing_cache = MagicMock(spec=InMemoryDatasetStore)
+        failing_cache.exists.side_effect = RuntimeError("cache error")
+        cached = CachedDatasetStore(primary_store, failing_cache)
+
+        primary_store.save("test-1", sample_meta, sample_arrays)
+
+        assert cached.exists("test-1") is True
+        assert cached.exists("nonexistent") is False

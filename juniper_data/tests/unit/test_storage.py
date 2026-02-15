@@ -1,5 +1,6 @@
 """Unit tests for storage module."""
 
+import contextlib
 import io
 import tempfile
 from datetime import datetime
@@ -416,6 +417,62 @@ class TestDatasetStoreInterface:
         assert isinstance(fs_store, DatasetStore)
 
 
+class TestLocalFSUpdateAndList:
+    """Tests for LocalFSDatasetStore update_meta and list_all_metadata."""
+
+    @pytest.mark.unit
+    def test_update_meta(self, fs_store, sample_meta, sample_arrays):
+        """Test update_meta updates metadata."""
+        fs_store.save("ds-upd", sample_meta, sample_arrays)
+        new_meta = DatasetMeta(
+            dataset_id="ds-upd-v2",
+            generator="spiral",
+            generator_version="2.0.0",
+            params={},
+            n_samples=200,
+            n_features=2,
+            n_classes=2,
+            n_train=160,
+            n_test=40,
+            class_distribution={"0": 100, "1": 100},
+            created_at=datetime(2026, 2, 1, 12, 0, 0),
+        )
+        result = fs_store.update_meta("ds-upd", new_meta)
+        assert result is True
+        retrieved = fs_store.get_meta("ds-upd")
+        assert retrieved.generator_version == "2.0.0"
+
+    @pytest.mark.unit
+    def test_update_meta_nonexistent(self, fs_store, sample_meta):
+        """Test update_meta returns False for nonexistent dataset."""
+        assert fs_store.update_meta("nonexistent", sample_meta) is False
+
+    @pytest.mark.unit
+    def test_list_all_metadata(self, fs_store, sample_meta, sample_arrays):
+        """Test list_all_metadata returns all stored metadata."""
+        fs_store.save("ds-a", sample_meta, sample_arrays)
+        fs_store.save("ds-b", sample_meta, sample_arrays)
+        result = fs_store.list_all_metadata()
+        assert len(result) == 2
+
+    @pytest.mark.unit
+    def test_list_all_metadata_empty(self, fs_store):
+        """Test list_all_metadata returns empty list when no datasets."""
+        result = fs_store.list_all_metadata()
+        assert result == []
+
+    @pytest.mark.unit
+    def test_save_error_cleanup(self, fs_store, sample_meta, sample_arrays):
+        """Test save cleans up temp files on error."""
+        from unittest.mock import patch
+
+        with patch("numpy.savez_compressed", side_effect=OSError("disk full")):
+            with pytest.raises(OSError, match="disk full"):
+                fs_store.save("ds-fail", sample_meta, sample_arrays)
+        tmp_files = list(fs_store.base_path.glob("*.tmp"))
+        assert not tmp_files
+
+
 class TestLocalFSEdgeCases:
     """Additional edge case tests for LocalFSDatasetStore."""
 
@@ -518,3 +575,112 @@ class TestDatasetStoreAbstractMethods:
         expected_methods = ["save", "get_meta", "get_artifact_bytes", "exists", "delete", "list_datasets"]
         for method in expected_methods:
             assert method in abstract_methods, f"Missing abstract method: {method}"
+
+
+class TestStorageModuleFactories:
+    """Tests for storage module factory functions and imports."""
+
+    @pytest.mark.unit
+    def test_storage_module_exports(self):
+        """Test that the storage module exports expected classes."""
+        from juniper_data.storage import CachedDatasetStore, DatasetStore, InMemoryDatasetStore, LocalFSDatasetStore
+
+        assert DatasetStore is not None
+        assert InMemoryDatasetStore is not None
+        assert LocalFSDatasetStore is not None
+        assert CachedDatasetStore is not None
+
+    @pytest.mark.unit
+    def test_optional_imports_are_none_or_class(self):
+        """Test that optional store classes are None or importable."""
+        import juniper_data.storage as storage_mod
+
+        for attr in ["RedisDatasetStore", "HuggingFaceDatasetStore", "PostgresDatasetStore", "KaggleDatasetStore"]:
+            val = getattr(storage_mod, attr, None)
+            assert val is None or isinstance(val, type)
+
+    @pytest.mark.unit
+    def test_get_redis_store_raises_import_error(self):
+        """Test get_redis_store raises ImportError when redis not installed."""
+        from juniper_data.storage import get_redis_store
+
+        with contextlib.suppress(ImportError):
+            get_redis_store()
+
+    @pytest.mark.unit
+    def test_get_hf_store_raises_import_error(self):
+        """Test get_hf_store raises ImportError when datasets not installed."""
+        from juniper_data.storage import get_hf_store
+
+        with contextlib.suppress(ImportError):
+            get_hf_store()
+
+    @pytest.mark.unit
+    def test_get_postgres_store_raises_import_error(self):
+        """Test get_postgres_store raises ImportError when psycopg2 not installed."""
+        from juniper_data.storage import get_postgres_store
+
+        with contextlib.suppress(ImportError):
+            get_postgres_store()
+
+    @pytest.mark.unit
+    def test_get_kaggle_store_raises_import_error(self):
+        """Test get_kaggle_store raises ImportError when kaggle not installed."""
+        from juniper_data.storage import get_kaggle_store
+
+        with contextlib.suppress(ImportError):
+            get_kaggle_store()
+
+    @pytest.mark.unit
+    def test_optional_imports_fallback_to_none(self):
+        """Test that optional imports fall back to None when packages are missing."""
+        import importlib
+        import sys
+
+        # flake8-ignore['unused-imports']
+        # flake8: ignore['unused-imports']
+        # from unittest.mock import MagicMock
+        # Save original modules and remove them to force ImportError
+        modules_to_block = [
+            "juniper_data.storage.redis_store",
+            "juniper_data.storage.hf_store",
+            "juniper_data.storage.postgres_store",
+            "juniper_data.storage.kaggle_store",
+        ]
+        saved = {}
+        for mod in modules_to_block:
+            saved[mod] = sys.modules.pop(mod, None)
+
+        # Also remove the storage module itself so it can be reimported
+        saved["juniper_data.storage"] = sys.modules.pop("juniper_data.storage", None)
+
+        # Patch __import__ to block the optional store modules
+        original_import = __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+
+        def blocking_import(name, *args, **kwargs):
+            if name in modules_to_block:
+                raise ImportError(f"Mocked: {name} not installed")
+            return original_import(name, *args, **kwargs)
+
+        try:
+            with pytest.MonkeyPatch.context() as mp:
+                mp.setattr("builtins.__import__", blocking_import)
+                storage_mod = importlib.import_module("juniper_data.storage")
+
+            assert storage_mod.RedisDatasetStore is None
+            assert storage_mod.HuggingFaceDatasetStore is None
+            assert storage_mod.PostgresDatasetStore is None
+            assert storage_mod.KaggleDatasetStore is None
+            assert "RedisDatasetStore" not in storage_mod.__all__
+            assert "HuggingFaceDatasetStore" not in storage_mod.__all__
+            assert "PostgresDatasetStore" not in storage_mod.__all__
+            assert "KaggleDatasetStore" not in storage_mod.__all__
+        finally:
+            # Restore original modules
+            for mod, val in saved.items():
+                if val is not None:
+                    sys.modules[mod] = val
+                else:
+                    sys.modules.pop(mod, None)
+            # Force reimport to restore normal state
+            importlib.import_module("juniper_data.storage")

@@ -163,6 +163,32 @@ class TestCheckerboardGenerator:
         assert len(result["X_train"]) == 70
         assert len(result["X_test"]) == 30
 
+    def test_generate_with_noise(self) -> None:
+        """Noise should displace points from their grid positions."""
+        params_no_noise = CheckerboardParams(n_samples=200, noise=0.0, seed=42)
+        params_with_noise = CheckerboardParams(n_samples=200, noise=0.1, seed=42)
+
+        result_no_noise = CheckerboardGenerator.generate(params_no_noise)
+        result_with_noise = CheckerboardGenerator.generate(params_with_noise)
+
+        assert not np.allclose(result_no_noise["X_full"], result_with_noise["X_full"])
+
+    def test_generate_custom_range(self) -> None:
+        """Custom x_range and y_range should be respected."""
+        params = CheckerboardParams(
+            n_samples=100,
+            x_range=(-5.0, 5.0),
+            y_range=(-3.0, 3.0),
+            noise=0.0,
+            seed=42,
+        )
+        result = CheckerboardGenerator.generate(params)
+
+        assert result["X_full"][:, 0].min() >= -5.0
+        assert result["X_full"][:, 0].max() <= 5.0
+        assert result["X_full"][:, 1].min() >= -3.0
+        assert result["X_full"][:, 1].max() <= 3.0
+
 
 class TestGetSchema:
     """Tests for get_schema function."""

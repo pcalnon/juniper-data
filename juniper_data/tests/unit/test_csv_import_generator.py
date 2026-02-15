@@ -176,6 +176,136 @@ class TestCsvImportGenerator:
         assert len(result["X_train"]) == 2
         assert len(result["X_test"]) == 2
 
+    def test_auto_detect_unsupported_extension(self) -> None:
+        """Unsupported file extension should raise ValueError."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", delete=False) as f:
+            f.write("<data></data>")
+            xml_path = f.name
+
+        params = CsvImportParams(file_path=xml_path)
+        with pytest.raises(ValueError, match="Cannot auto-detect format"):
+            CsvImportGenerator.generate(params)
+
+    def test_csv_without_header(self) -> None:
+        """Should load headerless CSV with auto-generated column names."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+            f.write("1.0,2.0,A\n")
+            f.write("3.0,4.0,B\n")
+            f.write("5.0,6.0,A\n")
+            f.write("7.0,8.0,B\n")
+            csv_path = f.name
+
+        params = CsvImportParams(
+            file_path=csv_path,
+            header=False,
+            label_column="col_2",
+            seed=42,
+        )
+        result = CsvImportGenerator.generate(params)
+
+        assert result["X_full"].shape == (4, 2)
+        assert result["y_full"].shape == (4, 2)
+
+    def test_json_jsonl_format(self) -> None:
+        """Should load JSONL (non-array) format via the else branch."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            f.write('{"feature1": 1.0, "feature2": 2.0, "label": "A"}\n')
+            f.write('{"feature1": 3.0, "feature2": 4.0, "label": "B"}\n')
+            jsonl_path = f.name
+
+        params = CsvImportParams(file_path=jsonl_path, seed=42)
+        result = CsvImportGenerator.generate(params)
+
+        assert result["X_full"].shape == (2, 2)
+
+    def test_convert_to_arrays_empty_data(self) -> None:
+        """Empty file should raise ValueError."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+            f.write("feature1,feature2,label\n")
+            csv_path = f.name
+
+        params = CsvImportParams(file_path=csv_path, seed=42)
+        with pytest.raises(ValueError, match="No data found"):
+            CsvImportGenerator.generate(params)
+
+    def test_feature_columns_explicit(self) -> None:
+        """Explicit feature_columns should select only those columns."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+            f.write("a,b,c,label\n")
+            f.write("1.0,2.0,3.0,A\n")
+            f.write("4.0,5.0,6.0,B\n")
+            csv_path = f.name
+
+        params = CsvImportParams(
+            file_path=csv_path,
+            feature_columns=["a", "c"],
+            seed=42,
+        )
+        result = CsvImportGenerator.generate(params)
+
+        assert result["X_full"].shape == (2, 2)
+
+    def test_non_numeric_feature_values(self) -> None:
+        """Non-numeric feature values should be replaced with 0.0."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+            f.write("feature1,feature2,label\n")
+            f.write("1.0,hello,A\n")
+            f.write("3.0,world,B\n")
+            csv_path = f.name
+
+        params = CsvImportParams(
+            file_path=csv_path,
+            shuffle=False,
+            seed=42,
+        )
+        result = CsvImportGenerator.generate(params)
+
+        assert result["X_full"][0, 1] == 0.0
+        assert result["X_full"][1, 1] == 0.0
+
+    def test_normalize_with_constant_feature(self) -> None:
+        """Normalization with a constant feature column should not produce NaN."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+            f.write("feature1,feature2,label\n")
+            f.write("5.0,1.0,A\n")
+            f.write("5.0,2.0,B\n")
+            f.write("5.0,3.0,A\n")
+            csv_path = f.name
+
+        params = CsvImportParams(
+            file_path=csv_path,
+            normalize_features=True,
+            shuffle=False,
+            seed=42,
+        )
+        result = CsvImportGenerator.generate(params)
+
+        assert not np.any(np.isnan(result["X_full"]))
+        assert result["X_full"][:, 0].min() == 0.0
+        assert result["X_full"][:, 0].max() == 0.0
+
+    def test_explicit_csv_format(self, sample_csv_file: Path) -> None:
+        """Explicit file_format='csv' should bypass auto-detect."""
+        params = CsvImportParams(
+            file_path=str(sample_csv_file),
+            file_format="csv",
+            seed=42,
+        )
+        result = CsvImportGenerator.generate(params)
+
+        assert result["X_full"].shape == (4, 2)
+
+    def test_explicit_json_format(self, sample_json_file: Path) -> None:
+        """Explicit file_format='json' should bypass auto-detect."""
+        params = CsvImportParams(
+            file_path=str(sample_json_file),
+            file_format="json",
+            seed=42,
+        )
+        result = CsvImportGenerator.generate(params)
+
+        assert result["X_full"].shape == (4, 2)
+
 
 class TestGetSchema:
     """Tests for get_schema function."""
