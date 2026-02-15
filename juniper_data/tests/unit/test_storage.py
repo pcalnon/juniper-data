@@ -593,7 +593,7 @@ class TestStorageModuleFactories:
     @pytest.mark.unit
     def test_optional_imports_are_none_or_class(self):
         """Test that optional store classes are None or importable."""
-        import juniper_data.storage as storage_mod
+        from juniper_data import storage as storage_mod
 
         for attr in ["RedisDatasetStore", "HuggingFaceDatasetStore", "PostgresDatasetStore", "KaggleDatasetStore"]:
             val = getattr(storage_mod, attr, None)
