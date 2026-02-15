@@ -1,8 +1,11 @@
 """Cached dataset storage wrapper for composable caching layers."""
 
 import contextlib
+import logging
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 from juniper_data.core.models import DatasetMeta
 
@@ -203,6 +206,7 @@ class CachedDatasetStore(DatasetStore):
                         self._cache.save(dataset_id, meta, arrays)
                     cached_count += 1
             except Exception:
+                logger.warning("Failed to cache dataset %s", dataset_id, exc_info=True)
                 continue
 
         return cached_count
