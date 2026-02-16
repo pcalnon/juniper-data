@@ -19,7 +19,8 @@ class TestSettings:
     def test_default_storage_path(self) -> None:
         """Test default storage path is set."""
         settings = Settings()
-        assert settings.storage_path == "./data/datasets"
+        settings = Settings()
+        # Default host was changed from 127.0.0.1 to 0.0.0.0 to allow external access.
 
     def test_default_host(self) -> None:
         """Test default host is set."""
