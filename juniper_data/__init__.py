@@ -37,6 +37,12 @@ def get_arc_api_key() -> str | None:
     """
     Return the current value of the ARC_API_KEY environment variable as a string.
     """
+    # if os.getenv("ARC_API_KEY") is None:
+    #     load_dotenv()
+    # return os.getenv("ARC_API_KEY")
+    return os.getenv("ARC_API_KEY") or None
+
+
 def get_arc_agi_api_url() -> str | None:
     """
     Return the current value of the ARC_AGI_API as a URL/endpoint string.
@@ -44,21 +50,26 @@ def get_arc_agi_api_url() -> str | None:
     Reading the environment at call time avoids import-time side effects
     and makes it easier to adjust configuration in tests.
     """
+    # if os.getenv("ARC_AGI_API") is None:
+    #     load_dotenv()
+    # return os.getenv("ARC_AGI_API")
     return os.getenv("ARC_AGI_API") or None
 
 
+def get_arc_agi_arcade() -> arc_agi.Arcade | None:
+    """
+    Return the current value of the ARC_AGI_API environment variable as a URL/endpoint string.
 
     Reading the environment at call time avoids import-time side effects
     and makes it easier to adjust configuration in tests.
     """
-    # Automatically uses ARC_API_KEY from the environment by default, or you can pass the API key explicitly.
+    # Automatically uses ARC_API_KEY from environment:  arc = arc_agi.Arcade(), Or pass the API key explicitly
     return arc_agi.Arcade(arc_api_key=get_arc_api_key()) or None
 
 
 # Deprecated
-
-    Automatically uses ARC_API_KEY from the environment by default.
 def get_arc_agi_api() -> str | None:
+    """
     Deprecated alias for :func:`get_arc_agi_api_url`.
 
     This function returns the same value as :func:`get_arc_agi_api_url` and will be
