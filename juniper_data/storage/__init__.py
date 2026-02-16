@@ -97,7 +97,7 @@ def get_postgres_store(**kwargs) -> "PostgresDatasetStore":  # type: ignore[no-u
     return PostgresDatasetStore(**kwargs)
 
 
-def get_kaggle_store(**kwargs) -> "KaggleDatasetStore":
+def get_kaggle_store(**kwargs) -> "KaggleDatasetStore":  # type: ignore[no-untyped-def]
     """Get a Kaggle dataset store (requires kaggle package).
 
     Args:
