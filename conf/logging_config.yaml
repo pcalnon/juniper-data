@@ -59,7 +59,7 @@ handlers:
     # level: INFO
     formatter: formatter_file
     # filename: logs/dynamic_nn.log
-    filename: juniper_data.log
+    filename: logs/juniper_data.log
     encoding: utf-8
     mode: a
 loggers:
