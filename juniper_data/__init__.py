@@ -26,7 +26,8 @@ def get_arc_agi_api_url() -> str | None:
     Reading the environment at call time avoids import-time side effects
     and makes it easier to adjust configuration in tests.
     """
-    return get_arc_api_key()
+    load_dotenv()
+    return os.getenv("ARC_AGI_API")
 
 def get_arc_agi_arcade() -> arc_agi.Arcade | None:
     """
