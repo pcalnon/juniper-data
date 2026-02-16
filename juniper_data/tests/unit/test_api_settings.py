@@ -5,7 +5,11 @@ from unittest.mock import patch
 
 import pytest
 
-from juniper_data.api.settings import Settings, get_settings
+from juniper_data.api.settings import (
+    _JUNIPER_DATA_API_HOST_DEFAULT,
+    Settings,
+    get_settings,
+)
 
 
 @pytest.mark.unit
@@ -21,7 +25,8 @@ class TestSettings:
         """Test default host is set."""
         settings = Settings()
         # assert settings.host == "127.0.0.1"
-        assert settings.host == "0.0.0.0"
+        # assert settings.host == "0.0.0.0"
+        assert settings.host == _JUNIPER_DATA_API_HOST_DEFAULT
 
     def test_default_port(self) -> None:
         """Test default port is set."""

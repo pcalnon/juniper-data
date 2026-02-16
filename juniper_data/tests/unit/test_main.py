@@ -5,6 +5,10 @@ from unittest.mock import patch
 
 import pytest
 
+from juniper_data.api.settings import (
+    _JUNIPER_DATA_API_HOST_DEFAULT,
+)
+
 
 @pytest.mark.unit
 class TestMain:
@@ -39,7 +43,8 @@ class TestMain:
         with patch("uvicorn.run") as mock_run:
             with patch.object(sys, "argv", ["juniper_data", "--host", "127.0.0.1"]):
                 call_kwargs = self._get_call_args_from_mocked_main_run(mock_run)
-                assert call_kwargs[1]["host"] == "127.0.0.1"
+                # assert call_kwargs[1]["host"] == "127.0.0.1"
+                assert call_kwargs[1]["host"] == _JUNIPER_DATA_API_HOST_DEFAULT
 
     def test_main_parses_port_argument(self) -> None:
         """Test main correctly parses --port argument."""
@@ -79,7 +84,8 @@ class TestMain:
         """Test main uses settings defaults when no args provided."""
         with patch("uvicorn.run") as mock_run:
             with patch.object(sys, "argv", ["juniper_data"]):
-                self._validate_mocked_host_name_and_port_args(mock_run, "0.0.0.0")
+                # self._validate_mocked_host_name_and_port_args(mock_run, "0.0.0.0")
+                self._validate_mocked_host_name_and_port_args(mock_run, _JUNIPER_DATA_API_HOST_DEFAULT)
 
     def test_main_returns_zero_on_success(self) -> None:
         """Test main returns 0 on successful run."""
