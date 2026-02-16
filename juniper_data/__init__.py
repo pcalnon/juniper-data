@@ -27,12 +27,9 @@ def reload_arc_agi_env() -> bool:
     Reloads all of the Environment Variables from local OS env whether already loaded or not.
 
     Returns:
-        bool: _description_
-            Result of load_dotenv() method (True/False).
+        bool: True if environment variables were loaded from a .env file, False otherwise.
     """
     return bool(load_dotenv())
-
-
 def get_arc_api_key() -> str | None:
     """
     Return the current value of the ARC_API_KEY environment variable as a string.
