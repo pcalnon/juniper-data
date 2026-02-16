@@ -225,6 +225,12 @@ class TestInMemoryDatasetStore:
         assert retrieved is not None
         assert retrieved.generator_version == "2.0.0"
 
+    @pytest.mark.unit
+    def test_record_access_nonexistent_noop(self, memory_store: InMemoryDatasetStore):
+        """record_access on nonexistent dataset does nothing."""
+        memory_store.record_access("nonexistent-id")
+        assert not memory_store.exists("nonexistent-id")
+
 
 class TestLocalFSDatasetStore:
     """Tests for LocalFSDatasetStore."""
@@ -472,6 +478,30 @@ class TestLocalFSUpdateAndList:
         tmp_files = list(fs_store.base_path.glob("*.tmp"))
         assert not tmp_files
 
+    @pytest.mark.unit
+    def test_save_cleanup_oserror_suppressed(self, fs_store, sample_meta, sample_arrays):
+        """Test that OSError during temp file cleanup is caught and logged."""
+        from unittest.mock import patch
+
+        path_cls = type(fs_store.base_path)
+        original_replace = path_cls.replace
+        original_unlink = path_cls.unlink
+
+        def failing_replace(self_path, target):
+            if str(self_path).endswith(".npz.tmp"):
+                raise OSError("Simulated disk error during replace")
+            return original_replace(self_path, target)
+
+        def failing_unlink(self_path, missing_ok=False):
+            if str(self_path).endswith(".tmp"):
+                raise OSError("Simulated permission error during cleanup")
+            return original_unlink(self_path, missing_ok=missing_ok)
+
+        with patch.object(path_cls, "replace", failing_replace):
+            with patch.object(path_cls, "unlink", failing_unlink):
+                with pytest.raises(IOError, match="Simulated disk error"):
+                    fs_store.save("ds-cleanup-err", sample_meta, sample_arrays)
+
 
 class TestLocalFSEdgeCases:
     """Additional edge case tests for LocalFSDatasetStore."""
@@ -593,7 +623,7 @@ class TestStorageModuleFactories:
     @pytest.mark.unit
     def test_optional_imports_are_none_or_class(self):
         """Test that optional store classes are None or importable."""
-        from juniper_data import storage as storage_mod
+        import juniper_data.storage as storage_mod
 
         for attr in ["RedisDatasetStore", "HuggingFaceDatasetStore", "PostgresDatasetStore", "KaggleDatasetStore"]:
             val = getattr(storage_mod, attr, None)
@@ -637,8 +667,6 @@ class TestStorageModuleFactories:
         import importlib
         import sys
 
-        # flake8-ignore['unused-imports']
-        # flake8: ignore['unused-imports']
         # from unittest.mock import MagicMock
         # Save original modules and remove them to force ImportError
         modules_to_block = [

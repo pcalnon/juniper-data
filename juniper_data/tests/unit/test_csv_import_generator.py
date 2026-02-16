@@ -263,6 +263,20 @@ class TestCsvImportGenerator:
         assert result["X_full"][0, 1] == 0.0
         assert result["X_full"][1, 1] == 0.0
 
+    def test_empty_csv_without_header_raises(self) -> None:
+        """Empty CSV with header=False should raise ValueError."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+            f.flush()
+            path = Path(f.name)
+
+        params = CsvImportParams(
+            file_path=str(path),
+            header=False,
+            seed=42,
+        )
+        with pytest.raises(ValueError, match="CSV file is empty"):
+            CsvImportGenerator.generate(params)
+
     def test_normalize_with_constant_feature(self) -> None:
         """Normalization with a constant feature column should not produce NaN."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:

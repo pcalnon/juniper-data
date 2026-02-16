@@ -3,21 +3,45 @@ Juniper Data - Dataset generation and management service for the Juniper ecosyst
 """
 
 import os
+
 import arc_agi
-
 from dotenv import load_dotenv
-
 
 __version__ = "0.4.0"
 __author__ = "Paul Calnon"
+
+
+def get_arc_agi_env() -> bool:
+    """
+    Loads the Environment Variables if not already Loaded.
+    Returns:
+        bool:
+            True: if env IS already loaded
+            Result of load_dotenv() method (True/False) when env is NOT already loaded
+    """
+    return True if os.getenv("ARC_AGI_ENV") else bool(load_dotenv())
+
+
+def reload_arc_agi_env() -> bool:
+    """
+    Reloads all of the Environment Variables from local OS env whether already loaded or not.
+
+    Returns:
+        bool: _description_
+            Result of load_dotenv() method (True/False).
+    """
+    return bool(load_dotenv())
 
 
 def get_arc_api_key() -> str | None:
     """
     Return the current value of the ARC_API_KEY environment variable as a string.
     """
-    load_dotenv()
-    return os.getenv("ARC_API_KEY")
+    # if os.getenv("ARC_API_KEY") is None:
+    #     load_dotenv()
+    # return os.getenv("ARC_API_KEY")
+    return os.getenv("ARC_API_KEY") or None
+
 
 def get_arc_agi_api_url() -> str | None:
     """
@@ -26,7 +50,11 @@ def get_arc_agi_api_url() -> str | None:
     Reading the environment at call time avoids import-time side effects
     and makes it easier to adjust configuration in tests.
     """
-    return get_arc_api_key()
+    # if os.getenv("ARC_AGI_API") is None:
+    #     load_dotenv()
+    # return os.getenv("ARC_AGI_API")
+    return os.getenv("ARC_AGI_API") or None
+
 
 def get_arc_agi_arcade() -> arc_agi.Arcade | None:
     """
@@ -36,7 +64,8 @@ def get_arc_agi_arcade() -> arc_agi.Arcade | None:
     and makes it easier to adjust configuration in tests.
     """
     # Automatically uses ARC_API_KEY from environment:  arc = arc_agi.Arcade(), Or pass the API key explicitly
-    return arc_agi.Arcade(arc_api_key=get_arc_api_key())
+    return arc_agi.Arcade(arc_api_key=get_arc_api_key()) or None
+
 
 # Deprecated
 def get_arc_agi_api() -> str | None:

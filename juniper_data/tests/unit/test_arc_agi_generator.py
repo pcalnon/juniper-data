@@ -490,3 +490,26 @@ class TestArcAgiImports:
         assert ArcAgiParams is not None
         assert VERSION is not None
         assert get_schema is not None
+
+    def test_module_level_hf_available_true(self) -> None:
+        """Module-level HF_AVAILABLE is True when datasets is importable."""
+        import importlib
+        import sys
+        from types import ModuleType
+        from unittest.mock import MagicMock
+
+        # Inject a fake 'datasets' module so the try-branch succeeds
+        fake_datasets = ModuleType("datasets")
+        fake_datasets.load_dataset = MagicMock()  # type: ignore[attr-defined]
+        sys.modules["datasets"] = fake_datasets
+
+        mod_name = "juniper_data.generators.arc_agi.generator"
+        sys.modules.pop(mod_name, None)
+        try:
+            mod = importlib.import_module(mod_name)
+            assert mod.HF_AVAILABLE is True
+        finally:
+            # Restore original state
+            sys.modules.pop("datasets", None)
+            sys.modules.pop(mod_name, None)
+            importlib.import_module(mod_name)

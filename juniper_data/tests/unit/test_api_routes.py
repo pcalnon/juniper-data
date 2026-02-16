@@ -272,6 +272,22 @@ class TestDatasetsEndpointEdgeCases:
         assert "datasets" in data
         assert "total" in data
 
+    def test_get_dataset_metadata(self, client: TestClient) -> None:
+        """GET /v1/datasets/{id} returns metadata for existing dataset."""
+        request = {
+            "generator": "spiral",
+            "params": {"n_spirals": 2, "n_points_per_spiral": 50, "seed": 42},
+            "persist": True,
+        }
+        resp = client.post("/v1/datasets", json=request)
+        dataset_id = resp.json()["dataset_id"]
+
+        response = client.get(f"/v1/datasets/{dataset_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["dataset_id"] == dataset_id
+        assert data["generator"] == "spiral"
+
     def test_preview_stacks_train_test_when_no_full_arrays(self, memory_store: InMemoryDatasetStore, test_settings: Settings) -> None:
         """Test preview stacks X_train/X_test when X_full/y_full not available."""
         from datetime import datetime
