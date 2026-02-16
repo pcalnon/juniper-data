@@ -48,6 +48,7 @@
 annotated-doc>=0.0.4
 annotated-types>=0.7.0
 anyio>=4.12.1
+arc-agi>=0.9.1
 # attrs>=25.4.0
 # bandit>=1.9.3
 # black>=26.1.0
