@@ -4,11 +4,9 @@ import contextlib
 import logging
 
 import numpy as np
-
-logger = logging.getLogger(__name__)
-
 from juniper_data.core.models import DatasetMeta
 
+logger = logging.getLogger(__name__)
 from .base import DatasetStore
 
 
