@@ -37,9 +37,6 @@ def get_arc_api_key() -> str | None:
     """
     Return the current value of the ARC_API_KEY environment variable as a string.
     """
-    # if os.getenv("ARC_API_KEY") is None:
-    #     load_dotenv()
-    # return os.getenv("ARC_API_KEY")
     return os.getenv("ARC_API_KEY") or None
 
 
@@ -50,9 +47,6 @@ def get_arc_agi_api_url() -> str | None:
     Reading the environment at call time avoids import-time side effects
     and makes it easier to adjust configuration in tests.
     """
-    # if os.getenv("ARC_AGI_API") is None:
-    #     load_dotenv()
-    # return os.getenv("ARC_AGI_API")
     return os.getenv("ARC_AGI_API") or None
 
 
