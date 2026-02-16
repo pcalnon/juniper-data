@@ -175,6 +175,9 @@ dist/**
 # Specific files and file types for git to ignore
 ####################################################################################################################################################################################
 
+# Ignore environment Variable file
+.env
+
 # CascadeCorrelationNetwork class snapshots
 cascor_snapshot_*.h5
 
