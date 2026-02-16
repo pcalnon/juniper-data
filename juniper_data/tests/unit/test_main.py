@@ -38,48 +38,28 @@ class TestMain:
         """Test main correctly parses --host argument."""
         with patch("uvicorn.run") as mock_run:
             with patch.object(sys, "argv", ["juniper_data", "--host", "127.0.0.1"]):
-                from juniper_data.__main__ import main
-
-                main()
-
-                mock_run.assert_called_once()
-                call_kwargs = mock_run.call_args
+                call_kwargs = self._get_call_args_from_mocked_main_run(mock_run)
                 assert call_kwargs[1]["host"] == "127.0.0.1"
 
     def test_main_parses_port_argument(self) -> None:
         """Test main correctly parses --port argument."""
         with patch("uvicorn.run") as mock_run:
             with patch.object(sys, "argv", ["juniper_data", "--port", "9000"]):
-                from juniper_data.__main__ import main
-
-                main()
-
-                mock_run.assert_called_once()
-                call_kwargs = mock_run.call_args
+                call_kwargs = self._get_call_args_from_mocked_main_run(mock_run)
                 assert call_kwargs[1]["port"] == 9000
 
     def test_main_parses_log_level_argument(self) -> None:
         """Test main correctly parses --log-level argument."""
         with patch("uvicorn.run") as mock_run:
             with patch.object(sys, "argv", ["juniper_data", "--log-level", "DEBUG"]):
-                from juniper_data.__main__ import main
-
-                main()
-
-                mock_run.assert_called_once()
-                call_kwargs = mock_run.call_args
+                call_kwargs = self._get_call_args_from_mocked_main_run(mock_run)
                 assert call_kwargs[1]["log_level"] == "debug"
 
     def test_main_parses_reload_argument(self) -> None:
         """Test main correctly parses --reload argument."""
         with patch("uvicorn.run") as mock_run:
             with patch.object(sys, "argv", ["juniper_data", "--reload"]):
-                from juniper_data.__main__ import main
-
-                main()
-
-                mock_run.assert_called_once()
-                call_kwargs = mock_run.call_args
+                call_kwargs = self._get_call_args_from_mocked_main_run(mock_run)
                 assert call_kwargs[1]["reload"] is True
 
     def test_main_parses_storage_path_argument(self) -> None:
@@ -92,7 +72,6 @@ class TestMain:
                     from juniper_data.__main__ import main
 
                     main()
-
                     assert os.environ.get("JUNIPER_DATA_STORAGE_PATH") == "/custom/path"
                     mock_run.assert_called_once()
 
@@ -100,15 +79,7 @@ class TestMain:
         """Test main uses settings defaults when no args provided."""
         with patch("uvicorn.run") as mock_run:
             with patch.object(sys, "argv", ["juniper_data"]):
-                from juniper_data.__main__ import main
-
-                main()
-
-                mock_run.assert_called_once()
-                call_kwargs = mock_run.call_args
-                # assert call_kwargs[1]["host"] == "0.0.0.0"
-                assert call_kwargs[1]["host"] == "127.0.0.1"
-                assert call_kwargs[1]["port"] == 8100
+                self._validate_mocked_host_name_and_port_args(mock_run, "0.0.0.0")
 
     def test_main_returns_zero_on_success(self) -> None:
         """Test main returns 0 on successful run."""
@@ -117,30 +88,29 @@ class TestMain:
                 from juniper_data.__main__ import main
 
                 result = main()
-
                 assert result == 0
 
     def test_main_app_string(self) -> None:
         """Test main passes correct app string to uvicorn."""
         with patch("uvicorn.run") as mock_run:
             with patch.object(sys, "argv", ["juniper_data"]):
-                from juniper_data.__main__ import main
-
-                main()
-
-                mock_run.assert_called_once()
-                call_args = mock_run.call_args
+                call_args = self._get_call_args_from_mocked_main_run(mock_run)
                 assert call_args[0][0] == "juniper_data.api.app:app"
 
     def test_main_combines_custom_and_default_args(self) -> None:
         """Test main combines custom args with settings defaults."""
         with patch("uvicorn.run") as mock_run:
             with patch.object(sys, "argv", ["juniper_data", "--host", "localhost"]):
-                from juniper_data.__main__ import main
+                self._validate_mocked_host_name_and_port_args(mock_run, "localhost")
 
-                main()
+    def _validate_mocked_host_name_and_port_args(self, mock_run, arg1):
+        call_kwargs = self._get_call_args_from_mocked_main_run(mock_run)
+        assert call_kwargs[1]["host"] == arg1
+        assert call_kwargs[1]["port"] == 8100
 
-                mock_run.assert_called_once()
-                call_kwargs = mock_run.call_args
-                assert call_kwargs[1]["host"] == "localhost"
-                assert call_kwargs[1]["port"] == 8100
+    def _get_call_args_from_mocked_main_run(self, mock_run):
+        from juniper_data.__main__ import main
+
+        main()
+        mock_run.assert_called_once()
+        return mock_run.call_args

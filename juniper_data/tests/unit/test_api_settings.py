@@ -20,7 +20,8 @@ class TestSettings:
     def test_default_host(self) -> None:
         """Test default host is set."""
         settings = Settings()
-        assert settings.host == "127.0.0.1"
+        # assert settings.host == "127.0.0.1"
+        assert settings.host == "0.0.0.0"
 
     def test_default_port(self) -> None:
         """Test default port is set."""
