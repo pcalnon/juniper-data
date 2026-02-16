@@ -1,7 +1,5 @@
 """Parameters for the XOR dataset generator."""
 
-# from typing import Optional
-
 from pydantic import BaseModel, Field
 
 
