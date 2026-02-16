@@ -1,71 +1,142 @@
-##########################################################################################
+####################################################################################################################################################################################
 # Directories and files to exclude from inclusion in the Dynamic_NN Bit Bucket Repo
 # ---------------------------------------------------------------------------------------
 # This is a Juniper Project customized list of files not to be added to the git repo.
-# Learn more about .gitignore:
-#     https://www.atlassian.com/git/tutorials/saving-changes/gitignore
-##########################################################################################
+# Learn more about .gitignore: https://www.atlassian.com/git/tutorials/saving-changes/gitignore
+#
+# Notes:
+#     add exception for file(s) in subdir of ignored dir
+#     ignored_folder/**
+#     \!ignored_folder/**/
+#     \!ignored_folder/foo/exception_file.txt
+#
+####################################################################################################################################################################################
 
-# Local Development directories
-data/*
-bin/*
-cuda/*
-temp/*
-logs/*
-images/*
-# dynet-base/*/
-# dynet-base/*.tgz
-# dynet-base/*.zip
-# dynet-base/*.tar.gz
-# boost*/*
-# src/pytorch_static/data/*
-# torchexplorer_standalone/*
-**/reports
-**/reports/*
-**/logs
-**/backup
-**/backups
-**/temp
-**/temp/*
-**/resources/*
+####################################################################################################################################################################################
+# Local Development directories for git to ignore
+####################################################################################################################################################################################
+# bin/*
+bin/**
+# **/bin/*
+**/bin/**
 
-__pycache__
-__pycache__/
-__pycache__/*
+# cuda/*
+cuda/**
+# **/cuda/*
+**/cuda/**
+
+# data/*
+data/**
+# **/data/*
+**/data/**
+
+# images/*
+images/**
+# **/images/*
+**/images/**
+
+# logs/*
+logs/**
+# **/logs/*
+**/logs/**
+
+# resources/*
+resources/**
+# **/resources/*
+**/resources/**
+
+# temp/*
+temp/**
+# **/temp/*
+**/temp/**
+
+# Backup directories containing obsolete files saved locally for reference
+# backup/
+# backup/*
+backup/**
+# **/backup/
+# **/backup/*
+**/backup/**
+
+# backups/
+# backups/*
+backups/**
+# **/backups
+# **/backups/*
+**/backups/**
+
+# reports directories and files -- NOTE: exception for security reports
+# reports/
+# reports/*
+reports/**
+!reports/**/
+!reports/security/**
+
+# **/reports/
+# **/reports/*
+**/reports/**
+!**/reports/**/
+!**/reports/security/**
+
+
+# Cache files
+# __pycache__
+# __pycache__/
+# __pycache__/*
 __pycache__/**
-**/__pycache__
-**/__pycache__/
-**/__pycache__/*
+# **/__pycache__
+# **/__pycache__/
+# **/__pycache__/*
 **/__pycache__/**
 
+# Local Python temp files
 __init__.cpython*
 **/__init__.cpython*
 
-*.egg-info/
-**.egg-info/
-**.egg-info/*
+# *.egg-info/
+# *.egg-info/*
+*.egg-info/**
+# **.egg-info/
+# **.egg-info/*
+**.egg-info/**
 
-juniper_data.egg-info
-juniper_data.egg-info/*
-**/juniper_data.egg-info
-**/juniper_data.egg-info/*
-juniper_data.egg-info/PKG-INFO
+# juniper_data.egg-info
+# juniper_data.egg-info/
+# juniper_data.egg-info/*
+juniper_data.egg-info/**
+# **/juniper_data.egg-info
+# **/juniper_data.egg-info/
+# **/juniper_data.egg-info/*
+**/juniper_data.egg-info/**
+# juniper_data.egg-info/PKG-INFO
 
-juniper_data_client/juniper_data_client.egg-info
-juniper_data_client/juniper_data_client.egg-info/*
-juniper_data_client/juniper_data_client.egg-info/SOURCES.txt
-juniper_data_client/juniper_data_client.egg-info/requires.txt
-**/juniper_data_client/juniper_data_client.egg-info
-**/juniper_data_client/juniper_data_client.egg-info/*
+# juniper_data_client/juniper_data_client.egg-info
+# juniper_data_client/juniper_data_client.egg-info/
+# juniper_data_client/juniper_data_client.egg-info/*
+juniper_data_client/juniper_data_client.egg-info/**
+
+# juniper_data_client/juniper_data_client.egg-info/SOURCES.txt
+# juniper_data_client/juniper_data_client.egg-info/requires.txt
+
+# **/juniper_data_client/juniper_data_client.egg-info
+# **/juniper_data_client/juniper_data_client.egg-info/*
+# **/juniper_data_client/juniper_data_client.egg-info/*
+**/juniper_data_client/juniper_data_client.egg-info/**
 
 # CascadeCorrelationNetwork class snapshots
-**/cascor/cascor_snapshots/*
-cascor_snapshot_*.h5
+# **/cascor/cascor_snapshots/*
+**/cascor/cascor_snapshots/**
 
 # Sensitive files and dirs
-*/REAMDE.notes/*
-*/encryption.bash
-*/external_drive.readme
+# REAMDE.notes
+# REAMDE.notes/
+# REAMDE.notes/*
+REAMDE.notes/**
+
+# **/REAMDE.notes
+# **/REAMDE.notes/
+# **/REAMDE.notes/*
+**/REAMDE.notes/**
 
 # Node artifact files
 node_modules/
@@ -77,12 +148,39 @@ dist/
 # Data dirs
 # data/
 # data/*
-data/MNIST/
-data/MNIST/raw/
+# data/MNIST/
+# data/MNIST/raw/
 
 # Maven
-target/
-dist/
+# target
+# target/
+# target/*
+target/**
+# **/target
+# **/target/
+# **/target/*
+**/target/**
+
+# dist
+# dist/
+# dist/*
+dist/**
+# **/dist
+# **/dist/
+# **/dist/*
+**/dist/**
+
+
+####################################################################################################################################################################################
+# Specific files and file types for git to ignore
+####################################################################################################################################################################################
+
+# CascadeCorrelationNetwork class snapshots
+cascor_snapshot_*.h5
+
+# Sensitive files and dirs
+*/encryption.bash
+*/external_drive.readme
 
 # Data files
 *ubyte
