@@ -339,7 +339,7 @@ jobs:
           echo "║       JuniperData - pip-audit Dependency Scan              ║"
           echo "╚════════════════════════════════════════════════════════════╝"
           pip install ".[all]"
-          pip freeze | grep -iv "^juniper-data==" > reports/security/requirements.txt
+          pip freeze | grep -ivE "^juniper[-_]data" > reports/security/requirements.txt
           pip-audit -r reports/security/requirements.txt --strict
 
       - name: Upload Security Reports
