@@ -54,10 +54,10 @@ def get_arc_agi_api_url() -> str | None:
 
 def get_arc_agi_arcade() -> arc_agi.Arcade | None:
     """
-    Return the current value of the ARC_AGI_API environment variable as a URL/endpoint string.
+    Create and return an :class:`arc_agi.Arcade` instance configured from environment variables.
 
-    Reading the environment at call time avoids import-time side effects
-    and makes it easier to adjust configuration in tests.
+    The API key is read from the environment via :func:`get_arc_api_key`, avoiding import-time
+    side effects and making it easier to adjust configuration in tests.
     """
     # Automatically uses ARC_API_KEY from environment:  arc = arc_agi.Arcade(), Or pass the API key explicitly
     return arc_agi.Arcade(arc_api_key=get_arc_api_key()) or None
