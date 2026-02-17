@@ -316,22 +316,28 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run Bandit (SAST) -> SARIF
+      # - name: Run Bandit (SAST) -> SARIF
+      - name: Run Bandit (SAST) -> JSON
         run: |
           echo "╔════════════════════════════════════════════════════════════╗"
           echo "║       JuniperData - Bandit Security Scan                   ║"
           echo "╚════════════════════════════════════════════════════════════╝"
           # Generate SARIF report (always succeeds for upload)
           # bandit -r juniper_data -f sarif -o reports/security/bandit.sarif --exit-zero
-          bandit -r juniper_data -f json -o reports/security/bandit.sarif --exit-zero
+          # bandit -r juniper_data -f json -o reports/security/bandit.sarif --exit-zero
+          bandit -r juniper_data -f json -o reports/security/bandit.json --exit-zero
           # Blocking check - fail on medium or higher severity
-          bandit -r juniper_data -ll -ii --severity-level medium
+          bandit -r juniper_data --confidence-level medium --severity-level medium
 
-      - name: Upload Bandit SARIF to GitHub Security
+      # - name: Upload Bandit SARIF to GitHub Security
+      - name: Upload Bandit JSON to GitHub Security
         uses: github/codeql-action/upload-sarif@48ab28a6f5dbc2a99bf1e0131198dd8f1df78169  # v3.28.0
+        # uses: github/codeql-action/upload-json@48ab28a6f5dbc2a99bf1e0131198dd8f1df78169  # v3.28.0
         if: always()
         with:
-          sarif_file: reports/security/bandit.sarif
+          # sarif_file: reports/security/bandit.sarif
+          # json_file: reports/security/bandit.json
+          sarif_file: reports/security/bandit.json
         continue-on-error: true
 
       - name: Run pip-audit (Dependency Vulnerabilities)
@@ -390,7 +396,7 @@ jobs:
             exit 1
           fi
 
-          # Security should pass (but SARIF upload failures are allowed)
+          # Security should pass (but JSON/SARIF upload failures are allowed)
           if [[ "${{ needs.security.result }}" == "failure" ]]; then
             echo "::error::Security scans failed"
             exit 1
