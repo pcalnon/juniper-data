@@ -7,7 +7,6 @@ import numpy as np
 from juniper_data.core.models import DatasetMeta
 from juniper_data.storage.base import DatasetStore
 
-# from typing import Dict, List, Optional
 
 
 class InMemoryDatasetStore(DatasetStore):
