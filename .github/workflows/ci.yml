@@ -339,7 +339,8 @@ jobs:
           echo "║       JuniperData - pip-audit Dependency Scan              ║"
           echo "╚════════════════════════════════════════════════════════════╝"
           pip install ".[all]"
-          pip-audit --strict --skip-editable
+          pip freeze | grep -iv "^juniper-data==" > reports/security/requirements.txt
+          pip-audit -r reports/security/requirements.txt --strict
 
       - name: Upload Security Reports
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08  # v4.6.0
