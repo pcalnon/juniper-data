@@ -58,7 +58,6 @@ handlers:
     # level: DEBUG
     # level: INFO
     formatter: formatter_file
-    # filename: logs/dynamic_nn.log
     filename: logs/juniper_data.log
     encoding: utf-8
     mode: a
