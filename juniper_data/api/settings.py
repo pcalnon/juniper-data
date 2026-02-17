@@ -1,5 +1,6 @@
 """API configuration settings using pydantic-settings."""
 
+# import json
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -96,7 +97,8 @@ class Settings(BaseSettings):
     cors_origins: list[str] = _JUNIPER_DATA_API_CORS_ORIGINS_DEFAULT
 
     # api_keys: list[str] | None = _JUNIPER_DATA_API_KEYS_LIST_DEFAULT
-    api_keys: json[list[str]] | None = _JUNIPER_DATA_API_KEYS_LIST_DEFAULT
+    # api_keys: JSON[list[str]] | None = _JUNIPER_DATA_API_KEYS_LIST_DEFAULT
+    api_keys: list[str] | None = _JUNIPER_DATA_API_KEYS_LIST_DEFAULT
     rate_limit_enabled: bool = _JUNIPER_DATA_API_RATELIMIT_ACTIVE_DEFAULT
     rate_limit_requests_per_minute: int = _JUNIPER_DATA_API_RATELIMIT_DEFAULT
 
