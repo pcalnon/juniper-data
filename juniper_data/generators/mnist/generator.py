@@ -91,6 +91,9 @@ class MnistGenerator:
         if params.seed is not None:
             ds = ds.shuffle(seed=params.seed)
 
+        if params.n_samples is not None:
+            ds = ds.select(range(params.n_samples))
+
         # Use bulk column access with numpy formatting for efficient conversion
         ds = ds.with_format("numpy")
         X = np.array(ds["image"])

@@ -15,10 +15,13 @@ def _make_mock_hf_dataset(n_samples=20, n_classes=10):
 
     labels = [i % n_classes for i in range(n_samples)]
 
+    np_images = np.random.randint(0, 255, (n_samples, 28, 28), dtype=np.uint8)
+    np_labels = np.array(labels)
+
     images = []
-    for _ in range(n_samples):
+    for i in range(n_samples):
         mock_img = MagicMock()
-        mock_img.convert.return_value = np.random.randint(0, 255, (28, 28), dtype=np.uint8)
+        mock_img.convert.return_value = np_images[i]
         images.append(mock_img)
 
     def ds_iter():
@@ -29,6 +32,11 @@ def _make_mock_hf_dataset(n_samples=20, n_classes=10):
     mock_ds.__getitem__ = MagicMock(side_effect=lambda key: labels if key == "label" else images)
     mock_ds.shuffle.return_value = mock_ds
     mock_ds.select.return_value = mock_ds
+
+    # Mock with_format("numpy") to return a dataset providing numpy arrays
+    formatted_ds = MagicMock()
+    formatted_ds.__getitem__ = MagicMock(side_effect=lambda key: np_labels if key == "label" else np_images)
+    mock_ds.with_format.return_value = formatted_ds
 
     return mock_ds, labels, images
 
@@ -247,6 +255,14 @@ class TestMnistGenerator:
         mock_ds.__getitem__ = MagicMock(side_effect=lambda key: labels if key == "label" else raw_images)
         mock_ds.shuffle.return_value = mock_ds
         mock_ds.select.return_value = mock_ds
+
+        # Mock with_format("numpy") to return numpy arrays
+        np_images = np.array(raw_images)
+        np_labels = np.array(labels)
+        formatted_ds = MagicMock()
+        formatted_ds.__getitem__ = MagicMock(side_effect=lambda key: np_labels if key == "label" else np_images)
+        mock_ds.with_format.return_value = formatted_ds
+
         mock_hf_load.return_value = mock_ds
 
         from juniper_data.generators.mnist.generator import MnistGenerator
