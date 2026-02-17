@@ -84,7 +84,7 @@ class MnistGenerator:
         Returns:
             Tuple of (X, y) arrays.
         """
-        assert hf_load_dataset is not None
+        # assert hf_load_dataset is not None
 
         ds = hf_load_dataset(params.dataset, split="train")  # nosec B615
 
@@ -97,26 +97,19 @@ class MnistGenerator:
         images = []
         for item in ds:
             img = item["image"]
-            if hasattr(img, "convert"):
-                img = np.array(img.convert("L"))
-            else:
-                img = np.array(img)
+            img = np.array(img.convert("L")) if hasattr(img, "convert") else np.array(img)
             images.append(img)
 
         X = np.stack(images)
 
-        if params.normalize:
-            X = X.astype(np.float32) / 255.0
-        else:
-            X = X.astype(np.float32)
-
+        X = X.astype(np.float32) / 255.0 if params.normalize else X.astype(np.float32)
         if params.flatten:
             X = X.reshape(len(X), -1)
 
         labels = np.array(ds["label"])
-        n_classes = 10
-
         if params.one_hot_labels:
+            n_classes = 10
+
             y = np.zeros((len(labels), n_classes), dtype=np.float32)
             y[np.arange(len(labels)), labels] = 1.0
         else:

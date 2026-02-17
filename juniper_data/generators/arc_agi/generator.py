@@ -92,7 +92,7 @@ class ArcAgiGenerator:
         if not HF_AVAILABLE:
             raise ImportError("Hugging Face datasets package not installed. " "Install with: pip install datasets")
 
-        assert hf_load_dataset is not None
+        # assert hf_load_dataset is not None
 
         try:
             ds = hf_load_dataset("fchollet/arc-agi", split="train")  # nosec B615
@@ -109,13 +109,13 @@ class ArcAgiGenerator:
             tasks.append(task)
 
         if params.n_tasks is not None:
-            if params.seed is not None:
+            if params.seed is None:
+                tasks = tasks[: params.n_tasks]
+
+            else:
                 rng = np.random.default_rng(params.seed)
                 indices = rng.choice(len(tasks), min(params.n_tasks, len(tasks)), replace=False)
                 tasks = [tasks[i] for i in indices]
-            else:
-                tasks = tasks[: params.n_tasks]
-
         return tasks
 
     @staticmethod
@@ -141,13 +141,13 @@ class ArcAgiGenerator:
                 tasks.extend(ArcAgiGenerator._load_json_dir(eval_path))
 
         if params.n_tasks is not None:
-            if params.seed is not None:
+            if params.seed is None:
+                tasks = tasks[: params.n_tasks]
+
+            else:
                 rng = np.random.default_rng(params.seed)
                 indices = rng.choice(len(tasks), min(params.n_tasks, len(tasks)), replace=False)
                 tasks = [tasks[i] for i in indices]
-            else:
-                tasks = tasks[: params.n_tasks]
-
         return tasks
 
     @staticmethod

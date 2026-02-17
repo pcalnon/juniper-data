@@ -80,7 +80,7 @@ class HuggingFaceDatasetStore(DatasetStore):
         Returns:
             Tuple of (dataset_id, metadata, arrays).
         """
-        assert hf_load_dataset is not None
+        # assert hf_load_dataset is not None
 
         ds = hf_load_dataset(  # nosec B615
             dataset_name,
@@ -111,14 +111,10 @@ class HuggingFaceDatasetStore(DatasetStore):
         config_suffix = f"-{config_name}" if config_name else ""
         dataset_id = f"hf-{dataset_name}{config_suffix}-{len(X)}"
 
-        class_distribution = {}
-        if one_hot_labels:
-            class_indices = y.argmax(axis=1)
-        else:
-            class_indices = y.flatten().astype(int)
-        for i in range(n_classes):
-            class_distribution[str(i)] = int((class_indices == i).sum())
-
+        class_indices = y.argmax(axis=1) if one_hot_labels else y.flatten().astype(int)
+        class_distribution = {
+            str(i): int((class_indices == i).sum()) for i in range(n_classes)
+        }
         meta = DatasetMeta(
             dataset_id=dataset_id,
             generator="huggingface",
@@ -171,7 +167,11 @@ class HuggingFaceDatasetStore(DatasetStore):
             Tuple of (X, y, n_classes).
         """
         if feature_columns is None:
-            feature_columns = [col for col in ds.column_names if col != label_column and col not in ("idx", "id")]
+            feature_columns = [
+                col
+                for col in ds.column_names
+                if col not in (label_column, "idx", "id")
+            ]
 
         if len(feature_columns) == 1 and "image" in feature_columns[0].lower():
             X = self._extract_images(ds, feature_columns[0], flatten, normalize)
@@ -219,11 +219,7 @@ class HuggingFaceDatasetStore(DatasetStore):
 
         X = np.stack(images)
 
-        if normalize:
-            X = X.astype(np.float32) / 255.0
-        else:
-            X = X.astype(np.float32)
-
+        X = X.astype(np.float32) / 255.0 if normalize else X.astype(np.float32)
         if flatten:
             X = X.reshape(len(X), -1)
 
