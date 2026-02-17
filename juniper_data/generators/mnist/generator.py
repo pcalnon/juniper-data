@@ -87,8 +87,8 @@ class MnistGenerator:
         # assert hf_load_dataset is not None
 
         # params.dataset is validated by MnistParams (Pydantic) as Literal["mnist", "fashion_mnist"],
-        # so this argument to hf_load_dataset is restricted to these known-safe values.  # nosec B615
-        ds = hf_load_dataset(params.dataset, split="train")
+        # so this argument to hf_load_dataset is restricted to these known-safe values.
+        ds = hf_load_dataset(params.dataset, split="train")  # nosec B615
 
         if params.seed is not None:
             ds = ds.shuffle(seed=params.seed)
