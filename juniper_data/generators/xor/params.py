@@ -27,4 +27,4 @@ class XorParams(BaseModel):
     seed: int | None = Field(default=None, ge=0, description="Random seed for reproducibility")
     train_ratio: float = Field(default=0.8, gt=0, le=1, description="Fraction of data for training")
     test_ratio: float = Field(default=0.2, ge=0, le=1, description="Fraction of data for testing")
-    shuffle: bool = Field(default=True, description="Shuffle before splitting")
+    shuffle: bool = Field(default=True, description="Shuffle dataset before train/test split")
