@@ -322,7 +322,8 @@ jobs:
           echo "║       JuniperData - Bandit Security Scan                   ║"
           echo "╚════════════════════════════════════════════════════════════╝"
           # Generate SARIF report (always succeeds for upload)
-          bandit -r juniper_data -f sarif -o reports/security/bandit.sarif --exit-zero
+          # bandit -r juniper_data -f sarif -o reports/security/bandit.sarif --exit-zero
+          bandit -r juniper_data -f json -o reports/security/bandit.sarif --exit-zero
           # Blocking check - fail on medium or higher severity
           bandit -r juniper_data -ll -ii --severity-level medium
 
