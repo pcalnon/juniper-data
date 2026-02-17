@@ -51,13 +51,13 @@ uvicorn juniper_data.api.app:app --reload
 
 ## API Endpoints
 
-| Endpoint                    | Method | Description                        |
-| --------------------------- | ------ | ---------------------------------- |
-| `/health`                   | GET    | Health check endpoint              |
-| `/datasets`                 | GET    | List available datasets            |
-| `/datasets/{id}`            | GET    | Get a specific dataset             |
-| `/generators/spiral`        | POST   | Generate a new spiral dataset      |
-| `/generators/spiral/config` | GET    | Get spiral generator configuration |
+| Endpoint                        | Method | Description                        |
+| ------------------------------- | ------ | ---------------------------------- |
+| `/v1/health`                    | GET    | Health check endpoint              |
+| `/v1/datasets`                  | GET    | List available datasets            |
+| `/v1/datasets/{id}`             | GET    | Get a specific dataset             |
+| `/v1/generators/spiral`         | POST   | Generate a new spiral dataset      |
+| `/v1/generators/spiral/config`  | GET    | Get spiral generator configuration |
 
 ## Project Structure
 
