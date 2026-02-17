@@ -68,46 +68,36 @@ class Settings(BaseSettings):
     JUNIPER_DATA_ prefix (e.g., JUNIPER_DATA_STORAGE_PATH).
 
     Security Settings:
-        - api_keys: Comma-separated list of valid API keys (e.g., "key1,key2").
+        - api_keys: JSON list of comma-separated, valid API keys (e.g., ["key1,key2"] ).
         - If empty, authentication is disabled (open access).
         - rate_limit_enabled: Enable/disable rate limiting.
         - rate_limit_requests_per_minute: Max requests per minute per client.
     """
 
     model_config = SettingsConfigDict(
-        # env_prefix="JUNIPER_DATA_",
         env_prefix=_JUNIPER_DATA_ENV_PREFIX_DEFAULT,
-        # env_file=".env",
         env_file=_JUNIPER_DATA_ENV_FILE_DEFAULT,
-        # env_file_encoding="utf-8",
         env_file_encoding=_JUNIPER_DATA_ENV_FILE_ENCODING_DEFAULT,
-        # case_sensitive=False,
         case_sensitive=_JUNIPER_DATA_ENV_CASE_SENSITIVE_DEFAULT,
-        # extra="ignore",
         extra=_JUNIPER_DATA_ENV_EXTRA_DEFAULT,
     )
 
     # storage_path: str = "./data/datasets"
     storage_path: str = _JUNIPER_DATA_API_STORAGE_PATH_DEFAULT
 
-    # Default to listening on all interfaces for compatibility with containerized deployments
-    # (e.g., Docker, Kubernetes). Use firewall/security groups or reverse proxies to control
-    # external access, and override JUNIPER_DATA_HOST (e.g., to 127.0.0.1) if you need a
-    # more restrictive binding in specific environments.
-    # host: str = "0.0.0.0"
+    # Default to a more restrictive binding (e.g., 127.0.0.1) for general, non-containerized environments.
+    # To provide external access and allow listening on all interfaces,
+    #   for compatibility with containerized deployments (e.g., Docker, Kubernetes),
+    #   override JUNIPER_DATA_HOST (e.g., to 0.0.0.0).
+    # Note: When setting JUNIPER_DATA_HOST to 0.0.0.0, use firewall/security groups or reverse proxies to control access.
     host: str = _JUNIPER_DATA_API_HOST_DEFAULT
-    # port: int = 8100
     port: int = _JUNIPER_DATA_API_PORT_DEFAULT
-    # log_level: str = "INFO"
     log_level: str = _JUNIPER_DATA_API_LOGLEVEL_DEFAULT
-    # cors_origins: list[str] = ["*"]
     cors_origins: list[str] = _JUNIPER_DATA_API_CORS_ORIGINS_DEFAULT
 
-    # api_keys: list[str] | None = None
-    api_keys: list[str] | None = _JUNIPER_DATA_API_KEYS_LIST_DEFAULT
-    # rate_limit_enabled: bool = False
+    # api_keys: list[str] | None = _JUNIPER_DATA_API_KEYS_LIST_DEFAULT
+    api_keys: json[list[str]] | None = _JUNIPER_DATA_API_KEYS_LIST_DEFAULT
     rate_limit_enabled: bool = _JUNIPER_DATA_API_RATELIMIT_ACTIVE_DEFAULT
-    # rate_limit_requests_per_minute: int = 60
     rate_limit_requests_per_minute: int = _JUNIPER_DATA_API_RATELIMIT_DEFAULT
 
 

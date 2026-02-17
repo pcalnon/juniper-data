@@ -39,7 +39,7 @@ def main() -> int:
     parser.add_argument(
         "--log-level",
         type=str,
-        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        choices=["TRACE", "VERBOSE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL", "FATAL"],
         default=None,
         help="Logging level",
     )
