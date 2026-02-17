@@ -8,7 +8,6 @@ from juniper_data.core.models import DatasetMeta
 from juniper_data.storage.base import DatasetStore
 
 
-
 class InMemoryDatasetStore(DatasetStore):
     """In-memory implementation of DatasetStore.
 
