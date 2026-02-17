@@ -55,14 +55,6 @@ env:
   PYTHON_TEST_VERSION: "3.14"
   COVERAGE_FAIL_UNDER: "80"
 
-# name: gitleaks
-# on:
-#   pull_requests:
-#   push:
-#   workflow_dispatch:
-#   schedule:
-#     - cron: "0 7 * * *"  # Run Daily at 7:00am
-
 jobs:
   # ═══════════════════════════════════════════════════════════════════════════════════════════════
   # Pre-commit: Code Quality Checks (runs across multiple Python versions)
@@ -188,21 +180,6 @@ jobs:
           name: unit-test-results-py${{ matrix.python-version }}
           path: reports/junit-unit.xml
           retention-days: 30
-
-  # # ═══════════════════════════════════════════════════════════════════════════════════════════════
-  # # Git Leaks: Run gitleaks action to check for published secrets
-  # # ═══════════════════════════════════════════════════════════════════════════════════════════════
-  # scan:
-  #   name: gitleaks
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
-  #     - uses: actions/checkout@v4
-  #       with:
-  #         fetch-depth: 0
-  #     - uses: gitleaks/gitleaks-action@v2
-  #       env:
-  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ═══════════════════════════════════════════════════════════════════════════════════════════════
   # Build: Build sdist and wheel artifacts
@@ -334,30 +311,10 @@ jobs:
       - name: Create reports directory
         run: mkdir -p reports/security
 
-      # #######################################################################################
-      # TODO: fix this
-      # #######################################################################################
-        # uses: actions/checkout@v4
-        # with:
-        #   fetch-depth: 0
       - name: Run Gitleaks (Secrets Detection)
-        # uses: gitleaks/gitleaks-action@ff98106e4c7b2bc8e1e3c6da26f8f6164c71d7bc  # v2.3.7
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # - name: Run Gitleaks (Secrets Detection)
-      #   runs-on: ubuntu-latest
-      #   steps:
-      #     uses: actions/checkout@v4
-      #     with:
-      #       fetch-depth: 0
-      #     uses: gitleaks/gitleaks-action@ff98106e4c7b2bc8e1e3c6da26f8f6164c71d7bc  # v2.3.7
-      #       env:
-      #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #     with:
-      #       fail: true
-      # #######################################################################################
 
       - name: Run Bandit (SAST) -> SARIF
         run: |

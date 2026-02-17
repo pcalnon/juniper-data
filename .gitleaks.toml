@@ -6,6 +6,6 @@
 
   # Historical ARC-AGI public API identifier (not a secret) removed in later commits.
   # Commit 4bd37a6c hardcoded this value before it was moved to environment variables.
-  [[allowlist.commits]]
-    hash = "4bd37a6c7057e7380cd4470fcc717a76289fa193"
-    description = "Historical commit with ARC-AGI public API identifier (not a secret)"
+  commits = [
+    "4bd37a6c7057e7380cd4470fcc717a76289fa193",
+  ]
