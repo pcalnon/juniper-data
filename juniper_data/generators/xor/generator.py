@@ -4,8 +4,6 @@ This module provides the XorGenerator class for generating XOR
 classification datasets using only NumPy operations.
 """
 
-# from typing import Dict, Tuple
-
 import numpy as np
 
 from juniper_data.core.split import shuffle_and_split
