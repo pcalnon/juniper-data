@@ -5,9 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.0] - 2026-02-06
+## [0.4.0] - 2026-02-17
 
-**Summary**: Integration Infrastructure & Client Library - Docker containerization, health probes, E2E testing, shared client package, dataset lifecycle management, XOR generator, and comprehensive API documentation for ecosystem integration.
+**Summary**: Integration Infrastructure & Extended Data Sources - Docker containerization, health probes, E2E testing, shared client package, dataset lifecycle management, 8 dataset generators, 7 storage backends, comprehensive CI/CD pipeline with security scanning, and full API documentation for ecosystem integration.
 
 ### Added: [0.4.0]
 
@@ -39,6 +39,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 4 quadrants around origin with opposite classes in diagonal quadrants
   - Registered in `GENERATOR_REGISTRY` alongside `spiral`
   - 18 unit tests with full coverage
+
+- **Gaussian Blobs Generator** (`juniper_data/generators/gaussian/`)
+  - Mixture-of-Gaussians classification dataset generator
+  - `GaussianParams`: `n_blobs`, `n_points_per_blob`, `centers`, `std`, `seed`
+  - Configurable cluster centers and covariance
+  - Registered in `GENERATOR_REGISTRY`
+
+- **Concentric Circles Generator** (`juniper_data/generators/circles/`)
+  - Binary classification with inner and outer circle classes
+  - `CirclesParams`: `n_points`, `inner_radius`, `outer_radius`, `noise`, `seed`
+  - Registered in `GENERATOR_REGISTRY`
+
+- **Checkerboard Generator** (`juniper_data/generators/checkerboard/`)
+  - 2D grid pattern with alternating class squares
+  - `CheckerboardParams`: `n_points`, `grid_size`, `noise`, `seed`
+  - Registered in `GENERATOR_REGISTRY`
+
+- **CSV Import Generator** (`juniper_data/generators/csv_import/`)
+  - Import datasets from CSV or JSON files
+  - `CsvImportParams`: configurable feature and label columns
+  - Registered in `GENERATOR_REGISTRY`
+
+- **MNIST Generator** (`juniper_data/generators/mnist/`)
+  - MNIST and Fashion-MNIST dataset generator
+  - Downloads and prepares standard handwritten digit or fashion item classification datasets
+  - `MnistParams`: `variant`, `n_samples`, `seed`
+  - Registered in `GENERATOR_REGISTRY`
+
+- **ARC-AGI Generator** (`juniper_data/generators/arc_agi/`)
+  - ARC-AGI (Abstraction and Reasoning Corpus) dataset generator
+  - Visual reasoning tasks from the ARC benchmark
+  - `ArcAgiParams`: task configuration parameters
+  - Registered in `GENERATOR_REGISTRY`
+  - Requires `arc-agi>=0.9.0` dependency
+
+- **Extended Storage Backends** (`juniper_data/storage/`)
+  - `CachedDatasetStore` (`cached.py`) — Caching layer wrapping any `DatasetStore` with error logging
+  - `HuggingFaceDatasetStore` (`hf_store.py`) — HuggingFace Hub storage backend
+  - `KaggleDatasetStore` (`kaggle_store.py`) — Kaggle Datasets storage backend
+  - `PostgresDatasetStore` (`postgres_store.py`) — PostgreSQL storage backend
+  - `RedisDatasetStore` (`redis_store.py`) — Redis storage backend
+
+- **Environment Variable Management**
+  - `.env` file support via `python-dotenv` / `load_dotenv()`
+  - Refactored environment variable retrieval in `__init__.py` for clarity and consistency
+  - Added `.env` to `.gitignore` for secret protection
+
+- **Gitleaks Secret Scanning**
+  - `.gitleaks.toml` configuration with allowlist for historical commits
+  - Integrated into CI pipeline via `gitleaks-action`
+
+- **Extended Test Suite** (15 new test files)
+  - Generator tests: `test_gaussian_generator.py`, `test_circles_generator.py`, `test_checkerboard_generator.py`, `test_csv_import_generator.py`, `test_mnist_generator.py`, `test_arc_agi_generator.py`
+  - Storage tests: `test_cached_store.py`, `test_hf_store.py`, `test_kaggle_store.py`, `test_postgres_store.py`, `test_redis_store.py`
+  - Infrastructure tests: `test_init.py`, `test_middleware.py`, `test_security.py`
+  - Integration: `test_security_integration.py`
 
 - **DATA-016: Dataset Lifecycle Management**
   - Enhanced `DatasetMeta` model with lifecycle fields:
@@ -105,6 +161,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed: [0.4.0]
 
+- **GENERATOR_REGISTRY** expanded from 2 to 8 registered generators (spiral, xor, gaussian, circles, checkerboard, csv_import, mnist, arc_agi)
+- **pyproject.toml** restructured — Python 3.11-3.14 support, new dependencies (`arc-agi>=0.9.0`, `python-dotenv>=1.0.0`), updated tool configuration
+- **.pre-commit-config.yaml** restructured with updated hook versions
+- **.gitignore** expanded and reorganized for JuniperData structure (added `.env`, extended exclusions)
+- **.flake8** extracted to standalone configuration file
+- **conf/ directory** cleaned up — removed ~20 obsolete JuniperCascor-era configuration files, reorganized remaining
 - **CLAUDE.md** updated with Integration Context section
   - Added integration points documentation (port, feature flag, data contract, consumers)
   - Added key documentation reference table
@@ -123,18 +185,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added `# noqa: E402` comments for late imports after `sys.path` manipulation
   - Converted f-strings without placeholders to regular strings (5 instances)
 
+- **CI-001: pip-audit failing on local package**
+  - Fixed grep pattern in CI pipeline to handle modern pip's underscore-normalized package names (`juniper_data` vs `juniper-data`)
+  - Previous pattern `grep -iv "^juniper-data=="` missed `juniper_data==` format, causing `pip-audit --strict` to fail
+
+- **CI-002: Bandit security scan format**
+  - Resolved SARIF format iteration — installed `bandit[sarif]` dependency for proper SARIF report generation
+  - Added `--exit-zero` for SARIF generation with separate blocking check for medium+ severity
+
+- **14 CodeQL code scanning alerts resolved**
+  - Assert statements with side-effects (alerts #6-11) — refactored assertions
+  - Empty except blocks (alerts #5, #12) — added proper exception handling
+  - Unused imports (alert #3) — removed unused import
+  - `return`/`yield` outside function (alert #50) — fixed scope
+  - Module imported with both `import` and `from import` (alert #51) — cleaned up imports
+  - Commented-out code (alerts #52, #53) — removed dead code
+  - Variable defined multiple times (alert #70) — removed redundant assignment
+
 ### Technical Notes: [0.4.0]
 
-- **SemVer impact**: MINOR - New Docker infrastructure, API endpoints, parameter aliases, client package, lifecycle management, and XOR generator; backward compatible
-- **Source analysis findings**: 0 mypy errors (was 20), ~9 flake8 issues (all B008 - intentional FastAPI patterns)
-- **JuniperData test count**: 290 tests (233 unit + 57 integration, all passing)
-- **juniper-data-client test count**: 35 tests (new package, 96% coverage)
-- **Total test count**: 325 tests (290 service + 35 client), all passing
-- **Coverage**: 97.47% for JuniperData core (26 source files, 24 at 100%)
+- **SemVer impact**: MINOR - New generators, storage backends, Docker infrastructure, API endpoints, parameter aliases, client package, lifecycle management; backward compatible
+- **Source analysis findings**: 0 mypy errors, 14 CodeQL alerts resolved, 16 flake8 issues (B008 intentional FastAPI patterns + minor)
+- **Generators**: 8 registered in `GENERATOR_REGISTRY` (spiral, xor, gaussian, circles, checkerboard, csv_import, mnist, arc_agi)
+- **Storage backends**: 7 implementations (memory, local_fs, cached, hf_store, kaggle_store, postgres_store, redis_store)
+- **JuniperData test count**: 658 tests (589 unit + 69 integration), all passing
+- **juniper-data-client test count**: 41 tests (standalone package, 96% coverage)
+- **Total test count**: 699 tests (658 service + 41 client), all passing
+- **Unit test files**: 25 test files covering all generators, storage backends, API, middleware, security, and infrastructure
+- **Integration test files**: 5 test files (API, E2E, lifecycle, storage workflows, security)
 - **New package**: `juniper_data_client/` - standalone pip-installable client library
-- **New generator**: `juniper_data/generators/xor/` - XOR classification dataset generator (18 tests)
-- **New files**: `Dockerfile`, `.dockerignore`, `juniper_data/tests/integration/test_e2e_workflow.py`, `docs/api/JUNIPER_DATA_API.md`, `juniper_data/tests/unit/test_lifecycle.py`, `juniper_data/tests/integration/test_lifecycle_api.py`, `juniper_data/generators/xor/`, `juniper_data/tests/unit/test_xor_generator.py`
-- **Modified**: `juniper_data/generators/spiral/params.py` (parameter aliases), `juniper_data/api/routes/health.py` (liveness/readiness probes), `juniper_data/core/models.py` (lifecycle fields), `juniper_data/storage/base.py` (lifecycle methods), `juniper_data/api/routes/datasets.py` (new endpoints), `juniper_data/api/routes/generators.py` (XOR registration)
+- **CI/CD**: Full pipeline with pre-commit (Python 3.12-3.14), unit tests (80% coverage gate), integration tests, security scanning (Gitleaks, Bandit SARIF, pip-audit, CodeQL), build verification
 
 ---
 
@@ -467,7 +547,7 @@ params = SpiralParams(
 
 | Version | Date       | Description                                 |
 | ------- | ---------- | ------------------------------------------- |
-| 0.4.0   | 2026-02-06 | Integration infrastructure & client library |
+| 0.4.0   | 2026-02-17 | Integration infrastructure & extended data sources |
 | 0.3.0   | 2026-02-04 | Test suite & CI/CD enhancement              |
 | 0.2.2   | 2026-02-02 | Code coverage configuration fix             |
 | 0.2.1   | 2026-02-01 | CI/CD parity across Juniper                 |

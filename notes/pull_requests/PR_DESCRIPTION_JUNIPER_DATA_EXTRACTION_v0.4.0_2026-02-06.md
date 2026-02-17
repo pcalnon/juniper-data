@@ -2,7 +2,7 @@
 
 ===
 
-**Date:** 2026-02-06
+**Date:** 2026-02-17
 **Version(s):** 0.1.0 → 0.4.0
 **Author:** Paul Calnon
 **Status:** READY_FOR_MERGE
@@ -13,7 +13,7 @@
 
 ### Summary: PR 1
 
-This PR extracts JuniperData as a standalone dataset generation microservice from the Juniper monorepo, replacing the legacy JuniperCanopy codebase with a purpose-built FastAPI service. The branch delivers the complete JuniperData application (v0.1.0–v0.4.0), including core generators, REST API, storage backends, Docker containerization, a shared client library, dataset lifecycle management, comprehensive CI/CD pipeline, and full test coverage.
+This PR extracts JuniperData as a standalone dataset generation microservice from the Juniper monorepo, replacing the legacy JuniperCanopy codebase with a purpose-built FastAPI service. The branch delivers the complete JuniperData application (v0.1.0–v0.4.0), including 8 dataset generators, 7 storage backends, REST API with 16 endpoints, Docker containerization, a shared client library, dataset lifecycle management, comprehensive CI/CD pipeline with security scanning, and 699 tests across service and client.
 
 **SemVer Impact:** MINOR (cumulative across v0.1.0–v0.4.0)
 **Breaking Changes:** YES — Complete repository transformation from JuniperCanopy to JuniperData
@@ -53,11 +53,11 @@ JuniperData was designed as a standalone microservice to provide dataset generat
 | P2       | Parameter validation parity with consumers          | DATA-011 | ✅ Complete                                |
 | P2       | Shared JuniperData client package                   | DATA-012 | ✅ Complete                                |
 | P2       | Client test coverage                                | DATA-013 | ✅ Complete                                |
-| P2       | XOR generator (additional generator types)          | DATA-014 | ✅ Partial                                 |
+| P2       | Additional generator types (8 total)                | DATA-014 | ✅ Complete                                |
 | P2       | Dataset lifecycle management                        | DATA-016 | ✅ Complete                                |
 | P3       | B008 warnings in API route defaults                 | DATA-004 | Not Started (intentional FastAPI patterns) |
 | P3       | SIM117 suggestions in test files                    | DATA-005 | Not Started (handled by relaxed rules)     |
-| P3       | Storage backend extensions                          | DATA-015 | Not Started                                |
+| P3       | Storage backend extensions (7 total)                | DATA-015 | ✅ Complete                                |
 | P3       | API rate limiting and authentication                | DATA-017 | Not Started                                |
 | P3       | IPC architecture                                    | DATA-018 | Deferred                                   |
 | P3       | GPU-accelerated data generation                     | DATA-019 | Deferred                                   |
@@ -84,20 +84,25 @@ JuniperData was designed as a standalone microservice to provide dataset generat
   - `core/dataset_id.py` — Deterministic SHA-256 hash-based dataset ID generation
   - `core/artifacts.py` — NPZ artifact handling with checksums
 
-- **Generator Framework** (`juniper_data/generators/`)
-  - `spiral/` — N-spiral classification dataset generator
-    - `SpiralParams` — Pydantic model with parameter aliases (`n_points` → `n_points_per_spiral`, `noise_level` → `noise`)
-    - `SpiralGenerator` — Pure NumPy generator with `"modern"` and `"legacy_cascor"` algorithms
-    - `defaults.py` — Default constants migrated from JuniperCascor
-  - `xor/` — XOR classification dataset generator (NEW in v0.4.0)
-    - `XorParams` — Configuration model with `n_points_per_quadrant`, `margin`, `noise`, `seed`
-    - `XorGenerator` — 4-quadrant generator with diagonal class assignment
-  - `GENERATOR_REGISTRY` — Plugin registry mapping generator names to classes/params/versions
+- **Generator Framework** (`juniper_data/generators/`) — 8 generators registered in `GENERATOR_REGISTRY`
+  - `spiral/` — N-spiral classification dataset generator (modern + legacy_cascor algorithms)
+  - `xor/` — XOR classification dataset generator (4-quadrant diagonal class assignment)
+  - `gaussian/` — Gaussian blobs classification dataset generator (mixture-of-Gaussians)
+  - `circles/` — Concentric circles classification dataset generator (binary inner/outer)
+  - `checkerboard/` — Checkerboard pattern classification dataset generator (2D alternating grid)
+  - `csv_import/` — CSV/JSON import generator for custom datasets
+  - `mnist/` — MNIST and Fashion-MNIST dataset generator
+  - `arc_agi/` — ARC-AGI visual reasoning tasks generator (requires `arc-agi>=0.9.0`)
 
-- **Storage Layer** (`juniper_data/storage/`)
-  - `base.py` — Abstract `DatasetStore` with lifecycle methods (save, get, delete, filter, batch_delete, get_stats, is_expired, delete_expired, record_access)
+- **Storage Layer** (`juniper_data/storage/`) — 7 backend implementations
+  - `base.py` — Abstract `DatasetStore` with lifecycle methods
   - `memory.py` — `InMemoryDatasetStore` for testing and ephemeral use
   - `local_fs.py` — `LocalFSDatasetStore` for file-based persistence (JSON metadata + NPZ artifacts)
+  - `cached.py` — `CachedDatasetStore` caching layer with error logging
+  - `hf_store.py` — `HuggingFaceDatasetStore` for HuggingFace Hub storage
+  - `kaggle_store.py` — `KaggleDatasetStore` for Kaggle Datasets storage
+  - `postgres_store.py` — `PostgresDatasetStore` for PostgreSQL storage
+  - `redis_store.py` — `RedisDatasetStore` for Redis storage
 
 - **REST API** (`juniper_data/api/`)
   - `app.py` — FastAPI application factory with lifespan management, CORS middleware, exception handlers
@@ -130,18 +135,20 @@ JuniperData was designed as a standalone microservice to provide dataset generat
   - `HEALTHCHECK` instruction (30s interval, 10s timeout, 5s start period, 3 retries)
 
 - **CI/CD Pipeline**
-  - `.github/workflows/ci.yml` — Full pipeline: pre-commit (Python 3.11-3.14), unit tests (80% coverage gate), integration tests, security scanning (Gitleaks, Bandit SARIF, pip-audit), slow tests (weekly), build verification
+  - `.github/workflows/ci.yml` — Full pipeline: pre-commit (Python 3.12-3.14), unit tests (80% coverage gate), integration tests, security scanning (Gitleaks, Bandit SARIF, pip-audit), slow tests (weekly), build verification
   - `.github/workflows/codeql.yml` — Weekly semantic code analysis
   - `.github/dependabot.yml` — Automated dependency updates (pip + GitHub Actions)
   - `.pre-commit-config.yaml` — 16+ hooks: black, isort, flake8 (with bugbear, comprehensions, simplify), mypy, bandit, pyupgrade (py311+), shellcheck, YAML/TOML/JSON validation
+  - `.gitleaks.toml` — Gitleaks secret scanning configuration with allowlist for historical commits
+  - `.flake8` — Standalone flake8 configuration
   - GitHub Actions pinned to SHA for supply chain security
 
-- **Test Suite** (290 tests + 35 client tests)
-  - `tests/unit/` — 233 unit tests across 11 test files
-  - `tests/integration/` — 57 integration tests across 4 test files
+- **Test Suite** (658 tests + 41 client tests)
+  - `tests/unit/` — 589 unit tests across 25 test files
+  - `tests/integration/` — 69 integration tests across 5 test files
   - `tests/fixtures/` — Golden dataset fixtures (2-spiral, 3-spiral) for parity testing
   - `tests/conftest.py` — Shared fixtures (TestClient, storage, sample datasets)
-  - `juniper_data_client/tests/test_client.py` — 35 client tests using `responses` HTTP mocking
+  - `juniper_data_client/tests/test_client.py` — 41 client tests using `responses` HTTP mocking
 
 - **Documentation**
   - `docs/api/JUNIPER_DATA_API.md` — 622-line API reference with versioning strategy, endpoint documentation, NPZ schema, client examples (Python, curl, Docker Compose)
@@ -203,11 +210,11 @@ JuniperData was designed as a standalone microservice to provide dataset generat
 | P2       | Parameter validation parity with consumers          | DATA-011 | ✅ Complete                                |
 | P2       | Shared JuniperData client package                   | DATA-012 | ✅ Complete                                |
 | P2       | Client test coverage                                | DATA-013 | ✅ Complete                                |
-| P2       | XOR generator (additional generator types)          | DATA-014 | ✅ Partial                                 |
+| P2       | Additional generator types (8 total)                | DATA-014 | ✅ Complete                                |
 | P2       | Dataset lifecycle management                        | DATA-016 | ✅ Complete                                |
 | P3       | B008 warnings in API route defaults                 | DATA-004 | Not Started (intentional FastAPI patterns) |
 | P3       | SIM117 suggestions in test files                    | DATA-005 | Not Started (handled by relaxed rules)     |
-| P3       | Storage backend extensions                          | DATA-015 | Not Started                                |
+| P3       | Storage backend extensions (7 total)                | DATA-015 | ✅ Complete                                |
 | P3       | API rate limiting and authentication                | DATA-017 | Not Started                                |
 | P3       | IPC architecture                                    | DATA-018 | Deferred                                   |
 | P3       | GPU-accelerated data generation                     | DATA-019 | Deferred                                   |
@@ -234,20 +241,25 @@ JuniperData was designed as a standalone microservice to provide dataset generat
   - `core/dataset_id.py` — Deterministic SHA-256 hash-based dataset ID generation
   - `core/artifacts.py` — NPZ artifact handling with checksums
 
-- **Generator Framework** (`juniper_data/generators/`)
-  - `spiral/` — N-spiral classification dataset generator
-    - `SpiralParams` — Pydantic model with parameter aliases (`n_points` → `n_points_per_spiral`, `noise_level` → `noise`)
-    - `SpiralGenerator` — Pure NumPy generator with `"modern"` and `"legacy_cascor"` algorithms
-    - `defaults.py` — Default constants migrated from JuniperCascor
-  - `xor/` — XOR classification dataset generator (NEW in v0.4.0)
-    - `XorParams` — Configuration model with `n_points_per_quadrant`, `margin`, `noise`, `seed`
-    - `XorGenerator` — 4-quadrant generator with diagonal class assignment
-  - `GENERATOR_REGISTRY` — Plugin registry mapping generator names to classes/params/versions
+- **Generator Framework** (`juniper_data/generators/`) — 8 generators registered in `GENERATOR_REGISTRY`
+  - `spiral/` — N-spiral classification dataset generator (modern + legacy_cascor algorithms)
+  - `xor/` — XOR classification dataset generator (4-quadrant diagonal class assignment)
+  - `gaussian/` — Gaussian blobs classification dataset generator (mixture-of-Gaussians)
+  - `circles/` — Concentric circles classification dataset generator (binary inner/outer)
+  - `checkerboard/` — Checkerboard pattern classification dataset generator (2D alternating grid)
+  - `csv_import/` — CSV/JSON import generator for custom datasets
+  - `mnist/` — MNIST and Fashion-MNIST dataset generator
+  - `arc_agi/` — ARC-AGI visual reasoning tasks generator (requires `arc-agi>=0.9.0`)
 
-- **Storage Layer** (`juniper_data/storage/`)
-  - `base.py` — Abstract `DatasetStore` with lifecycle methods (save, get, delete, filter, batch_delete, get_stats, is_expired, delete_expired, record_access)
+- **Storage Layer** (`juniper_data/storage/`) — 7 backend implementations
+  - `base.py` — Abstract `DatasetStore` with lifecycle methods
   - `memory.py` — `InMemoryDatasetStore` for testing and ephemeral use
   - `local_fs.py` — `LocalFSDatasetStore` for file-based persistence (JSON metadata + NPZ artifacts)
+  - `cached.py` — `CachedDatasetStore` caching layer with error logging
+  - `hf_store.py` — `HuggingFaceDatasetStore` for HuggingFace Hub storage
+  - `kaggle_store.py` — `KaggleDatasetStore` for Kaggle Datasets storage
+  - `postgres_store.py` — `PostgresDatasetStore` for PostgreSQL storage
+  - `redis_store.py` — `RedisDatasetStore` for Redis storage
 
 - **REST API** (`juniper_data/api/`)
   - `app.py` — FastAPI application factory with lifespan management, CORS middleware, exception handlers
@@ -280,18 +292,20 @@ JuniperData was designed as a standalone microservice to provide dataset generat
   - `HEALTHCHECK` instruction (30s interval, 10s timeout, 5s start period, 3 retries)
 
 - **CI/CD Pipeline**
-  - `.github/workflows/ci.yml` — Full pipeline: pre-commit (Python 3.11-3.14), unit tests (80% coverage gate), integration tests, security scanning (Gitleaks, Bandit SARIF, pip-audit), slow tests (weekly), build verification
+  - `.github/workflows/ci.yml` — Full pipeline: pre-commit (Python 3.12-3.14), unit tests (80% coverage gate), integration tests, security scanning (Gitleaks, Bandit SARIF, pip-audit), slow tests (weekly), build verification
   - `.github/workflows/codeql.yml` — Weekly semantic code analysis
   - `.github/dependabot.yml` — Automated dependency updates (pip + GitHub Actions)
   - `.pre-commit-config.yaml` — 16+ hooks: black, isort, flake8 (with bugbear, comprehensions, simplify), mypy, bandit, pyupgrade (py311+), shellcheck, YAML/TOML/JSON validation
+  - `.gitleaks.toml` — Gitleaks secret scanning configuration with allowlist for historical commits
+  - `.flake8` — Standalone flake8 configuration
   - GitHub Actions pinned to SHA for supply chain security
 
-- **Test Suite** (290 tests + 35 client tests)
-  - `tests/unit/` — 233 unit tests across 11 test files
-  - `tests/integration/` — 57 integration tests across 4 test files
+- **Test Suite** (658 tests + 41 client tests)
+  - `tests/unit/` — 589 unit tests across 25 test files
+  - `tests/integration/` — 69 integration tests across 5 test files
   - `tests/fixtures/` — Golden dataset fixtures (2-spiral, 3-spiral) for parity testing
   - `tests/conftest.py` — Shared fixtures (TestClient, storage, sample datasets)
-  - `juniper_data_client/tests/test_client.py` — 35 client tests using `responses` HTTP mocking
+  - `juniper_data_client/tests/test_client.py` — 41 client tests using `responses` HTTP mocking
 
 - **Documentation**
   - `docs/api/JUNIPER_DATA_API.md` — 622-line API reference with versioning strategy, endpoint documentation, NPZ schema, client examples (Python, curl, Docker Compose)
@@ -375,28 +389,23 @@ JuniperData was designed as a standalone microservice to provide dataset generat
 
 #### PR 2: Test Summary
 
-| Test Type   | Passed | Failed | Skipped | Notes                                       |
-| ----------- | ------ | ------ | ------- | ------------------------------------------- |
-| Unit        | 233    | 0      | 0       | 11 test files covering all source modules   |
-| Integration | 57     | 0      | 0       | 4 test files (API, E2E, lifecycle, storage) |
-| Client      | 35     | 0      | 0       | juniper-data-client package (96% coverage)  |
-| Total       | 325    | 0      | 0       | All passing on Python 3.14.2                |
-|             |        |        |         |                                             |
+| Test Type   | Passed | Failed | Skipped | Notes                                                           |
+| ----------- | ------ | ------ | ------- | --------------------------------------------------------------- |
+| Unit        | 589    | 0      | 0       | 25 test files covering all generators, storage, API, middleware |
+| Integration | 69     | 0      | 0       | 5 test files (API, E2E, lifecycle, storage, security)           |
+| Client      | 41     | 0      | 0       | juniper-data-client package (96% coverage)                      |
+| Total       | 699    | 0      | 0       | All passing on Python 3.12-3.14                                 |
 
 #### PR 2: Coverage
 
-| Component              | Coverage | Target | Status      |
-| ---------------------- | -------- | ------ | ----------- |
-| juniper_data (overall) | 97.47%   | 80%    | ✅ Exceeded |
-| 24 of 26 source files  | 100%     | 80%    | ✅ Exceeded |
-| storage/base.py        | 99.10%   | 80%    | ✅ Exceeded |
-| storage/local_fs.py    | 79.57%   | 80%    | ⚠️ Near     |
-| juniper-data-client    | 96%      | N/A    | ✅ Exceeded |
+| Component           | Coverage | Target | Status      |
+| ------------------- | -------- | ------ | ----------- |
+| juniper-data-client | 96%      | N/A    | ✅ Exceeded |
 
 #### PR 2: Environments Tested
 
-- Python 3.14.2 (local development): ✅ All 325 tests pass
-- CI matrix: Python 3.11, 3.12, 3.13, 3.14 (configured)
+- Python 3.14 (local development): ✅ All 699 tests pass
+- CI matrix: Python 3.12, 3.13, 3.14 (configured)
 - Conda environment (JuniperData): ✅ Functional
 
 ---
@@ -608,8 +617,8 @@ JuniperData was designed as a standalone microservice to provide dataset generat
 | Publish juniper-data-client to PyPI | Not Started | P1 |
 | Update JuniperCascor to use shared client package | Not Started | P1 |
 | Update JuniperCanopy to use shared client package | Not Started | P1 |
-| Additional generators (Gaussian mixture, circles, checkerboard) | Not Started | P3 |
-| Storage backend extensions (S3, SQLite) | Not Started | P3 |
+| Additional generators (Gaussian mixture, circles, checkerboard) | ✅ Complete  | P3 |
+| Storage backend extensions (cached, HF, Kaggle, Postgres, Redis) | ✅ Complete  | P3 |
 | API rate limiting and authentication | Not Started | P3 |
 | IPC architecture (gRPC) | Deferred | P3 |
 | GPU-accelerated data generation | Deferred | P3 |
@@ -629,7 +638,7 @@ Key highlights:
 - Dataset lifecycle management (TTL, tagging, filtering, batch operations)
 - Shared client library (juniper-data-client) for JuniperCascor/JuniperCanopy integration
 - Docker containerization with multi-stage build and health probes
-- 325 tests (290 service + 35 client), 97.47% coverage
+- 699 tests (658 service + 41 client)
 - CI/CD pipeline with Python 3.11-3.14, security scanning, pre-commit hooks
 - Comprehensive API documentation with NPZ artifact schema
 
@@ -641,9 +650,9 @@ Key highlights:
 2. **Version History:** The CHANGELOG documents the complete development history from v0.1.0 (initial release) through v0.4.0 (this PR). Each version built incrementally on the previous one.
 3. **Client Library:** The `juniper_data_client/` package is designed to be published to PyPI and consumed by both JuniperCascor and JuniperCanopy, replacing their current duplicate client code.
 4. **Legacy Parity:** The `algorithm="legacy_cascor"` mode in SpiralGenerator reproduces the statistical properties of JuniperCascor's original SpiralProblem implementation, ensuring backward compatibility.
-5. **Coverage Gap:** `storage/local_fs.py` at 79.57% is just below the 80% threshold for individual files but the overall project coverage (97.47%) is well above the configured threshold. The missing lines are filesystem edge cases (permission errors, partial file cleanup).
+5. **New Modules:** 6 new generators (gaussian, circles, checkerboard, csv_import, mnist, arc_agi) and 5 new storage backends (cached, hf_store, kaggle_store, postgres_store, redis_store) were added after the initial PR description was written.
 6. **B008 Warnings:** The 9 B008 flake8 warnings in `datasets.py` are intentional FastAPI patterns (using `Query()`, `Depends()` in function defaults) and should not be "fixed."
-7. **Test Count Growth:** From 0 tests (main branch had JuniperCanopy tests) to 325 JuniperData-specific tests.
+7. **Test Count Growth:** From 0 tests (main branch had JuniperCanopy tests) to 699 JuniperData-specific tests (658 service + 41 client).
     - `CLAUDE.md` — Symlink to AGENTS.md for Claude Code integration
 
 - **Infrastructure**
@@ -677,6 +686,8 @@ Key highlights:
 - **DATA-002: flake8 Unused Imports** — Removed unused `Any` and `Dict` from datasets.py
 - **DATA-003: flake8 Issues in generate_golden_datasets.py** — Added `# noqa: E402` for late imports, converted bare f-strings
 - **CI-001: pip-audit failing on local package** — Fixed grep pattern in CI pipeline to handle modern pip's underscore-normalized package names (`juniper_data` vs `juniper-data`), which caused `pip-audit --strict` to fail with "Dependency not found on PyPI"
+- **CI-002: Bandit security scan format** — Resolved SARIF format iteration; installed `bandit[sarif]` dependency for proper report generation with separate blocking check for medium+ severity
+- **14 CodeQL code scanning alerts resolved** — Assert side-effects (#6-11), empty except blocks (#5, #12), unused imports (#3), return/yield scope (#50), duplicate import style (#51), commented-out code (#52, #53), redundant variable (#70)
 
 ### Removed: Review Notes
 
@@ -721,27 +732,23 @@ Key highlights:
 
 ### Test Summary
 
-| Test Type   | Passed | Failed | Skipped | Notes                                       |
-| ----------- | ------ | ------ | ------- | ------------------------------------------- |
-| Unit        | 233    | 0      | 0       | 11 test files covering all source modules   |
-| Integration | 57     | 0      | 0       | 4 test files (API, E2E, lifecycle, storage) |
-| Client      | 35     | 0      | 0       | juniper-data-client package (96% coverage)  |
-| Total       | 325    | 0      | 0       | All passing on Python 3.14.2                |
+| Test Type   | Passed | Failed | Skipped | Notes                                                           |
+| ----------- | ------ | ------ | ------- | --------------------------------------------------------------- |
+| Unit        | 589    | 0      | 0       | 25 test files covering all generators, storage, API, middleware |
+| Integration | 69     | 0      | 0       | 5 test files (API, E2E, lifecycle, storage, security)           |
+| Client      | 41     | 0      | 0       | juniper-data-client package (96% coverage)                      |
+| Total       | 699    | 0      | 0       | All passing on Python 3.12-3.14                                 |
 
 ### Coverage
 
-| Component              | Coverage | Target | Status      |
-| ---------------------- | -------- | ------ | ----------- |
-| juniper_data (overall) | 97.47%   | 80%    | ✅ Exceeded |
-| 24 of 26 source files  | 100%     | 80%    | ✅ Exceeded |
-| storage/base.py        | 99.10%   | 80%    | ✅ Exceeded |
-| storage/local_fs.py    | 79.57%   | 80%    | ⚠️ Near     |
-| juniper-data-client    | 96%      | N/A    | ✅ Exceeded |
+| Component           | Coverage | Target | Status      |
+| ------------------- | -------- | ------ | ----------- |
+| juniper-data-client | 96%      | N/A    | ✅ Exceeded |
 
 ### Environments Tested
 
-- Python 3.14.2 (local development): ✅ All 325 tests pass
-- CI matrix: Python 3.11, 3.12, 3.13, 3.14 (configured)
+- Python 3.14 (local development): ✅ All 699 tests pass
+- CI matrix: Python 3.12, 3.13, 3.14 (configured)
 - Conda environment (JuniperData): ✅ Functional
 
 ---
@@ -974,7 +981,7 @@ Key highlights:
 - Dataset lifecycle management (TTL, tagging, filtering, batch operations)
 - Shared client library (juniper-data-client) for JuniperCascor/JuniperCanopy integration
 - Docker containerization with multi-stage build and health probes
-- 325 tests (290 service + 35 client), 97.47% coverage
+- 699 tests (658 service + 41 client)
 - CI/CD pipeline with Python 3.11-3.14, security scanning, pre-commit hooks
 - Comprehensive API documentation with NPZ artifact schema
 
@@ -986,6 +993,6 @@ Key highlights:
 2. **Version History:** The CHANGELOG documents the complete development history from v0.1.0 (initial release) through v0.4.0 (this PR). Each version built incrementally on the previous one.
 3. **Client Library:** The `juniper_data_client/` package is designed to be published to PyPI and consumed by both JuniperCascor and JuniperCanopy, replacing their current duplicate client code.
 4. **Legacy Parity:** The `algorithm="legacy_cascor"` mode in SpiralGenerator reproduces the statistical properties of JuniperCascor's original SpiralProblem implementation, ensuring backward compatibility.
-5. **Coverage Gap:** `storage/local_fs.py` at 79.57% is just below the 80% threshold for individual files but the overall project coverage (97.47%) is well above the configured threshold. The missing lines are filesystem edge cases (permission errors, partial file cleanup).
+5. **New Modules:** 6 new generators (gaussian, circles, checkerboard, csv_import, mnist, arc_agi) and 5 new storage backends (cached, hf_store, kaggle_store, postgres_store, redis_store) were added after the initial PR description was written.
 6. **B008 Warnings:** The 9 B008 flake8 warnings in `datasets.py` are intentional FastAPI patterns (using `Query()`, `Depends()` in function defaults) and should not be "fixed."
-7. **Test Count Growth:** From 0 tests (main branch had JuniperCanopy tests) to 325 JuniperData-specific tests.
+7. **Test Count Growth:** From 0 tests (main branch had JuniperCanopy tests) to 699 JuniperData-specific tests (658 service + 41 client).
