@@ -77,9 +77,17 @@ class TestPackageInit:
         assert get_arc_api_key() is None
 
     def test_get_arc_agi_arcade_returns_arcade_instance(self, monkeypatch) -> None:
-        """get_arc_agi_arcade creates an Arcade instance."""
+        """get_arc_agi_arcade creates an Arcade instance when arc-agi is installed."""
         monkeypatch.delenv("ARC_API_KEY", raising=False)
         mock_arcade = MagicMock()
-        with patch("juniper_data.arc_agi.Arcade", return_value=mock_arcade):
+        mock_arc_agi = MagicMock()
+        mock_arc_agi.Arcade.return_value = mock_arcade
+        with patch("juniper_data.ARC_AGI_AVAILABLE", True), patch("juniper_data.arc_agi", mock_arc_agi):
             result = get_arc_agi_arcade()
             assert result is mock_arcade
+
+    def test_get_arc_agi_arcade_raises_when_not_installed(self) -> None:
+        """get_arc_agi_arcade raises ImportError when arc-agi is not installed."""
+        with patch("juniper_data.ARC_AGI_AVAILABLE", False):
+            with pytest.raises(ImportError, match="arc-agi package not installed"):
+                get_arc_agi_arcade()

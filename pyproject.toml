@@ -39,10 +39,12 @@ dependencies = [
     "numpy>=1.24.0",
     "pydantic>=2.0.0",
     "python-dotenv>=1.0.0",
-    "arc-agi>=0.9.0",
 ]
 
 [project.optional-dependencies]
+arc-agi = [
+    "arc-agi>=0.9.0",
+]
 api = [
     "fastapi>=0.100.0",
     "uvicorn[standard]>=0.23.0",
@@ -69,7 +71,7 @@ dev = [
     "flake8-simplify>=0.21.0",
 ]
 all = [
-    "juniper-data[api,dev,test]",
+    "juniper-data[api,arc-agi,dev,test]",
 ]
 
 [tool.setuptools.packages.find]

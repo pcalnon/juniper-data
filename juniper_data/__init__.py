@@ -4,8 +4,15 @@ Juniper Data - Dataset generation and management service for the Juniper ecosyst
 
 import os
 
-import arc_agi
 from dotenv import load_dotenv
+
+try:
+    import arc_agi
+
+    ARC_AGI_AVAILABLE = True
+except ImportError:
+    ARC_AGI_AVAILABLE = False
+    arc_agi = None  # type: ignore[assignment]
 
 __version__ = "0.4.0"
 __author__ = "Paul Calnon"
@@ -54,13 +61,18 @@ def get_arc_agi_api_url() -> str | None:
     return os.getenv("ARC_AGI_API") or None
 
 
-def get_arc_agi_arcade() -> arc_agi.Arcade | None:
+def get_arc_agi_arcade() -> "arc_agi.Arcade | None":
     """
     Create and return an :class:`arc_agi.Arcade` instance configured from environment variables.
 
     The API key is read from the environment via :func:`get_arc_api_key`, avoiding import-time
     side effects and making it easier to adjust configuration in tests.
+
+    Raises:
+        ImportError: If the ``arc-agi`` package is not installed.
     """
+    if not ARC_AGI_AVAILABLE:
+        raise ImportError("arc-agi package not installed. " "Install with: pip install 'juniper-data[arc-agi]'")
     # Automatically uses ARC_API_KEY from environment:  arc = arc_agi.Arcade(), Or pass the API key explicitly
     return arc_agi.Arcade(arc_api_key=get_arc_api_key()) or None
 
