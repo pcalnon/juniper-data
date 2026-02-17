@@ -61,7 +61,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.state.settings = settings
 
-    # Only allow credentialed CORS requests when origins are explicitly specified
+    # Only allow credentialed CORS requests when origins are explicitly specified.
+    # Browsers do not permit Access-Control-Allow-Credentials: true with a wildcard
+    # origin (Access-Control-Allow-Origin: "*"), so the default ["*"] intentionally
+    # disables credentials unless concrete origins are configured.
     allow_credentials = bool(settings.cors_origins) and "*" not in settings.cors_origins
 
     app.add_middleware(
