@@ -35,6 +35,8 @@ def reload_arc_agi_env() -> bool:
         bool: True if environment variables were loaded from a .env file, False otherwise.
     """
     return bool(load_dotenv())
+
+
 def get_arc_api_key() -> str | None:
     """
     Return the current value of the ARC_API_KEY environment variable as a string.
