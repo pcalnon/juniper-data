@@ -42,12 +42,12 @@ class TestPackageInit:
         assert get_arc_agi_env() is True
 
     def test_get_arc_agi_env_calls_load_dotenv_when_unset(self, monkeypatch) -> None:
-        """get_arc_agi_env calls load_dotenv when ARC_AGI_ENV is not set."""
+        """get_arc_agi_env calls load_dotenv then returns False when ARC_AGI_ENV remains unset."""
         monkeypatch.delenv("ARC_AGI_ENV", raising=False)
         with patch("juniper_data.load_dotenv", return_value=True) as mock_load:
             result = get_arc_agi_env()
             mock_load.assert_called_once()
-            assert result is True
+            assert result is False
 
     def test_reload_arc_agi_env(self) -> None:
         """reload_arc_agi_env calls load_dotenv and returns its result."""
