@@ -676,6 +676,7 @@ Key highlights:
   - `getattr()` pattern for dynamic attributes in test_api_app.py
 - **DATA-002: flake8 Unused Imports** — Removed unused `Any` and `Dict` from datasets.py
 - **DATA-003: flake8 Issues in generate_golden_datasets.py** — Added `# noqa: E402` for late imports, converted bare f-strings
+- **CI-001: pip-audit failing on local package** — Fixed grep pattern in CI pipeline to handle modern pip's underscore-normalized package names (`juniper_data` vs `juniper-data`), which caused `pip-audit --strict` to fail with "Dependency not found on PyPI"
 
 ### Removed: Review Notes
 
