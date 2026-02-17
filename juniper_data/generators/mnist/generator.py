@@ -91,17 +91,9 @@ class MnistGenerator:
         if params.seed is not None:
             ds = ds.shuffle(seed=params.seed)
 
-        if params.n_samples is not None:
-            ds = ds.select(range(min(params.n_samples, len(ds))))
-
-        images = []
-        for item in ds:
-            img = item["image"]
-            img = np.array(img.convert("L")) if hasattr(img, "convert") else np.array(img)
-            images.append(img)
-
-        X = np.stack(images)
-
+        # Use bulk column access with numpy formatting for efficient conversion
+        ds = ds.with_format("numpy")
+        X = np.array(ds["image"])
         X = X.astype(np.float32) / 255.0 if params.normalize else X.astype(np.float32)
         if params.flatten:
             X = X.reshape(len(X), -1)
