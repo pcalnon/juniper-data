@@ -78,10 +78,38 @@ class XorGenerator:
         """
         n = params.n_points_per_quadrant
 
-        q1 = XorGenerator._generate_quadrant(n, params.margin, params.x_range, params.margin, params.y_range, rng)
-        q2 = XorGenerator._generate_quadrant(n, -params.x_range, -params.margin, params.margin, params.y_range, rng)
-        q3 = XorGenerator._generate_quadrant(n, -params.x_range, -params.margin, -params.y_range, -params.margin, rng)
-        q4 = XorGenerator._generate_quadrant(n, params.margin, params.x_range, -params.y_range, -params.margin, rng)
+        q1 = XorGenerator._generate_quadrant(
+            n_points=n,
+            x_min=params.margin,
+            x_max=params.x_range,
+            y_min=params.margin,
+            y_max=params.y_range,
+            rng=rng,
+        )
+        q2 = XorGenerator._generate_quadrant(
+            n_points=n,
+            x_min=-params.x_range,
+            x_max=-params.margin,
+            y_min=params.margin,
+            y_max=params.y_range,
+            rng=rng,
+        )
+        q3 = XorGenerator._generate_quadrant(
+            n_points=n,
+            x_min=-params.x_range,
+            x_max=-params.margin,
+            y_min=-params.y_range,
+            y_max=-params.margin,
+            rng=rng,
+        )
+        q4 = XorGenerator._generate_quadrant(
+            n_points=n,
+            x_min=params.margin,
+            x_max=params.x_range,
+            y_min=-params.y_range,
+            y_max=-params.margin,
+            rng=rng,
+        )
 
         X = np.vstack([q1, q2, q3, q4])
 
