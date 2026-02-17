@@ -13,13 +13,18 @@ __author__ = "Paul Calnon"
 
 def get_arc_agi_env() -> bool:
     """
-    Loads the Environment Variables if not already Loaded.
+    Ensure ARC_AGI_ENV is available by loading environment variables if needed.
+
+    This function attempts to load environment variables from a `.env` file and then
+    returns whether the `ARC_AGI_ENV` environment variable is set.
+
     Returns:
-        bool:
-            True: if env IS already loaded
-            Result of load_dotenv() method (True/False) when env is NOT already loaded
+        bool: True if ARC_AGI_ENV is set after loading, otherwise False.
     """
-    return True if os.getenv("ARC_AGI_ENV") else bool(load_dotenv())
+    # Attempt to load variables from a .env file, but base the result solely on
+    # whether ARC_AGI_ENV is present afterwards to provide consistent semantics.
+    load_dotenv()
+    return bool(os.getenv("ARC_AGI_ENV"))
 
 
 def reload_arc_agi_env() -> bool:
