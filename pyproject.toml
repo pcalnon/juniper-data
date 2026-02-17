@@ -32,7 +32,8 @@ description = "Dataset generation and management service for the Juniper ecosyst
 readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "Paul Calnon" }]
-requires-python = ">=3.11"
+# requires-python = ">=3.11"
+requires-python = ">=3.12"
 
 dependencies = [
     "numpy>=1.24.0",
