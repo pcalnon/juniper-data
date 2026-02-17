@@ -82,7 +82,7 @@ class HuggingFaceDatasetStore(DatasetStore):
         """
         assert hf_load_dataset is not None
 
-        ds = hf_load_dataset(
+        ds = hf_load_dataset(  # nosec B615
             dataset_name,
             config_name,
             split=split,

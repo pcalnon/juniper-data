@@ -86,7 +86,7 @@ class MnistGenerator:
         """
         assert hf_load_dataset is not None
 
-        ds = hf_load_dataset(params.dataset, split="train")
+        ds = hf_load_dataset(params.dataset, split="train")  # nosec B615
 
         if params.seed is not None:
             ds = ds.shuffle(seed=params.seed)

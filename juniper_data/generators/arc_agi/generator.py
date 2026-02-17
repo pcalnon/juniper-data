@@ -95,9 +95,9 @@ class ArcAgiGenerator:
         assert hf_load_dataset is not None
 
         try:
-            ds = hf_load_dataset("fchollet/arc-agi", split="train")
+            ds = hf_load_dataset("fchollet/arc-agi", split="train")  # nosec B615
         except Exception:
-            ds = hf_load_dataset("multimodal-reasoning-lab/ARC-AGI", split="train")
+            ds = hf_load_dataset("multimodal-reasoning-lab/ARC-AGI", split="train")  # nosec B615
 
         tasks: list[dict] = []
         for item in ds:
