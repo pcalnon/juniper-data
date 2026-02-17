@@ -63,7 +63,7 @@ handlers:
     # filepath: /home/pcalnon/Development/python/Juniper/src/prototypes/cascor/logs/spiral_problem.log
     # filepath: /home/pcalnon/Development/python/Juniper/src/prototypes/cascor/logs
     # filepath: /home/pcalnon/Development/python/Juniper/src/prototypes/cascor/logs/juniper_cascor.log
-    filename: juniper_cascor.log
+    filename: logs/juniper_cascor.log
     encoding: utf-8
     mode: a
 loggers:
