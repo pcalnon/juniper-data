@@ -8,10 +8,10 @@ from juniper_data.storage.local_fs import LocalFSDatasetStore
 from juniper_data.storage.memory import InMemoryDatasetStore
 
 if TYPE_CHECKING:
-    from juniper_data.storage.redis_store import RedisDatasetStore
     from juniper_data.storage.hf_store import HuggingFaceDatasetStore
-    from juniper_data.storage.postgres_store import PostgresDatasetStore
     from juniper_data.storage.kaggle_store import KaggleDatasetStore
+    from juniper_data.storage.postgres_store import PostgresDatasetStore
+    from juniper_data.storage.redis_store import RedisDatasetStore
 else:
     try:
         from juniper_data.storage.redis_store import RedisDatasetStore

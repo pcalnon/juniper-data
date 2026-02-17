@@ -112,9 +112,7 @@ class HuggingFaceDatasetStore(DatasetStore):
         dataset_id = f"hf-{dataset_name}{config_suffix}-{len(X)}"
 
         class_indices = y.argmax(axis=1) if one_hot_labels else y.flatten().astype(int)
-        class_distribution = {
-            str(i): int((class_indices == i).sum()) for i in range(n_classes)
-        }
+        class_distribution = {str(i): int((class_indices == i).sum()) for i in range(n_classes)}
         meta = DatasetMeta(
             dataset_id=dataset_id,
             generator="huggingface",
@@ -167,11 +165,7 @@ class HuggingFaceDatasetStore(DatasetStore):
             Tuple of (X, y, n_classes).
         """
         if feature_columns is None:
-            feature_columns = [
-                col
-                for col in ds.column_names
-                if col not in (label_column, "idx", "id")
-            ]
+            feature_columns = [col for col in ds.column_names if col not in (label_column, "idx", "id")]
 
         if len(feature_columns) == 1 and "image" in feature_columns[0].lower():
             X = self._extract_images(ds, feature_columns[0], flatten, normalize)
