@@ -7,7 +7,7 @@
 #
 # Author:        Paul Calnon
 # Version:       0.1.4 (0.7.3)
-# File Name:     proto.bash
+# File Name:     setup_test.bash
 # File Path:     <Project>/<Sub-Project>/<Application>/util/
 #
 # Date Created:  2025-10-11
@@ -17,6 +17,7 @@
 # Copyright:     Copyright (c) 2024,2025,2026 Paul Calnon
 #
 # Description:
+#     This script is used to setup the test environment for the JuniperCascor application.
 #
 #####################################################################################################################################################################################################
 # Notes:
@@ -34,33 +35,34 @@
 
 
 #####################################################################################################################################################################################################
-# @author: <NAME>
-#####################################################################################################################################################################################################
-
-
-#####################################################################################################################################################################################################
-# Initialize script by sourcing the init_conf.bash config file
+# Source script config file
 #####################################################################################################################################################################################################
 set -o functrace
 # shellcheck disable=SC2155
-export PARENT_PATH_PARAM="$(realpath "${BASH_SOURCE[0]}")" && INIT_CONF="conf/init.conf"
-# shellcheck disable=SC2015
-# shellcheck source=conf/init.conf
-# shellcheck disable=SC1091
+export PARENT_PATH_PARAM="$(realpath "${BASH_SOURCE[0]}")" && INIT_CONF="$(dirname "$(dirname "${PARENT_PATH_PARAM}")")/conf/init.conf"
+# shellcheck disable=SC2015,SC1090
 [[ -f "${INIT_CONF}" ]] && source "${INIT_CONF}" || { echo "Init Config File Not Found. Unable to Continue."; exit 1; }
 
 
 #####################################################################################################################################################################################################
-# Script to run tests with proper PYTHONPATH
+# Determine which package manager to use
 #####################################################################################################################################################################################################
+log_trace "Determine which package manager to use"
+if [[ ${USE_CONDA} ]]; then
+    CMD="${CONDA_CMD}"
+    OFFSET="${CONDA_OFFSET}"
+elif [[ ${USE_MAMBA} ]]; then
+    CMD="${MAMBA_CMD}"
+    OFFSET="${MAMBA_OFFSET}"
+else
+    log_critical "No package manager specified. Unable to continue."
+fi
 
-# Get absolute path to project root
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SRC_DIR="${SCRIPT_DIR}/src"
 
-# Export PYTHONPATH
-export PYTHONPATH="${SRC_DIR}:${PYTHONPATH}"
+#####################################################################################################################################################################################################
+# Perform the Specified action with the designated package manager
+#####################################################################################################################################################################################################
+log_trace "Performing the Specified action with the designated package manager"
+eval "${CMD} env list" | grep -v -e "${COMMENT_REGEX}" | tail -n +"${OFFSET}"
 
-# Run pytest with all arguments passed through
-cd "${SCRIPT_DIR}" || exit 1
-/opt/miniforge3/envs/JuniperPython/bin/python -m pytest "$@"
+exit $(( TRUE ))

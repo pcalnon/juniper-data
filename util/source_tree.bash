@@ -7,7 +7,7 @@
 #
 # Author:        Paul Calnon
 # Version:       0.1.4 (0.7.3)
-# File Name:     proto.bash
+# File Name:     source_tree.bash
 # File Path:     <Project>/<Sub-Project>/<Application>/util/
 #
 # Date Created:  2025-10-11
@@ -17,6 +17,7 @@
 # Copyright:     Copyright (c) 2024,2025,2026 Paul Calnon
 #
 # Description:
+#     This script display the contents of the source, config, and log directories for a project in Tree format
 #
 #####################################################################################################################################################################################################
 # Notes:
@@ -34,33 +35,43 @@
 
 
 #####################################################################################################################################################################################################
-# @author: <NAME>
-#####################################################################################################################################################################################################
-
-
-#####################################################################################################################################################################################################
-# Initialize script by sourcing the init_conf.bash config file
+# Source script config file
 #####################################################################################################################################################################################################
 set -o functrace
 # shellcheck disable=SC2155
-export PARENT_PATH_PARAM="$(realpath "${BASH_SOURCE[0]}")" && INIT_CONF="conf/init.conf"
-# shellcheck disable=SC2015
-# shellcheck source=conf/init.conf
-# shellcheck disable=SC1091
+export PARENT_PATH_PARAM="$(realpath "${BASH_SOURCE[0]}")" && INIT_CONF="$(dirname "$(dirname "${PARENT_PATH_PARAM}")")/conf/init.conf"
+# shellcheck disable=SC2015,SC1090
 [[ -f "${INIT_CONF}" ]] && source "${INIT_CONF}" || { echo "Init Config File Not Found. Unable to Continue."; exit 1; }
 
 
-#####################################################################################################################################################################################################
-# Script to run tests with proper PYTHONPATH
-#####################################################################################################################################################################################################
+##################################################################################
+# Define Script Constants
+##################################################################################
+if [[ "${*}" == "" ]]; then
+  log_warning "No Input Parameters Provided"
+  DIR_LIST="${CONFIG_DIR_NAME} ${DATA_DIR_NAME} ${DOCUMENT_DIR_NAME} ${SOURCE_DIR_NAME} ${UTILITY_DIR_NAME}"
+else
+  DIR_LIST="${*}"
+fi
+log_info "Dir list: ${DIR_LIST}"
 
-# Get absolute path to project root
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SRC_DIR="${SCRIPT_DIR}/src"
 
-# Export PYTHONPATH
-export PYTHONPATH="${SRC_DIR}:${PYTHONPATH}"
+##################################################################################
+# Validate subdirectory list
+##################################################################################
+cd "${BASE_DIR}" || exit $(( FALSE ))
 
-# Run pytest with all arguments passed through
-cd "${SCRIPT_DIR}" || exit 1
-/opt/miniforge3/envs/JuniperPython/bin/python -m pytest "$@"
+WORKING_LIST=""
+for DIR in ${DIR_LIST}; do
+    if [[ -d ${DIR} ]]; then
+        WORKING_LIST="${WORKING_LIST}${DIR} "
+    fi
+done
+
+
+##################################################################################
+# Print directory listing as Tree structure
+##################################################################################
+tree "${WORKING_LIST}"
+
+exit $(( TRUE ))

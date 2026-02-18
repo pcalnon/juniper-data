@@ -7,16 +7,17 @@
 #
 # Author:        Paul Calnon
 # Version:       0.1.4 (0.7.3)
-# File Name:     proto.bash
+# File Name:     rsink.bash
 # File Path:     <Project>/<Sub-Project>/<Application>/util/
 #
-# Date Created:  2025-10-11
+# Date Created:  2024-04-01
 # Last Modified: 2026-01-12
 #
 # License:       MIT License
 # Copyright:     Copyright (c) 2024,2025,2026 Paul Calnon
 #
 # Description:
+#     This script is used to sync data from the JuniperCascor application primary server to all secondary servers that perform candidate correlation calculations.
 #
 #####################################################################################################################################################################################################
 # Notes:
@@ -34,33 +35,50 @@
 
 
 #####################################################################################################################################################################################################
-# @author: <NAME>
-#####################################################################################################################################################################################################
-
-
-#####################################################################################################################################################################################################
-# Initialize script by sourcing the init_conf.bash config file
+# Source script config file
 #####################################################################################################################################################################################################
 set -o functrace
 # shellcheck disable=SC2155
-export PARENT_PATH_PARAM="$(realpath "${BASH_SOURCE[0]}")" && INIT_CONF="conf/init.conf"
-# shellcheck disable=SC2015
-# shellcheck source=conf/init.conf
-# shellcheck disable=SC1091
+export PARENT_PATH_PARAM="$(realpath "${BASH_SOURCE[0]}")" && INIT_CONF="$(dirname "$(dirname "${PARENT_PATH_PARAM}")")/conf/init.conf"
+# shellcheck disable=SC2015,SC1090
 [[ -f "${INIT_CONF}" ]] && source "${INIT_CONF}" || { echo "Init Config File Not Found. Unable to Continue."; exit 1; }
 
 
 #####################################################################################################################################################################################################
-# Script to run tests with proper PYTHONPATH
+# Process input parameters
 #####################################################################################################################################################################################################
+log_trace "Process input parameters"
+dest="./dest"
+src="./source"
 
-# Get absolute path to project root
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SRC_DIR="${SCRIPT_DIR}/src"
+if [[ "$1" != "" ]]; then
+  log_trace "Evaluate Input Parameters"
+  test "$2" && dest="$2"
+  test "$1" && src="$1"
+fi
+log_trace "Source: ${src}, Destination: ${dest}"
 
-# Export PYTHONPATH
-export PYTHONPATH="${SRC_DIR}:${PYTHONPATH}"
 
-# Run pytest with all arguments passed through
-cd "${SCRIPT_DIR}" || exit 1
-/opt/miniforge3/envs/JuniperPython/bin/python -m pytest "$@"
+#####################################################################################################################################################################################################
+# Perform rsync
+#####################################################################################################################################################################################################
+log_trace "Performing rsync from ${src} to ${dest}"
+log_debug "rsync -a --safe-links \"${src}/\" \"${dest}/\""
+rsync -a --safe-links "${src}"/ "${dest}"/ ; SUCCESS="$?"
+[[ "${SUCCESS}" != "${TRUE}" ]] && log_fatal "Rsync failed with status ${SUCCESS}"
+log_info "Rsync completed with status ${SUCCESS}"
+
+
+#####################################################################################################################################################################################################
+# Validate rsync Transfer
+#####################################################################################################################################################################################################
+log_trace "Validate rsync Transfer"
+abs_src="$(realpath -- "${src}")"
+while read -r filename; do
+  target="$(target="$(readlink -f -- "${filename}")" && echo "${target%/*}")"
+  while [[ $target && ( ! $abs_src -ef "${target}" ) ]]; do target="${target%/*}"; done
+  test ! "${target}" && rsync -aL "${filename}" "${filename/$src/$dest}"
+done <<< "$(find "${src}" -type l)"
+log_trace "Rsync completed successfully"
+
+exit $(( TRUE ))

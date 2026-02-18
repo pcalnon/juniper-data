@@ -7,7 +7,7 @@
 #
 # Author:        Paul Calnon
 # Version:       0.1.4 (0.7.3)
-# File Name:     proto.bash
+# File Name:     update_weekly.bash
 # File Path:     <Project>/<Sub-Project>/<Application>/util/
 #
 # Date Created:  2025-10-11
@@ -17,6 +17,7 @@
 # Copyright:     Copyright (c) 2024,2025,2026 Paul Calnon
 #
 # Description:
+#     This script updates the weekly record of the progress taken from git log output with the current weeks progress
 #
 #####################################################################################################################################################################################################
 # Notes:
@@ -34,33 +35,27 @@
 
 
 #####################################################################################################################################################################################################
-# @author: <NAME>
-#####################################################################################################################################################################################################
-
-
-#####################################################################################################################################################################################################
-# Initialize script by sourcing the init_conf.bash config file
+# Source script config file
 #####################################################################################################################################################################################################
 set -o functrace
 # shellcheck disable=SC2155
-export PARENT_PATH_PARAM="$(realpath "${BASH_SOURCE[0]}")" && INIT_CONF="conf/init.conf"
-# shellcheck disable=SC2015
-# shellcheck source=conf/init.conf
-# shellcheck disable=SC1091
+export PARENT_PATH_PARAM="$(realpath "${BASH_SOURCE[0]}")" && INIT_CONF="$(dirname "$(dirname "${PARENT_PATH_PARAM}")")/conf/init.conf"
+# shellcheck disable=SC2015,SC1090
 [[ -f "${INIT_CONF}" ]] && source "${INIT_CONF}" || { echo "Init Config File Not Found. Unable to Continue."; exit 1; }
 
 
 #####################################################################################################################################################################################################
-# Script to run tests with proper PYTHONPATH
+# Update the Weekly Progress file from the Git Log
 #####################################################################################################################################################################################################
+${GIT_LOG_SCRIPT} ${PAST_WEEKS} > "${OUTPUT_FILE}"
+RESULT="$?"
 
-# Get absolute path to project root
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SRC_DIR="${SCRIPT_DIR}/src"
+if [[ ${RESULT} == "0" ]]; then
+    echo -ne "Successfully Updated the Weekly Progress file\n\n"
+else
+    echo "Error: Failed to Update the Weekly Progress file: \"${RESULT}\""
+    exit 1
+fi
+cat "${OUTPUT_FILE}" | head -${DISPLAY_LINES}
 
-# Export PYTHONPATH
-export PYTHONPATH="${SRC_DIR}:${PYTHONPATH}"
-
-# Run pytest with all arguments passed through
-cd "${SCRIPT_DIR}" || exit 1
-/opt/miniforge3/envs/JuniperPython/bin/python -m pytest "$@"
+exit $(( TRUE ))

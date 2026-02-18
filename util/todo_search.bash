@@ -7,8 +7,8 @@
 #
 # Author:        Paul Calnon
 # Version:       0.1.4 (0.7.3)
-# File Name:     run_all_tests.bash
-# File Path:     <Project>/<Sub-Project>/<Application>/util/
+# File Name:     todo_search.bash
+# File Path:     <Project>/<Sub-Project>/<Application>/conf/
 #
 # Date Created:  2025-10-11
 # Last Modified: 2026-01-12
@@ -17,6 +17,7 @@
 # Copyright:     Copyright (c) 2024,2025,2026 Paul Calnon
 #
 # Description:
+#     This script files in the source directory of the current project for a specific search term and then displays the number of files that do and do not contain the search term.
 #
 #####################################################################################################################################################################################################
 # Notes:
@@ -44,105 +45,69 @@ export PARENT_PATH_PARAM="$(realpath "${BASH_SOURCE[0]}")" && INIT_CONF="$(dirna
 
 
 #####################################################################################################################################################################################################
-# Verify Operating System
+# Process Script's Command Line Argument(s)
 #####################################################################################################################################################################################################
-log_trace "Verify Operating System"
-# trunk-ignore(shellcheck/SC2015)
-# trunk-ignore(shellcheck/SC2312)
-# shellcheck disable=SC2015
-[[ "$(uname)" == "${OS_NAME_LINUX}" ]]  && export HOME_DIR="/home/${USERNAME}" || { [[ "$(uname)" == "${OS_NAME_MACOS}"  ]] && export HOME_DIR="/Users/${USERNAME}" || { echo "Error: Invalid OS Type! Exiting..."  && set -e && exit 1; }; }
-log_verbose "HOME_DIR: ${HOME_DIR}"
-cd "${PROJ_DIR}"
-log_verbose "Current Directory: $(pwd)"
-
-
-#####################################################################################################################################################################################################
-# Run Tests with designated reports
-#####################################################################################################################################################################################################
-log_trace "Run Tests with designated reports"
-if [[ "${COVERAGE_REPORT}" == "${FALSE}" ]]; then
-
-# TODO: Move these flags to config file
-    RUN_TESTS_NO_COV_RPT="\
-${ACTIVATE_CONDA} ${CONDA_ENV_NAME} && \
-CASCOR_LOG_LEVEL=${CASCOR_LOG_LEVEL} \
-timeout=${TESTING_TIMEOUT} \
-python -m pytest -vv ./src/tests \
---slow \
---integration \
---junit-xml=src/tests/reports/junit/results.xml \
---continue-on-collection-errors \
---ignore=src/tests \
-"
-#     RUN_TESTS_NO_COV_RPT="\
-# pytest \
-# --slow \
-# --integration \
-# --junit-xml=src/tests/reports/junit/results.xml \
-# --continue-on-collection-errors \
-# --ignore=src/tests \
-# -v ./src/tests \
-# "
-    log_verbose "RUN_TESTS_NO_COV_RPT: ${RUN_TESTS_NO_COV_RPT}"
-    eval "${RUN_TESTS_NO_COV_RPT}"; SUCCESS="$?"
-elif [[ "${COVERAGE_REPORT}" == "${TRUE}" ]]; then
-
-# TODO: Move these flags to config file
-    RUN_TESTS_WITH_COV_RPT="\
-${ACTIVATE_CONDA} ${CONDA_ENV_NAME} && \
-CASCOR_LOG_LEVEL=${CASCOR_LOG_LEVEL} && \
-JUNIPER_FAST_SLOW=${JUNIPER_FAST_SLOW} && \
-CASCOR_BACKEND_AVAILABLE=${CASCOR_BACKEND_AVAILABLE} && \
-RUN_SERVER_TESTS=${RUN_SERVER_TESTS} && \
-ENABLE_DISPLAY_TESTS=${ENABLE_DISPLAY_TESTS} && \
-python -m pytest -vv ./src/tests \
---timeout=${TESTING_TIMEOUT} \
---slow \
---fast-slow \
---integration \
---junit-xml=src/tests/reports/junit/results.xml \
---continue-on-collection-errors \
---cov=cascade_correlation \
---cov=candidate_unit \
---cov=cascor_constants \
---cov=cascor_plotter \
---cov=log_config \
---cov=remote_client \
---cov=spiral_problem \
---cov=utils \
---cov-report=html:htmlcov \
---cov-report=xml \
---cov=src \
---cov-report=xml:src/tests/reports/coverage.xml  \
---cov-report=term-missing \
---cov-report=html:src/tests/reports/coverage \
---ignore=src/tests \
-"
-
-# ${ACTIVATE_CONDA} ${CONDA_ENV_NAME} && \
-# pytest \
-# --slow \
-# --integration \
-# --junit-xml=src/tests/reports/junit/results.xml \
-# --continue-on-collection-errors \
-# --cov=cascade_correlation \
-# --cov=candidate_unit \
-# --cov-report=html:htmlcov \
-# --cov-report=xml \
-# --cov=src \
-# --cov-report=xml:src/tests/reports/coverage.xml  \
-# --cov-report=term-missing \
-# --cov-report=html:src/tests/reports/coverage \
-# --ignore=src/tests \
-# -v ./src/tests \
-# "
-# --run-long \
-
-    log_verbose "RUN_TESTS_WITH_COV_RPT: ${RUN_TESTS_WITH_COV_RPT}"
-    eval "${RUN_TESTS_WITH_COV_RPT}"; SUCCESS="$?"
+log_trace "Process Script's Command Line Argument(s)"
+if [[ "$1" != "" ]]; then
+    if [[ "$1" == "${HELP_SHORT}" || "$1" == "${HELP_LONG}" ]]; then
+        usage 0
+    else
+        SEARCH_TERM="$1"
+    fi
 else
-    log_critical "Coverage Report flag has an Invalid Value"
+    if [[ "${DEBUG}" == "${TRUE}" ]]; then
+        SEARCH_TERM="${SEARCH_TERM_DEFAULT}"
+    else
+        usage
+    fi
 fi
-log_info "Running the Juniper Cascor project's Full Test Suite $( [[ "${SUCCESS}" == "${TRUE}" ]] && echo "Succeeded!" || echo "Failed." )"
 
-exit $(( SUCCESS ))
+
+#####################################################################################################################################################################################################
+# Sanitize Inputs
+#####################################################################################################################################################################################################
+log_trace "Sanitizing Input Params for TODO search script"
+DASHES="$(echo "${SEARCH_TERM}" | grep -e '^-.*')"
+if [[ "${DASHES}" != "" ]]; then
+    SEARCH_TERM="\\${SEARCH_TERM}"
+    log_debug "Sanitized SEARCH_TERM Input: ${SEARCH_TERM}"
+fi
+
+
+#####################################################################################################################################################################################################
+# Search for a specific TODO reference in source code
+#####################################################################################################################################################################################################
+log_trace "Search for a specific TODO reference in source code"
+DONE_COUNT=0
+FOUND_COUNT=0
+while read -r i; do
+    SOURCE_FILE="$(echo "${i}" | grep "\.${SRC_FILE_SUFFIX}\$")"
+    if [[ ${SOURCE_FILE} != "" ]]; then
+        SOURCE_FILE="$(echo "${SOURCE_FILE}" | grep -v "${INIT_PYTHON_FILE}")"
+        if [[ ( ${SOURCE_FILE} != "" ) && ( -f ${SOURCE_FILE} ) ]]; then
+            FOUND="$(cat "${SOURCE_FILE}" | grep "${SEARCH_TERM}")"
+            if [[ ${FOUND} != "" ]]; then
+                FOUND_COUNT="$((FOUND_COUNT + 1))"
+                if [[ ( "${DEBUG}" == "${TRUE}" ) || ( "${FULL_OUTPUT}" == "${TRUE}" ) ]]; then
+                    echo -ne "${SOURCE_FILE}\n${FOUND}\n\n"
+                fi
+            else
+                DONE_COUNT="$((DONE_COUNT + 1))"
+                if [[ ( "${FULL_OUTPUT}" == "${TRUE}" ) && ( "${DEBUG}" == "${TRUE}" ) ]]; then
+                    echo -ne "${SOURCE_FILE}\n\tNot Found: **********************\n\n"
+                fi
+            fi
+        fi
+    fi
+done < "$(find "${SRC_DIR}" -type f)"
+
+
+#####################################################################################################################################################################################################
+# Display Results
+#####################################################################################################################################################################################################
+log_trace "Display Results of TODO search"
+echo "Search Term: \"${SEARCH_TERM}\""
+echo "Found in Files: ${FOUND_COUNT}"
+echo "Files Complete: ${DONE_COUNT}"
+
+exit $(( TRUE ))

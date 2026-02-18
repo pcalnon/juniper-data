@@ -7,16 +7,17 @@
 #
 # Author:        Paul Calnon
 # Version:       0.1.4 (0.7.3)
-# File Name:     proto.bash
+# File Name:     last_mod_update.bash
 # File Path:     <Project>/<Sub-Project>/<Application>/util/
 #
-# Date Created:  2025-10-11
+# Date Created:  2025-12-03
 # Last Modified: 2026-01-12
 #
 # License:       MIT License
 # Copyright:     Copyright (c) 2024,2025,2026 Paul Calnon
 #
 # Description:
+#     This script returns the ages of the current git branches.  Help to identify orphaned branches, etc.
 #
 #####################################################################################################################################################################################################
 # Notes:
@@ -25,7 +26,7 @@
 # References:
 #
 #####################################################################################################################################################################################################
-# TODO :
+# TODO:
 #
 #####################################################################################################################################################################################################
 # COMPLETED:
@@ -34,33 +35,49 @@
 
 
 #####################################################################################################################################################################################################
-# @author: <NAME>
-#####################################################################################################################################################################################################
-
-
-#####################################################################################################################################################################################################
 # Initialize script by sourcing the init_conf.bash config file
 #####################################################################################################################################################################################################
 set -o functrace
 # shellcheck disable=SC2155
-export PARENT_PATH_PARAM="$(realpath "${BASH_SOURCE[0]}")" && INIT_CONF="conf/init.conf"
-# shellcheck disable=SC2015
-# shellcheck source=conf/init.conf
-# shellcheck disable=SC1091
+export PARENT_PATH_PARAM="$(realpath "${BASH_SOURCE[0]}")" && INIT_CONF="$(dirname "$(dirname "${PARENT_PATH_PARAM}")")/conf/init.conf"
+# shellcheck disable=SC2015,SC1090
 [[ -f "${INIT_CONF}" ]] && source "${INIT_CONF}" || { echo "Init Config File Not Found. Unable to Continue."; exit 1; }
 
 
 #####################################################################################################################################################################################################
-# Script to run tests with proper PYTHONPATH
+# Parse input parameters
 #####################################################################################################################################################################################################
+log_trace "Parsing input parameters"
+FILENAME="$1"
+if [[ "${FILENAME}" == "" ]]; then
+    echo "Error, Input file name not specified. Exiting..."
+    exit 1
+fi
 
-# Get absolute path to project root
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SRC_DIR="${SCRIPT_DIR}/src"
 
-# Export PYTHONPATH
-export PYTHONPATH="${SRC_DIR}:${PYTHONPATH}"
+#####################################################################################################################################################################################################
+# Perform Debug Specific Actions
+#####################################################################################################################################################################################################
+log_debug "Perform Debug Specific Actions"
+if [[ ${DEBUG} == "${TRUE}" ]]; then
+    BACKUP_FILE="${DIRNAME}/.${BASENAME}-BAK"
+    if [[ ! -f "${TARGET_FILE}" && ! -f "${BACKUP_FILE}" ]]; then
+        echo "Error: Neither Input File or Backup File are valid, non-empty files.  Exiting"
+        exit 2
+    elif [[ ! -f "${TARGET_FILE}" && -f "${BACKUP_FILE}" ]]; then
+        echo "Warning: Restoring Target File: ${TARGET_FILE} from Backup File: ${BACKUP_FILE}"
+        cp -a "${BACKUP_FILE}" "${TARGET_FILE}"
+    else
+        echo "Updating Backup File: ${BACKUP_FILE} from Target File: ${TARGET_FILE}"
+        cp -a "${TARGET_FILE}" "${BACKUP_FILE}"
+    fi
+fi
 
-# Run pytest with all arguments passed through
-cd "${SCRIPT_DIR}" || exit 1
-/opt/miniforge3/envs/JuniperPython/bin/python -m pytest "$@"
+
+#####################################################################################################################################################################################################
+# Update Last Modified Date of Target File
+#####################################################################################################################################################################################################
+log_trace "Update Last Modified Date of Target File"
+sed -i "" -e "s/^[[:space:]]*#[[:space:]]*Last[[:space:]]*Modified:[[:space:]]*[0-9.:_-]*[[:space:]]*[A-Z]*[[:space:]]*[#]*$/# Last Modified: 2026-01-12
+
+exit $(( TRUE ))

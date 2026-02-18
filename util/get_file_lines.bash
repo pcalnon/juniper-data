@@ -6,22 +6,23 @@
 # Purpose:       Juniper Project Cascade Correlation Neural Network
 #
 # Author:        Paul Calnon
-# Version:       0.1.4 (0.7.3)
-# File Name:     proto.bash
+# Version:       1.0.0
+# File Name:     get_file_lines.bash
 # File Path:     <Project>/<Sub-Project>/<Application>/util/
 #
-# Date Created:  2025-10-11
+# Date Created:  2025-12-03
 # Last Modified: 2026-01-12
 #
 # License:       MIT License
 # Copyright:     Copyright (c) 2024,2025,2026 Paul Calnon
 #
 # Description:
+#     This script is used to get the number of lines in a file.
 #
 #####################################################################################################################################################################################################
 # Notes:
 #
-########################################################################################################)#############################################################################################
+#####################################################################################################################################################################################################
 # References:
 #
 #####################################################################################################################################################################################################
@@ -34,33 +35,37 @@
 
 
 #####################################################################################################################################################################################################
-# @author: <NAME>
-#####################################################################################################################################################################################################
-
-
-#####################################################################################################################################################################################################
-# Initialize script by sourcing the init_conf.bash config file
+# Source script config file
 #####################################################################################################################################################################################################
 set -o functrace
 # shellcheck disable=SC2155
-export PARENT_PATH_PARAM="$(realpath "${BASH_SOURCE[0]}")" && INIT_CONF="conf/init.conf"
-# shellcheck disable=SC2015
-# shellcheck source=conf/init.conf
-# shellcheck disable=SC1091
+export PARENT_PATH_PARAM="$(realpath "${BASH_SOURCE[0]}")" && INIT_CONF="$(dirname "$(dirname "${PARENT_PATH_PARAM}")")/conf/init.conf"
+# shellcheck disable=SC2015,SC1090
 [[ -f "${INIT_CONF}" ]] && source "${INIT_CONF}" || { echo "Init Config File Not Found. Unable to Continue."; exit 1; }
 
 
 #####################################################################################################################################################################################################
-# Script to run tests with proper PYTHONPATH
+# Calculate lines in each file
 #####################################################################################################################################################################################################
+for i in $(${GET_FILENAMES_SCRIPT_NAME}); do
+  export TOTAL_FILES=$(( TOTAL_FILES + 1 ))
+  # shellcheck disable=SC2155
+  export CURRENT_LINES="$(cat "${i}" | wc -l)"
+  export TOTAL_LINES=$(( TOTAL_LINES + CURRENT_LINES ))
+  # shellcheck disable=SC2155
+  export CURRENT_TODOS="$(${TODO_SEARCH_SCRIPT} "${i}")"
+  export TOTAL_TODOS=$(( TOTAL_TODOS + CURRENT_TODOS ))
+  # shellcheck disable=SC2155
+  export CURRENT_SIZE="$(du -sh "${i}")"
+  echo -ne "File: ${i}\tLines: ${CURRENT_LINES}\tTODOs: ${CURRENT_TODOS}"
+done
 
-# Get absolute path to project root
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SRC_DIR="${SCRIPT_DIR}/src"
 
-# Export PYTHONPATH
-export PYTHONPATH="${SRC_DIR}:${PYTHONPATH}"
+#####################################################################################################################################################################################################
+# Display Results Summary
+#####################################################################################################################################################################################################
+echo "Search Term: \"${SEARCH_TERM}\""
+echo "Found in Files: ${FOUND_COUNT}"
+echo "Files Complete: ${DONE_COUNT}"
 
-# Run pytest with all arguments passed through
-cd "${SCRIPT_DIR}" || exit 1
-/opt/miniforge3/envs/JuniperPython/bin/python -m pytest "$@"
+[[ "${DEBUG}" == "${TRUE}" ]] && exit $(( TRUE )) || return $(( TRUE ))

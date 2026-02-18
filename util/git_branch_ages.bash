@@ -6,22 +6,23 @@
 # Purpose:       Juniper Project Cascade Correlation Neural Network
 #
 # Author:        Paul Calnon
-# Version:       0.1.4 (0.7.3)
-# File Name:     proto.bash
+# Version:       1.0.0
+# File Name:     git_branch_ages.bash
 # File Path:     <Project>/<Sub-Project>/<Application>/util/
 #
-# Date Created:  2025-10-11
+# Date Created:  2025-12-03
 # Last Modified: 2026-01-12
 #
 # License:       MIT License
 # Copyright:     Copyright (c) 2024,2025,2026 Paul Calnon
 #
 # Description:
+#     This script returns the ages of the current git branches.  Help to identify orphaned branches, etc.
 #
 #####################################################################################################################################################################################################
 # Notes:
 #
-########################################################################################################)#############################################################################################
+#####################################################################################################################################################################################################
 # References:
 #
 #####################################################################################################################################################################################################
@@ -34,33 +35,28 @@
 
 
 #####################################################################################################################################################################################################
-# @author: <NAME>
-#####################################################################################################################################################################################################
-
-
-#####################################################################################################################################################################################################
 # Initialize script by sourcing the init_conf.bash config file
 #####################################################################################################################################################################################################
 set -o functrace
 # shellcheck disable=SC2155
-export PARENT_PATH_PARAM="$(realpath "${BASH_SOURCE[0]}")" && INIT_CONF="conf/init.conf"
-# shellcheck disable=SC2015
-# shellcheck source=conf/init.conf
-# shellcheck disable=SC1091
+export PARENT_PATH_PARAM="$(realpath "${BASH_SOURCE[0]}")" && INIT_CONF="$(dirname "$(dirname "${PARENT_PATH_PARAM}")")/conf/init.conf"
+# shellcheck disable=SC2015,SC1090
 [[ -f "${INIT_CONF}" ]] && source "${INIT_CONF}" || { echo "Init Config File Not Found. Unable to Continue."; exit 1; }
 
 
 #####################################################################################################################################################################################################
-# Script to run tests with proper PYTHONPATH
+# Get git branches and ages.  yay.
 #####################################################################################################################################################################################################
+log_trace "Get git branches and ages. yay."
+git fetch --prune
+log_trace "Git fetch --prune completed."
 
-# Get absolute path to project root
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SRC_DIR="${SCRIPT_DIR}/src"
+log_trace "Get ages for local git branches."
+echo -ne "\nLocal Branches:\n"
+git for-each-ref --sort='committerdate:iso8601' --color --format="%(color:green)%(committerdate:iso8601)|%(color:blue)%(committerdate:relative)|%(color:reset)%09%(refname)" refs/heads | awk -F "refs/heads/" '{print $1 $2;}' | column -s '|' -t
 
-# Export PYTHONPATH
-export PYTHONPATH="${SRC_DIR}:${PYTHONPATH}"
+log_trace "Get ages for remote git branches."
+echo -ne "\nRemote Branches:\n"
+git for-each-ref --sort='committerdate:iso8601' --color --format="%(color:green)%(committerdate:iso8601)|%(color:blue)%(committerdate:relative)|%(color:reset)%09%(refname)" refs/remotes | awk -F "refs/remotes/" '{print $1 $2;}' | column -s '|' -t
 
-# Run pytest with all arguments passed through
-cd "${SCRIPT_DIR}" || exit 1
-/opt/miniforge3/envs/JuniperPython/bin/python -m pytest "$@"
+return $(( TRUE ))

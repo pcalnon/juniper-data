@@ -7,7 +7,7 @@
 #
 # Author:        Paul Calnon
 # Version:       0.1.4 (0.7.3)
-# File Name:     proto.bash
+# File Name:     __get_project_dir.bash
 # File Path:     <Project>/<Sub-Project>/<Application>/util/
 #
 # Date Created:  2025-10-11
@@ -17,6 +17,7 @@
 # Copyright:     Copyright (c) 2024,2025,2026 Paul Calnon
 #
 # Description:
+#     This script returns the absolute path of the directory for the current project
 #
 #####################################################################################################################################################################################################
 # Notes:
@@ -34,33 +35,24 @@
 
 
 #####################################################################################################################################################################################################
-# @author: <NAME>
+# Determine Project Dir
 #####################################################################################################################################################################################################
+SCRIPT_PATH="${1}"
+if [[ ${SCRIPT_PATH} == "" ]]; then
+    echo "Error: Script path not provided."
+    exit 1
+fi
 
+while [[ -L "${SCRIPT_PATH}" ]]; do
+    SCRIPT_DIR="$(cd -P "$(dirname "${SCRIPT_PATH}")" > /dev/null 2>&1 && pwd)"
+    SCRIPT_PATH="$(readlink "${SCRIPT_PATH}")"
+    if [[ ${SCRIPT_PATH} != /* ]]; then
+        SCRIPT_PATH="${SCRIPT_DIR}/${SCRIPT_PATH}"
+    fi
+done
 
-#####################################################################################################################################################################################################
-# Initialize script by sourcing the init_conf.bash config file
-#####################################################################################################################################################################################################
-set -o functrace
-# shellcheck disable=SC2155
-export PARENT_PATH_PARAM="$(realpath "${BASH_SOURCE[0]}")" && INIT_CONF="conf/init.conf"
-# shellcheck disable=SC2015
-# shellcheck source=conf/init.conf
-# shellcheck disable=SC1091
-[[ -f "${INIT_CONF}" ]] && source "${INIT_CONF}" || { echo "Init Config File Not Found. Unable to Continue."; exit 1; }
-
-
-#####################################################################################################################################################################################################
-# Script to run tests with proper PYTHONPATH
-#####################################################################################################################################################################################################
-
-# Get absolute path to project root
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SRC_DIR="${SCRIPT_DIR}/src"
-
-# Export PYTHONPATH
-export PYTHONPATH="${SRC_DIR}:${PYTHONPATH}"
-
-# Run pytest with all arguments passed through
-cd "${SCRIPT_DIR}" || exit 1
-/opt/miniforge3/envs/JuniperPython/bin/python -m pytest "$@"
+SCRIPT_PATH="$(readlink -f "${SCRIPT_PATH}")"
+SCRIPT_DIR="$(cd -P "$(dirname -- "${SCRIPT_PATH}")" > /dev/null 2>&1 && pwd)"
+PROJECT_DIR="$(dirname -- "${SCRIPT_DIR}")"
+BASE_DIR="${PROJECT_DIR}"
+echo "${BASE_DIR}"
