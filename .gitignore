@@ -198,6 +198,7 @@ cascor_snapshot_*.h5
 *.pyc
 *.py[cod]
 **/*.pyc
+**/*pyc
 
 # Log files
 *.log
