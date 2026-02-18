@@ -45,10 +45,10 @@ formatters:
 handlers:
   handler_console:
     class: logging.StreamHandler
-    level: TRACE
-    # level: VERBOSE
+    level: INFO
+    # level: TRACE
     # level: DEBUG
-    # level: INFO
+    # level: VERBOSE
     formatter: formatter_console
     stream: ext://sys.stdout
   handler_file:
