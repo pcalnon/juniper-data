@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-02-17
+
+**Summary**: Bug fixes for MNIST generator tests, Bandit security scan compliance, and arc-agi optional dependency. First official JuniperData release with all 699 tests passing and CI/CD pipeline fully green.
+
+### Fixed: [0.4.1]
+
+- **MNIST-001: 12 Failing MNIST Generator Tests**
+  - Generator's `_load_and_preprocess` called `ds.with_format("numpy")` for bulk column access, but test mocks didn't configure `with_format()`, returning a generic `MagicMock` that produced empty arrays on `np.array()`
+  - Fixed by adding `formatted_ds` mocks returning proper numpy data in `_make_mock_hf_dataset()` and `test_generate_image_without_convert()`
+  - Added missing `n_samples` support via `ds.select(range(params.n_samples))` in the generator
+
+- **SEC-007: Bandit B615 nosec Placement**
+  - Moved `# nosec B615` from the comment line above `hf_load_dataset()` to inline on the call itself
+  - Bandit only honors `# nosec` directives on the same line as the flagged code
+
+- **DEP-001: arc-agi Optional Dependency**
+  - Made `arc-agi` an optional dependency to prevent `ImportError` when importing `juniper_data` in environments without `arc-agi>=0.9.0` installed (e.g., JuniperCascor)
+
+### Technical Notes: [0.4.1]
+
+- **SemVer impact**: PATCH -- Bug fixes only; no API changes
+- **Test count**: 699 tests (658 service + 41 client), all passing
+- **CI/CD**: All jobs green across Python 3.12, 3.13, 3.14
+
+---
+
 ## [0.4.0] - 2026-02-17
 
 **Summary**: Integration Infrastructure & Extended Data Sources - Docker containerization, health probes, E2E testing, shared client package, dataset lifecycle management, 8 dataset generators, 7 storage backends, comprehensive CI/CD pipeline with security scanning, and full API documentation for ecosystem integration.
@@ -547,6 +573,7 @@ params = SpiralParams(
 
 | Version | Date       | Description                                 |
 | ------- | ---------- | ------------------------------------------- |
+| 0.4.1   | 2026-02-17 | Bug fixes: MNIST tests, Bandit scan, arc-agi dependency |
 | 0.4.0   | 2026-02-17 | Integration infrastructure & extended data sources |
 | 0.3.0   | 2026-02-04 | Test suite & CI/CD enhancement              |
 | 0.2.2   | 2026-02-02 | Code coverage configuration fix             |

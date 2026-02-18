@@ -35,6 +35,7 @@ on:
       - develop
       - feature/**
       - fix/**
+      - subproject.juniper_data.**
   pull_request:
     branches:
       - main

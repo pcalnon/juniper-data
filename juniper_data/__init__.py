@@ -14,7 +14,7 @@ except ImportError:
     ARC_AGI_AVAILABLE = False
     arc_agi = None  # type: ignore[assignment]
 
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 __author__ = "Paul Calnon"
 
 
