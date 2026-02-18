@@ -27,7 +27,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "juniper-data"
-version = "0.4.1"
+version = "0.4.2"
 description = "Dataset generation and management service for the Juniper ecosystem"
 readme = "README.md"
 license = { text = "MIT" }

@@ -80,13 +80,17 @@ reports/**
 
 
 # Cache files
-# __pycache__
-# __pycache__/
-# __pycache__/*
+__pycache__
+__pycache__/
+__pycache__/*
 __pycache__/**
-# **/__pycache__
-# **/__pycache__/
-# **/__pycache__/*
+*/__pycache__
+*/__pycache__/
+*/__pycache__/*
+*/__pycache__/**
+**/__pycache__
+**/__pycache__/
+**/__pycache__/*
 **/__pycache__/**
 
 # Local Python temp files
