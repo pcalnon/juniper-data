@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #####################################################################################################################################################################################################
 # Project:       Juniper
-# Sub-Project:   JuniperCascor
-# Application:   juniper_cascor
+# Sub-Project:   JuniperData
+# Application:   juniper_data
 # Purpose:       Juniper Project Cascade Correlation Neural Network
 #
 # Author:        Paul Calnon
@@ -11,7 +11,7 @@
 # File Path:     <Project>/<Sub-Project>/<Application>/util/
 #
 # Date Created:  2025-10-11
-# Last Modified: 2026-01-12
+# Last Modified: 2026-02-01
 #
 # License:       MIT License
 # Copyright:     Copyright (c) 2024,2025,2026 Paul Calnon
@@ -63,11 +63,12 @@ log_trace "Run Tests with designated reports"
 if [[ "${COVERAGE_REPORT}" == "${FALSE}" ]]; then
 
 # TODO: Move these flags to config file
+# python -m pytest -v ./src/tests \
     RUN_TESTS_NO_COV_RPT="\
 ${ACTIVATE_CONDA} ${CONDA_ENV_NAME} && \
-CASCOR_LOG_LEVEL=${CASCOR_LOG_LEVEL} \
+DATA_LOG_LEVEL=${DATA_LOG_LEVEL} \
 timeout=${TESTING_TIMEOUT} \
-python -m pytest -vv ./src/tests \
+python -m pytest -vv ${TESTS_DIR} \
 --slow \
 --integration \
 --junit-xml=src/tests/reports/junit/results.xml \
@@ -87,38 +88,44 @@ python -m pytest -vv ./src/tests \
     eval "${RUN_TESTS_NO_COV_RPT}"; SUCCESS="$?"
 elif [[ "${COVERAGE_REPORT}" == "${TRUE}" ]]; then
 
+SOURCE_FILE_LIST="$(find . | grep -v "__init__" | grep -e ".*py$")"
+log_verbose "Source file list:  ${SOURCE_FILE_LIST}"
+
+
 # TODO: Move these flags to config file
     RUN_TESTS_WITH_COV_RPT="\
 ${ACTIVATE_CONDA} ${CONDA_ENV_NAME} && \
-CASCOR_LOG_LEVEL=${CASCOR_LOG_LEVEL} && \
+DATA_LOG_LEVEL=${DATA_LOG_LEVEL} && \
 JUNIPER_FAST_SLOW=${JUNIPER_FAST_SLOW} && \
-CASCOR_BACKEND_AVAILABLE=${CASCOR_BACKEND_AVAILABLE} && \
+DATA_BACKEND_AVAILABLE=${DATA_BACKEND_AVAILABLE} && \
 RUN_SERVER_TESTS=${RUN_SERVER_TESTS} && \
 ENABLE_DISPLAY_TESTS=${ENABLE_DISPLAY_TESTS} && \
-python -m pytest -vv ./src/tests \
+python -m pytest -vv ${TESTS_DIR} \
 --timeout=${TESTING_TIMEOUT} \
---slow \
---fast-slow \
---integration \
---junit-xml=src/tests/reports/junit/results.xml \
+--junit-xml=reports/junit/results.xml \
 --continue-on-collection-errors \
---cov=cascade_correlation \
---cov=candidate_unit \
---cov=cascor_constants \
---cov=cascor_plotter \
---cov=log_config \
---cov=remote_client \
---cov=spiral_problem \
---cov=utils \
+--cov=${APPLICATION_NAME} \
 --cov-report=html:htmlcov \
 --cov-report=xml \
---cov=src \
---cov-report=xml:src/tests/reports/coverage.xml  \
+--cov-report=xml:reports/coverage.xml  \
 --cov-report=term-missing \
---cov-report=html:src/tests/reports/coverage \
---ignore=src/tests \
+--cov-report=html:reports/coverage \
+--ignore=${TESTS_DIR} \
 "
 
+# --slow \
+# --fast-slow \
+# --integration \
+#
+# --cov=cascade_correlation \
+# --cov=candidate_unit \
+# --cov=data_constants \
+# --cov=data_plotter \
+# --cov=log_config \
+# --cov=remote_client \
+# --cov=spiral_problem \
+# --cov=utils \
+#
 # ${ACTIVATE_CONDA} ${CONDA_ENV_NAME} && \
 # pytest \
 # --slow \
@@ -143,6 +150,6 @@ python -m pytest -vv ./src/tests \
 else
     log_critical "Coverage Report flag has an Invalid Value"
 fi
-log_info "Running the Juniper Cascor project's Full Test Suite $( [[ "${SUCCESS}" == "${TRUE}" ]] && echo "Succeeded!" || echo "Failed." )"
+log_info "Running the Juniper Data project's Full Test Suite $( [[ "${SUCCESS}" == "${TRUE}" ]] && echo "Succeeded!" || echo "Failed." )"
 
 exit $(( SUCCESS ))
