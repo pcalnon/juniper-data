@@ -1,7 +1,7 @@
-# Juniper Data v0.4.1 Release Notes
+# Juniper Data v0.4.2 Release Notes
 
 **Release Date:** 2026-02-17
-**Version:** 0.4.1
+**Version:** 0.4.2
 **Codename:** First JuniperData Release
 **Release Type:** PATCH
 
@@ -9,7 +9,7 @@
 
 ## Overview
 
-This is the first official release of JuniperData as a standalone dataset generation microservice. It addresses critical bug fixes discovered during CI/CD validation: 12 failing MNIST generator tests, a Bandit security scan suppression issue, and an arc-agi import failure affecting downstream consumers. All 658 service tests and 41 client tests now pass across Python 3.12-3.14.
+This is the first official release of JuniperData as a standalone dataset generation microservice. It addresses critical bug fixes discovered during CI/CD validation: 12 failing MNIST generator tests, a Bandit security scan suppression issue, an arc-agi import failure affecting downstream consumers, CI workflow branch coverage, and repository hygiene. All 658 service tests and 41 client tests now pass across Python 3.12-3.14.
 
 > **Status:** ALPHA -- Feature-complete. CI/CD pipeline fully green. Ready for integration testing with JuniperCascor and JuniperCanopy.
 
@@ -18,19 +18,21 @@ This is the first official release of JuniperData as a standalone dataset genera
 ## Release Summary
 
 - **Release type:** PATCH
-- **Primary focus:** Bug Fixes, CI/CD Compliance
+- **Primary focus:** Bug Fixes, CI/CD Compliance, Repository Hygiene
 - **Breaking changes:** No
-- **Priority summary:** All P0 blockers resolved (failing tests, CI scan failures, import errors)
+- **Priority summary:** All P0 blockers resolved (failing tests, CI scan failures, import errors, branch triggers)
 
 ---
 
 ## Features Summary
 
-| ID | Feature | Status | Version | Notes |
-| -- | ------- | ------ | ------- | ----- |
-| MNIST-001 | Fix 12 failing MNIST generator tests | ✅ Done | 0.4.1 | Mock + generator fix |
-| SEC-007 | Bandit B615 nosec placement | ✅ Done | 0.4.1 | CI compliance |
-| DEP-001 | Make arc-agi optional dependency | ✅ Done | 0.4.1 | Import fix |
+| ID        | Feature                              | Status  | Version | Notes                    |
+| --------- | ------------------------------------ | ------- | ------- | ------------------------ |
+| MNIST-001 | Fix 12 failing MNIST generator tests | ✅ Done | 0.4.1   | Mock + generator fix     |
+| SEC-007   | Bandit B615 nosec placement          | ✅ Done | 0.4.1   | CI compliance            |
+| DEP-001   | Make arc-agi optional dependency     | ✅ Done | 0.4.1   | Import fix               |
+| CI-003    | CI workflow branch triggers          | ✅ Done | 0.4.2   | All JuniperData branches |
+| GIT-001   | Gitignore "\__pycache__\" cleanup    | ✅ Done | 0.4.2   | Repository hygiene       |
 
 ---
 
@@ -109,6 +111,12 @@ All test failures from v0.4.0 have been resolved:
 
 - Bandit security scan now passes with 5 `# nosec` suppressions (all justified)
 - All CI jobs green: pre-commit (3.12-3.14), unit tests (3.12-3.14), integration tests, security scans, build
+- CI workflow now triggers automatically on all `subproject.juniper_data.**` branches (v0.4.2)
+
+### Repository Hygiene (v0.4.2)
+
+- Uncommented `__pycache__` exclusion patterns in `.gitignore`
+- Removed 12 tracked `__pycache__/*.pyc` files from the repository
 
 ---
 
@@ -204,6 +212,7 @@ See [INTEGRATION_DEVELOPMENT_PLAN.md](../INTEGRATION_DEVELOPMENT_PLAN.md) for fu
 
 | Version | Date | Description |
 | ------- | ---- | ----------- |
+| 0.4.2 | 2026-02-17 | CI branch triggers, gitignore cleanup |
 | 0.4.1 | 2026-02-17 | Bug fixes: MNIST tests, Bandit scan, arc-agi dependency |
 | 0.4.0 | 2026-02-17 | Integration infrastructure & extended data sources |
 | 0.3.0 | 2026-02-04 | Test suite & CI/CD enhancement |
