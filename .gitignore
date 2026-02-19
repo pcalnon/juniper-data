@@ -78,6 +78,16 @@ reports/**
 !**/reports/**/
 !**/reports/security/**
 
+# SERENA Memory Dirs
+.serena
+.serena/
+.serena/*
+.serena/**
+
+**/.serena
+**/.serena/
+**/.serena/*
+**/.serena/**
 
 # Cache files
 __pycache__
@@ -284,3 +294,16 @@ Thumbs.db
 *.rpm
 *.whl
 *.tar.gz
+
+# Coverage artifacts
+.coverage
+**/.coverage
+coverage.xml
+**/coverage.xml
+
+# Test result artifacts
+results.xml
+**/results.xml
+
+# Claude Code session files
+__RESUME_CLAUDE_SESSION__
