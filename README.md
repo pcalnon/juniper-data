@@ -104,6 +104,17 @@ isort juniper_data tests
 mypy juniper_data
 ```
 
+## Juniper Ecosystem
+
+| Repository | Description |
+|-----------|-------------|
+| [juniper-data](https://github.com/pcalnon/juniper-data) | Dataset generation service (this repo) |
+| [juniper-cascor](https://github.com/pcalnon/juniper-cascor) | CasCor neural network training service |
+| [juniper-canopy](https://github.com/pcalnon/juniper-canopy) | Real-time monitoring dashboard |
+| [juniper-data-client](https://github.com/pcalnon/juniper-data-client) | PyPI: `juniper-data-client` |
+| [juniper-cascor-client](https://github.com/pcalnon/juniper-cascor-client) | PyPI: `juniper-cascor-client` |
+| [juniper-cascor-worker](https://github.com/pcalnon/juniper-cascor-worker) | PyPI: `juniper-cascor-worker` |
+
 ## License
 
 MIT License - Copyright (c) 2024-2026 Paul Calnon
