@@ -47,7 +47,7 @@ export PARENT_PATH_PARAM="$(realpath "${BASH_SOURCE[0]}")" && INIT_CONF="$(dirna
 #####################################################################################################################################################################################################
 # Update the Weekly Progress file from the Git Log
 #####################################################################################################################################################################################################
-${GIT_LOG_SCRIPT} ${PAST_WEEKS} > "${OUTPUT_FILE}"
+${GIT_LOG_SCRIPT} "${PAST_WEEKS}" > "${OUTPUT_FILE}"
 RESULT="$?"
 
 if [[ ${RESULT} == "0" ]]; then
@@ -56,6 +56,6 @@ else
     echo "Error: Failed to Update the Weekly Progress file: \"${RESULT}\""
     exit 1
 fi
-cat "${OUTPUT_FILE}" | head -${DISPLAY_LINES}
+head -n "${DISPLAY_LINES}" "${OUTPUT_FILE}"
 
 exit $(( TRUE ))

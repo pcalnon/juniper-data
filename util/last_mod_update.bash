@@ -78,6 +78,7 @@ fi
 # Update Last Modified Date of Target File
 #####################################################################################################################################################################################################
 log_trace "Update Last Modified Date of Target File"
-sed -i "" -e "s/^[[:space:]]*#[[:space:]]*Last[[:space:]]*Modified:[[:space:]]*[0-9.:_-]*[[:space:]]*[A-Z]*[[:space:]]*[#]*$/# Last Modified: 2026-01-12
+# shellcheck disable=SC2086
+sed -i "" -e "s/^[[:space:]]*#[[:space:]]*Last[[:space:]]*Modified:[[:space:]]*[0-9.:_-]*[[:space:]]*[A-Z]*[[:space:]]*[#]*$/# Last Modified: ${LAST_MOD_DATE}/" "${FILENAME}"
 
 exit $(( TRUE ))

@@ -134,7 +134,7 @@ jobs:
         run: |
           mkdir -p reports/junit reports/htmlcov
 
-      - name: Run Unit Tests with Coverage Gate
+      - name: Run Unit Tests
         run: |
           echo "╔════════════════════════════════════════════════════════════╗"
           echo "║       JuniperData - Unit Tests (Fast Only)                 ║"
@@ -150,8 +150,15 @@ jobs:
             --cov=juniper_data \
             --cov-report=term-missing \
             --cov-report=xml:reports/coverage.xml \
-            --cov-report=html:reports/htmlcov \
-            --cov-fail-under=${{ env.COVERAGE_FAIL_UNDER }}
+            --cov-report=html:reports/htmlcov
+
+      - name: Enforce Coverage Gate (80%)
+        run: |
+          echo "╔════════════════════════════════════════════════════════════╗"
+          echo "║       JuniperData - Coverage Gate                          ║"
+          echo "╚════════════════════════════════════════════════════════════╝"
+
+          python -m coverage report --fail-under=${{ env.COVERAGE_FAIL_UNDER }}
 
       - name: Upload Coverage Artifacts
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08  # v4.6.0

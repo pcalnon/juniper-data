@@ -151,6 +151,7 @@ python --version
 # Launch Tests as background task
 #####################################################################################################################################################################################################
 echo -ne "\nnohup time python -m pytest \"${TEST_NAME}\" \"${PYTEST_PARAMS}\" 2>&1 &"
+# shellcheck disable=SC2086
 nohup time python -m pytest "${TEST_NAME}" ${PYTEST_PARAMS} 2>&1 &
 pid=$!
 echo -ne "\n\nHello Pytest Pid: \"${pid}\"\n"

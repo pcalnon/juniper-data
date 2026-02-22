@@ -204,6 +204,8 @@ repos:
 
   # ═══════════════════════════════════════════════════════════════════════════
   # Shell Script Linting - shellcheck
+  # Severity=warning skips style/info (SC2002, SC2181, SC2015).
+  # Excluded files: monorepo utilities not applicable to JuniperData.
   # ═══════════════════════════════════════════════════════════════════════════
   - repo: https://github.com/shellcheck-py/shellcheck-py
     rev: v0.10.0.1
@@ -212,8 +214,8 @@ repos:
         name: Lint shell scripts
         args:
           - --severity=warning
-        files: \.(sh|bash)$
-        exclude: (.*-ORIG\.bash$|.*-local\.bash$|no_canopy\.bash$|last_mod_update\.bash$)
+        types: [shell]
+        exclude: (last_mod_update-ORIG\.bash$|last_mod_update-local\.bash$|no_canopy\.bash$)
 
 # CI configuration (for pre-commit.ci service, if used)
 ci:
