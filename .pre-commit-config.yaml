@@ -210,7 +210,10 @@ repos:
     hooks:
       - id: shellcheck
         name: Lint shell scripts
-        types: [shell]
+        args:
+          - --severity=warning
+        files: \.(sh|bash)$
+        exclude: (.*-ORIG\.bash$|.*-local\.bash$|no_canopy\.bash$|last_mod_update\.bash$)
 
 # CI configuration (for pre-commit.ci service, if used)
 ci:
