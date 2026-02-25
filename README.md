@@ -17,6 +17,50 @@ Verified compatible versions:
 
 For full-stack Docker deployment and integration tests, see [juniper-deploy](https://github.com/pcalnon/juniper-deploy).
 
+## Architecture
+
+JuniperData is the **foundational data layer** of the Juniper ecosystem. JuniperCascor and JuniperCanopy both call JuniperData to generate and retrieve datasets.
+
+```
+┌─────────────────────┐     REST+WS      ┌──────────────────────┐
+│   JuniperCanopy     │ ◄──────────────► │    JuniperCascor     │
+│   Dashboard         │                  │    Training Svc      │
+│   Port 8050         │                  │    Port 8200         │
+└──────────┬──────────┘                  └──────────┬───────────┘
+           │ REST                                    │ REST
+           ▼                                         ▼
+┌──────────────────────────────────────────────────────────────┐
+│                      JuniperData  ◄── (this service)          │
+│                   Dataset Service  ·  Port 8100               │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Data contract**: datasets are served as NPZ archives with keys `X_train`, `y_train`, `X_test`, `y_test`, `X_full`, `y_full` (all `float32`).
+
+## Related Services
+
+| Service | Relationship | Environment Variable |
+|---------|-------------|---------------------|
+| [juniper-cascor](https://github.com/pcalnon/juniper-cascor) | Consumes JuniperData for training datasets | `JUNIPER_DATA_URL=http://localhost:8100` |
+| [juniper-canopy](https://github.com/pcalnon/juniper-canopy) | Consumes JuniperData for visualization data | `JUNIPER_DATA_URL=http://localhost:8100` |
+| [juniper-data-client](https://github.com/pcalnon/juniper-data-client) | PyPI client library for this service | `pip install juniper-data-client` |
+
+### Service Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `JUNIPER_DATA_HOST` | `0.0.0.0` | Listen address |
+| `JUNIPER_DATA_PORT` | `8100` | Service port |
+| `JUNIPER_DATA_LOG_LEVEL` | `INFO` | Log verbosity |
+
+### Docker Deployment
+
+```bash
+# Full stack with all three services:
+git clone https://github.com/pcalnon/juniper-deploy.git
+cd juniper-deploy && docker compose up --build
+```
+
 ## Installation
 
 ### Basic Installation
