@@ -616,6 +616,6 @@ volumes:
 
 ## See Also
 
-- [INTEGRATION_DEVELOPMENT_PLAN.md](../../notes/INTEGRATION_DEVELOPMENT_PLAN.md) - Integration roadmap
+- [INTEGRATION_DEVELOPMENT_PLAN.md](../../notes/history/INTEGRATION_DEVELOPMENT_PLAN.md) - Integration roadmap
 - [CHANGELOG.md](../../CHANGELOG.md) - Version history
 - [README.md](../../README.md) - Quick start guide

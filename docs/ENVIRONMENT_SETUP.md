@@ -1028,7 +1028,7 @@ repos:
         args: ["--max-line-length=120"]
 ```
 
-**See:** [docs/PRE_COMMIT_GUIDE.md](docs/PRE_COMMIT_GUIDE.md) for details.
+**See:** PRE_COMMIT_GUIDE.md (archived) for details.
 
 ---
 
@@ -1098,8 +1098,8 @@ pip freeze > requirements-frozen.txt
 
 - **[QUICK_START.md](QUICK_START.md)** - Run the application
 - **[AGENTS.md](AGENTS.md)** - Development guide
-- **[docs/CI_CD.md](docs/CI_CD.md)** - Testing and CI/CD
-- **[docs/PRE_COMMIT_GUIDE.md](docs/PRE_COMMIT_GUIDE.md)** - Code quality automation
+- **CI_CD.md (see ci_cd/CICD_MANUAL.md)** - Testing and CI/CD
+- **PRE_COMMIT_GUIDE.md (archived)** - Code quality automation
 
 ---
 

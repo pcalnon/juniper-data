@@ -39,18 +39,18 @@
 | **Get the app running**      | [QUICK_START.md](QUICK_START.md)                                  | Root        |
 | **Understand the project**   | [README.md](README.md)                                            | Root        |
 | **Set up my environment**    | [ENVIRONMENT_SETUP.md](ENVIRONMENT_SETUP.md)                      | Root        |
-| **Run tests**                | [TESTING_QUICK_START.md](TESTING_QUICK_START.md)                  | Root        |
-| **Set up test environment**  | [TESTING_ENVIRONMENT_SETUP.md](TESTING_ENVIRONMENT_SETUP.md)      | Root        |
-| **Learn testing**            | [TESTING_MANUAL.md](TESTING_MANUAL.md)                            | Root        |
-| **View coverage reports**    | [TESTING_REPORTS_COVERAGE.md](TESTING_REPORTS_COVERAGE.md)        | Root        |
-| **Testing reference**        | [TESTING_REFERENCE.md](TESTING_REFERENCE.md)                      | Root        |
+| **Run tests**                | [TESTING_QUICK_START.md](testing/TESTING_QUICK_START.md)          | docs/testing/ |
+| **Set up test environment**  | [TESTING_ENVIRONMENT_SETUP.md](testing/TESTING_ENVIRONMENT_SETUP.md) | docs/testing/ |
+| **Learn testing**            | [TESTING_MANUAL.md](testing/TESTING_MANUAL.md)                    | docs/testing/ |
+| **View coverage reports**    | [TESTING_REPORTS_COVERAGE.md](testing/TESTING_REPORTS_COVERAGE.md) | docs/testing/ |
+| **Testing reference**        | [TESTING_REFERENCE.md](testing/TESTING_REFERENCE.md)              | docs/testing/ |
 | **Get CI/CD running**        | [CICD_QUICK_START.md](docs/ci_cd/CICD_QUICK_START.md)             | docs/ci_cd/ |
 | **Set up CI/CD environment** | [CICD_ENVIRONMENT_SETUP.md](docs/ci_cd/CICD_ENVIRONMENT_SETUP.md) | docs/ci_cd/ |
 | **Learn CI/CD workflow**     | [CICD_MANUAL.md](docs/ci_cd/CICD_MANUAL.md)                       | docs/ci_cd/ |
 | **CI/CD reference**          | [CICD_REFERENCE.md](docs/ci_cd/CICD_REFERENCE.md)                 | docs/ci_cd/ |
 | **See version history**      | [CHANGELOG.md](CHANGELOG.md)                                      | Root        |
 | **Contribute code**          | [AGENTS.md](AGENTS.md)                                            | Root        |
-| **Find external links**      | [references_and_links.md](docs/references_and_links.md)           | docs/       |
+| **Find external links**      | [references_and_links.md](../notes/research/references_and_links.md) | notes/research/ |
 
 ---
 
@@ -300,7 +300,7 @@ juniper_canopy/
 
 ### Configuration & Setup
 
-#### [conf/app_config.yaml](conf/app_config.yaml)
+#### conf/app_config.yaml
 
 **Purpose:** Application configuration  
 **Format:** YAML  
@@ -346,7 +346,7 @@ juniper_canopy/
 
 ### Reference Documentation
 
-#### [docs/references_and_links.md](docs/references_and_links.md)
+#### [references_and_links.md](../notes/research/references_and_links.md)
 
 **Lines:** ~176  
 **Purpose:** External resources and references  
@@ -579,7 +579,7 @@ src/tests/
 | **testing/TESTING_REFERENCE.md**         | ~1,200 | Reference | Developers     | ✅ **Active**                    |
 | **testing/TESTING_REPORTS_COVERAGE.md**  | ~900   | Guide     | Developers     | ✅ **Active**                    |
 
-> **Note:** CI/CD documentation consolidated 2025-11-11 (12→4 files). See [docs/ci_cd/CONSOLIDATION_SUMMARY.md](docs/ci_cd/CONSOLIDATION_SUMMARY.md).
+> **Note:** CI/CD documentation consolidated 2025-11-11 (12→4 files).
 
 ### docs/history/ Directory
 
@@ -647,8 +647,8 @@ Content...
 
 **Internal Links:**
 
-- Use relative paths: `[AGENTS.md](AGENTS.md)`, `[CI_CD.md](docs/CI_CD.md)`
-- Include section anchors: `[Testing](#testing)`, `[Quick Start](README.md#quick-start)`
+- Use relative paths: `[AGENTS.md](AGENTS.md)`, `[CI_CD.md](ci_cd/CICD_MANUAL.md)`
+- Include section anchors: `[Testing](#testing-standards)`, `[Quick Start](README.md#quick-start)`
 
 **External Links:**
 
@@ -696,7 +696,7 @@ Content...
 3. Consolidate MVP reports into single IMPLEMENTATION_HISTORY.md
 4. Extract troubleshooting from AGENTS.md to TROUBLESHOOTING.md
 
-**See:** [docs/DOCUMENTATION_ANALYSIS_2025-11-05.md](docs/DOCUMENTATION_ANALYSIS_2025-11-05.md) for detailed analysis
+**See:** DOCUMENTATION_ANALYSIS_2025-11-05.md for detailed analysis (archived)
 
 ---
 
@@ -809,4 +809,4 @@ docs/references_and_links.md  # External links
   - CICD_MANUAL.md - Comprehensive usage guide
   - CICD_REFERENCE.md - Technical reference
 - **Archived:** 8 legacy files to docs/history/ (2025-11-11)
-- **See:** [docs/ci_cd/CONSOLIDATION_SUMMARY.md](docs/ci_cd/CONSOLIDATION_SUMMARY.md)
+- **See:** ci_cd/CONSOLIDATION_SUMMARY.md (archived)

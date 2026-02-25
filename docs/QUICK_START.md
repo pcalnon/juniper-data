@@ -480,7 +480,7 @@ pip install -r conf/requirements.txt
 - **[README.md](README.md)** - Complete project overview and features
 - **[ENVIRONMENT_SETUP.md](ENVIRONMENT_SETUP.md)** - Detailed environment configuration
 - **[AGENTS.md](AGENTS.md)** - Development guide and conventions
-- **[docs/CI_CD.md](docs/CI_CD.md)** - Testing and CI/CD workflows
+- **CI_CD.md (see ci_cd/CICD_MANUAL.md)** - Testing and CI/CD workflows
 
 ### Start Developing
 
@@ -720,8 +720,8 @@ conda list | grep -E "(fastapi|dash|uvicorn)"
 ### For Developers
 
 1. Read [AGENTS.md](AGENTS.md) development guide
-2. Set up [pre-commit hooks](docs/PRE_COMMIT_GUIDE.md)
-3. Run [test suite](docs/CI_CD.md)
+2. Set up pre-commit hooks
+3. Run test suite
 4. Review [code style guidelines](AGENTS.md#code-style-guidelines)
 
 ### For Users
@@ -733,7 +733,7 @@ conda list | grep -E "(fastapi|dash|uvicorn)"
 1. Read [contributing guidelines](AGENTS.md#contributing)
 2. Review [definition of done](AGENTS.md#definition-of-done)
 3. Check [development roadmap](docs/history/) for open tasks
-4. Set up [CI/CD locally](docs/CI_CD.md)
+4. Set up CI/CD locally
 
 ---
 

@@ -142,7 +142,7 @@ Determine which existing class best fits the constant:
 - **UI/Display-related** → `DashboardConstants`
 - **Server/Network-related** → `ServerConstants`
 
-If no class fits, consider creating a new class (see [Creating New Classes](#Example 2: Creating a New Constant Class)).
+If no class fits, consider creating a new class (see [Creating New Classes](#example-2-creating-a-new-constant-class)).
 
 ### Step 3: Name the Constant
 
@@ -776,9 +776,9 @@ Is this a hard-coded value?
 
 ## Additional Resources
 
-- [Constants Module Source](../src/constants.py)
-- [Constants Unit Tests](../src/tests/unit/test_constants.py)
-- [Configuration Guide](../conf/app_config.yaml)
+- Constants Module Source
+- Constants Unit Tests
+- Configuration Guide
 - [Project Style Guide](../AGENTS.md)
 
 ## Version History

@@ -363,9 +363,9 @@ collected 170 items / 15 skipped
 
 ## References
 
-- [docs/SELECTIVE_TEST_GUIDE.md](docs/SELECTIVE_TEST_GUIDE.md) - Complete usage guide
+- [SELECTIVE_TEST_GUIDE.md](SELECTIVE_TEST_GUIDE.md) - Complete usage guide
 - [pyproject.toml](pyproject.toml) - Pytest configuration
-- [src/tests/conftest.py](src/tests/conftest.py) - Skip logic implementation
+- [conftest.py](../../juniper_data/tests/conftest.py) - Skip logic implementation
 - [.github/workflows/ci.yml](.github/workflows/ci.yml) - CI configuration
 
 ## Summary

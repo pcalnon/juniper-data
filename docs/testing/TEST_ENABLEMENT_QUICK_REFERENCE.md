@@ -67,4 +67,4 @@ pytest --collect-only -q | head -20
 
 ## See Full Guide
 
-[docs/SELECTIVE_TEST_GUIDE.md](docs/SELECTIVE_TEST_GUIDE.md)
+[SELECTIVE_TEST_GUIDE.md](SELECTIVE_TEST_GUIDE.md)

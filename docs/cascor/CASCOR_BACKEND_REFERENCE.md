@@ -599,7 +599,7 @@ with self.topology_lock:
 
 - **[CASCOR_BACKEND_QUICK_START.md](CASCOR_BACKEND_QUICK_START.md)** - Quick setup guide
 - **[CASCOR_BACKEND_MANUAL.md](CASCOR_BACKEND_MANUAL.md)** - Complete usage guide
-- **[CasCor Backend](../cascor/README.md)** - CasCor prototype documentation
+- **CasCor Backend** - CasCor prototype documentation
 - **[AGENTS.md](AGENTS.md)** - Development guide
 
 ---

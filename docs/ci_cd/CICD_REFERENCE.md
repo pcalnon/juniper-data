@@ -1048,8 +1048,8 @@ grep "coverage" workflow.log | grep -i "low\|fail"
 - [CICD_QUICK_START.md](CICD_QUICK_START.md)
 - [CICD_ENVIRONMENT_SETUP.md](CICD_ENVIRONMENT_SETUP.md)
 - [CICD_MANUAL.md](CICD_MANUAL.md)
-- [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)
-- [PRE_COMMIT_GUIDE.md](PRE_COMMIT_GUIDE.md)
+- DEPLOYMENT_GUIDE.md (archived)
+- PRE_COMMIT_GUIDE.md (archived)
 
 ---
 

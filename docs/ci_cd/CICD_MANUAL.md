@@ -1671,8 +1671,8 @@ Fix by: 2025-11-12
 - [CICD_QUICK_START.md](CICD_QUICK_START.md) - Quick start guide
 - [CICD_ENVIRONMENT_SETUP.md](CICD_ENVIRONMENT_SETUP.md) - Environment configuration
 - [CICD_REFERENCE.md](CICD_REFERENCE.md) - Technical reference
-- [PRE_COMMIT_GUIDE.md](PRE_COMMIT_GUIDE.md) - Pre-commit hooks
-- [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) - Deployment procedures
+- PRE_COMMIT_GUIDE.md (archived) - Pre-commit hooks
+- DEPLOYMENT_GUIDE.md (archived) - Deployment procedures
 
 ### External Resources
 

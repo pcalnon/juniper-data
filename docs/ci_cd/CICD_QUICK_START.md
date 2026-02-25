@@ -240,7 +240,7 @@ cd src && pytest tests/ -v
 - [CI/CD Manual](CICD_MANUAL.md) - Complete guide
 - [Environment Setup](CICD_ENVIRONMENT_SETUP.md) - Configuration
 - [Reference](CICD_REFERENCE.md) - Technical specs
-- [Pre-commit Guide](../deployment/PRE_COMMIT_GUIDE.md) - Hook details
+- Pre-commit Guide (archived) - Hook details
 
 ---
 

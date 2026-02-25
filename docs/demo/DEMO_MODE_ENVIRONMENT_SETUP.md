@@ -334,4 +334,4 @@ ls -la conf/app_config.yaml
 **See Also:**
 
 - [AGENTS.md](../AGENTS.md) - Development guide
-- [README.md](../README.md) - Project overview
+- [README.md](../../README.md) - Project overview
