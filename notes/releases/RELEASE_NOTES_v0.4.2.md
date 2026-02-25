@@ -176,12 +176,13 @@ python -m juniper_data
 
 ## Known Issues
 
-- **B008 flake8 warnings:** 9 intentional B008 warnings in `datasets.py` from FastAPI patterns (`Query()`, `Depends()` in function defaults). These are not bugs.
+No outstanding known issues.
 
 ### Resolved Since Release
 
 - ~~**GENERATOR_REGISTRY:** 5 of 8 generators registered~~ — All 8 generators now registered (spiral, xor, gaussian, circles, checkerboard, csv_import, mnist, arc_agi).
 - ~~**Coverage at ~60% overall:** 6 modules at 0% coverage~~ — Coverage is now 99.40% (659 tests passing). The previously-uncovered modules (arc_agi, mnist, hf_store, kaggle_store, postgres_store, redis_store) all have tests.
+- ~~**B008 flake8 warnings:** 9 intentional B008 warnings in `datasets.py`~~ — Migrated to ruff with per-file-ignores for `api/routes/*.py` (RD-012).
 
 ---
 

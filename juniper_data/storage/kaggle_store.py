@@ -1,6 +1,6 @@
 """Kaggle datasets integration for downloading and caching datasets."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -48,7 +48,7 @@ class KaggleDatasetStore(DatasetStore):
             ImportError: If kaggle package is not installed.
         """
         if not KAGGLE_AVAILABLE:
-            raise ImportError("Kaggle package not installed. " "Install with: pip install kaggle")
+            raise ImportError("Kaggle package not installed. Install with: pip install kaggle")
 
         self._download_path = download_path or Path("./data/kaggle")
         self._download_path.mkdir(parents=True, exist_ok=True)
@@ -140,7 +140,9 @@ class KaggleDatasetStore(DatasetStore):
             if csv_files:
                 file_path = csv_files[0]
             else:
-                raise FileNotFoundError(f"File '{file_name}' not found in dataset. " f"Available files: {[f.name for f in all_files]}")
+                raise FileNotFoundError(
+                    f"File '{file_name}' not found in dataset. Available files: {[f.name for f in all_files]}"
+                )
 
         import csv
 
@@ -229,7 +231,7 @@ class KaggleDatasetStore(DatasetStore):
             n_train=n_train,
             n_test=len(X) - n_train,
             class_distribution=class_distribution,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
             tags=["kaggle", dataset_ref.split("/")[0]],
         )
 

@@ -22,13 +22,11 @@ from juniper_data.core.models import (
     BatchDeleteRequest,
     CreateDatasetRequest,
     DatasetMeta,
-    UpdateTagsRequest,
 )
 from juniper_data.generators.csv_import.params import CsvImportParams
 from juniper_data.generators.spiral.params import SpiralParams
 from juniper_data.storage import LocalFSDatasetStore
 from juniper_data.storage.memory import InMemoryDatasetStore
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Fixtures
@@ -138,7 +136,9 @@ class TestPathTraversalPrevention:
         for malicious_id in traversal_ids:
             response = client.get(f"/v1/datasets/{malicious_id}")
             # Should return 404 (not found in store), not 500 or file contents
-            assert response.status_code in (404, 422), f"Unexpected status for ID '{malicious_id}': {response.status_code}"
+            assert response.status_code in (404, 422), (
+                f"Unexpected status for ID '{malicious_id}': {response.status_code}"
+            )
 
     def test_api_artifact_download_with_traversal(self, client: TestClient) -> None:
         """Artifact download should not serve files outside storage via traversal."""
@@ -451,7 +451,9 @@ class TestAPIBoundaries:
         for special_id in special_ids:
             response = client.get(f"/v1/datasets/{special_id}")
             # Should return 404 (not found), not 500
-            assert response.status_code in (404, 422), f"Unexpected status for ID '{special_id[:50]}': {response.status_code}"
+            assert response.status_code in (404, 422), (
+                f"Unexpected status for ID '{special_id[:50]}': {response.status_code}"
+            )
 
     def test_dataset_id_non_printable_characters(self) -> None:
         """Dataset IDs with non-printable characters are rejected at HTTP level."""

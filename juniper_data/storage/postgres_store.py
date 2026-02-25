@@ -85,7 +85,7 @@ class PostgresDatasetStore(DatasetStore):
             ImportError: If psycopg2 package is not installed.
         """
         if not POSTGRES_AVAILABLE:
-            raise ImportError("psycopg2 package not installed. " "Install with: pip install psycopg2-binary")
+            raise ImportError("psycopg2 package not installed. Install with: pip install psycopg2-binary")
 
         self._artifact_path = artifact_path or Path("./data/datasets")
         self._artifact_path.mkdir(parents=True, exist_ok=True)
@@ -154,7 +154,9 @@ class PostgresDatasetStore(DatasetStore):
             n_classes=row["n_classes"],
             n_train=row["n_train"],
             n_test=row["n_test"],
-            class_distribution=row["class_distribution"] if isinstance(row["class_distribution"], dict) else json.loads(row["class_distribution"]),
+            class_distribution=row["class_distribution"]
+            if isinstance(row["class_distribution"], dict)
+            else json.loads(row["class_distribution"]),
             artifact_formats=list(row["artifact_formats"]),
             created_at=row["created_at"],
             checksum=row["checksum"],

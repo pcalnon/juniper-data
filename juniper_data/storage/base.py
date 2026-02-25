@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 
 # from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import numpy as np
 
@@ -127,7 +127,7 @@ class DatasetStore(ABC):
         """
         meta = self.get_meta(dataset_id)
         if meta is not None:
-            meta.last_accessed_at = datetime.now(timezone.utc)
+            meta.last_accessed_at = datetime.now(UTC)
             meta.access_count += 1
             self.update_meta(dataset_id, meta)
 
@@ -142,7 +142,7 @@ class DatasetStore(ABC):
         """
         if meta.expires_at is None:
             return False
-        return datetime.now(timezone.utc) > meta.expires_at
+        return datetime.now(UTC) > meta.expires_at
 
     def delete_expired(self) -> list[str]:
         """Delete all expired datasets.
@@ -151,7 +151,11 @@ class DatasetStore(ABC):
             List of dataset IDs that were deleted.
         """
         deleted: list[str] = []
-        deleted.extend(meta.dataset_id for meta in self.list_all_metadata() if self.is_expired(meta) and self.delete(meta.dataset_id))
+        deleted.extend(
+            meta.dataset_id
+            for meta in self.list_all_metadata()
+            if self.is_expired(meta) and self.delete(meta.dataset_id)
+        )
         return deleted
 
     def filter_datasets(

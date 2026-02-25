@@ -1,6 +1,6 @@
 """Hugging Face datasets integration for loading external datasets."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import numpy as np
@@ -43,7 +43,7 @@ class HuggingFaceDatasetStore(DatasetStore):
             ImportError: If datasets package is not installed.
         """
         if not HF_AVAILABLE:
-            raise ImportError("Hugging Face datasets package not installed. " "Install with: pip install datasets")
+            raise ImportError("Hugging Face datasets package not installed. Install with: pip install datasets")
 
         self._cache_store = cache_store or InMemoryDatasetStore()
         self._cache_dir = cache_dir
@@ -133,7 +133,7 @@ class HuggingFaceDatasetStore(DatasetStore):
             n_train=n_train,
             n_test=len(X) - n_train,
             class_distribution=class_distribution,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
             tags=["huggingface", dataset_name],
         )
 

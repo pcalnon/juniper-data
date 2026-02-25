@@ -1,6 +1,6 @@
 """Unit tests for RedisDatasetStore."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -23,7 +23,7 @@ def sample_meta() -> DatasetMeta:
         n_train=80,
         n_test=20,
         class_distribution={"0": 50, "1": 50},
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
 
 
@@ -41,7 +41,7 @@ def sample_meta_with_ttl() -> DatasetMeta:
         n_train=80,
         n_test=20,
         class_distribution={"0": 50, "1": 50},
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         ttl_seconds=3600,
     )
 
@@ -83,7 +83,9 @@ class TestRedisDatasetStoreInit:
         from juniper_data.storage.redis_store import RedisDatasetStore
 
         store = RedisDatasetStore()
-        mock_redis.Redis.assert_called_once_with(host="localhost", port=6379, db=0, password=None, decode_responses=False)
+        mock_redis.Redis.assert_called_once_with(
+            host="localhost", port=6379, db=0, password=None, decode_responses=False
+        )
         assert store._key_prefix == "juniper:dataset:"
         assert store._default_ttl is None
 
@@ -92,8 +94,12 @@ class TestRedisDatasetStoreInit:
         mock_redis, _, _ = mock_redis_module
         from juniper_data.storage.redis_store import RedisDatasetStore
 
-        store = RedisDatasetStore(host="redis.example.com", port=6380, db=1, password="secret", key_prefix="myapp:", default_ttl=600)
-        mock_redis.Redis.assert_called_once_with(host="redis.example.com", port=6380, db=1, password="secret", decode_responses=False)
+        store = RedisDatasetStore(
+            host="redis.example.com", port=6380, db=1, password="secret", key_prefix="myapp:", default_ttl=600
+        )
+        mock_redis.Redis.assert_called_once_with(
+            host="redis.example.com", port=6380, db=1, password="secret", decode_responses=False
+        )
         assert store._key_prefix == "myapp:"
         assert store._default_ttl == 600
 

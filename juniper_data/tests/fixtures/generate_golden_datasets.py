@@ -159,9 +159,9 @@ def save_golden_dataset(data: dict, name: str) -> None:
 def print_dataset_info(data: dict, name: str) -> None:
     """Print dataset information for verification."""
     meta = data["metadata"]
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Dataset: {name}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print("Configuration:")
     for key, value in meta["config"].items():
         print(f"  {key}: {value}")

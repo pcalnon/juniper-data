@@ -3,7 +3,7 @@
 import contextlib
 import io
 import tempfile
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
@@ -72,7 +72,9 @@ class TestInMemoryDatasetStore:
         assert memory_store.list_datasets() == []
 
     @pytest.mark.unit
-    def test_save_and_get_meta(self, memory_store: InMemoryDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]):
+    def test_save_and_get_meta(
+        self, memory_store: InMemoryDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]
+    ):
         """Test saving and retrieving metadata."""
         memory_store.save("ds-001", sample_meta, sample_arrays)
         retrieved = memory_store.get_meta("ds-001")
@@ -88,7 +90,9 @@ class TestInMemoryDatasetStore:
         assert memory_store.get_meta("nonexistent") is None
 
     @pytest.mark.unit
-    def test_save_and_get_artifact_bytes(self, memory_store: InMemoryDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]):
+    def test_save_and_get_artifact_bytes(
+        self, memory_store: InMemoryDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]
+    ):
         """Test saving and retrieving artifact bytes."""
         memory_store.save("ds-001", sample_meta, sample_arrays)
         artifact_bytes = memory_store.get_artifact_bytes("ds-001")
@@ -107,7 +111,9 @@ class TestInMemoryDatasetStore:
         assert memory_store.get_artifact_bytes("nonexistent") is None
 
     @pytest.mark.unit
-    def test_exists_true(self, memory_store: InMemoryDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]):
+    def test_exists_true(
+        self, memory_store: InMemoryDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]
+    ):
         """Test exists returns True for saved dataset."""
         memory_store.save("ds-001", sample_meta, sample_arrays)
         assert memory_store.exists("ds-001") is True
@@ -118,7 +124,9 @@ class TestInMemoryDatasetStore:
         assert memory_store.exists("nonexistent") is False
 
     @pytest.mark.unit
-    def test_delete_existing(self, memory_store: InMemoryDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]):
+    def test_delete_existing(
+        self, memory_store: InMemoryDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]
+    ):
         """Test deleting an existing dataset returns True."""
         memory_store.save("ds-001", sample_meta, sample_arrays)
         deleted = memory_store.delete("ds-001")
@@ -138,7 +146,9 @@ class TestInMemoryDatasetStore:
         assert memory_store.list_datasets() == []
 
     @pytest.mark.unit
-    def test_list_datasets_multiple(self, memory_store: InMemoryDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]):
+    def test_list_datasets_multiple(
+        self, memory_store: InMemoryDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]
+    ):
         """Test listing multiple datasets."""
         for i in range(5):
             memory_store.save(f"ds-00{i}", sample_meta, sample_arrays)
@@ -148,7 +158,9 @@ class TestInMemoryDatasetStore:
         assert datasets == sorted(datasets)
 
     @pytest.mark.unit
-    def test_list_datasets_with_limit(self, memory_store: InMemoryDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]):
+    def test_list_datasets_with_limit(
+        self, memory_store: InMemoryDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]
+    ):
         """Test listing datasets with limit."""
         for i in range(10):
             memory_store.save(f"ds-{i:03d}", sample_meta, sample_arrays)
@@ -157,7 +169,9 @@ class TestInMemoryDatasetStore:
         assert len(datasets) == 3
 
     @pytest.mark.unit
-    def test_list_datasets_with_offset(self, memory_store: InMemoryDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]):
+    def test_list_datasets_with_offset(
+        self, memory_store: InMemoryDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]
+    ):
         """Test listing datasets with offset."""
         for i in range(10):
             memory_store.save(f"ds-{i:03d}", sample_meta, sample_arrays)
@@ -167,7 +181,9 @@ class TestInMemoryDatasetStore:
         assert datasets[0] == "ds-005"
 
     @pytest.mark.unit
-    def test_list_datasets_with_limit_and_offset(self, memory_store: InMemoryDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]):
+    def test_list_datasets_with_limit_and_offset(
+        self, memory_store: InMemoryDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]
+    ):
         """Test listing datasets with both limit and offset."""
         for i in range(10):
             memory_store.save(f"ds-{i:03d}", sample_meta, sample_arrays)
@@ -177,7 +193,9 @@ class TestInMemoryDatasetStore:
         assert datasets == ["ds-002", "ds-003", "ds-004"]
 
     @pytest.mark.unit
-    def test_clear(self, memory_store: InMemoryDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]):
+    def test_clear(
+        self, memory_store: InMemoryDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]
+    ):
         """Test clearing all datasets."""
         for i in range(5):
             memory_store.save(f"ds-00{i}", sample_meta, sample_arrays)
@@ -187,7 +205,9 @@ class TestInMemoryDatasetStore:
         assert len(memory_store.list_datasets()) == 0
 
     @pytest.mark.unit
-    def test_save_copies_arrays(self, memory_store: InMemoryDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]):
+    def test_save_copies_arrays(
+        self, memory_store: InMemoryDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]
+    ):
         """Test that save makes copies of arrays (not references)."""
         memory_store.save("ds-001", sample_meta, sample_arrays)
 
@@ -200,7 +220,9 @@ class TestInMemoryDatasetStore:
         assert loaded["X_train"][0, 0] == original_value
 
     @pytest.mark.unit
-    def test_overwrite_existing(self, memory_store: InMemoryDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]):
+    def test_overwrite_existing(
+        self, memory_store: InMemoryDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]
+    ):
         """Test that saving to same ID overwrites existing dataset."""
         memory_store.save("ds-001", sample_meta, sample_arrays)
 
@@ -244,7 +266,9 @@ class TestLocalFSDatasetStore:
         assert store.base_path == subdir
 
     @pytest.mark.unit
-    def test_save_creates_files(self, fs_store: LocalFSDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]):
+    def test_save_creates_files(
+        self, fs_store: LocalFSDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]
+    ):
         """Test that save creates meta and npz files."""
         fs_store.save("ds-001", sample_meta, sample_arrays)
 
@@ -255,7 +279,9 @@ class TestLocalFSDatasetStore:
         assert npz_path.exists()
 
     @pytest.mark.unit
-    def test_save_and_get_meta(self, fs_store: LocalFSDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]):
+    def test_save_and_get_meta(
+        self, fs_store: LocalFSDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]
+    ):
         """Test saving and retrieving metadata."""
         fs_store.save("ds-001", sample_meta, sample_arrays)
         retrieved = fs_store.get_meta("ds-001")
@@ -272,7 +298,9 @@ class TestLocalFSDatasetStore:
         assert fs_store.get_meta("nonexistent") is None
 
     @pytest.mark.unit
-    def test_save_and_get_artifact_bytes(self, fs_store: LocalFSDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]):
+    def test_save_and_get_artifact_bytes(
+        self, fs_store: LocalFSDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]
+    ):
         """Test saving and retrieving artifact bytes."""
         fs_store.save("ds-001", sample_meta, sample_arrays)
         artifact_bytes = fs_store.get_artifact_bytes("ds-001")
@@ -289,7 +317,9 @@ class TestLocalFSDatasetStore:
         assert fs_store.get_artifact_bytes("nonexistent") is None
 
     @pytest.mark.unit
-    def test_exists_true(self, fs_store: LocalFSDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]):
+    def test_exists_true(
+        self, fs_store: LocalFSDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]
+    ):
         """Test exists returns True for saved dataset."""
         fs_store.save("ds-001", sample_meta, sample_arrays)
         assert fs_store.exists("ds-001") is True
@@ -300,7 +330,9 @@ class TestLocalFSDatasetStore:
         assert fs_store.exists("nonexistent") is False
 
     @pytest.mark.unit
-    def test_exists_partial_files(self, fs_store: LocalFSDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]):
+    def test_exists_partial_files(
+        self, fs_store: LocalFSDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]
+    ):
         """Test exists returns False when only one file exists."""
         fs_store.save("ds-001", sample_meta, sample_arrays)
 
@@ -308,7 +340,9 @@ class TestLocalFSDatasetStore:
         assert fs_store.exists("ds-001") is False
 
     @pytest.mark.unit
-    def test_delete_existing(self, fs_store: LocalFSDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]):
+    def test_delete_existing(
+        self, fs_store: LocalFSDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]
+    ):
         """Test deleting an existing dataset returns True."""
         fs_store.save("ds-001", sample_meta, sample_arrays)
         deleted = fs_store.delete("ds-001")
@@ -325,7 +359,9 @@ class TestLocalFSDatasetStore:
         assert deleted is False
 
     @pytest.mark.unit
-    def test_delete_partial_files(self, fs_store: LocalFSDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]):
+    def test_delete_partial_files(
+        self, fs_store: LocalFSDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]
+    ):
         """Test deleting when only meta file exists."""
         fs_store.save("ds-001", sample_meta, sample_arrays)
 
@@ -340,7 +376,9 @@ class TestLocalFSDatasetStore:
         assert fs_store.list_datasets() == []
 
     @pytest.mark.unit
-    def test_list_datasets_multiple(self, fs_store: LocalFSDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]):
+    def test_list_datasets_multiple(
+        self, fs_store: LocalFSDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]
+    ):
         """Test listing multiple datasets."""
         for i in range(5):
             fs_store.save(f"ds-00{i}", sample_meta, sample_arrays)
@@ -350,7 +388,9 @@ class TestLocalFSDatasetStore:
         assert datasets == sorted(datasets)
 
     @pytest.mark.unit
-    def test_list_datasets_with_limit(self, fs_store: LocalFSDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]):
+    def test_list_datasets_with_limit(
+        self, fs_store: LocalFSDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]
+    ):
         """Test listing datasets with limit."""
         for i in range(10):
             fs_store.save(f"ds-{i:03d}", sample_meta, sample_arrays)
@@ -359,7 +399,9 @@ class TestLocalFSDatasetStore:
         assert len(datasets) == 3
 
     @pytest.mark.unit
-    def test_list_datasets_with_offset(self, fs_store: LocalFSDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]):
+    def test_list_datasets_with_offset(
+        self, fs_store: LocalFSDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]
+    ):
         """Test listing datasets with offset."""
         for i in range(10):
             fs_store.save(f"ds-{i:03d}", sample_meta, sample_arrays)
@@ -369,7 +411,9 @@ class TestLocalFSDatasetStore:
         assert datasets[0] == "ds-005"
 
     @pytest.mark.unit
-    def test_list_datasets_with_limit_and_offset(self, fs_store: LocalFSDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]):
+    def test_list_datasets_with_limit_and_offset(
+        self, fs_store: LocalFSDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]
+    ):
         """Test listing datasets with both limit and offset."""
         for i in range(10):
             fs_store.save(f"ds-{i:03d}", sample_meta, sample_arrays)
@@ -517,7 +561,9 @@ class TestLocalFSEdgeCases:
         assert "not JSON serializable" in str(exc_info.value)
 
     @pytest.mark.unit
-    def test_get_meta_skips_datetime_conversion_for_non_string(self, fs_store: LocalFSDatasetStore, sample_arrays: dict[str, np.ndarray]):
+    def test_get_meta_skips_datetime_conversion_for_non_string(
+        self, fs_store: LocalFSDatasetStore, sample_arrays: dict[str, np.ndarray]
+    ):
         """Test get_meta skips datetime conversion when created_at is already parsed or not a string."""
         import json
 
@@ -547,7 +593,9 @@ class TestLocalFSEdgeCases:
         assert retrieved is not None
 
     @pytest.mark.unit
-    def test_delete_only_npz_exists(self, fs_store: LocalFSDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]):
+    def test_delete_only_npz_exists(
+        self, fs_store: LocalFSDatasetStore, sample_meta: DatasetMeta, sample_arrays: dict[str, np.ndarray]
+    ):
         """Test delete when only NPZ file exists (meta was deleted)."""
         fs_store.save("ds-partial-npz", sample_meta, sample_arrays)
 
@@ -558,11 +606,12 @@ class TestLocalFSEdgeCases:
         assert not (fs_store.base_path / "ds-partial-npz.npz").exists()
 
     @pytest.mark.unit
-    def test_get_meta_with_timezone_aware_datetime(self, fs_store: LocalFSDatasetStore, sample_arrays: dict[str, np.ndarray]):
+    def test_get_meta_with_timezone_aware_datetime(
+        self, fs_store: LocalFSDatasetStore, sample_arrays: dict[str, np.ndarray]
+    ):
         """Test get_meta correctly deserializes timezone-aware datetime."""
-        from datetime import timezone
 
-        tz_aware_time = datetime(2026, 6, 15, 10, 30, 45, tzinfo=timezone.utc)
+        tz_aware_time = datetime(2026, 6, 15, 10, 30, 45, tzinfo=UTC)
         meta = DatasetMeta(
             dataset_id="tz-test",
             generator="test",
@@ -600,7 +649,11 @@ class TestDatasetStoreAbstractMethods:
         """Test that all abstract methods are defined."""
         import inspect
 
-        abstract_methods = [name for name, method in inspect.getmembers(DatasetStore, predicate=inspect.isfunction) if getattr(method, "__isabstractmethod__", False)]
+        abstract_methods = [
+            name
+            for name, method in inspect.getmembers(DatasetStore, predicate=inspect.isfunction)
+            if getattr(method, "__isabstractmethod__", False)
+        ]
 
         expected_methods = ["save", "get_meta", "get_artifact_bytes", "exists", "delete", "list_datasets"]
         for method in expected_methods:

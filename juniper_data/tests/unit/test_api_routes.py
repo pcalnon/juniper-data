@@ -288,7 +288,9 @@ class TestDatasetsEndpointEdgeCases:
         assert data["dataset_id"] == dataset_id
         assert data["generator"] == "spiral"
 
-    def test_preview_stacks_train_test_when_no_full_arrays(self, memory_store: InMemoryDatasetStore, test_settings: Settings) -> None:
+    def test_preview_stacks_train_test_when_no_full_arrays(
+        self, memory_store: InMemoryDatasetStore, test_settings: Settings
+    ) -> None:
         """Test preview stacks X_train/X_test when X_full/y_full not available."""
         from datetime import datetime
 

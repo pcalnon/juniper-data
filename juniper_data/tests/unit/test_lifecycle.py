@@ -8,7 +8,7 @@ Tests for:
 - Statistics
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import numpy as np
 import pytest
@@ -28,7 +28,7 @@ def _create_test_meta(
     created_at: datetime | None = None,
 ) -> DatasetMeta:
     """Create a test DatasetMeta instance."""
-    now = created_at or datetime.now(timezone.utc)
+    now = created_at or datetime.now(UTC)
     expires_at = None
     if ttl_seconds is not None:
         expires_at = now + timedelta(seconds=ttl_seconds)
@@ -128,7 +128,7 @@ class TestDatasetTTL:
 
     def test_is_expired_true_for_past_expiry(self, store: InMemoryDatasetStore) -> None:
         """Dataset with past expiry is expired."""
-        past_time = datetime.now(timezone.utc) - timedelta(hours=2)
+        past_time = datetime.now(UTC) - timedelta(hours=2)
         meta = _create_test_meta("ds-1", ttl_seconds=3600, created_at=past_time)
         store.save("ds-1", meta, _create_test_arrays())
 
@@ -143,7 +143,7 @@ class TestDatasetTTL:
 
     def test_delete_expired_removes_expired_datasets(self, store: InMemoryDatasetStore) -> None:
         """delete_expired removes only expired datasets."""
-        past_time = datetime.now(timezone.utc) - timedelta(hours=2)
+        past_time = datetime.now(UTC) - timedelta(hours=2)
         meta1 = _create_test_meta("expired-1", ttl_seconds=3600, created_at=past_time)
         meta2 = _create_test_meta("expired-2", ttl_seconds=3600, created_at=past_time)
         meta3 = _create_test_meta("valid-1", ttl_seconds=3600)
@@ -170,7 +170,7 @@ class TestDatasetFiltering:
     @pytest.fixture
     def populated_store(self, store: InMemoryDatasetStore) -> InMemoryDatasetStore:
         """Create a store with multiple datasets for filtering tests."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         datasets = [
             ("ds-1", "spiral", 100, ["train", "v1"], now - timedelta(days=5)),
@@ -207,13 +207,13 @@ class TestDatasetFiltering:
 
     def test_filter_by_created_after(self, populated_store: InMemoryDatasetStore) -> None:
         """Filter datasets created after a date."""
-        cutoff = datetime.now(timezone.utc) - timedelta(days=2)
+        cutoff = datetime.now(UTC) - timedelta(days=2)
         datasets, total = populated_store.filter_datasets(created_after=cutoff)
         assert total == 3
 
     def test_filter_by_created_before(self, populated_store: InMemoryDatasetStore) -> None:
         """Filter datasets created before a date."""
-        cutoff = datetime.now(timezone.utc) - timedelta(days=2)
+        cutoff = datetime.now(UTC) - timedelta(days=2)
         datasets, total = populated_store.filter_datasets(created_before=cutoff)
         assert total == 2
 
@@ -239,7 +239,7 @@ class TestDatasetFiltering:
 
     def test_filter_excludes_expired_by_default(self, store: InMemoryDatasetStore) -> None:
         """Expired datasets are excluded by default."""
-        past_time = datetime.now(timezone.utc) - timedelta(hours=2)
+        past_time = datetime.now(UTC) - timedelta(hours=2)
         meta_expired = _create_test_meta("expired", ttl_seconds=3600, created_at=past_time)
         meta_valid = _create_test_meta("valid")
 
@@ -252,7 +252,7 @@ class TestDatasetFiltering:
 
     def test_filter_includes_expired_when_requested(self, store: InMemoryDatasetStore) -> None:
         """Expired datasets are included when requested."""
-        past_time = datetime.now(timezone.utc) - timedelta(hours=2)
+        past_time = datetime.now(UTC) - timedelta(hours=2)
         meta_expired = _create_test_meta("expired", ttl_seconds=3600, created_at=past_time)
         meta_valid = _create_test_meta("valid")
 
@@ -361,7 +361,7 @@ class TestDatasetStats:
 
     def test_stats_counts_expired(self, store: InMemoryDatasetStore) -> None:
         """Stats includes expired count."""
-        past_time = datetime.now(timezone.utc) - timedelta(hours=2)
+        past_time = datetime.now(UTC) - timedelta(hours=2)
         meta_expired = _create_test_meta("expired", ttl_seconds=3600, created_at=past_time)
         meta_valid = _create_test_meta("valid")
 

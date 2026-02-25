@@ -81,64 +81,21 @@ repos:
         name: Detect private keys
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # Python Code Formatting - Black
+  # Python Linting & Formatting - Ruff
+  # Replaces: black, isort, flake8, flake8-bugbear, flake8-comprehensions,
+  #           flake8-simplify, pyupgrade
+  # Configuration: [tool.ruff] in pyproject.toml
   # ═══════════════════════════════════════════════════════════════════════════
-  - repo: https://github.com/psf/black
-    rev: 25.1.0
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.2
     hooks:
-      - id: black
-        name: Format with Black
-        args:
-          - --line-length=512
+      - id: ruff
+        name: Lint with Ruff
+        args: [--fix]
         files: ^juniper_data/.*\.py$
-
-  # ═══════════════════════════════════════════════════════════════════════════
-  # Python Import Sorting - isort
-  # ═══════════════════════════════════════════════════════════════════════════
-  - repo: https://github.com/pycqa/isort
-    rev: 7.0.0
-    hooks:
-      - id: isort
-        name: Sort imports with isort
-        args:
-          - --profile=black
-          - --line-length=512
+      - id: ruff-format
+        name: Format with Ruff
         files: ^juniper_data/.*\.py$
-
-  # ═══════════════════════════════════════════════════════════════════════════
-  # Python Linting - Flake8 (Production Code)
-  # ═══════════════════════════════════════════════════════════════════════════
-  - repo: https://github.com/pycqa/flake8
-    rev: 7.1.1
-    hooks:
-      - id: flake8
-        name: Lint production code with Flake8
-        args:
-          - --max-line-length=512
-          # Removed E722 (bare except) and F401 (unused imports) from ignores
-          - --extend-ignore=E203,E265,E266,E501,W503,E402,E226,C409,C901,B008,B904,B905,B907
-          - --max-complexity=15
-          - --select=B,C,E,F,W,T4,B9
-        additional_dependencies:
-          - flake8-bugbear>=24.0.0
-          - flake8-comprehensions>=3.14.0
-          - flake8-simplify>=0.21.0
-        files: ^juniper_data/(?!tests/).*\.py$
-
-      # Flake8 for tests with relaxed rules
-      - id: flake8
-        name: Lint tests with Flake8 (relaxed)
-        args:
-          - --max-line-length=512
-          # More permissive for test code, but still catch unused imports and f-strings
-          - --extend-ignore=E203,E265,E266,E501,W503,E402,E226,C409,C901,B008,B904,B905,B907,SIM117
-          - --max-complexity=20
-          - --select=B,C,E,F,W,T4,B9
-        additional_dependencies:
-          - flake8-bugbear>=24.0.0
-          - flake8-comprehensions>=3.14.0
-          - flake8-simplify>=0.21.0
-        files: ^juniper_data/tests/.*\.py$
 
   # ═══════════════════════════════════════════════════════════════════════════
   # Python Type Checking - MyPy
@@ -189,18 +146,6 @@ repos:
         name: Lint YAML files
         args: [--format, parsable, -d, relaxed]
         types: [yaml]
-
-  # ═══════════════════════════════════════════════════════════════════════════
-  # Python Syntax Modernization - pyupgrade
-  # ═══════════════════════════════════════════════════════════════════════════
-  - repo: https://github.com/asottile/pyupgrade
-    rev: v3.21.2
-    hooks:
-      - id: pyupgrade
-        name: Upgrade Python syntax
-        args:
-          - --py311-plus
-        files: ^juniper_data/.*\.py$
 
   # ═══════════════════════════════════════════════════════════════════════════
   # Code Coverage Gate - Per-module (85%) and Aggregate (95%)

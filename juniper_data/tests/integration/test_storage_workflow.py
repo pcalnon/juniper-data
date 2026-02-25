@@ -38,7 +38,9 @@ def spiral_params() -> SpiralParams:
     )
 
 
-def create_dataset_meta(dataset_id: str, params: SpiralParams, X: np.ndarray, y: np.ndarray, n_train: int, n_test: int) -> DatasetMeta:
+def create_dataset_meta(
+    dataset_id: str, params: SpiralParams, X: np.ndarray, y: np.ndarray, n_train: int, n_test: int
+) -> DatasetMeta:
     """Helper to create DatasetMeta from generated data."""
     n_classes = y.shape[1] if len(y.shape) > 1 else len(np.unique(y))
     class_counts = np.sum(y, axis=0).astype(int) if len(y.shape) > 1 else np.bincount(y.astype(int))

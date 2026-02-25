@@ -2,7 +2,7 @@
 
 import io
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -26,7 +26,7 @@ def sample_meta() -> DatasetMeta:
         n_train=80,
         n_test=20,
         class_distribution={"0": 50, "1": 50},
-        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
     )
 
 
@@ -63,7 +63,9 @@ def mock_psycopg2():
     with patch.dict("sys.modules", {"psycopg2": mock_pg, "psycopg2.extras": mock_pg.extras}):
         with patch("juniper_data.storage.postgres_store.POSTGRES_AVAILABLE", True):
             with patch("juniper_data.storage.postgres_store.psycopg2", mock_pg):
-                with patch("juniper_data.storage.postgres_store.RealDictCursor", mock_pg.extras.RealDictCursor, create=True):
+                with patch(
+                    "juniper_data.storage.postgres_store.RealDictCursor", mock_pg.extras.RealDictCursor, create=True
+                ):
                     yield mock_pg, mock_conn, mock_cursor
 
 
@@ -87,7 +89,14 @@ class TestPostgresDatasetStoreInit:
         mock_pg, _, _ = mock_psycopg2
         from juniper_data.storage.postgres_store import PostgresDatasetStore
 
-        store = PostgresDatasetStore(host="db.example.com", port=5433, database="mydb", user="admin", password="secret", artifact_path=tmp_path / "data")
+        store = PostgresDatasetStore(
+            host="db.example.com",
+            port=5433,
+            database="mydb",
+            user="admin",
+            password="secret",
+            artifact_path=tmp_path / "data",
+        )
         assert store._conn_params["host"] == "db.example.com"
         assert store._conn_params["port"] == "5433"
         assert store._conn_params["database"] == "mydb"
@@ -98,7 +107,9 @@ class TestPostgresDatasetStoreInit:
         """Initialize with connection string overrides individual params."""
         from juniper_data.storage.postgres_store import PostgresDatasetStore
 
-        store = PostgresDatasetStore(connection_string="postgresql://user:pass@host/db", artifact_path=tmp_path / "data")
+        store = PostgresDatasetStore(
+            connection_string="postgresql://user:pass@host/db", artifact_path=tmp_path / "data"
+        )
         assert store._conn_params == {"dsn": "postgresql://user:pass@host/db"}
 
     def test_init_without_auto_schema(self, mock_psycopg2, tmp_path) -> None:
@@ -154,7 +165,7 @@ class TestPostgresDatasetStoreMetaConversion:
             "n_test": 20,
             "class_distribution": {"0": 50, "1": 50},
             "artifact_formats": ["npz"],
-            "created_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+            "created_at": datetime(2026, 1, 1, tzinfo=UTC),
             "checksum": None,
             "tags": ["test"],
             "ttl_seconds": None,
@@ -184,7 +195,7 @@ class TestPostgresDatasetStoreMetaConversion:
             "n_test": 20,
             "class_distribution": '{"0": 50, "1": 50}',
             "artifact_formats": ["npz"],
-            "created_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+            "created_at": datetime(2026, 1, 1, tzinfo=UTC),
             "checksum": None,
             "tags": None,
             "ttl_seconds": None,
@@ -241,7 +252,7 @@ class TestPostgresDatasetStoreGetMeta:
             "n_test": 20,
             "class_distribution": {"0": 50, "1": 50},
             "artifact_formats": ["npz"],
-            "created_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+            "created_at": datetime(2026, 1, 1, tzinfo=UTC),
             "checksum": None,
             "tags": [],
             "ttl_seconds": None,
@@ -437,7 +448,7 @@ class TestPostgresDatasetStoreListAllMetadata:
                 "n_test": 20,
                 "class_distribution": {"0": 50, "1": 50},
                 "artifact_formats": ["npz"],
-                "created_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+                "created_at": datetime(2026, 1, 1, tzinfo=UTC),
                 "checksum": None,
                 "tags": [],
                 "ttl_seconds": None,

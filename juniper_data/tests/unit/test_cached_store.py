@@ -1,6 +1,6 @@
 """Unit tests for CachedDatasetStore."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -36,7 +36,7 @@ def sample_meta() -> DatasetMeta:
         n_train=80,
         n_test=20,
         class_distribution={"0": 50, "1": 50},
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
 
 
@@ -107,7 +107,7 @@ class TestCachedDatasetStore:
             n_train=160,
             n_test=40,
             class_distribution={"0": 100, "1": 100},
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         cache_store.save("test-1", cache_meta, sample_arrays)
 

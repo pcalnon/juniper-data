@@ -1,7 +1,7 @@
 """Unit tests for KaggleDatasetStore."""
 
 import csv
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -26,7 +26,7 @@ def sample_meta() -> DatasetMeta:
         n_train=80,
         n_test=20,
         class_distribution={"0": 50, "1": 50},
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
 
 

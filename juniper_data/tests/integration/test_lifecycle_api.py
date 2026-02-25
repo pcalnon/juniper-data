@@ -9,7 +9,7 @@ Tests for:
 - POST /v1/datasets/cleanup-expired
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -179,7 +179,9 @@ class TestBatchDelete:
         response = lifecycle_client.post("/v1/datasets", json=_create_spiral_request(seed=42))
         existing_id = response.json()["dataset_id"]
 
-        response = lifecycle_client.post("/v1/datasets/batch-delete", json={"dataset_ids": [existing_id, "fake-id-1", "fake-id-2"]})
+        response = lifecycle_client.post(
+            "/v1/datasets/batch-delete", json={"dataset_ids": [existing_id, "fake-id-1", "fake-id-2"]}
+        )
 
         assert response.status_code == 200
         data = response.json()
@@ -196,7 +198,9 @@ class TestUpdateTags:
         response = lifecycle_client.post("/v1/datasets", json=_create_spiral_request(tags=["original"]))
         dataset_id = response.json()["dataset_id"]
 
-        response = lifecycle_client.patch(f"/v1/datasets/{dataset_id}/tags", json={"add_tags": ["new-tag-1", "new-tag-2"]})
+        response = lifecycle_client.patch(
+            f"/v1/datasets/{dataset_id}/tags", json={"add_tags": ["new-tag-1", "new-tag-2"]}
+        )
 
         assert response.status_code == 200
         tags = response.json()["tags"]
@@ -221,7 +225,9 @@ class TestUpdateTags:
         response = lifecycle_client.post("/v1/datasets", json=_create_spiral_request(tags=["a", "b"]))
         dataset_id = response.json()["dataset_id"]
 
-        response = lifecycle_client.patch(f"/v1/datasets/{dataset_id}/tags", json={"add_tags": ["c"], "remove_tags": ["a"]})
+        response = lifecycle_client.patch(
+            f"/v1/datasets/{dataset_id}/tags", json={"add_tags": ["c"], "remove_tags": ["a"]}
+        )
 
         assert response.status_code == 200
         tags = response.json()["tags"]
@@ -276,14 +282,16 @@ class TestCleanupExpired:
         assert response.status_code == 200
         assert response.json() == []
 
-    def test_cleanup_expired_with_ttl(self, lifecycle_client: TestClient, lifecycle_store: InMemoryDatasetStore) -> None:
+    def test_cleanup_expired_with_ttl(
+        self, lifecycle_client: TestClient, lifecycle_store: InMemoryDatasetStore
+    ) -> None:
         """Cleanup datasets with expired TTL requires manipulating store directly."""
         response = lifecycle_client.post("/v1/datasets", json=_create_spiral_request(seed=1, ttl_seconds=3600))
         dataset_id = response.json()["dataset_id"]
 
         meta = lifecycle_store.get_meta(dataset_id)
         assert meta is not None
-        meta.expires_at = datetime.now(timezone.utc) - timedelta(hours=1)
+        meta.expires_at = datetime.now(UTC) - timedelta(hours=1)
         lifecycle_store.update_meta(dataset_id, meta)
 
         response = lifecycle_client.post("/v1/datasets/cleanup-expired")

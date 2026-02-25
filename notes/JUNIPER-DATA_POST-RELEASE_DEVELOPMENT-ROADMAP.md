@@ -338,50 +338,53 @@ All tests pass with the PyPI-installed package (JuniperData 659, JuniperCascor 2
 
 ### RD-012: Consider Migration from flake8 to ruff
 
-**Priority**: LOW | **Status**: DEFERRED | **Effort**: Medium (3-5 hours)
+**Priority**: LOW | **Status**: COMPLETE (2026-02-25) | **Effort**: Medium (3-5 hours)
 **Source**: TEST_SUITE_CICD_ENHANCEMENT_DEVELOPMENT_PLAN.md (P4-T5), TEST_SUITE_AUDIT_DATA_AMP_.md
 
 **Problem**: flake8 with multiple plugins (bugbear, etc.) is slower than ruff and requires more configuration. ruff is a drop-in replacement that combines flake8, isort, pyupgrade, and more.
 
-**Required Actions**:
+**Resolution** (Option B — Full cutover):
 
-- [ ] Evaluate ruff compatibility with current flake8 rules
-- [ ] Create `ruff.toml` or `[tool.ruff]` section in `pyproject.toml`
-- [ ] Replace flake8 + isort hooks in `.pre-commit-config.yaml` with ruff
-- [ ] Verify CI pipeline works with ruff
-- [ ] Remove flake8 configuration files (`.flake8`)
+- [x] Evaluated ruff compatibility with current flake8 rules — all rules map cleanly
+- [x] Created `[tool.ruff]` section in `pyproject.toml` with equivalent rule configuration
+- [x] Replaced black + isort + flake8 + pyupgrade hooks in `.pre-commit-config.yaml` with `ruff-pre-commit` (v0.15.2)
+- [x] Verified all 700 tests pass with 99.40% coverage after migration
+- [x] Removed `.flake8` configuration file
+- [x] Removed `[tool.black]` and `[tool.isort]` sections from `pyproject.toml`
+- [x] Updated dev dependencies: removed black, isort, flake8, flake8-bugbear, flake8-comprehensions, flake8-simplify; added ruff>=0.9.0
+- [x] Updated AGENTS.md Quick Reference and Dependencies sections
 
-**Design Options**:
+**Rule Mapping** (flake8 → ruff):
 
-1. **Option A (Recommended)**: Gradual migration — run ruff alongside flake8 initially
-2. **Option B**: Full cutover — replace all flake8/isort with ruff in one change
-3. **Option C**: Stay with flake8 — current setup works, migration is optional
-
-**Feasibility**: High. ruff supports all configured flake8 rules. Migration is typically straightforward.
-
-**Post-Migration Note**: The standalone repo's CI pipeline is simpler and fully independent, making this a good time to pursue a tooling migration. The `juniper-cascor` repo already went through CI normalization during its Phase 5 extraction (pip-based install, shellcheck fixes, Bandit skip codes). A ruff migration on `juniper-data` would establish a pattern that could be adopted across other Juniper repos. Note that `juniper-cascor-client` and `juniper-cascor-worker` already use 120-char line length — alignment across repos would benefit from doing RD-012 and RD-013 together.
+| flake8 Plugin | ruff Rule Prefix | Notes |
+|---|---|---|
+| pycodestyle (E/W) | E, W | Direct equivalent |
+| pyflakes (F) | F | Direct equivalent |
+| flake8-bugbear (B) | B | Direct equivalent |
+| flake8-comprehensions (C) | C4 | Prefix changed |
+| flake8-simplify (SIM) | SIM | Direct equivalent |
+| flake8-print (T4) | T20 | Prefix changed |
+| isort | I | Built-in to ruff |
+| pyupgrade | UP | Built-in to ruff |
 
 ---
 
 ### RD-013: Review Line Length Configuration
 
-**Priority**: LOW | **Status**: DEFERRED | **Effort**: Small (1-2 hours)
+**Priority**: LOW | **Status**: COMPLETE (2026-02-25) | **Effort**: Small (1-2 hours)
 **Source**: TEST_SUITE_CICD_ENHANCEMENT_DEVELOPMENT_PLAN.md (P4-T4), CFG-002
 
 **Problem**: Line length is set to 512 characters in `pyproject.toml` (black/isort) and `.flake8`. The CLAUDE.md says 120. 512 is excessively permissive and effectively disables line-length enforcement.
 
-**Required Actions**:
+**Resolution**:
 
-- [ ] Decide on target line length (120 is standard, 88 is black default)
-- [ ] Run black with chosen line length to identify affected files
-- [ ] Update `pyproject.toml`, `.flake8`, and `.pre-commit-config.yaml`
-- [ ] Fix any resulting formatting issues
+- [x] Decided on 120 line length — standard for modern Python, matches `juniper-cascor-client` and `juniper-cascor-worker`
+- [x] Set `line-length = 120` in `[tool.ruff]` section (single source of truth)
+- [x] Ran `ruff format` to reformat all files — 24 files reformatted to 120 line length
+- [x] Ran `ruff check --fix` to auto-fix 54 lint issues (UP017 timezone.utc → datetime.UTC, I001 import sorting, etc.)
+- [x] Verified all 700 tests pass with 99.40% coverage after reformatting
 
-**Validation**: Confirmed `pyproject.toml` uses 512 for black and isort. `.flake8` also uses 512. CLAUDE.md documents 120.
-
-**Best Practice Note**: 120 characters is widely accepted for modern development. 512 defeats the purpose of line length enforcement.
-
-**Post-Migration Note**: The newer Juniper packages (`juniper-cascor-client`, `juniper-cascor-worker`) already use 120-char line length. Aligning `juniper-data` to 120 would establish consistency across the polyrepo ecosystem. The parent `CLAUDE.md` documents "512 for linters, 120 for flake8" — this should be reconciled across all repos as part of a cross-project style normalization effort. Consider tackling this alongside RD-012 (ruff migration).
+**Scope**: Completed alongside RD-012 (ruff migration). The ruff config in `pyproject.toml` is now the single source of truth for line length — the old `[tool.black]` (512), `[tool.isort]` (512), `.flake8` (512), and `.pre-commit-config.yaml` args (512) have all been removed.
 
 ---
 
@@ -547,8 +550,8 @@ Each documented change was validated by:
 | RD-005 | Reconcile coverage    | **COMPLETE** — 95% aggregate + 85% per-module enforced      |
 | RD-006 | Security tests        | **COMPLETE** — 41 tests across 5 attack vector classes      |
 | RD-007 | Coverage improvement  | **COMPLETE** — All 51 modules >= 85%, was config issue      |
-| RD-012 | flake8→ruff migration | Optional but beneficial; good timing in standalone repo     |
-| RD-013 | Line length review    | Best practice alignment needed; coordinate across repos     |
+| RD-012 | flake8→ruff migration | **COMPLETE** — Full cutover to ruff v0.15.2, all rules mapped |
+| RD-013 | Line length review    | **COMPLETE** — Normalized to 120, 24 files reformatted     |
 | RD-018 | Fix broken symlinks   | **COMPLETE** — Redirect notes + removed history symlinks    |
 
 ### Items with Concerns
@@ -586,7 +589,13 @@ Each documented change was validated by:
 
 **PHASE COMPLETE** — No design needed. See RD-010 and RD-011 completion summaries.
 
-### Phase 4-5 Design
+### Phase 4 Design (CI/CD Tooling Modernization)
+
+**RD-012 (flake8→ruff)**: **COMPLETE** — Chose Option B (full cutover). Replaced 5 pre-commit hooks (black, isort, flake8 x2, pyupgrade) with 2 ruff hooks (`ruff check --fix` + `ruff format`). All flake8 rules mapped to ruff equivalents via `[tool.ruff.lint]` in pyproject.toml. Per-file-ignores preserve the production/test split (B008 for api/routes, F841+C901 for tests). Removed `.flake8`, `[tool.black]`, and `[tool.isort]` sections.
+
+**RD-013 (line length)**: **COMPLETE** — Normalized from 512 to 120 (matching juniper-cascor-client, juniper-cascor-worker, and AGENTS.md documentation). Single source of truth in `[tool.ruff] line-length = 120`. 24 files reformatted; 54 auto-fixable lint issues resolved (UP017 timezone.utc, import sorting, unused imports).
+
+### Phase 5 Design
 
 Detailed in the Design Options sections of each item above, with post-migration notes.
 
@@ -652,8 +661,8 @@ CAN-000 through CAN-021 (22 enhancement items) documented in PRE-DEPLOYMENT_ROAD
 | ------ | ------------------------ | -------- | ------ | -------------------- |
 | RD-008 | Fix SIM117 violations    | LOW      | S-M    | Code readability     |
 | RD-009 | Performance test infra   | LOW      | M      | Regression detection |
-| RD-012 | flake8→ruff migration    | LOW      | M      | Dev velocity         |
-| RD-013 | Line length review       | LOW      | S      | Code standards       |
+| RD-012 | flake8→ruff migration    | ~~LOW~~  | ~~M~~  | **COMPLETE**         |
+| RD-013 | Line length review       | ~~LOW~~  | ~~S~~  | **COMPLETE**         |
 
 ### Deferred (Future)
 
@@ -678,6 +687,8 @@ CAN-000 through CAN-021 (22 enhancement items) documented in PRE-DEPLOYMENT_ROAD
 | RD-005 | Reconcile coverage       | 2026-02-24      | Verified 99.40%; raised thresholds to 95% aggregate + 85% per-module              |
 | RD-007 | Coverage improvement     | 2026-02-24      | All 51 modules >= 85%; 0% modules were config artifact, not missing tests         |
 | RD-006 | Security boundary tests  | 2026-02-24      | 41 tests across 5 classes; 700 total tests; documented path traversal findings    |
+| RD-012 | flake8→ruff migration    | 2026-02-25      | Full cutover: ruff v0.15.2 replaces black+isort+flake8+pyupgrade; removed `.flake8` |
+| RD-013 | Line length normalization| 2026-02-25      | 512→120; 24 files reformatted; 54 auto-fixes (UP017, I001, F401, UP037)          |
 
 ---
 
@@ -686,7 +697,7 @@ CAN-000 through CAN-021 (22 enhancement items) documented in PRE-DEPLOYMENT_ROAD
 | Category                             | Count |
 | ------------------------------------ | ----- |
 | Total Items                          | 18    |
-| **COMPLETE**                         | 10    |
+| **COMPLETE**                         | 12    |
 | NOT STARTED                          | 2     |
 | DEFERRED                             | 4     |
 | PENDING VERIFICATION                 | 0     |
@@ -694,7 +705,7 @@ CAN-000 through CAN-021 (22 enhancement items) documented in PRE-DEPLOYMENT_ROAD
 | Phase 1 (Housekeeping)              | 6     |
 | Phase 2 (Quality)                    | 4     |
 | Phase 3 (Client Library)             | 2 (both COMPLETE) |
-| Phase 4 (Tooling)                    | 3     |
+| Phase 4 (Tooling)                    | 3 (2 COMPLETE, 1 NOT STARTED) |
 | Phase 5 (Advanced)                   | 3     |
 
 ---
@@ -750,3 +761,4 @@ Items identified during the JuniperCanopy comprehensive notes/ audit that have J
 | 2026-02-24 | AI Agent               | RD-004 COMPLETE: redefined v0.5.0 scope as Quality + Tooling (RD-006 security tests + RD-012/013 flake8→ruff + line length normalization); updated release notes What's Next with concrete v0.5.0 plan |
 | 2026-02-24 | AI Agent               | RD-005 + RD-007 COMPLETE: raised aggregate fail-under to 95% (pyproject.toml + CI), added 85% per-module enforcement via `scripts/check_module_coverage.py`, added pre-push hook, confirmed all 51 modules >= 96%, no test files in metrics |
 | 2026-02-24 | AI Agent               | RD-006 COMPLETE: created `test_security_boundaries.py` with 41 tests across 5 classes (path traversal, CSV import path security, input bounds, resource exhaustion, API boundaries); 700 total tests; documented path traversal findings in LocalFSDatasetStore and CsvImportGenerator |
+| 2026-02-25 | AI Agent               | RD-012 + RD-013 COMPLETE: migrated from flake8+isort+black+pyupgrade to ruff v0.15.2 (full cutover); normalized line length from 512 to 120; replaced 5 pre-commit hooks with 2 ruff hooks; removed `.flake8`, `[tool.black]`, `[tool.isort]` sections; updated dev dependencies; 24 files reformatted, 54 auto-fixes applied; all 700 tests pass at 99.40% coverage |

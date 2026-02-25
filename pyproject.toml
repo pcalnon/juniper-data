@@ -60,16 +60,11 @@ test = [
     "juniper-data-client>=0.3.0",
 ]
 dev = [
-    "black>=23.0.0",
-    "isort>=5.12.0",
+    "ruff>=0.9.0",
     "mypy>=1.0.0",
-    "flake8>=7.0.0",
     "bandit[sarif]>=1.7.9",
     "pip-audit>=2.7.0",
     "pre-commit>=3.0.0",
-    "flake8-bugbear>=24.0.0",
-    "flake8-comprehensions>=3.14.0",
-    "flake8-simplify>=0.21.0",
 ]
 all = [
     "juniper-data[api,arc-agi,dev,test]",
@@ -79,34 +74,53 @@ all = [
 where = ["."]
 include = ["juniper_data*"]
 
-[tool.black]
-line-length = 512
-# target-version = ["py311", "py312", "py313", "py314"]  # py314 not yet supported by black
-target-version = ["py311", "py312", "py313"]
+[tool.ruff]
+line-length = 120
+target-version = "py311"
 
-include = '\.pyi?$'
-extend-exclude = '''
-/(
-    \.git
-    | \.pytest_cache
-    | \.trunk
-    | __pycache__
-    | data
-    | logs
-    | reports
-    | htmlcov
-    | images
-)/
-'''
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "B",      # flake8-bugbear (includes B9xx opinionated)
+    "C4",     # flake8-comprehensions
+    "I",      # isort (replaces standalone isort)
+    "UP",     # pyupgrade (replaces standalone pyupgrade)
+    "SIM",    # flake8-simplify
+    "T20",    # flake8-print
+]
+ignore = [
+    "E203",   # whitespace before ':' (formatter conflict)
+    "E265",   # block comment should start with '# '
+    "E266",   # too many leading '#' for block comment
+    "E501",   # line too long (formatter handles this)
+    "E402",   # module level import not at top of file
+    "E226",   # missing whitespace around arithmetic operator
+    "C409",   # unnecessary-literal-within-tuple-call (style preference)
+    "SIM102", # collapsible-if (style preference)
+    "SIM105", # use-contextlib-suppress (style preference)
+    "SIM117", # multiple-with-statements (style preference, keeps code clearer)
+    "B904",   # raise-without-from-inside-except
+    "B905",   # zip-without-explicit-strict
+]
 
-[tool.isort]
-profile = "black"
-line_length = 512
-skip = [".git", "__pycache__", ".pytest_cache", ".trunk", "data", "logs", "reports", "htmlcov"]
-skip_glob = ["*/data/*", "*/logs/*", "*/reports/*"]
-known_first_party = ["juniper_data"]
-sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
-default_section = "THIRDPARTY"
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.per-file-ignores]
+"juniper_data/__main__.py" = ["T201"]
+"juniper_data/api/routes/*.py" = ["B008"]
+"juniper_data/tests/**/*.py" = ["F841", "C901"]
+"juniper_data/tests/fixtures/*.py" = ["T201"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["juniper_data"]
+section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
+
+[tool.ruff.format]
+quote-style = "double"
+line-ending = "lf"
 
 [tool.bandit]
 exclude_dirs = ["tests", "reports", "logs", "htmlcov", "data"]

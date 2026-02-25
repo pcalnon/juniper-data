@@ -60,7 +60,7 @@ class RedisDatasetStore(DatasetStore):
         self._default_ttl = default_ttl
 
         if connection_pool:
-            self._client: "redis.Redis[bytes]" = redis.Redis(connection_pool=connection_pool)
+            self._client: redis.Redis[bytes] = redis.Redis(connection_pool=connection_pool)
         else:
             self._client = redis.Redis(
                 host=host,

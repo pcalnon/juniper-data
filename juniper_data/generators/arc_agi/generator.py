@@ -90,7 +90,7 @@ class ArcAgiGenerator:
     def _load_from_huggingface(params: ArcAgiParams) -> list[dict]:
         """Load ARC tasks from Hugging Face Hub."""
         if not HF_AVAILABLE:
-            raise ImportError("Hugging Face datasets package not installed. " "Install with: pip install datasets")
+            raise ImportError("Hugging Face datasets package not installed. Install with: pip install datasets")
 
         # assert hf_load_dataset is not None
 

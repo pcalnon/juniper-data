@@ -1,14 +1,24 @@
 """Dataset endpoints for creating, listing, and retrieving datasets."""
 
 import io
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from juniper_data.core.dataset_id import generate_dataset_id
-from juniper_data.core.models import BatchDeleteRequest, BatchDeleteResponse, CreateDatasetRequest, CreateDatasetResponse, DatasetListResponse, DatasetMeta, DatasetStats, PreviewData, UpdateTagsRequest
+from juniper_data.core.models import (
+    BatchDeleteRequest,
+    BatchDeleteResponse,
+    CreateDatasetRequest,
+    CreateDatasetResponse,
+    DatasetListResponse,
+    DatasetMeta,
+    DatasetStats,
+    PreviewData,
+    UpdateTagsRequest,
+)
 from juniper_data.storage import DatasetStore
 
 from .generators import GENERATOR_REGISTRY
@@ -57,7 +67,7 @@ async def create_dataset(
     if request.generator not in GENERATOR_REGISTRY:
         raise HTTPException(
             status_code=400,
-            detail=f"Unknown generator '{request.generator}'. " f"Available: {list(GENERATOR_REGISTRY.keys())}",
+            detail=f"Unknown generator '{request.generator}'. Available: {list(GENERATOR_REGISTRY.keys())}",
         )
 
     generator_info = GENERATOR_REGISTRY[request.generator]
@@ -98,7 +108,7 @@ async def create_dataset(
     unique, counts = np.unique(class_labels, return_counts=True)
     class_distribution = {str(int(k)): int(v) for k, v in zip(unique, counts)}
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expires_at = None
     if request.ttl_seconds is not None:
         expires_at = now + timedelta(seconds=request.ttl_seconds)
@@ -155,7 +165,9 @@ async def list_datasets(
 async def filter_datasets(
     generator: str | None = Query(default=None, description="Filter by generator name"),
     tags: str | None = Query(default=None, description="Comma-separated list of tags to filter by"),
-    tags_match: str = Query(default="any", pattern="^(any|all)$", description="Tag matching mode: 'any' (OR) or 'all' (AND)"),
+    tags_match: str = Query(
+        default="any", pattern="^(any|all)$", description="Tag matching mode: 'any' (OR) or 'all' (AND)"
+    ),
     created_after: datetime | None = Query(default=None, description="Filter by creation date (after)"),
     created_before: datetime | None = Query(default=None, description="Filter by creation date (before)"),
     min_samples: int | None = Query(default=None, ge=1, description="Minimum number of samples"),

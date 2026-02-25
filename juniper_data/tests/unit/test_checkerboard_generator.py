@@ -145,7 +145,9 @@ class TestCheckerboardGenerator:
         result = CheckerboardGenerator.generate(params)
 
         corner_00 = result["X_full"][(result["X_full"][:, 0] < 0.25) & (result["X_full"][:, 1] < 0.25)]
-        corner_01 = result["X_full"][(result["X_full"][:, 0] < 0.25) & (result["X_full"][:, 1] > 0.25) & (result["X_full"][:, 1] < 0.5)]
+        corner_01 = result["X_full"][
+            (result["X_full"][:, 0] < 0.25) & (result["X_full"][:, 1] > 0.25) & (result["X_full"][:, 1] < 0.5)
+        ]
 
         if len(corner_00) > 0 and len(corner_01) > 0:
             pass

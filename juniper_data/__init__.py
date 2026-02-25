@@ -72,7 +72,7 @@ def get_arc_agi_arcade() -> "arc_agi.Arcade | None":
         ImportError: If the ``arc-agi`` package is not installed.
     """
     if not ARC_AGI_AVAILABLE:
-        raise ImportError("arc-agi package not installed. " "Install with: pip install 'juniper-data[arc-agi]'")
+        raise ImportError("arc-agi package not installed. Install with: pip install 'juniper-data[arc-agi]'")
     # Automatically uses ARC_API_KEY from environment:  arc = arc_agi.Arcade(), Or pass the API key explicitly
     return arc_agi.Arcade(arc_api_key=get_arc_api_key()) or None
 

@@ -40,14 +40,11 @@ pytest juniper_data/tests/unit/test_spiral_generator.py -v
 # Type checking with mypy
 mypy juniper_data --ignore-missing-imports
 
-# Linting with flake8
-flake8 juniper_data --max-line-length=120 --extend-ignore=E203,E266,E501,W503
+# Linting with ruff (replaces flake8, isort, pyupgrade)
+ruff check juniper_data
 
-# Format checking with black
-black --check --diff juniper_data
-
-# Import sorting check with isort
-isort --check-only --diff juniper_data
+# Format checking with ruff (replaces black)
+ruff format --check juniper_data
 
 # Pre-commit hooks (CI/CD local validation)
 pip install pre-commit                    # Install pre-commit (one-time)
@@ -142,8 +139,8 @@ Following JuniperCascor patterns:
 ### Code Formatting
 
 - Line length: 120 characters
-- Black formatter
-- isort for imports (profile: black)
+- Ruff formatter (replaces black)
+- Ruff isort rules for imports
 - Type hints required for all public methods
 
 ### Documentation
@@ -172,13 +169,12 @@ Following JuniperCascor patterns:
 
 ### Development Dependencies
 
-| Library      | Purpose              |
-| ------------ | -------------------- |
-| `pytest`     | Testing framework    |
-| `pytest-cov` | Coverage reporting   |
-| `black`      | Code formatting      |
-| `isort`      | Import sorting       |
-| `mypy`       | Static type checking |
+| Library      | Purpose                                  |
+| ------------ | ---------------------------------------- |
+| `pytest`     | Testing framework                        |
+| `pytest-cov` | Coverage reporting                       |
+| `ruff`       | Linting and formatting (replaces black, isort, flake8, pyupgrade) |
+| `mypy`       | Static type checking                     |
 
 ---
 

@@ -26,7 +26,12 @@ class TestMain:
                 raise ImportError("No module named 'uvicorn'")
             return original_import(name, *args, **kwargs)
 
-        with patch.object(sys, "argv", ["juniper_data"]), patch("builtins.print") as mock_print, patch.object(builtins, "__import__", side_effect=mock_import), patch.dict(sys.modules, {"uvicorn": None}):
+        with (
+            patch.object(sys, "argv", ["juniper_data"]),
+            patch("builtins.print") as mock_print,
+            patch.object(builtins, "__import__", side_effect=mock_import),
+            patch.dict(sys.modules, {"uvicorn": None}),
+        ):
             from juniper_data import __main__ as main_module
 
             try:

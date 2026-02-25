@@ -284,7 +284,9 @@ class TestArcAgiGeneratorLocal:
         task = {"train": [{"input": [[1]], "output": [[2]]}], "test": []}
         (eval_dir / "eval1.json").write_text(json.dumps(task))
 
-        params = ArcAgiParams(source="local", local_path=str(tmp_path), subset="evaluation", include_test=False, pad_to=5, seed=42)
+        params = ArcAgiParams(
+            source="local", local_path=str(tmp_path), subset="evaluation", include_test=False, pad_to=5, seed=42
+        )
         result = ArcAgiGenerator.generate(params)
 
         assert result["X_full"].shape[0] == 1
@@ -302,7 +304,9 @@ class TestArcAgiGeneratorLocal:
         (training_dir / "t1.json").write_text(json.dumps(task))
         (eval_dir / "e1.json").write_text(json.dumps(task))
 
-        params = ArcAgiParams(source="local", local_path=str(tmp_path), subset="all", include_test=False, pad_to=5, seed=42)
+        params = ArcAgiParams(
+            source="local", local_path=str(tmp_path), subset="all", include_test=False, pad_to=5, seed=42
+        )
         result = ArcAgiGenerator.generate(params)
 
         assert result["X_full"].shape[0] == 2
@@ -334,7 +338,9 @@ class TestArcAgiGeneratorLocal:
         for i in range(10):
             (training_dir / f"task_{i}.json").write_text(json.dumps(task))
 
-        params = ArcAgiParams(source="local", local_path=str(tmp_path), n_tasks=3, seed=42, include_test=False, pad_to=5)
+        params = ArcAgiParams(
+            source="local", local_path=str(tmp_path), n_tasks=3, seed=42, include_test=False, pad_to=5
+        )
         result = ArcAgiGenerator.generate(params)
 
         assert result["X_full"].shape[0] == 3
@@ -350,7 +356,9 @@ class TestArcAgiGeneratorLocal:
         for i in range(10):
             (training_dir / f"task_{i:02d}.json").write_text(json.dumps(task))
 
-        params = ArcAgiParams(source="local", local_path=str(tmp_path), n_tasks=3, seed=None, include_test=False, pad_to=5)
+        params = ArcAgiParams(
+            source="local", local_path=str(tmp_path), n_tasks=3, seed=None, include_test=False, pad_to=5
+        )
         result = ArcAgiGenerator.generate(params)
 
         assert result["X_full"].shape[0] == 3
@@ -359,7 +367,9 @@ class TestArcAgiGeneratorLocal:
         """Handle missing training/evaluation subdirectories gracefully."""
         from juniper_data.generators.arc_agi.generator import ArcAgiGenerator
 
-        params = ArcAgiParams(source="local", local_path=str(tmp_path), subset="training", include_test=False, pad_to=5, seed=42)
+        params = ArcAgiParams(
+            source="local", local_path=str(tmp_path), subset="training", include_test=False, pad_to=5, seed=42
+        )
         result = ArcAgiGenerator.generate(params)
 
         assert result["X_full"].shape[0] == 0
