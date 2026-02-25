@@ -95,5 +95,5 @@ export CASCOR_SERVER_PORT=8051
 **See Also:**
 
 - [Main README](../../README.md) - Project overview
-- [AGENTS.md](../AGENTS.md) - Development guide
+- [AGENTS.md](../../AGENTS.md) - Development guide
 - [CHANGELOG.md](../../CHANGELOG.md) - Recent changes

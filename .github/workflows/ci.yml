@@ -151,6 +151,7 @@ jobs:
           echo "║       JuniperData - Install Dependencies                   ║"
           echo "╚════════════════════════════════════════════════════════════╝"
           python -m pip install --upgrade pip
+          pip install "juniper-data-client @ git+https://github.com/pcalnon/juniper-data-client.git@main"
           pip install ".[all]"
 
       - name: Create required directories
@@ -291,6 +292,7 @@ jobs:
         shell: bash -l {0}
         run: |
           python -m pip install --upgrade pip
+          pip install "juniper-data-client @ git+https://github.com/pcalnon/juniper-data-client.git@main"
           pip install ".[all]"
 
       - name: Generate Dependency Documentation
@@ -339,6 +341,7 @@ jobs:
           echo "║       JuniperData - Install Dependencies                   ║"
           echo "╚════════════════════════════════════════════════════════════╝"
           python -m pip install --upgrade pip
+          pip install "juniper-data-client @ git+https://github.com/pcalnon/juniper-data-client.git@main"
           pip install ".[all]"
 
       - name: Create required directories
@@ -426,6 +429,7 @@ jobs:
           echo "╔════════════════════════════════════════════════════════════╗"
           echo "║       JuniperData - pip-audit Dependency Scan              ║"
           echo "╚════════════════════════════════════════════════════════════╝"
+          pip install "juniper-data-client @ git+https://github.com/pcalnon/juniper-data-client.git@main"
           pip install ".[all]"
           pip freeze | grep -ivE "^juniper[-_]data" > reports/security/requirements.txt
           pip-audit -r reports/security/requirements.txt --strict
@@ -526,6 +530,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install "juniper-data-client @ git+https://github.com/pcalnon/juniper-data-client.git@main"
           pip install ".[all]"
 
       - name: Run Slow Tests

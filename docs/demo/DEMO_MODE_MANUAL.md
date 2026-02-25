@@ -781,6 +781,6 @@ if epoch % 30 == 0:
 
 **See Also:**
 
-- [AGENTS.md](../AGENTS.md) - Development guide
+- [AGENTS.md](../../AGENTS.md) - Development guide
 - [README.md](../../README.md) - Project overview
 - DEVELOPMENT_ROADMAP.md (archived) - Planned features

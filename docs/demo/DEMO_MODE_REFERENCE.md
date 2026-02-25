@@ -886,7 +886,7 @@ def _broadcast_metrics(self):
 - [Demo Mode Manual](DEMO_MODE_MANUAL.md) - User guide
 - [Environment Setup](DEMO_MODE_ENVIRONMENT_SETUP.md) - Configuration
 - [Quick Start](DEMO_MODE_QUICK_START.md) - Launch guide
-- [AGENTS.md](../AGENTS.md) - Development guide
+- [AGENTS.md](../../AGENTS.md) - Development guide
 
 ---
 
