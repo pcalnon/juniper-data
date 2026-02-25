@@ -176,9 +176,12 @@ python -m juniper_data
 
 ## Known Issues
 
-- **Coverage at ~60% overall:** 6 modules at 0% coverage (arc_agi, mnist, hf_store, kaggle_store, postgres_store, redis_store) due to external dependency mocking gaps. Not a functional issue; coverage gate passes with `source_pkgs` configuration.
 - **B008 flake8 warnings:** 9 intentional B008 warnings in `datasets.py` from FastAPI patterns (`Query()`, `Depends()` in function defaults). These are not bugs.
-- **GENERATOR_REGISTRY:** 5 of 8 generators registered; csv_import, mnist, and arc_agi exist but are not yet registered in the registry.
+
+### Resolved Since Release
+
+- ~~**GENERATOR_REGISTRY:** 5 of 8 generators registered~~ — All 8 generators now registered (spiral, xor, gaussian, circles, checkerboard, csv_import, mnist, arc_agi).
+- ~~**Coverage at ~60% overall:** 6 modules at 0% coverage~~ — Coverage is now 99.40% (659 tests passing). The previously-uncovered modules (arc_agi, mnist, hf_store, kaggle_store, postgres_store, redis_store) all have tests.
 
 ---
 
@@ -186,19 +189,19 @@ python -m juniper_data
 
 ### Planned for v0.5.0
 
-- Publish juniper-data-client to PyPI
-- Update JuniperCascor to use shared client package
-- Update JuniperCanopy to use shared client package
-- Register remaining generators (csv_import, mnist, arc_agi) in GENERATOR_REGISTRY
+- Scope to be redefined — all original v0.5.0 items are now complete (see [development roadmap](../JUNIPER-DATA_POST-RELEASE_DEVELOPMENT-ROADMAP.md) RD-004)
 
-### Coverage Goals
+### Completed Since Release
 
-- Overall coverage: target 80%+ (current threshold met)
-- Add tests for 0% coverage modules (arc_agi, mnist generators; external storage backends)
+- ~~Publish juniper-data-client to PyPI~~ — Published as `juniper-data-client` v0.3.0
+- ~~Update JuniperCascor to use shared client package~~ — Done (`juniper-cascor-client` v0.1.0 on PyPI)
+- ~~Update JuniperCanopy to use shared client package~~ — Done (polyrepo migration Phase 4)
+- ~~Register remaining generators~~ — All 8 generators registered in GENERATOR_REGISTRY
+- ~~Coverage: add tests for 0% modules~~ — Coverage now at 99.40% (659 tests)
 
 ### Roadmap
 
-See [INTEGRATION_DEVELOPMENT_PLAN.md](../INTEGRATION_DEVELOPMENT_PLAN.md) for full details.
+See [development roadmap](../JUNIPER-DATA_POST-RELEASE_DEVELOPMENT-ROADMAP.md) for current priorities.
 
 ---
 

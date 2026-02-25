@@ -40,7 +40,7 @@ On 2026-02-24, the JuniperData codebase was extracted from the monorepo (`pcalno
 | Metric                           | Documented (2026-02-17)   | Validated (2026-02-24)                     | Status                         |
 | -------------------------------- | ------------------------- | ------------------------------------------ | ------------------------------ |
 | Version                          | 0.4.2                     | 0.4.2                                      | Correct                        |
-| Generators in GENERATOR_REGISTRY | 5 (per release notes)     | **8**                                      | **Release notes outdated**     |
+| Generators in GENERATOR_REGISTRY | 5 (per release notes)     | **8**                                      | ~~Release notes outdated~~ **FIXED** (RD-001) |
 | Storage Backends                 | 7                         | 7 (+ base + **init**)                      | Correct                        |
 | Service Tests                    | 658                       | 658 (30 files)                             | Correct                        |
 | Client Tests                     | 41                        | N/A — client is now a separate repo        | **Moved to juniper-data-client** |
@@ -59,8 +59,8 @@ On 2026-02-24, the JuniperData codebase was extracted from the monorepo (`pcalno
 
 | Item                     | Documented State (2026-02-17)    | Actual State (2026-02-24)                         | Action Required              |
 | ------------------------ | -------------------------------- | ------------------------------------------------- | ---------------------------- |
-| GENERATOR_REGISTRY count | Release notes say 5 of 8         | All 8 registered                                  | Update release notes         |
-| Coverage reporting       | INTEGRATION_DEV_PLAN says 95.18% | Release notes say ~60%                            | Verify current coverage      |
+| GENERATOR_REGISTRY count | Release notes say 5 of 8         | All 8 registered                                  | ~~Update release notes~~ **DONE** (RD-001) |
+| Coverage reporting       | INTEGRATION_DEV_PLAN says 95.18% | Release notes say ~60%                            | ~~Verify current coverage~~ **DONE** — 99.40% (RD-001) |
 | Dependabot configuration | File does not exist              | **File exists, 3 PRs open**                       | ~~Create dependabot.yml~~ **DONE** |
 | v0.5.0 planned items     | "Register remaining generators"  | All 4 items already done                          | Revise v0.5.0 scope          |
 | Client package           | Local vendored copy              | **Published to PyPI as v0.3.0**                   | ~~Publish to PyPI~~ **DONE** |
@@ -88,23 +88,18 @@ On 2026-02-24, the JuniperData codebase was extracted from the monorepo (`pcalno
 
 ### RD-001: Update Release Notes Known Issues
 
-**Priority**: HIGH | **Status**: NOT STARTED | **Effort**: Small (30 min)
+**Priority**: HIGH | **Status**: COMPLETE (2026-02-24) | **Effort**: Small (30 min)
 **Source**: Codebase validation audit (2026-02-17)
 
-**Problem**: The v0.4.2 release notes contain two outdated known issues:
+**Problem**: The v0.4.2 release notes contained two outdated known issues and an outdated "What's Next" section.
 
-1. "GENERATOR_REGISTRY: 5 of 8 generators registered" — **All 8 are now registered**
-2. "Coverage at ~60% overall" — Needs verification against current state
+**Resolution** (2026-02-24):
 
-**Required Actions**:
-
-- [ ] Update `notes/releases/RELEASE_NOTES_v0.4.2.md` known issues section
-- [ ] Remove GENERATOR_REGISTRY known issue (resolved)
-- [ ] Verify current coverage percentage and update accordingly
-
-**Validation**: All 8 generators confirmed registered in `api/routes/generators.py`: spiral, xor, gaussian, circles, checkerboard, csv_import, mnist, arc_agi.
-
-**Post-Migration Note**: The release notes also contain outdated "What's Next" items for v0.5.0 (see RD-004). Consider updating both sections together since the release notes now live in the standalone juniper-data repo.
+- [x] Updated `notes/releases/RELEASE_NOTES_v0.4.2.md` known issues section
+- [x] Moved GENERATOR_REGISTRY known issue to "Resolved Since Release" — all 8 generators confirmed registered
+- [x] Verified current coverage: **99.40%** (659 tests passing). Moved coverage known issue to "Resolved Since Release"
+- [x] Updated "What's Next" section: moved completed items (PyPI publish, consumer updates, generator registration, coverage) to "Completed Since Release"; updated roadmap link to development roadmap
+- [x] B008 flake8 warnings remain as the only active known issue (intentional, not a bug)
 
 ---
 
@@ -567,15 +562,15 @@ Each documented change was validated by:
 
 | Item                     | Documented                                | Actual             | Impact                 |
 | ------------------------ | ----------------------------------------- | ------------------ | ---------------------- |
-| GENERATOR_REGISTRY count | Release notes: 5 of 8                     | 8 of 8 registered  | Documentation outdated |
-| Coverage percentage      | 95.18% (dev plan) vs ~60% (release notes) | Needs verification | Conflicting metrics    |
+| GENERATOR_REGISTRY count | Release notes: 5 of 8                     | 8 of 8 registered  | ~~Documentation outdated~~ **FIXED** (RD-001) |
+| Coverage percentage      | 95.18% (dev plan) vs ~60% (release notes) | **99.40%**         | ~~Conflicting metrics~~ **RESOLVED** (RD-001/RD-005) |
 | Broken notes symlinks    | N/A (new issue)                           | **RESOLVED**       | ~~Reference integrity~~ **DONE** |
 
 ### Items Validated as Reasonable and Feasible
 
 | ID     | Item                  | Assessment                                                  |
 | ------ | --------------------- | ----------------------------------------------------------- |
-| RD-001 | Update release notes  | Trivial edit, no risk                                       |
+| RD-001 | Update release notes  | **COMPLETE** — Known issues + What's Next updated           |
 | RD-005 | Reconcile coverage    | Essential for accurate reporting                            |
 | RD-006 | Security tests        | Important gap, standard testing practices                   |
 | RD-007 | Coverage improvement  | Likely a configuration issue, not missing tests             |
@@ -689,7 +684,7 @@ CAN-000 through CAN-021 (22 enhancement items) documented in PRE-DEPLOYMENT_ROAD
 
 | ID     | Item                              | Priority | Effort | Impact                 |
 | ------ | --------------------------------- | -------- | ------ | ---------------------- |
-| RD-001 | Update release notes known issues | HIGH     | S      | Documentation accuracy |
+| RD-001 | Update release notes known issues | ~~HIGH~~ | ~~S~~ | **COMPLETE**           |
 | RD-004 | Update v0.5.0 planned items       | HIGH     | S      | Roadmap accuracy       |
 | RD-005 | Reconcile coverage metrics        | HIGH     | S      | Informed decisions     |
 | RD-018 | Fix broken notes symlinks         | ~~MEDIUM~~ | ~~S~~ | **COMPLETE**           |
@@ -728,6 +723,7 @@ CAN-000 through CAN-021 (22 enhancement items) documented in PRE-DEPLOYMENT_ROAD
 | RD-010 | Publish client to PyPI   | 2026-02-20      | `juniper-data-client` v0.3.0 on PyPI            |
 | RD-011 | Update consumer projects | 2026-02-21      | All consumers reference PyPI package            |
 | RD-018 | Fix broken notes symlinks| 2026-02-24      | Redirect notes for migration plan + monorepo analysis; removed 3 history symlinks |
+| RD-001 | Update release notes     | 2026-02-24      | Updated known issues (GENERATOR_REGISTRY + coverage resolved), What's Next section |
 
 ---
 
@@ -736,8 +732,8 @@ CAN-000 through CAN-021 (22 enhancement items) documented in PRE-DEPLOYMENT_ROAD
 | Category                             | Count |
 | ------------------------------------ | ----- |
 | Total Items                          | 18    |
-| **COMPLETE**                         | 5     |
-| NOT STARTED                          | 7     |
+| **COMPLETE**                         | 6     |
+| NOT STARTED                          | 6     |
 | DEFERRED                             | 4     |
 | PENDING VERIFICATION                 | 0     |
 | NEW (post-migration)                 | 0     |
@@ -796,3 +792,4 @@ Items identified during the JuniperCanopy comprehensive notes/ audit that have J
 | 2026-02-17 | AI Agent               | Added cross-references from JuniperCanopy comprehensive audit |
 | 2026-02-24 | AI Agent               | Post-migration reassessment: updated status of RD-002, RD-003, RD-010, RD-011 to COMPLETE; added RD-018 (broken symlinks); added post-migration notes to all items; updated CAS cross-references (CAS-004 COMPLETE, CAS-REF-005 SUPERSEDED); updated priority matrix and summary statistics; archived pre-migration version to `history/` |
 | 2026-02-24 | AI Agent               | RD-018 COMPLETE: removed 3 broken history symlinks, replaced `POLYREPO_MIGRATION_PLAN.md` and `MONOREPO_ANALYSIS.md` symlinks with redirect notes, updated CLAUDE.md Key Documentation table, updated summary statistics |
+| 2026-02-24 | AI Agent               | RD-001 COMPLETE: updated v0.4.2 release notes — moved GENERATOR_REGISTRY and coverage known issues to "Resolved Since Release" (coverage verified at 99.40%, 659 tests); updated What's Next with completed items and new roadmap link |
