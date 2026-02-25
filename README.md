@@ -6,6 +6,17 @@ Dataset generation and management service for the Juniper ecosystem.
 
 Juniper Data provides a centralized service for generating, storing, and serving datasets used by the Juniper neural network projects. It supports various dataset types including the classic two-spiral classification problem.
 
+## Ecosystem Compatibility
+
+This service is part of the [Juniper](https://github.com/pcalnon/juniper-ml) ecosystem.
+Verified compatible versions:
+
+| juniper-data | juniper-cascor | juniper-canopy | data-client | cascor-client | cascor-worker |
+|---|---|---|---|---|---|
+| 0.4.x | 0.3.x | 0.2.x | >=0.3.1 | >=0.1.0 | >=0.1.0 |
+
+For full-stack Docker deployment and integration tests, see [juniper-deploy](https://github.com/pcalnon/juniper-deploy).
+
 ## Installation
 
 ### Basic Installation
