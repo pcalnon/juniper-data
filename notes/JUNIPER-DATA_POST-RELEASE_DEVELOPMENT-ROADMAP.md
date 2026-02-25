@@ -196,30 +196,25 @@ On 2026-02-24, the JuniperData codebase was extracted from the monorepo (`pcalno
 
 ### RD-006: Add Security-Focused Test Suite
 
-**Priority**: HIGH | **Status**: NOT STARTED | **Effort**: Medium (4-6 hours)
+**Priority**: HIGH | **Status**: COMPLETE (2026-02-24) | **Effort**: Medium (4-6 hours)
 **Source**: TEST_SUITE_AUDIT_DATA_CLAUDE.md (Section 1.8), TEST_SUITE_AUDIT_DATA_AMP_.md
 
-**Problem**: Both independent audits identified missing security-focused tests. While Pydantic validation and API input validation exist, explicit security boundary tests are absent.
+**Problem**: Both independent audits identified missing security-focused tests.
 
-**Required Actions**:
+**Resolution** (2026-02-24):
 
-- [ ] Create `juniper_data/tests/unit/test_security_boundaries.py`
-- [ ] Add path traversal prevention tests for storage backends
-- [ ] Add dataset ID injection prevention tests
-- [ ] Add API request size limit tests
-- [ ] Add parameter bound enforcement tests (extreme values)
-- [ ] Add resource exhaustion protection tests (very large datasets)
+- [x] Created `juniper_data/tests/unit/test_security_boundaries.py` with 41 tests across 5 test classes:
+  - **TestPathTraversalPrevention** (6 tests): `..` traversal, absolute paths, null bytes, API endpoint traversal, artifact download traversal, batch delete with traversal IDs
+  - **TestCsvImportPathSecurity** (4 tests): absolute path to sensitive files, relative traversal, null bytes in path, API traversal via csv_import generator
+  - **TestInputBoundaryEnforcement** (16 tests): Pydantic field bounds (min/max/negative), ratio validation, TTL constraints, batch delete limits, list/preview/filter parameter bounds
+  - **TestResourceExhaustion** (3 tests): extreme point counts, API rejection of oversized requests, batch delete max enforcement
+  - **TestAPIBoundaries** (12 tests): malformed JSON, missing fields, type coercion, extra fields, special characters in dataset IDs and tags, empty body, content type mismatch, generator name injection, non-printable characters
+- [x] Total test suite: 700 tests (up from 659), coverage maintained at 99.40%
 
-**Design Options**:
-
-1. **Option A (Recommended)**: Create a single `test_security_boundaries.py` with test classes per attack vector
-2. **Option B**: Integrate security tests into existing test files alongside related functionality
-
-**Validation**: Confirmed `test_security.py` exists for API security (auth/rate limiting), but no boundary/injection tests exist.
-
-**Feasibility**: Fully feasible. Uses existing test infrastructure. Tests should be deterministic and fast.
-
-**Post-Migration Note**: No migration impact. The test file paths and infrastructure remain unchanged in the standalone repo. The CI pipeline will automatically pick up new test files.
+**Findings documented in tests**:
+- LocalFSDatasetStore `_meta_path`/`_npz_path` construct paths without validating `dataset_id` — traversal payloads resolve outside base directory
+- CsvImportGenerator `file_path` parameter has no path restriction (existing TODO in code)
+- CSV import `FileNotFoundError` propagates as unhandled 500 through the API (not caught by parameter validation handler)
 
 ---
 
@@ -550,7 +545,7 @@ Each documented change was validated by:
 | ------ | --------------------- | ----------------------------------------------------------- |
 | RD-001 | Update release notes  | **COMPLETE** — Known issues + What's Next updated           |
 | RD-005 | Reconcile coverage    | **COMPLETE** — 95% aggregate + 85% per-module enforced      |
-| RD-006 | Security tests        | Important gap, standard testing practices                   |
+| RD-006 | Security tests        | **COMPLETE** — 41 tests across 5 attack vector classes      |
 | RD-007 | Coverage improvement  | **COMPLETE** — All 51 modules >= 85%, was config issue      |
 | RD-012 | flake8→ruff migration | Optional but beneficial; good timing in standalone repo     |
 | RD-013 | Line length review    | Best practice alignment needed; coordinate across repos     |
@@ -583,25 +578,7 @@ Each documented change was validated by:
 
 ### Phase 2 Design (Test Coverage & Quality)
 
-**RD-006 (Security Tests)**: Recommended test structure:
-
-```bash
-tests/unit/test_security_boundaries.py
-├── TestPathTraversalPrevention
-│   ├── test_storage_path_with_dotdot
-│   ├── test_storage_absolute_path_rejected
-│   └── test_dataset_id_special_chars
-├── TestInputBoundaryEnforcement
-│   ├── test_extreme_n_points_value
-│   ├── test_negative_parameters
-│   └── test_string_injection_in_params
-├── TestResourceExhaustion
-│   ├── test_very_large_dataset_request
-│   └── test_concurrent_generation_limits
-└── TestAPIBoundaries
-    ├── test_oversized_request_body
-    └── test_malformed_json_handling
-```
+**RD-006 (Security Tests)**: **COMPLETE** — Implemented 41 tests in `test_security_boundaries.py` across 5 classes: TestPathTraversalPrevention (6), TestCsvImportPathSecurity (4), TestInputBoundaryEnforcement (16), TestResourceExhaustion (3), TestAPIBoundaries (12). Tests document existing path traversal risks in LocalFSDatasetStore and CsvImportGenerator.
 
 **RD-007 (Coverage)**: **COMPLETE** — Confirmed the 0% coverage was a measurement artifact, not missing tests. All 6 modules have comprehensive tests and coverage >= 97%. Per-module enforcement (85%) now prevents regression.
 
@@ -666,7 +643,7 @@ CAN-000 through CAN-021 (22 enhancement items) documented in PRE-DEPLOYMENT_ROAD
 
 | ID     | Item                   | Priority | Effort | Impact                |
 | ------ | ---------------------- | -------- | ------ | --------------------- |
-| RD-006 | Security-focused tests | HIGH     | M      | Security posture      |
+| RD-006 | Security-focused tests | ~~HIGH~~ | ~~M~~ | **COMPLETE**          |
 | RD-007 | Coverage improvement   | ~~MEDIUM~~ | ~~L~~ | **COMPLETE**          |
 
 ### Medium-Term (Next Quarter)
@@ -700,6 +677,7 @@ CAN-000 through CAN-021 (22 enhancement items) documented in PRE-DEPLOYMENT_ROAD
 | RD-004 | Redefine v0.5.0 scope    | 2026-02-24      | v0.5.0 = Quality + Tooling: RD-006 security tests + RD-012/013 ruff + line length |
 | RD-005 | Reconcile coverage       | 2026-02-24      | Verified 99.40%; raised thresholds to 95% aggregate + 85% per-module              |
 | RD-007 | Coverage improvement     | 2026-02-24      | All 51 modules >= 85%; 0% modules were config artifact, not missing tests         |
+| RD-006 | Security boundary tests  | 2026-02-24      | 41 tests across 5 classes; 700 total tests; documented path traversal findings    |
 
 ---
 
@@ -708,8 +686,8 @@ CAN-000 through CAN-021 (22 enhancement items) documented in PRE-DEPLOYMENT_ROAD
 | Category                             | Count |
 | ------------------------------------ | ----- |
 | Total Items                          | 18    |
-| **COMPLETE**                         | 9     |
-| NOT STARTED                          | 3     |
+| **COMPLETE**                         | 10    |
+| NOT STARTED                          | 2     |
 | DEFERRED                             | 4     |
 | PENDING VERIFICATION                 | 0     |
 | NEW (post-migration)                 | 0     |
@@ -771,3 +749,4 @@ Items identified during the JuniperCanopy comprehensive notes/ audit that have J
 | 2026-02-24 | AI Agent               | RD-001 COMPLETE: updated v0.4.2 release notes — moved GENERATOR_REGISTRY and coverage known issues to "Resolved Since Release" (coverage verified at 99.40%, 659 tests); updated What's Next with completed items and new roadmap link |
 | 2026-02-24 | AI Agent               | RD-004 COMPLETE: redefined v0.5.0 scope as Quality + Tooling (RD-006 security tests + RD-012/013 flake8→ruff + line length normalization); updated release notes What's Next with concrete v0.5.0 plan |
 | 2026-02-24 | AI Agent               | RD-005 + RD-007 COMPLETE: raised aggregate fail-under to 95% (pyproject.toml + CI), added 85% per-module enforcement via `scripts/check_module_coverage.py`, added pre-push hook, confirmed all 51 modules >= 96%, no test files in metrics |
+| 2026-02-24 | AI Agent               | RD-006 COMPLETE: created `test_security_boundaries.py` with 41 tests across 5 classes (path traversal, CSV import path security, input bounds, resource exhaustion, API boundaries); 700 total tests; documented path traversal findings in LocalFSDatasetStore and CsvImportGenerator |
