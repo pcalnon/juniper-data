@@ -4,8 +4,9 @@
 **Version**: 0.4.2 (Current Release)
 **Created**: 2026-02-17
 **Author**: Paul Calnon
-**Status**: Active - Post-Release Assessment
+**Status**: Active - Post-Migration Reassessment
 **Audit Date**: 2026-02-17
+**Migration Review Date**: 2026-02-24
 
 ---
 
@@ -21,31 +22,49 @@ This document consolidates all outstanding updates, changes, fixes, and enhancem
 6. **RELEASE_NOTES_v0.4.2.md** — Known issues and planned v0.5.0 items
 7. **Codebase Validation** — Direct inspection of source code against documented state
 
-### Current State (Validated 2026-02-17)
+### Polyrepo Migration Impact (2026-02-24)
 
-| Metric                           | Documented                | Validated             | Status                     |
-| -------------------------------- | ------------------------- | --------------------- | -------------------------- |
-| Version                          | 0.4.2                     | 0.4.2                 | Correct                    |
-| Generators in GENERATOR_REGISTRY | 5 (per release notes)     | **8**                 | **Release notes outdated** |
-| Storage Backends                 | 7                         | 7 (+ base + **init**) | Correct                    |
-| Service Tests                    | 658                       | 658 (30 files)        | Correct                    |
-| Client Tests                     | 41                        | 41                    | Correct                    |
-| Client Coverage                  | 96%                       | 96%                   | Correct                    |
-| Security (auth + rate limiting)  | Complete                  | Complete              | Correct                    |
-| Lifecycle Management             | Complete                  | Complete              | Correct                    |
-| Dockerfile                       | Complete                  | Present               | Correct                    |
-| `.github/dependabot.yml`         | Complete (per audit plan) | **Missing**           | **Not created**            |
-| `.github/workflows/codeql.yml`   | Complete                  | Present               | Correct                    |
-| docs/api/JUNIPER_DATA_API.md     | Complete                  | Present               | Correct                    |
+On 2026-02-24, the JuniperData codebase was extracted from the monorepo (`pcalnon/Juniper`) into a standalone repository (`pcalnon/juniper-data`) as part of the Juniper polyrepo migration (Phases 0–5 of the POLYREPO_MIGRATION_PLAN). This migration has materially affected the status and relevance of several roadmap items:
 
-### Discrepancy Summary
+- **RD-002 (Dependabot)**: Now **COMPLETE** — `dependabot.yml` was created during migration; 3 dependabot PRs are already open.
+- **RD-003 (CodeQL)**: Now **COMPLETE** — CodeQL scans confirmed active on the standalone `juniper-data` repo.
+- **RD-010 (Publish client to PyPI)**: Now **COMPLETE** — `juniper-data-client` v0.3.0 published to PyPI during Phase 1, with Trusted Publishing OIDC configured.
+- **RD-011 (Update consumers)**: Now **COMPLETE** — all vendored copies removed from CasCor, Canopy, and Data; all consumers reference the PyPI package.
+- **RD-004 (v0.5.0 plan)**: Now **LARGELY OBSOLETE** — all four planned v0.5.0 items (PyPI publication, consumer updates, generator registration) are complete.
+- **CI/CD**: Standalone repo CI now uses pip-based installation (not conda), with its own independent pipeline.
+- **Cross-repo symlinks**: Several symlinks in `notes/` are now broken due to the repo separation (see RD-018).
+- **Cross-project references**: Many source documents referenced in this roadmap reside in the old monorepo structure and are accessible only through local history symlinks.
 
-| Item                     | Documented State                 | Actual State           | Action Required         |
-| ------------------------ | -------------------------------- | ---------------------- | ----------------------- |
-| GENERATOR_REGISTRY count | Release notes say 5 of 8         | All 8 registered       | Update release notes    |
-| Coverage reporting       | INTEGRATION_DEV_PLAN says 95.18% | Release notes say ~60% | Verify current coverage |
-| Dependabot configuration | TEST_SUITE plan says Complete    | File does not exist    | Create dependabot.yml   |
-| v0.5.0 planned items     | "Register remaining generators"  | Already done           | Update v0.5.0 plan      |
+### Current State (Validated 2026-02-24)
+
+| Metric                           | Documented (2026-02-17)   | Validated (2026-02-24)                     | Status                         |
+| -------------------------------- | ------------------------- | ------------------------------------------ | ------------------------------ |
+| Version                          | 0.4.2                     | 0.4.2                                      | Correct                        |
+| Generators in GENERATOR_REGISTRY | 5 (per release notes)     | **8**                                      | **Release notes outdated**     |
+| Storage Backends                 | 7                         | 7 (+ base + **init**)                      | Correct                        |
+| Service Tests                    | 658                       | 658 (30 files)                             | Correct                        |
+| Client Tests                     | 41                        | N/A — client is now a separate repo        | **Moved to juniper-data-client** |
+| Client Coverage                  | 96%                       | N/A — client is now a separate repo        | **Moved to juniper-data-client** |
+| Security (auth + rate limiting)  | Complete                  | Complete                                   | Correct                        |
+| Lifecycle Management             | Complete                  | Complete                                   | Correct                        |
+| Dockerfile                       | Complete                  | Present                                    | Correct                        |
+| `.github/dependabot.yml`         | **Missing** (per 02-17)  | **Present** (created during migration)     | **RESOLVED**                   |
+| `.github/workflows/codeql.yml`   | Complete                  | Present and active on standalone repo      | Correct                        |
+| docs/api/JUNIPER_DATA_API.md     | Complete                  | Present                                    | Correct                        |
+| Repository                       | Monorepo branch           | Standalone `pcalnon/juniper-data` (595 commits) | **Migrated**              |
+| CI/CD                            | Monorepo-scoped           | Standalone pipeline (pip-based, CI green)  | **Migrated**                   |
+| `juniper-data-client`            | Vendored in repo          | **Removed** — PyPI package v0.3.0          | **RESOLVED**                   |
+
+### Discrepancy Summary (Updated 2026-02-24)
+
+| Item                     | Documented State (2026-02-17)    | Actual State (2026-02-24)                         | Action Required              |
+| ------------------------ | -------------------------------- | ------------------------------------------------- | ---------------------------- |
+| GENERATOR_REGISTRY count | Release notes say 5 of 8         | All 8 registered                                  | Update release notes         |
+| Coverage reporting       | INTEGRATION_DEV_PLAN says 95.18% | Release notes say ~60%                            | Verify current coverage      |
+| Dependabot configuration | File does not exist              | **File exists, 3 PRs open**                       | ~~Create dependabot.yml~~ **DONE** |
+| v0.5.0 planned items     | "Register remaining generators"  | All 4 items already done                          | Revise v0.5.0 scope          |
+| Client package           | Local vendored copy              | **Published to PyPI as v0.3.0**                   | ~~Publish to PyPI~~ **DONE** |
+| Broken notes symlinks    | N/A                              | 4 broken symlinks in `notes/` and `notes/history/` | Fix or remove (NEW: RD-018) |
 
 ---
 
@@ -85,55 +104,61 @@ This document consolidates all outstanding updates, changes, fixes, and enhancem
 
 **Validation**: All 8 generators confirmed registered in `api/routes/generators.py`: spiral, xor, gaussian, circles, checkerboard, csv_import, mnist, arc_agi.
 
+**Post-Migration Note**: The release notes also contain outdated "What's Next" items for v0.5.0 (see RD-004). Consider updating both sections together since the release notes now live in the standalone juniper-data repo.
+
 ---
 
 ### RD-002: Create Dependabot Configuration
 
-**Priority**: HIGH | **Status**: NOT STARTED | **Effort**: Small (15 min)
+**Priority**: ~~HIGH~~ N/A | **Status**: **COMPLETE** (resolved during polyrepo migration) | **Effort**: N/A
 **Source**: TEST_SUITE_CICD_ENHANCEMENT_DEVELOPMENT_PLAN.md (SEC-003)
 
-**Problem**: The test suite audit identified missing Dependabot configuration as CRITICAL. The consolidated plan marks it as COMPLETED, but the file does not exist at `.github/dependabot.yml`.
+**Resolution**: The `dependabot.yml` file was created as part of the polyrepo migration and is now present at `.github/dependabot.yml` in the standalone `juniper-data` repository. The configuration includes:
 
-**Required Actions**:
+- `pip` ecosystem: weekly schedule (Monday 09:00 ET), grouped minor/patch updates, 5 PR limit
+- `github-actions` ecosystem: weekly schedule (Monday), 3 PR limit
+- Labels, commit message prefixes, and timezone all configured
 
-- [ ] Create `.github/dependabot.yml` for pip and github-actions ecosystems
-- [ ] Configure weekly schedule with grouped minor/patch updates
-- [ ] Set open-pull-requests-limit to prevent PR flooding
+**Validation (2026-02-24)**: File confirmed present (2,740 bytes). Three dependabot PRs are already open on the repository (`actions/cache`, `actions/setup-python`, `codecov/codecov-action`).
 
-**Validation**: Confirmed `.github/` directory contains only `ci.yml` and `codeql.yml` — no `dependabot.yml`.
-
-**Feasibility**: Straightforward. No risk. Standard GitHub configuration file.
+**No further action required.**
 
 ---
 
 ### RD-003: Verify and Document CodeQL Scan Status
 
-**Priority**: MEDIUM | **Status**: PENDING VERIFICATION | **Effort**: Small (30 min)
+**Priority**: ~~MEDIUM~~ N/A | **Status**: **COMPLETE** (confirmed active on standalone repo) | **Effort**: N/A
 **Source**: TEST_SUITE_CICD_ENHANCEMENT_DEVELOPMENT_PLAN.md (P3-T8)
 
-**Problem**: CodeQL workflow exists but has not been verified as completing successfully on GitHub.
+**Resolution**: CodeQL scans are confirmed active and running successfully on the standalone `juniper-data` repository. The Phase 5 migration verification (2026-02-22) explicitly confirmed "CodeQL + scheduled CI active" for the juniper-data repo.
 
-**Required Actions**:
+**Validation (2026-02-24)**: `.github/workflows/codeql.yml` present and active on `pcalnon/juniper-data`.
 
-- [ ] Verify CodeQL scans complete on the repository
-- [ ] Check for any CodeQL findings that need addressing
-- [ ] Update documentation with verification results
-
-**Validation**: `.github/workflows/codeql.yml` exists (2,078 bytes).
+**No further action required.**
 
 ---
 
 ### RD-004: Update v0.5.0 Planned Items
 
-**Priority**: MEDIUM | **Status**: NOT STARTED | **Effort**: Small (30 min)
+**Priority**: HIGH | **Status**: NOT STARTED (scope change — all original items are now COMPLETE) | **Effort**: Small (30 min)
 **Source**: RELEASE_NOTES_v0.4.2.md (What's Next section)
 
-**Problem**: The v0.5.0 plan includes "Register remaining generators (csv_import, mnist, arc_agi) in GENERATOR_REGISTRY" — this is already done. The plan needs revision.
+**Problem**: The v0.5.0 plan in the release notes includes four items — **all are now complete** due to the polyrepo migration:
+
+| Planned v0.5.0 Item                                     | Current Status (2026-02-24)                                     |
+| -------------------------------------------------------- | --------------------------------------------------------------- |
+| Publish juniper-data-client to PyPI                      | **DONE** — v0.3.0 on PyPI (Phase 1 of migration)               |
+| Update JuniperCascor to use shared client package        | **DONE** — `juniper-data-client>=0.3.0` in CasCor pyproject.toml |
+| Update JuniperCanopy to use shared client package        | **DONE** — `juniper-data-client>=0.3.0` in Canopy pyproject.toml |
+| Register remaining generators in GENERATOR_REGISTRY      | **DONE** — all 8 registered (predates migration)                |
 
 **Required Actions**:
 
-- [ ] Update v0.5.0 planned items to reflect actual remaining work
-- [ ] Cross-reference with this roadmap for comprehensive feature list
+- [ ] Redefine v0.5.0 scope to reflect actual remaining work (e.g., items from this roadmap: RD-006 security tests, RD-007 coverage improvement, line length normalization)
+- [ ] Update `notes/releases/RELEASE_NOTES_v0.4.2.md` "What's Next" section to remove completed items
+- [ ] Consider whether v0.5.0 should be the first release from the standalone `juniper-data` repo
+
+**Post-Migration Note**: Since the v0.5.0 planned items are all now complete, the v0.5.0 version bump should be redefined around the first significant change set in the standalone repo. This is an opportunity to establish the post-migration versioning cadence.
 
 ---
 
@@ -155,6 +180,35 @@ This document consolidates all outstanding updates, changes, fixes, and enhancem
 - [ ] Identify which modules truly remain at low/zero coverage
 
 **Security/Best Practice Note**: Accurate coverage metrics are essential for informed decision-making. Stale or conflicting metrics create false confidence.
+
+**Post-Migration Note**: Coverage should now be measured exclusively within the standalone `juniper-data` repo. The `source_pkgs = ["juniper_data"]` configuration in `pyproject.toml` is correct for the standalone layout. The CI pipeline already enforces an 80% coverage gate (`COVERAGE_FAIL_UNDER: "80"` in `ci.yml`). The removal of the vendored `juniper_data_client` from this repo (commit `4bada2a`) means client code is no longer in scope — coverage metrics should now be purely for the service code.
+
+---
+
+### RD-018: Fix Broken Notes Symlinks (NEW — Post-Migration)
+
+**Priority**: MEDIUM | **Status**: NOT STARTED | **Effort**: Small (30 min)
+**Source**: Polyrepo migration impact analysis (2026-02-24)
+
+**Problem**: The polyrepo migration left 4 broken symlinks in the `notes/` directory that point to the old monorepo location (`JuniperCascor/juniper_cascor/notes/`):
+
+| Broken Symlink                                      | Target (no longer accessible)                                                                |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `notes/POLYREPO_MIGRATION_PLAN.md`                  | `/home/pcalnon/.../JuniperCascor/juniper_cascor/notes/POLYREPO_MIGRATION_PLAN.md`            |
+| `notes/history/PRE-DEPLOYMENT_ROADMAP.md`           | `/home/pcalnon/.../JuniperCascor/juniper_cascor/notes/PRE-DEPLOYMENT_ROADMAP.md`             |
+| `notes/history/PRE-DEPLOYMENT_ROADMAP-2.md`         | `../../../../JuniperCascor/juniper_cascor/notes/PRE-DEPLOYMENT_ROADMAP-2.md` (relative)      |
+| `notes/history/INTEGRATION_ROADMAP.md`              | `/home/pcalnon/.../JuniperCascor/juniper_cascor/notes/INTEGRATION_ROADMAP.md`                |
+
+Additionally, `notes/MONOREPO_ANALYSIS.md` is a symlink that currently resolves but points to the old `JuniperCascor` monorepo location, which will break if that directory is removed.
+
+**Required Actions**:
+
+- [ ] Decide disposition for each symlink: (a) replace with a copy of the canonical file from `juniper-cascor/notes/`, (b) replace with a cross-repo reference note pointing to the `juniper-cascor` repo, or (c) remove entirely
+- [ ] For `POLYREPO_MIGRATION_PLAN.md` — recommend option (b): the canonical copy now lives in `juniper-cascor/notes/`; replace the symlink with a brief redirect note pointing to `pcalnon/juniper-cascor`
+- [ ] For history files (`PRE-DEPLOYMENT_ROADMAP*.md`, `INTEGRATION_ROADMAP.md`) — recommend option (c): these are historical documents from the monorepo era; remove the broken symlinks since they are already archived in the monorepo git history
+- [ ] For `MONOREPO_ANALYSIS.md` — recommend option (a) or (b): copy the file if it contains JuniperData-relevant content, otherwise replace with a redirect note
+
+**Feasibility**: Straightforward cleanup. No code impact.
 
 ---
 
@@ -187,6 +241,8 @@ This document consolidates all outstanding updates, changes, fixes, and enhancem
 **Validation**: Confirmed `test_security.py` exists for API security (auth/rate limiting), but no boundary/injection tests exist.
 
 **Feasibility**: Fully feasible. Uses existing test infrastructure. Tests should be deterministic and fast.
+
+**Post-Migration Note**: No migration impact. The test file paths and infrastructure remain unchanged in the standalone repo. The CI pipeline will automatically pick up new test files.
 
 ---
 
@@ -221,6 +277,8 @@ This document consolidates all outstanding updates, changes, fixes, and enhancem
 
 **Feasibility**: High. Tests likely exist but may not be counted. Configuration fix may resolve most gaps.
 
+**Post-Migration Note**: The coverage configuration (`source_pkgs = ["juniper_data"]` in `pyproject.toml`) is correct for the standalone repo layout. The CI pipeline now uses `pip install ".[all]"` which may or may not install optional dependencies like `arc-agi`. Verify whether the CI environment installs these optional packages — if not, the 0% coverage modules may still be excluded from CI coverage reports even with correct `source_pkgs`. Consider adding `arc-agi` to the `[test]` extra or using conditional `importorskip` patterns.
+
 ---
 
 ### RD-008: Fix SIM117 Test Code Violations
@@ -238,6 +296,8 @@ This document consolidates all outstanding updates, changes, fixes, and enhancem
 **Validation**: `.flake8` config confirms SIM117 in extend-ignore list.
 
 **Feasibility**: Straightforward refactoring. No functional impact. May improve test readability.
+
+**Post-Migration Note**: No migration impact. If RD-012 (flake8→ruff) is pursued, SIM117 handling can be addressed during that migration rather than as a separate effort.
 
 ---
 
@@ -264,56 +324,51 @@ This document consolidates all outstanding updates, changes, fixes, and enhancem
 
 **Feasibility**: Feasible. No external dependencies required beyond `pytest-benchmark`. Provides ongoing regression detection.
 
+**Post-Migration Note**: Performance benchmarks are now especially relevant in the polyrepo architecture. JuniperCascor and JuniperCanopy communicate with JuniperData over REST, so endpoint response time benchmarks would directly inform the viability of the service-oriented approach (cf. RD-015 IPC Architecture revisit criteria).
+
 ---
 
 ## Phase 3: Client Library Publication
 
-**Priority**: MEDIUM | **Risk**: MEDIUM | **Effort**: Medium (4-8 hours total)
-**Rationale**: Consolidates the shared client package and removes duplicated code in consumer projects.
+**Priority**: ~~MEDIUM~~ N/A | **Risk**: N/A | **Effort**: N/A
+**Rationale**: ~~Consolidates the shared client package and removes duplicated code in consumer projects.~~ **PHASE COMPLETE** — All items resolved during polyrepo migration Phase 1.
 
 ### RD-010: Publish juniper-data-client to PyPI
 
-**Priority**: MEDIUM | **Status**: NOT STARTED | **Effort**: Medium (2-4 hours)
+**Priority**: N/A | **Status**: **COMPLETE** (resolved during polyrepo migration Phase 1) | **Effort**: N/A
 **Source**: RELEASE_NOTES_v0.4.2.md (What's Next), INTEGRATION_DEVELOPMENT_PLAN.md (DATA-012 Next Steps)
 
-**Problem**: `juniper-data-client` exists as a local package but is not published to PyPI. Both JuniperCascor and JuniperCanopy have been updated to use the shared package, but installation requires local path references.
+**Resolution**: `juniper-data-client` v0.3.0 was published to PyPI on 2026-02-20 as part of the polyrepo migration Phase 1. The package is available at `pypi.org/project/juniper-data-client/`.
 
-**Required Actions**:
+**Completion details**:
 
-- [ ] Verify `juniper_data_client/pyproject.toml` has correct PyPI metadata
-- [ ] Set up PyPI account/token for publishing
-- [ ] Create GitHub Actions workflow for automated publishing on release tags
-- [ ] Test installation from PyPI in clean environment
-- [ ] Update consumer projects to reference PyPI package instead of local path
+- Standalone repository: `pcalnon/juniper-data-client` (6 commits on `main`, CI green)
+- PyPI: `juniper-data-client` v0.3.0 published via Trusted Publishing (OIDC, no API tokens)
+- CI/CD: `ci.yml` + `publish.yml` (two-stage: TestPyPI → PyPI)
+- Tests: 41 tests pass, 96% coverage
+- Consumers updated: JuniperCascor, JuniperCanopy, and JuniperData all reference `juniper-data-client>=0.3.0`
+- Vendored copy removed from JuniperData (commit `4bada2a`)
 
-**Design Options**:
-
-1. **Option A: Public PyPI** — Simplest approach, suitable for MIT-licensed project
-2. **Option B: Private PyPI (e.g., AWS CodeArtifact)** — For private/internal use
-3. **Option C: Git dependency** — Use `pip install git+https://...` for now, publish later
-
-**Security Note**: Ensure no credentials or internal URLs are included in the published package. Verify `pyproject.toml` excludes test fixtures and notes.
-
-**Feasibility**: Fully feasible. Package structure is already pip-installable. Primary effort is PyPI account setup and CI integration.
+**No further action required.**
 
 ---
 
 ### RD-011: Update Consumer Projects to Use Published Client
 
-**Priority**: MEDIUM | **Status**: NOT STARTED | **Effort**: Small (1-2 hours)
+**Priority**: N/A | **Status**: **COMPLETE** (resolved during polyrepo migration Phases 1 and 5) | **Effort**: N/A
 **Source**: INTEGRATION_DEVELOPMENT_PLAN.md (DATA-012-A)
 
-**Problem**: JuniperCascor and JuniperCanopy re-export from the shared package with local fallback. Once the package is published, they should reference the PyPI version.
+**Resolution**: All vendored copies of `juniper_data_client` have been removed from all consumer projects. All consumers now reference the PyPI package:
 
-**Required Actions**:
+| Consumer        | Reference Location                                   | Status                    |
+| --------------- | ---------------------------------------------------- | ------------------------- |
+| JuniperCascor   | `pyproject.toml [project.optional-dependencies].juniper-data` | `juniper-data-client>=0.3.0` |
+| JuniperCanopy   | `pyproject.toml [project.optional-dependencies].juniper-data` | `juniper-data-client>=0.3.0` |
+| JuniperData     | `pyproject.toml [project.optional-dependencies].test`         | `juniper-data-client>=0.3.0` |
 
-- [ ] Update JuniperCascor `pyproject.toml` to add `juniper-data-client` as dependency
-- [ ] Update JuniperCanopy `pyproject.toml` to add `juniper-data-client` as dependency
-- [ ] Remove local fallback code from both consumers
-- [ ] Test import chains in both consumers
-- [ ] Remove duplicated `juniper_data_client/` directories from consumers (if still present)
+All tests pass with the PyPI-installed package (JuniperData 659, JuniperCascor 226 — verified 2026-02-21).
 
-**Dependencies**: RD-010 (publish to PyPI) must be completed first.
+**No further action required.**
 
 ---
 
@@ -335,7 +390,7 @@ This document consolidates all outstanding updates, changes, fixes, and enhancem
 - [ ] Create `ruff.toml` or `[tool.ruff]` section in `pyproject.toml`
 - [ ] Replace flake8 + isort hooks in `.pre-commit-config.yaml` with ruff
 - [ ] Verify CI pipeline works with ruff
-- [ ] Remove flake8 configuration files
+- [ ] Remove flake8 configuration files (`.flake8`)
 
 **Design Options**:
 
@@ -344,6 +399,8 @@ This document consolidates all outstanding updates, changes, fixes, and enhancem
 3. **Option C**: Stay with flake8 — current setup works, migration is optional
 
 **Feasibility**: High. ruff supports all configured flake8 rules. Migration is typically straightforward.
+
+**Post-Migration Note**: The standalone repo's CI pipeline is simpler and fully independent, making this a good time to pursue a tooling migration. The `juniper-cascor` repo already went through CI normalization during its Phase 5 extraction (pip-based install, shellcheck fixes, Bandit skip codes). A ruff migration on `juniper-data` would establish a pattern that could be adopted across other Juniper repos. Note that `juniper-cascor-client` and `juniper-cascor-worker` already use 120-char line length — alignment across repos would benefit from doing RD-012 and RD-013 together.
 
 ---
 
@@ -365,6 +422,8 @@ This document consolidates all outstanding updates, changes, fixes, and enhancem
 
 **Best Practice Note**: 120 characters is widely accepted for modern development. 512 defeats the purpose of line length enforcement.
 
+**Post-Migration Note**: The newer Juniper packages (`juniper-cascor-client`, `juniper-cascor-worker`) already use 120-char line length. Aligning `juniper-data` to 120 would establish consistency across the polyrepo ecosystem. The parent `CLAUDE.md` documents "512 for linters, 120 for flake8" — this should be reconciled across all repos as part of a cross-project style normalization effort. Consider tackling this alongside RD-012 (ruff migration).
+
 ---
 
 ### RD-014: Add Documentation Build Step to CI
@@ -381,6 +440,8 @@ This document consolidates all outstanding updates, changes, fixes, and enhancem
 - [ ] Validate markdown link integrity
 
 **Feasibility**: Feasible when documentation volume justifies the effort. Currently low priority.
+
+**Post-Migration Note**: Documentation link validation is now more important in the polyrepo context. Links between projects that previously used relative paths within the monorepo must now use absolute GitHub URLs or be removed. The broken symlinks identified in RD-018 are a specific manifestation of this issue.
 
 ---
 
@@ -415,6 +476,8 @@ This document consolidates all outstanding updates, changes, fixes, and enhancem
 3. **Option C: Shared Memory (multiprocessing.shared_memory)** — Fastest for co-located services. Requires process coordination.
 4. **Option D: WebSocket** — Already partially implemented in JuniperCanopy. Could extend to JuniperData.
 
+**Post-Migration Note**: The polyrepo migration has formalized inter-service communication via REST through published client packages (`juniper-data-client` v0.3.0, `juniper-cascor-client` v0.1.0). The CasCor service API (19 REST + 2 WebSocket endpoints) and the `CascorServiceAdapter` in Canopy demonstrate that the REST+WebSocket pattern works well for the current use cases. This further reduces urgency for alternative IPC mechanisms. However, the migration also means all communication is now network-based (no more in-process Python imports), which makes performance benchmarking (RD-009) a more valuable input to the IPC revisit decision.
+
 ---
 
 ### RD-016: GPU-Accelerated Data Generation (DATA-019)
@@ -438,6 +501,8 @@ This document consolidates all outstanding updates, changes, fixes, and enhancem
 2. **Option B: JAX** — Google's accelerated computing library. More flexible device management. Larger dependency footprint.
 3. **Option C: PyTorch (torch.cuda)** — Already a dependency for some generators. Leverages existing ecosystem.
 
+**Post-Migration Note**: No migration impact. The standalone CI now uses pip-based installation and does not have CUDA available — any GPU work would require a separate CI job or local testing only. Note that PyTorch is no longer a dependency of `juniper-data` (it's only in `juniper-cascor` and `juniper-cascor-worker`), so Option C would introduce a new heavy dependency.
+
 ---
 
 ### RD-017: Continuous Profiling Integration (DATA-020)
@@ -460,6 +525,8 @@ This document consolidates all outstanding updates, changes, fixes, and enhancem
 2. **Option B: Prometheus + custom metrics** — Standard observability stack. Requires defining and exposing custom metrics via `/metrics` endpoint.
 3. **Option C: OpenTelemetry** — Vendor-neutral telemetry standard. Supports traces, metrics, and logs. Growing ecosystem.
 
+**Post-Migration Note**: The Phase 6 (Post-Migration Hardening) plan in the polyrepo migration document includes Docker Compose full-stack deployment with health checks. Continuous profiling would naturally fit into that deployment infrastructure. The migration plan also calls for a version compatibility matrix and integration test suite (Phase 6, Steps 6.1–6.2) — profiling could be layered on top of that.
+
 ---
 
 ## Validation Results
@@ -472,6 +539,7 @@ Each documented change was validated by:
 2. Verifying feature implementation via symbol/content search
 3. Cross-referencing documented state against actual state
 4. Identifying discrepancies between documents
+5. **(NEW)** Cross-referencing against polyrepo migration outcomes (2026-02-24)
 
 ### Items Confirmed Complete (No Action Required)
 
@@ -488,41 +556,49 @@ Each documented change was validated by:
 | DATA-009 | API versioning docs                | `docs/api/JUNIPER_DATA_API.md` exists                    |
 | DATA-010 | NPZ schema docs                    | Documented in API docs                                   |
 | DATA-011 | Parameter validation parity        | `SpiralParams` has AliasChoices                          |
-| DATA-012 | Client package                     | `juniper_data_client/` complete with tests               |
-| DATA-013 | Client test coverage               | 41 tests, 96% coverage                                   |
+| DATA-012 | Client package                     | **Published to PyPI** as `juniper-data-client` v0.3.0    |
+| DATA-013 | Client test coverage               | 41 tests, 96% coverage (in `juniper-data-client` repo)  |
 | DATA-014 | 8 generators                       | All 8 registered in GENERATOR_REGISTRY                   |
 | DATA-015 | 7 storage backends                 | All 7 implementations present                            |
 | DATA-016 | Lifecycle management               | `DatasetMeta` has tags, ttl_seconds, expires_at, etc.    |
 | DATA-017 | API security                       | `security.py` with APIKeyAuth + RateLimiter              |
 
-### Items with Discrepancies
+### Items Resolved by Migration (Previously Had Discrepancies)
+
+| Item                     | Previous State (2026-02-17)       | Post-Migration State (2026-02-24)                 | Resolution                                |
+| ------------------------ | --------------------------------- | ------------------------------------------------- | ----------------------------------------- |
+| Dependabot configuration | "Complete" in audit, file missing | **File present**, 3 PRs already open              | Created during polyrepo Phase 5 CI setup  |
+| CodeQL scans             | PENDING VERIFICATION              | **Active and running** on standalone repo          | Confirmed during Phase 5 verification     |
+| Client PyPI publication  | NOT STARTED                       | **Published** `juniper-data-client` v0.3.0        | Completed in polyrepo Phase 1             |
+| Consumer projects update | NOT STARTED                       | **All consumers updated**, vendored copies removed | Completed in polyrepo Phases 1 and 5      |
+
+### Items with Remaining Discrepancies
 
 | Item                     | Documented                                | Actual             | Impact                 |
 | ------------------------ | ----------------------------------------- | ------------------ | ---------------------- |
 | GENERATOR_REGISTRY count | Release notes: 5 of 8                     | 8 of 8 registered  | Documentation outdated |
 | Coverage percentage      | 95.18% (dev plan) vs ~60% (release notes) | Needs verification | Conflicting metrics    |
-| Dependabot configuration | "Complete" (audit plan)                   | File missing       | Security gap           |
+| Broken notes symlinks    | N/A (new issue)                           | 4 broken symlinks  | Reference integrity    |
 
 ### Items Validated as Reasonable and Feasible
 
-| ID     | Item                  | Assessment                                      |
-| ------ | --------------------- | ----------------------------------------------- |
-| RD-001 | Update release notes  | Trivial edit, no risk                           |
-| RD-002 | Create dependabot.yml | Standard configuration, no risk                 |
-| RD-005 | Reconcile coverage    | Essential for accurate reporting                |
-| RD-006 | Security tests        | Important gap, standard testing practices       |
-| RD-007 | Coverage improvement  | Likely a configuration issue, not missing tests |
-| RD-010 | PyPI publication      | Standard Python packaging, well-documented      |
-| RD-012 | flake8→ruff migration | Optional but beneficial for speed               |
-| RD-013 | Line length review    | Best practice alignment needed                  |
+| ID     | Item                  | Assessment                                                  |
+| ------ | --------------------- | ----------------------------------------------------------- |
+| RD-001 | Update release notes  | Trivial edit, no risk                                       |
+| RD-005 | Reconcile coverage    | Essential for accurate reporting                            |
+| RD-006 | Security tests        | Important gap, standard testing practices                   |
+| RD-007 | Coverage improvement  | Likely a configuration issue, not missing tests             |
+| RD-012 | flake8→ruff migration | Optional but beneficial; good timing in standalone repo     |
+| RD-013 | Line length review    | Best practice alignment needed; coordinate across repos     |
+| RD-018 | Fix broken symlinks   | Quick cleanup, prevents confusion in standalone repo        |
 
 ### Items with Concerns
 
 | ID                | Item                 | Concern                                               |
 | ----------------- | -------------------- | ----------------------------------------------------- |
-| RD-015 (DATA-018) | IPC Architecture     | XL effort, architecturally complex, no current demand |
-| RD-016 (DATA-019) | GPU Acceleration     | XL effort, small dataset sizes don't justify          |
-| RD-017 (DATA-020) | Continuous Profiling | Requires infrastructure, pre-production               |
+| RD-015 (DATA-018) | IPC Architecture     | XL effort, architecturally complex, no current demand — further reduced by successful REST migration |
+| RD-016 (DATA-019) | GPU Acceleration     | XL effort, small dataset sizes don't justify — PyTorch no longer a dependency in juniper-data |
+| RD-017 (DATA-020) | Continuous Profiling | Requires infrastructure, pre-production — fits Phase 6 hardening |
 
 ---
 
@@ -530,28 +606,16 @@ Each documented change was validated by:
 
 ### Phase 1 Design (Documentation & Housekeeping)
 
-**RD-001/RD-004**: Straightforward text edits. No design decisions required.
+**RD-001/RD-004**: Straightforward text edits. No design decisions required. RD-004 scope has changed — now requires defining what v0.5.0 actually is, since all original v0.5.0 items are complete.
 
-**RD-002 (Dependabot)**: Standard GitHub configuration. Recommended approach:
+**RD-002 (Dependabot)**: **COMPLETE** — No design needed. File exists and is active.
 
-```yaml
-version: 2
-updates:
-  - package-ecosystem: "pip"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-    groups:
-      python-minor:
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
-  - package-ecosystem: "github-actions"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-```
+**RD-005 (Coverage Reconciliation)**: Run coverage locally and update all documents to consistent value. If coverage is truly at ~60%, investigate `source_pkgs` configuration vs `source` paths. The discrepancy between 95% and 60% likely reflects different measurement scopes. Post-migration, the client code is no longer in this repo's scope, which should simplify the measurement.
 
-**RD-005 (Coverage Reconciliation)**: Run coverage locally and update all documents to consistent value. If coverage is truly at ~60%, investigate `source_pkgs` configuration vs `source` paths. The discrepancy between 95% and 60% likely reflects different measurement scopes.
+**RD-018 (Broken Symlinks)**: Recommend a tiered approach:
+- **POLYREPO_MIGRATION_PLAN.md**: Replace with a redirect note (canonical copy is in `juniper-cascor/notes/`)
+- **History files**: Remove broken symlinks — these are archived documents accessible through monorepo git history
+- **MONOREPO_ANALYSIS.md**: Copy if JuniperData-relevant, otherwise replace with redirect
 
 ### Phase 2 Design (Test Coverage & Quality)
 
@@ -580,25 +644,15 @@ tests/unit/test_security_boundaries.py
 1. Run coverage with `--cov=juniper_data` and check which modules are included
 2. Verify `source_pkgs` in `pyproject.toml` includes all subpackages
 3. Check if conditional imports (e.g., `try: import arc_agi except ImportError`) bypass coverage
+4. **NEW**: Verify whether `pip install ".[all]"` in CI actually installs optional deps like `arc-agi`
 
 ### Phase 3 Design (Client Library)
 
-**RD-010 (PyPI Publication)**: Recommended CI/CD workflow:
-
-```bash
-Trigger: Git tag matching "client-v*"
-Steps:
-  1. Checkout code
-  2. Build package (python -m build)
-  3. Run client tests
-  4. Publish to PyPI (twine upload)
-```
-
-Alternatively, integrate into existing `ci.yml` with a conditional publish job.
+**PHASE COMPLETE** — No design needed. See RD-010 and RD-011 completion summaries.
 
 ### Phase 4-5 Design
 
-Detailed in the Design Options sections of each item above.
+Detailed in the Design Options sections of each item above, with post-migration notes.
 
 ---
 
@@ -608,29 +662,33 @@ Detailed in the Design Options sections of each item above.
 
 See `JUNIPER-CASCOR_POST-RELEASE_DEVELOPMENT-ROADMAP.md` in JuniperCascor notes directory.
 
-| ID          | Item                                      | Status                        | Source |
-| ----------- | ----------------------------------------- | ----------------------------- | ------ |
-| CAS-001     | Extract Spiral Generator to JuniperData   | COMPLETE (JuniperData exists) |        |
-| CAS-002     | Separate Epoch Limits                     | NOT STARTED                   |        |
-| CAS-003     | Max Train Session Iterations              | NOT STARTED                   |        |
-| CAS-004     | Extract Remote Worker to JuniperBranch    | NOT STARTED                   |        |
-| CAS-005     | Extract Common Dependencies to Modules    | NOT STARTED                   |        |
-| CAS-006     | Auto-Snap Best Network (Accuracy Ratchet) | NOT STARTED                   |        |
-| CAS-007     | Optimize Slow Tests                       | NOT STARTED                   |        |
-| CAS-008     | Network Hierarchy Management              | NOT STARTED                   |        |
-| CAS-009     | Network Population Management             | NOT STARTED                   |        |
-| CAS-010     | Snapshot Vector DB Storage                | NOT STARTED                   |        |
-| CAS-REF-001 | Code Coverage Below 90%                   | IN PROGRESS                   |        |
-| CAS-REF-002 | CI/CD Coverage Gates                      | NOT STARTED                   |        |
-| CAS-REF-003 | Type Errors Gradual Fix                   | IN PROGRESS                   |        |
-| CAS-REF-004 | Legacy Spiral Code Removal                | NOT STARTED                   |        |
-| CAS-REF-005 | RemoteWorkerClient Integration            | COMPLETE (per P1-NEW-002)     |        |
+**Post-Migration Note**: JuniperCascor is now a standalone repo at `pcalnon/juniper-cascor` (127 commits, CI green). The following status updates reflect migration outcomes:
+
+| ID          | Item                                      | Status (2026-02-17)           | Status (2026-02-24)                                              |
+| ----------- | ----------------------------------------- | ----------------------------- | ---------------------------------------------------------------- |
+| CAS-001     | Extract Spiral Generator to JuniperData   | COMPLETE (JuniperData exists) | COMPLETE                                                         |
+| CAS-002     | Separate Epoch Limits                     | NOT STARTED                   | NOT STARTED                                                      |
+| CAS-003     | Max Train Session Iterations              | NOT STARTED                   | NOT STARTED                                                      |
+| CAS-004     | Extract Remote Worker to JuniperBranch    | NOT STARTED                   | **COMPLETE** — `juniper-cascor-worker` published to PyPI v0.1.0  |
+| CAS-005     | Extract Common Dependencies to Modules    | NOT STARTED                   | NOT STARTED                                                      |
+| CAS-006     | Auto-Snap Best Network (Accuracy Ratchet) | NOT STARTED                   | NOT STARTED                                                      |
+| CAS-007     | Optimize Slow Tests                       | NOT STARTED                   | NOT STARTED                                                      |
+| CAS-008     | Network Hierarchy Management              | NOT STARTED                   | NOT STARTED                                                      |
+| CAS-009     | Network Population Management             | NOT STARTED                   | NOT STARTED                                                      |
+| CAS-010     | Snapshot Vector DB Storage                | NOT STARTED                   | NOT STARTED                                                      |
+| CAS-REF-001 | Code Coverage Below 90%                   | IN PROGRESS                   | IN PROGRESS                                                      |
+| CAS-REF-002 | CI/CD Coverage Gates                      | NOT STARTED                   | **PARTIAL** — CI pipeline exists with coverage gate in standalone repo |
+| CAS-REF-003 | Type Errors Gradual Fix                   | IN PROGRESS                   | IN PROGRESS                                                      |
+| CAS-REF-004 | Legacy Spiral Code Removal                | NOT STARTED                   | NOT STARTED                                                      |
+| CAS-REF-005 | RemoteWorkerClient Integration            | COMPLETE (per P1-NEW-002)     | **SUPERSEDED** — standalone `juniper-cascor-worker` package      |
 
 ### Items Identified for JuniperCanopy
 
 See `JUNIPER-CANOPY_POST-RELEASE_DEVELOPMENT-ROADMAP.md` in JuniperCanopy notes directory.
 
 CAN-000 through CAN-021 (22 enhancement items) documented in PRE-DEPLOYMENT_ROADMAP-2.md Section 7.1.
+
+**Post-Migration Note**: JuniperCanopy has not yet been extracted to its standalone repo (blocked by Phase 4 completion — adapter + 3-mode activation are implemented but legacy removal and integration testing remain). The `CascorServiceAdapter` (306 lines) and three-mode activation logic are committed and tested (3,460 tests pass), but the Canopy repo still lives in the monorepo at `pcalnon/Juniper` on the `canopy/migration` branch.
 
 ---
 
@@ -641,24 +699,21 @@ CAN-000 through CAN-021 (22 enhancement items) documented in PRE-DEPLOYMENT_ROAD
 | ID     | Item                              | Priority | Effort | Impact                 |
 | ------ | --------------------------------- | -------- | ------ | ---------------------- |
 | RD-001 | Update release notes known issues | HIGH     | S      | Documentation accuracy |
-| RD-002 | Create dependabot.yml             | HIGH     | S      | Security automation    |
-| RD-004 | Update v0.5.0 planned items       | MEDIUM   | S      | Roadmap accuracy       |
+| RD-004 | Update v0.5.0 planned items       | HIGH     | S      | Roadmap accuracy       |
 | RD-005 | Reconcile coverage metrics        | HIGH     | S      | Informed decisions     |
+| RD-018 | Fix broken notes symlinks         | MEDIUM   | S      | Reference integrity    |
 
 ### Short-Term (Next 2 Sprints)
 
 | ID     | Item                   | Priority | Effort | Impact                |
 | ------ | ---------------------- | -------- | ------ | --------------------- |
-| RD-003 | Verify CodeQL scans    | MEDIUM   | S      | CI/CD completeness    |
 | RD-006 | Security-focused tests | HIGH     | M      | Security posture      |
 | RD-007 | Coverage improvement   | MEDIUM   | L      | Quality confidence    |
-| RD-010 | Publish client to PyPI | MEDIUM   | M      | Ecosystem integration |
 
 ### Medium-Term (Next Quarter)
 
 | ID     | Item                     | Priority | Effort | Impact               |
 | ------ | ------------------------ | -------- | ------ | -------------------- |
-| RD-011 | Update consumer projects | MEDIUM   | S      | Code deduplication   |
 | RD-008 | Fix SIM117 violations    | LOW      | S-M    | Code readability     |
 | RD-009 | Performance test infra   | LOW      | M      | Regression detection |
 | RD-012 | flake8→ruff migration    | LOW      | M      | Dev velocity         |
@@ -673,21 +728,32 @@ CAN-000 through CAN-021 (22 enhancement items) documented in PRE-DEPLOYMENT_ROAD
 | RD-016 | GPU Acceleration      | LOW      | XL     | Dataset size >1M       |
 | RD-017 | Continuous Profiling  | LOW      | L      | Production deployment  |
 
+### Completed (Resolved by Polyrepo Migration)
+
+| ID     | Item                     | Resolution Date | Resolution                                      |
+| ------ | ------------------------ | --------------- | ----------------------------------------------- |
+| RD-002 | Create dependabot.yml    | 2026-02-21      | Created during Phase 5 repo extraction          |
+| RD-003 | Verify CodeQL scans      | 2026-02-22      | Confirmed active on standalone repo             |
+| RD-010 | Publish client to PyPI   | 2026-02-20      | `juniper-data-client` v0.3.0 on PyPI            |
+| RD-011 | Update consumer projects | 2026-02-21      | All consumers reference PyPI package            |
+
 ---
 
 ## Summary Statistics
 
-| Category                 | Count |
-| ------------------------ | ----- |
-| Total Items              | 17    |
-| NOT STARTED              | 12    |
-| DEFERRED                 | 4     |
-| PENDING VERIFICATION     | 1     |
-| Phase 1 (Housekeeping)   | 5     |
-| Phase 2 (Quality)        | 4     |
-| Phase 3 (Client Library) | 2     |
-| Phase 4 (Tooling)        | 3     |
-| Phase 5 (Advanced)       | 3     |
+| Category                             | Count |
+| ------------------------------------ | ----- |
+| Total Items                          | 18    |
+| **COMPLETE** (resolved by migration) | 4     |
+| NOT STARTED                          | 8     |
+| DEFERRED                             | 4     |
+| PENDING VERIFICATION                 | 0     |
+| NEW (post-migration)                 | 1     |
+| Phase 1 (Housekeeping)              | 6     |
+| Phase 2 (Quality)                    | 4     |
+| Phase 3 (Client Library)             | 2 (both COMPLETE) |
+| Phase 4 (Tooling)                    | 3     |
+| Phase 5 (Advanced)                   | 3     |
 
 ---
 
@@ -704,6 +770,8 @@ Items identified during the JuniperCanopy comprehensive notes/ audit that have J
 
 **Impact**: JuniperCanopy will depend on health check endpoint availability.
 
+**Post-Migration Note**: The polyrepo migration does not change the JuniperData health check endpoints. JuniperCanopy will access them over the network via the same REST URLs. The Phase 6 Docker Compose plan (POLYREPO_MIGRATION_PLAN, Step 6.3) already includes health check configuration: `test: ["CMD", "curl", "-f", "http://localhost:8100/v1/health"]`.
+
 ---
 
 ### RD-CANOPY-002: Dataset Versioning API (Future)
@@ -712,6 +780,8 @@ Items identified during the JuniperCanopy comprehensive notes/ audit that have J
 **Source**: JuniperCanopy CAN-DEF-005 (JuniperData Dataset Versioning)
 
 **Description**: JuniperCanopy plans to support dataset versioning — tracking which dataset version was used for each training session. This requires JuniperData to support versioned datasets (multiple versions of the same dataset with version metadata). Currently deferred in both projects.
+
+**Post-Migration Note**: In the polyrepo architecture, any dataset versioning API changes to JuniperData would also require a corresponding update to `juniper-data-client`. The versioning coordination described in Phase 6 (Step 6.1) should include a compatibility matrix entry for this feature when it is implemented.
 
 ---
 
@@ -722,6 +792,8 @@ Items identified during the JuniperCanopy comprehensive notes/ audit that have J
 
 **Description**: JuniperCanopy plans to support batch dataset operations (bulk import, bulk export, batch metadata updates). This requires corresponding batch API endpoints in JuniperData. Currently deferred in both projects.
 
+**Post-Migration Note**: Same versioning considerations as RD-CANOPY-002. Any new API endpoints in JuniperData require corresponding client methods in `juniper-data-client`, which must be published to PyPI before consumers can use them. This is a 3-step release process: (1) add endpoint to `juniper-data`, (2) add client method to `juniper-data-client` and publish, (3) update consumers.
+
 ---
 
 ## Document History
@@ -730,3 +802,4 @@ Items identified during the JuniperCanopy comprehensive notes/ audit that have J
 | ---------- | ---------------------- | ------------------------------------------------------------- |
 | 2026-02-17 | Paul Calnon / AI Agent | Initial creation from comprehensive codebase audit            |
 | 2026-02-17 | AI Agent               | Added cross-references from JuniperCanopy comprehensive audit |
+| 2026-02-24 | AI Agent               | Post-migration reassessment: updated status of RD-002, RD-003, RD-010, RD-011 to COMPLETE; added RD-018 (broken symlinks); added post-migration notes to all items; updated CAS cross-references (CAS-004 COMPLETE, CAS-REF-005 SUPERSEDED); updated priority matrix and summary statistics; archived pre-migration version to `history/` |
