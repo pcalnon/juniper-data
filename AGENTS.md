@@ -276,9 +276,8 @@ JuniperData is part of the Juniper ecosystem alongside **JuniperCascor** (CasCor
 | Document | Location | Purpose |
 |----------|----------|---------|
 | Integration Development Plan | `notes/INTEGRATION_DEVELOPMENT_PLAN.md` | Outstanding work items and priorities |
-| Integration Roadmap | `notes/INTEGRATION_ROADMAP.md` | Cascor/Canopy integration status (symlink) |
-| Pre-Deployment Roadmap | `notes/PRE-DEPLOYMENT_ROADMAP.md` | Pre-deployment assessment (symlink) |
-| Pre-Deployment Roadmap 2 | `notes/PRE-DEPLOYMENT_ROADMAP-2.md` | Phase 2 remaining items (symlink) |
+| Polyrepo Migration Plan | `notes/POLYREPO_MIGRATION_PLAN.md` | Redirect to canonical copy in `juniper-cascor` |
+| Monorepo Analysis | `notes/MONOREPO_ANALYSIS.md` | Redirect to canonical copy in `juniper-cascor` |
 
 ---
 

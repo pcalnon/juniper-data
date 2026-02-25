@@ -64,7 +64,7 @@ On 2026-02-24, the JuniperData codebase was extracted from the monorepo (`pcalno
 | Dependabot configuration | File does not exist              | **File exists, 3 PRs open**                       | ~~Create dependabot.yml~~ **DONE** |
 | v0.5.0 planned items     | "Register remaining generators"  | All 4 items already done                          | Revise v0.5.0 scope          |
 | Client package           | Local vendored copy              | **Published to PyPI as v0.3.0**                   | ~~Publish to PyPI~~ **DONE** |
-| Broken notes symlinks    | N/A                              | 4 broken symlinks in `notes/` and `notes/history/` | Fix or remove (NEW: RD-018) |
+| Broken notes symlinks    | N/A                              | 4 broken symlinks in `notes/` and `notes/history/` | ~~Fix or remove~~ **DONE** (RD-018) |
 
 ---
 
@@ -187,28 +187,19 @@ On 2026-02-24, the JuniperData codebase was extracted from the monorepo (`pcalno
 
 ### RD-018: Fix Broken Notes Symlinks (NEW — Post-Migration)
 
-**Priority**: MEDIUM | **Status**: NOT STARTED | **Effort**: Small (30 min)
+**Priority**: MEDIUM | **Status**: COMPLETE (2026-02-24) | **Effort**: Small (30 min)
 **Source**: Polyrepo migration impact analysis (2026-02-24)
 
-**Problem**: The polyrepo migration left 4 broken symlinks in the `notes/` directory that point to the old monorepo location (`JuniperCascor/juniper_cascor/notes/`):
+**Problem**: The polyrepo migration left 4 broken symlinks in the `notes/` directory that point to the old monorepo location (`JuniperCascor/juniper_cascor/notes/`). Additionally, `notes/MONOREPO_ANALYSIS.md` was a symlink that resolved but pointed to the old `JuniperCascor` monorepo location, which would break when that directory is removed.
 
-| Broken Symlink                                      | Target (no longer accessible)                                                                |
-| --------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `notes/POLYREPO_MIGRATION_PLAN.md`                  | `/home/pcalnon/.../JuniperCascor/juniper_cascor/notes/POLYREPO_MIGRATION_PLAN.md`            |
-| `notes/history/PRE-DEPLOYMENT_ROADMAP.md`           | `/home/pcalnon/.../JuniperCascor/juniper_cascor/notes/PRE-DEPLOYMENT_ROADMAP.md`             |
-| `notes/history/PRE-DEPLOYMENT_ROADMAP-2.md`         | `../../../../JuniperCascor/juniper_cascor/notes/PRE-DEPLOYMENT_ROADMAP-2.md` (relative)      |
-| `notes/history/INTEGRATION_ROADMAP.md`              | `/home/pcalnon/.../JuniperCascor/juniper_cascor/notes/INTEGRATION_ROADMAP.md`                |
+**Resolution** (2026-02-24):
 
-Additionally, `notes/MONOREPO_ANALYSIS.md` is a symlink that currently resolves but points to the old `JuniperCascor` monorepo location, which will break if that directory is removed.
-
-**Required Actions**:
-
-- [ ] Decide disposition for each symlink: (a) replace with a copy of the canonical file from `juniper-cascor/notes/`, (b) replace with a cross-repo reference note pointing to the `juniper-cascor` repo, or (c) remove entirely
-- [ ] For `POLYREPO_MIGRATION_PLAN.md` — recommend option (b): the canonical copy now lives in `juniper-cascor/notes/`; replace the symlink with a brief redirect note pointing to `pcalnon/juniper-cascor`
-- [ ] For history files (`PRE-DEPLOYMENT_ROADMAP*.md`, `INTEGRATION_ROADMAP.md`) — recommend option (c): these are historical documents from the monorepo era; remove the broken symlinks since they are already archived in the monorepo git history
-- [ ] For `MONOREPO_ANALYSIS.md` — recommend option (a) or (b): copy the file if it contains JuniperData-relevant content, otherwise replace with a redirect note
-
-**Feasibility**: Straightforward cleanup. No code impact.
+- [x] `notes/POLYREPO_MIGRATION_PLAN.md` — replaced broken symlink with redirect note pointing to `pcalnon/juniper-cascor`
+- [x] `notes/MONOREPO_ANALYSIS.md` — replaced fragile symlink with redirect note pointing to `pcalnon/juniper-cascor`
+- [x] `notes/history/PRE-DEPLOYMENT_ROADMAP.md` — removed (historical, archived in monorepo git history)
+- [x] `notes/history/PRE-DEPLOYMENT_ROADMAP-2.md` — removed (historical, archived in monorepo git history)
+- [x] `notes/history/INTEGRATION_ROADMAP.md` — removed (historical, archived in monorepo git history)
+- [x] Updated `CLAUDE.md` Key Documentation table to reflect new state
 
 ---
 
@@ -578,7 +569,7 @@ Each documented change was validated by:
 | ------------------------ | ----------------------------------------- | ------------------ | ---------------------- |
 | GENERATOR_REGISTRY count | Release notes: 5 of 8                     | 8 of 8 registered  | Documentation outdated |
 | Coverage percentage      | 95.18% (dev plan) vs ~60% (release notes) | Needs verification | Conflicting metrics    |
-| Broken notes symlinks    | N/A (new issue)                           | 4 broken symlinks  | Reference integrity    |
+| Broken notes symlinks    | N/A (new issue)                           | **RESOLVED**       | ~~Reference integrity~~ **DONE** |
 
 ### Items Validated as Reasonable and Feasible
 
@@ -590,7 +581,7 @@ Each documented change was validated by:
 | RD-007 | Coverage improvement  | Likely a configuration issue, not missing tests             |
 | RD-012 | flake8→ruff migration | Optional but beneficial; good timing in standalone repo     |
 | RD-013 | Line length review    | Best practice alignment needed; coordinate across repos     |
-| RD-018 | Fix broken symlinks   | Quick cleanup, prevents confusion in standalone repo        |
+| RD-018 | Fix broken symlinks   | **COMPLETE** — Redirect notes + removed history symlinks    |
 
 ### Items with Concerns
 
@@ -701,7 +692,7 @@ CAN-000 through CAN-021 (22 enhancement items) documented in PRE-DEPLOYMENT_ROAD
 | RD-001 | Update release notes known issues | HIGH     | S      | Documentation accuracy |
 | RD-004 | Update v0.5.0 planned items       | HIGH     | S      | Roadmap accuracy       |
 | RD-005 | Reconcile coverage metrics        | HIGH     | S      | Informed decisions     |
-| RD-018 | Fix broken notes symlinks         | MEDIUM   | S      | Reference integrity    |
+| RD-018 | Fix broken notes symlinks         | ~~MEDIUM~~ | ~~S~~ | **COMPLETE**           |
 
 ### Short-Term (Next 2 Sprints)
 
@@ -736,6 +727,7 @@ CAN-000 through CAN-021 (22 enhancement items) documented in PRE-DEPLOYMENT_ROAD
 | RD-003 | Verify CodeQL scans      | 2026-02-22      | Confirmed active on standalone repo             |
 | RD-010 | Publish client to PyPI   | 2026-02-20      | `juniper-data-client` v0.3.0 on PyPI            |
 | RD-011 | Update consumer projects | 2026-02-21      | All consumers reference PyPI package            |
+| RD-018 | Fix broken notes symlinks| 2026-02-24      | Redirect notes for migration plan + monorepo analysis; removed 3 history symlinks |
 
 ---
 
@@ -744,11 +736,11 @@ CAN-000 through CAN-021 (22 enhancement items) documented in PRE-DEPLOYMENT_ROAD
 | Category                             | Count |
 | ------------------------------------ | ----- |
 | Total Items                          | 18    |
-| **COMPLETE** (resolved by migration) | 4     |
-| NOT STARTED                          | 8     |
+| **COMPLETE**                         | 5     |
+| NOT STARTED                          | 7     |
 | DEFERRED                             | 4     |
 | PENDING VERIFICATION                 | 0     |
-| NEW (post-migration)                 | 1     |
+| NEW (post-migration)                 | 0     |
 | Phase 1 (Housekeeping)              | 6     |
 | Phase 2 (Quality)                    | 4     |
 | Phase 3 (Client Library)             | 2 (both COMPLETE) |
@@ -803,3 +795,4 @@ Items identified during the JuniperCanopy comprehensive notes/ audit that have J
 | 2026-02-17 | Paul Calnon / AI Agent | Initial creation from comprehensive codebase audit            |
 | 2026-02-17 | AI Agent               | Added cross-references from JuniperCanopy comprehensive audit |
 | 2026-02-24 | AI Agent               | Post-migration reassessment: updated status of RD-002, RD-003, RD-010, RD-011 to COMPLETE; added RD-018 (broken symlinks); added post-migration notes to all items; updated CAS cross-references (CAS-004 COMPLETE, CAS-REF-005 SUPERSEDED); updated priority matrix and summary statistics; archived pre-migration version to `history/` |
+| 2026-02-24 | AI Agent               | RD-018 COMPLETE: removed 3 broken history symlinks, replaced `POLYREPO_MIGRATION_PLAN.md` and `MONOREPO_ANALYSIS.md` symlinks with redirect notes, updated CLAUDE.md Key Documentation table, updated summary statistics |
