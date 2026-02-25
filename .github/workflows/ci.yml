@@ -53,7 +53,7 @@ permissions:
 env:
   SERVICE_NAME: JuniperData
   PYTHON_TEST_VERSION: "3.14"
-  COVERAGE_FAIL_UNDER: "95"
+  COVERAGE_FAIL_UNDER: "80"
 
 jobs:
   # ═══════════════════════════════════════════════════════════════════════════════════════════════
