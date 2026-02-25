@@ -187,9 +187,11 @@ python -m juniper_data
 
 ## What's Next
 
-### Planned for v0.5.0
+### Planned for v0.5.0 — Quality + Tooling (first standalone release)
 
-- Scope to be redefined — all original v0.5.0 items are now complete (see [development roadmap](../JUNIPER-DATA_POST-RELEASE_DEVELOPMENT-ROADMAP.md) RD-004)
+- Add security boundary test suite: path traversal, injection, request size limits, parameter bounds, resource exhaustion (RD-006)
+- Migrate linting from flake8 to ruff (RD-012)
+- Normalize line length to 120 across all configuration (RD-013)
 
 ### Completed Since Release
 

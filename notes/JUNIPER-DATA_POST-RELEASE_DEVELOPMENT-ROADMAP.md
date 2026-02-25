@@ -30,7 +30,7 @@ On 2026-02-24, the JuniperData codebase was extracted from the monorepo (`pcalno
 - **RD-003 (CodeQL)**: Now **COMPLETE** — CodeQL scans confirmed active on the standalone `juniper-data` repo.
 - **RD-010 (Publish client to PyPI)**: Now **COMPLETE** — `juniper-data-client` v0.3.0 published to PyPI during Phase 1, with Trusted Publishing OIDC configured.
 - **RD-011 (Update consumers)**: Now **COMPLETE** — all vendored copies removed from CasCor, Canopy, and Data; all consumers reference the PyPI package.
-- **RD-004 (v0.5.0 plan)**: Now **LARGELY OBSOLETE** — all four planned v0.5.0 items (PyPI publication, consumer updates, generator registration) are complete.
+- **RD-004 (v0.5.0 plan)**: **COMPLETE** — v0.5.0 redefined as Quality + Tooling release (RD-006 security tests, RD-012/013 ruff migration + line length).
 - **CI/CD**: Standalone repo CI now uses pip-based installation (not conda), with its own independent pipeline.
 - **Cross-repo symlinks**: Several symlinks in `notes/` are now broken due to the repo separation (see RD-018).
 - **Cross-project references**: Many source documents referenced in this roadmap reside in the old monorepo structure and are accessible only through local history symlinks.
@@ -135,25 +135,19 @@ On 2026-02-24, the JuniperData codebase was extracted from the monorepo (`pcalno
 
 ### RD-004: Update v0.5.0 Planned Items
 
-**Priority**: HIGH | **Status**: NOT STARTED (scope change — all original items are now COMPLETE) | **Effort**: Small (30 min)
+**Priority**: HIGH | **Status**: COMPLETE (2026-02-24) | **Effort**: Small (30 min)
 **Source**: RELEASE_NOTES_v0.4.2.md (What's Next section)
 
-**Problem**: The v0.5.0 plan in the release notes includes four items — **all are now complete** due to the polyrepo migration:
+**Problem**: The original v0.5.0 plan included four items that were all completed during the polyrepo migration. The version needed a new scope definition.
 
-| Planned v0.5.0 Item                                     | Current Status (2026-02-24)                                     |
-| -------------------------------------------------------- | --------------------------------------------------------------- |
-| Publish juniper-data-client to PyPI                      | **DONE** — v0.3.0 on PyPI (Phase 1 of migration)               |
-| Update JuniperCascor to use shared client package        | **DONE** — `juniper-data-client>=0.3.0` in CasCor pyproject.toml |
-| Update JuniperCanopy to use shared client package        | **DONE** — `juniper-data-client>=0.3.0` in Canopy pyproject.toml |
-| Register remaining generators in GENERATOR_REGISTRY      | **DONE** — all 8 registered (predates migration)                |
+**Resolution** (2026-02-24):
 
-**Required Actions**:
-
-- [ ] Redefine v0.5.0 scope to reflect actual remaining work (e.g., items from this roadmap: RD-006 security tests, RD-007 coverage improvement, line length normalization)
-- [ ] Update `notes/releases/RELEASE_NOTES_v0.4.2.md` "What's Next" section to remove completed items
-- [ ] Consider whether v0.5.0 should be the first release from the standalone `juniper-data` repo
-
-**Post-Migration Note**: Since the v0.5.0 planned items are all now complete, the v0.5.0 version bump should be redefined around the first significant change set in the standalone repo. This is an opportunity to establish the post-migration versioning cadence.
+- [x] Redefined v0.5.0 as the first release from the standalone `juniper-data` repo, scoped as **Quality + Tooling**:
+  - RD-006: Security boundary test suite (HIGH priority)
+  - RD-012: flake8→ruff migration (LOW priority, good housekeeping)
+  - RD-013: Line length normalization to 120 (LOW priority, consistency)
+- [x] Updated `notes/releases/RELEASE_NOTES_v0.4.2.md` "What's Next" section with new v0.5.0 scope (completed items already moved to "Completed Since Release" in RD-001)
+- [x] v0.5.0 will be a MINOR release focused on quality infrastructure and linting modernization — no new features or API changes
 
 ---
 
@@ -592,7 +586,7 @@ Each documented change was validated by:
 
 ### Phase 1 Design (Documentation & Housekeeping)
 
-**RD-001/RD-004**: Straightforward text edits. No design decisions required. RD-004 scope has changed — now requires defining what v0.5.0 actually is, since all original v0.5.0 items are complete.
+**RD-001/RD-004**: Both **COMPLETE**. RD-001 updated release notes known issues and What's Next. RD-004 redefined v0.5.0 as Quality + Tooling: RD-006 (security boundary tests) + RD-012/013 (flake8→ruff + line length normalization).
 
 **RD-002 (Dependabot)**: **COMPLETE** — No design needed. File exists and is active.
 
@@ -685,7 +679,7 @@ CAN-000 through CAN-021 (22 enhancement items) documented in PRE-DEPLOYMENT_ROAD
 | ID     | Item                              | Priority | Effort | Impact                 |
 | ------ | --------------------------------- | -------- | ------ | ---------------------- |
 | RD-001 | Update release notes known issues | ~~HIGH~~ | ~~S~~ | **COMPLETE**           |
-| RD-004 | Update v0.5.0 planned items       | HIGH     | S      | Roadmap accuracy       |
+| RD-004 | Update v0.5.0 planned items       | ~~HIGH~~ | ~~S~~ | **COMPLETE**           |
 | RD-005 | Reconcile coverage metrics        | HIGH     | S      | Informed decisions     |
 | RD-018 | Fix broken notes symlinks         | ~~MEDIUM~~ | ~~S~~ | **COMPLETE**           |
 
@@ -724,6 +718,7 @@ CAN-000 through CAN-021 (22 enhancement items) documented in PRE-DEPLOYMENT_ROAD
 | RD-011 | Update consumer projects | 2026-02-21      | All consumers reference PyPI package            |
 | RD-018 | Fix broken notes symlinks| 2026-02-24      | Redirect notes for migration plan + monorepo analysis; removed 3 history symlinks |
 | RD-001 | Update release notes     | 2026-02-24      | Updated known issues (GENERATOR_REGISTRY + coverage resolved), What's Next section |
+| RD-004 | Redefine v0.5.0 scope    | 2026-02-24      | v0.5.0 = Quality + Tooling: RD-006 security tests + RD-012/013 ruff + line length |
 
 ---
 
@@ -732,8 +727,8 @@ CAN-000 through CAN-021 (22 enhancement items) documented in PRE-DEPLOYMENT_ROAD
 | Category                             | Count |
 | ------------------------------------ | ----- |
 | Total Items                          | 18    |
-| **COMPLETE**                         | 6     |
-| NOT STARTED                          | 6     |
+| **COMPLETE**                         | 7     |
+| NOT STARTED                          | 5     |
 | DEFERRED                             | 4     |
 | PENDING VERIFICATION                 | 0     |
 | NEW (post-migration)                 | 0     |
@@ -793,3 +788,4 @@ Items identified during the JuniperCanopy comprehensive notes/ audit that have J
 | 2026-02-24 | AI Agent               | Post-migration reassessment: updated status of RD-002, RD-003, RD-010, RD-011 to COMPLETE; added RD-018 (broken symlinks); added post-migration notes to all items; updated CAS cross-references (CAS-004 COMPLETE, CAS-REF-005 SUPERSEDED); updated priority matrix and summary statistics; archived pre-migration version to `history/` |
 | 2026-02-24 | AI Agent               | RD-018 COMPLETE: removed 3 broken history symlinks, replaced `POLYREPO_MIGRATION_PLAN.md` and `MONOREPO_ANALYSIS.md` symlinks with redirect notes, updated CLAUDE.md Key Documentation table, updated summary statistics |
 | 2026-02-24 | AI Agent               | RD-001 COMPLETE: updated v0.4.2 release notes — moved GENERATOR_REGISTRY and coverage known issues to "Resolved Since Release" (coverage verified at 99.40%, 659 tests); updated What's Next with completed items and new roadmap link |
+| 2026-02-24 | AI Agent               | RD-004 COMPLETE: redefined v0.5.0 scope as Quality + Tooling (RD-006 security tests + RD-012/013 flake8→ruff + line length normalization); updated release notes What's Next with concrete v0.5.0 plan |
