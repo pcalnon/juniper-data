@@ -42,7 +42,7 @@ On 2026-02-24, the JuniperData codebase was extracted from the monorepo (`pcalno
 | Version                          | 0.4.2                     | 0.4.2                                      | Correct                        |
 | Generators in GENERATOR_REGISTRY | 5 (per release notes)     | **8**                                      | ~~Release notes outdated~~ **FIXED** (RD-001) |
 | Storage Backends                 | 7                         | 7 (+ base + **init**)                      | Correct                        |
-| Service Tests                    | 658                       | 658 (30 files)                             | Correct                        |
+| Service Tests                    | 658                       | **741** (34 files)                         | **Grown** — security + perf tests added |
 | Client Tests                     | 41                        | N/A — client is now a separate repo        | **Moved to juniper-data-client** |
 | Client Coverage                  | 96%                       | N/A — client is now a separate repo        | **Moved to juniper-data-client** |
 | Security (auth + rate limiting)  | Complete                  | Complete                                   | Correct                        |
@@ -262,28 +262,40 @@ On 2026-02-24, the JuniperData codebase was extracted from the monorepo (`pcalno
 
 ### RD-009: Performance Test Infrastructure
 
-**Priority**: LOW | **Status**: NOT STARTED | **Effort**: Medium (3-5 hours)
+**Priority**: LOW | **Status**: COMPLETE (2026-02-25) | **Effort**: Medium (3-5 hours)
 **Source**: TEST_SUITE_CICD_ENHANCEMENT_DEVELOPMENT_PLAN.md (INF-005), TEST_SUITE_AUDIT_DATA_AMP_.md
 
 **Problem**: The `performance` marker is defined in `pyproject.toml` but no performance tests exist and no infrastructure supports them.
 
-**Required Actions**:
+**Resolution** (Option A — pytest-benchmark):
 
-- [ ] Create `tests/performance/` directory with benchmark tests
-- [ ] Add `pytest-benchmark` to dev dependencies
-- [ ] Create baseline benchmarks for generator performance (points/second)
-- [ ] Create baseline benchmarks for storage throughput (datasets/second)
-- [ ] Add performance regression detection to CI (optional)
+- [x] Created `tests/performance/` directory with `__init__.py`
+- [x] Added `pytest-benchmark>=4.0.0` to test dependencies
+- [x] Created `test_generator_benchmarks.py` — 21 benchmarks across 3 test classes:
+  - `TestGeneratorThroughput` (5 tests): Each synthetic generator at 1000 points
+  - `TestGeneratorScaling` (8 tests): Spiral and Gaussian at 100/500/1000/5000 points
+  - `TestMultiClassScaling` (8 tests): Spiral and Gaussian with 2/3/5/8 classes
+- [x] Created `test_storage_benchmarks.py` — 20 benchmarks across 3 test classes:
+  - `TestInMemoryStoreBenchmarks` (6 tests): save, get_meta, get_artifact_bytes, exists, list, delete
+  - `TestLocalFSStoreBenchmarks` (6 tests): same operations with filesystem I/O
+  - `TestStorageScaling` (8 tests): save and retrieve at 100/1000/5000/10000 points
+- [x] Added `--benchmark-disable` to default addopts — benchmarks run as smoke tests by default, enable with `--benchmark-enable`
+- [ ] Performance regression detection in CI (deferred — use `--benchmark-autosave` + `--benchmark-compare` locally)
 
-**Design Options**:
+**Usage**:
+```bash
+# Default: benchmarks run as quick smoke tests (no timing)
+pytest juniper_data/tests/performance/
 
-1. **Option A (Recommended)**: Use `pytest-benchmark` with `--benchmark-autosave` for regression detection
-2. **Option B**: Custom timing fixtures with threshold assertions
-3. **Option C**: External profiling scripts using py-spy (already documented in Cascor)
+# Enable timing:
+pytest juniper_data/tests/performance/ --benchmark-enable -v
 
-**Feasibility**: Feasible. No external dependencies required beyond `pytest-benchmark`. Provides ongoing regression detection.
+# Save baseline for regression tracking:
+pytest juniper_data/tests/performance/ --benchmark-enable --benchmark-autosave
 
-**Post-Migration Note**: Performance benchmarks are now especially relevant in the polyrepo architecture. JuniperCascor and JuniperCanopy communicate with JuniperData over REST, so endpoint response time benchmarks would directly inform the viability of the service-oriented approach (cf. RD-015 IPC Architecture revisit criteria).
+# Compare against saved baseline:
+pytest juniper_data/tests/performance/ --benchmark-enable --benchmark-compare
+```
 
 ---
 
@@ -660,7 +672,7 @@ CAN-000 through CAN-021 (22 enhancement items) documented in PRE-DEPLOYMENT_ROAD
 | ID     | Item                     | Priority | Effort | Impact               |
 | ------ | ------------------------ | -------- | ------ | -------------------- |
 | RD-008 | Fix SIM117 violations    | LOW      | S-M    | Code readability     |
-| RD-009 | Performance test infra   | LOW      | M      | Regression detection |
+| RD-009 | Performance test infra   | ~~LOW~~  | ~~M~~  | **COMPLETE**         |
 | RD-012 | flake8→ruff migration    | ~~LOW~~  | ~~M~~  | **COMPLETE**         |
 | RD-013 | Line length review       | ~~LOW~~  | ~~S~~  | **COMPLETE**         |
 
@@ -689,6 +701,7 @@ CAN-000 through CAN-021 (22 enhancement items) documented in PRE-DEPLOYMENT_ROAD
 | RD-006 | Security boundary tests  | 2026-02-24      | 41 tests across 5 classes; 700 total tests; documented path traversal findings    |
 | RD-012 | flake8→ruff migration    | 2026-02-25      | Full cutover: ruff v0.15.2 replaces black+isort+flake8+pyupgrade; removed `.flake8` |
 | RD-013 | Line length normalization| 2026-02-25      | 512→120; 24 files reformatted; 54 auto-fixes (UP017, I001, F401, UP037)          |
+| RD-009 | Performance test infra   | 2026-02-25      | 41 benchmarks via pytest-benchmark; generators (21) + storage (20); disabled by default |
 
 ---
 
@@ -697,8 +710,8 @@ CAN-000 through CAN-021 (22 enhancement items) documented in PRE-DEPLOYMENT_ROAD
 | Category                             | Count |
 | ------------------------------------ | ----- |
 | Total Items                          | 18    |
-| **COMPLETE**                         | 12    |
-| NOT STARTED                          | 2     |
+| **COMPLETE**                         | 13    |
+| NOT STARTED                          | 1     |
 | DEFERRED                             | 4     |
 | PENDING VERIFICATION                 | 0     |
 | NEW (post-migration)                 | 0     |
@@ -762,3 +775,4 @@ Items identified during the JuniperCanopy comprehensive notes/ audit that have J
 | 2026-02-24 | AI Agent               | RD-005 + RD-007 COMPLETE: raised aggregate fail-under to 95% (pyproject.toml + CI), added 85% per-module enforcement via `scripts/check_module_coverage.py`, added pre-push hook, confirmed all 51 modules >= 96%, no test files in metrics |
 | 2026-02-24 | AI Agent               | RD-006 COMPLETE: created `test_security_boundaries.py` with 41 tests across 5 classes (path traversal, CSV import path security, input bounds, resource exhaustion, API boundaries); 700 total tests; documented path traversal findings in LocalFSDatasetStore and CsvImportGenerator |
 | 2026-02-25 | AI Agent               | RD-012 + RD-013 COMPLETE: migrated from flake8+isort+black+pyupgrade to ruff v0.15.2 (full cutover); normalized line length from 512 to 120; replaced 5 pre-commit hooks with 2 ruff hooks; removed `.flake8`, `[tool.black]`, `[tool.isort]` sections; updated dev dependencies; 24 files reformatted, 54 auto-fixes applied; all 700 tests pass at 99.40% coverage |
+| 2026-02-25 | AI Agent               | RD-009 COMPLETE: created `tests/performance/` with 41 benchmarks via pytest-benchmark — generator throughput (5 generators at 1000pts), scaling (spiral/gaussian at 100-5000pts), multi-class (2-8 classes), storage ops (InMemory + LocalFS: save/get/list/delete), dataset size scaling (100-10000pts); `--benchmark-disable` in default addopts |
