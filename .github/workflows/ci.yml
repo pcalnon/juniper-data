@@ -53,7 +53,7 @@ permissions:
 env:
   SERVICE_NAME: JuniperData
   PYTHON_TEST_VERSION: "3.14"
-  COVERAGE_FAIL_UNDER: "80"
+  COVERAGE_FAIL_UNDER: "95"
 
 jobs:
   # ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -150,15 +150,24 @@ jobs:
             --cov=juniper_data \
             --cov-report=term-missing \
             --cov-report=xml:reports/coverage.xml \
-            --cov-report=html:reports/htmlcov
+            --cov-report=html:reports/htmlcov \
+            --cov-report=json:reports/coverage.json
 
-      - name: Enforce Coverage Gate (80%)
+      - name: Enforce Aggregate Coverage Gate (95%)
         run: |
           echo "╔════════════════════════════════════════════════════════════╗"
-          echo "║       JuniperData - Coverage Gate                          ║"
+          echo "║       JuniperData - Aggregate Coverage Gate (95%)          ║"
           echo "╚════════════════════════════════════════════════════════════╝"
 
           python -m coverage report --fail-under=${{ env.COVERAGE_FAIL_UNDER }}
+
+      - name: Enforce Per-Module Coverage Gate (85%)
+        run: |
+          echo "╔════════════════════════════════════════════════════════════╗"
+          echo "║       JuniperData - Per-Module Coverage Gate (85%)         ║"
+          echo "╚════════════════════════════════════════════════════════════╝"
+
+          python scripts/check_module_coverage.py
 
       - name: Upload Coverage Artifacts
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08  # v4.6.0

@@ -290,6 +290,8 @@ Thumbs.db
 **/.coverage
 coverage.xml
 **/coverage.xml
+coverage.json
+**/coverage.json
 
 # Test result artifacts
 results.xml

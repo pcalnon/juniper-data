@@ -203,6 +203,21 @@ repos:
         files: ^juniper_data/.*\.py$
 
   # ═══════════════════════════════════════════════════════════════════════════
+  # Code Coverage Gate - Per-module (85%) and Aggregate (95%)
+  # Runs on pre-push only (not pre-commit) to keep commits fast.
+  # Install with: pre-commit install --hook-type pre-push
+  # ═══════════════════════════════════════════════════════════════════════════
+  - repo: local
+    hooks:
+      - id: coverage-check
+        name: Check code coverage (95% aggregate, 85% per-module)
+        entry: python scripts/check_module_coverage.py --run-tests
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
+  # ═══════════════════════════════════════════════════════════════════════════
   # Shell Script Linting - shellcheck
   # Severity=warning skips style/info (SC2002, SC2181, SC2015).
   # Excluded files: monorepo utilities not applicable to JuniperData.

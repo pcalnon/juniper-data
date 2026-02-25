@@ -153,24 +153,21 @@ On 2026-02-24, the JuniperData codebase was extracted from the monorepo (`pcalno
 
 ### RD-005: Reconcile Coverage Metrics
 
-**Priority**: HIGH | **Status**: NOT STARTED | **Effort**: Small (1 hour)
+**Priority**: HIGH | **Status**: COMPLETE (2026-02-24) | **Effort**: Small (1 hour)
 **Source**: Cross-document discrepancy
 
-**Problem**: Conflicting coverage metrics across documents:
+**Problem**: Conflicting coverage metrics across documents and insufficient coverage enforcement.
 
-- `INTEGRATION_DEVELOPMENT_PLAN.md` states 95.18% (updated 2026-02-12)
-- `RELEASE_NOTES_v0.4.2.md` states "~60% overall" with 6 modules at 0%
-- Release notes say "80%+ (meets threshold)"
+**Resolution** (2026-02-24):
 
-**Required Actions**:
-
-- [ ] Run `pytest --cov=juniper_data --cov-report=term-missing` to get authoritative current coverage
-- [ ] Update all documentation with consistent, validated metrics
-- [ ] Identify which modules truly remain at low/zero coverage
-
-**Security/Best Practice Note**: Accurate coverage metrics are essential for informed decision-making. Stale or conflicting metrics create false confidence.
-
-**Post-Migration Note**: Coverage should now be measured exclusively within the standalone `juniper-data` repo. The `source_pkgs = ["juniper_data"]` configuration in `pyproject.toml` is correct for the standalone layout. The CI pipeline already enforces an 80% coverage gate (`COVERAGE_FAIL_UNDER: "80"` in `ci.yml`). The removal of the vendored `juniper_data_client` from this repo (commit `4bada2a`) means client code is no longer in scope — coverage metrics should now be purely for the service code.
+- [x] Verified current coverage: **99.40%** (659 tests, 51 source modules, 0 test files in metrics)
+- [x] Raised aggregate `fail_under` from 80% to **95%** in `pyproject.toml` and CI (`COVERAGE_FAIL_UNDER`)
+- [x] Created `scripts/check_module_coverage.py` enforcing **85% per-module** coverage
+- [x] Added per-module coverage gate to CI (`ci.yml` unit-tests job)
+- [x] Added pre-push hook to `.pre-commit-config.yaml` for local enforcement
+- [x] Added `coverage.json` to `.gitignore`
+- [x] Confirmed no test files are included in coverage calculations or metrics (`source_pkgs = ["juniper_data"]` + `omit = ["*/tests/*"]`)
+- [x] All 51 modules individually >= 85% (lowest: `__init__.py` at 96.30%)
 
 ---
 
@@ -228,36 +225,23 @@ On 2026-02-24, the JuniperData codebase was extracted from the monorepo (`pcalno
 
 ### RD-007: Improve Coverage for Low-Coverage Modules
 
-**Priority**: MEDIUM | **Status**: NOT STARTED | **Effort**: Large (8-12 hours)
+**Priority**: MEDIUM | **Status**: COMPLETE (2026-02-24) | **Effort**: N/A (already resolved)
 **Source**: RELEASE_NOTES_v0.4.2.md (Known Issues), INTEGRATION_DEVELOPMENT_PLAN.md
 
-**Problem**: Six modules reported at 0% coverage due to external dependency mocking gaps:
+**Problem**: Six modules were originally reported at 0% coverage. The issue turned out to be a `source_pkgs` configuration problem, not missing tests — all 6 modules already had comprehensive test files.
 
-- `generators/arc_agi/` — Requires `arc-agi` package
-- `generators/mnist/` — Requires HuggingFace `datasets` package
-- `storage/hf_store.py` — Requires HuggingFace Hub
-- `storage/kaggle_store.py` — Requires Kaggle API
-- `storage/postgres_store.py` — Requires PostgreSQL
-- `storage/redis_store.py` — Requires Redis
+**Resolution** (2026-02-24):
 
-**Required Actions**:
-
-- [ ] Verify which modules have tests but don't count toward coverage (source_pkgs config issue)
-- [ ] Add/improve mock-based tests for external dependency modules
-- [ ] Ensure coverage configuration (`pyproject.toml`) correctly reports all modules
-- [ ] Target 80%+ per module
-
-**Design Options**:
-
-1. **Option A (Recommended)**: Use `unittest.mock` / `responses` library to mock external APIs. Tests already exist for most modules (test_hf_store.py, test_kaggle_store.py, etc.) — the issue may be in coverage configuration.
-2. **Option B**: Use `pytest-xdist` with conditional test environments that have real dependencies installed.
-3. **Option C**: Create fixture-based integration test environment with Docker containers for Redis, PostgreSQL.
-
-**Validation**: Test files exist for all 6 modules (test_arc_agi_generator.py, test_mnist_generator.py, test_hf_store.py, test_kaggle_store.py, test_postgres_store.py, test_redis_store.py). The 0% coverage likely reflects a `source_pkgs` configuration issue, not truly untested code.
-
-**Feasibility**: High. Tests likely exist but may not be counted. Configuration fix may resolve most gaps.
-
-**Post-Migration Note**: The coverage configuration (`source_pkgs = ["juniper_data"]` in `pyproject.toml`) is correct for the standalone repo layout. The CI pipeline now uses `pip install ".[all]"` which may or may not install optional dependencies like `arc-agi`. Verify whether the CI environment installs these optional packages — if not, the 0% coverage modules may still be excluded from CI coverage reports even with correct `source_pkgs`. Consider adding `arc-agi` to the `[test]` extra or using conditional `importorskip` patterns.
+- [x] All 6 previously-reported 0% modules now have coverage well above 85%:
+  - `generators/arc_agi/generator.py`: 99.35%
+  - `generators/mnist/generator.py`: 100.00%
+  - `storage/hf_store.py`: 99.13%
+  - `storage/kaggle_store.py`: 99.38%
+  - `storage/postgres_store.py`: 98.23%
+  - `storage/redis_store.py`: 97.56%
+- [x] Per-module minimum raised to **85%** (enforced by `scripts/check_module_coverage.py`)
+- [x] Aggregate minimum raised to **95%** (enforced in `pyproject.toml` and CI)
+- [x] All 51 source modules individually >= 85% (lowest: `__init__.py` at 96.30%)
 
 ---
 
@@ -565,9 +549,9 @@ Each documented change was validated by:
 | ID     | Item                  | Assessment                                                  |
 | ------ | --------------------- | ----------------------------------------------------------- |
 | RD-001 | Update release notes  | **COMPLETE** — Known issues + What's Next updated           |
-| RD-005 | Reconcile coverage    | Essential for accurate reporting                            |
+| RD-005 | Reconcile coverage    | **COMPLETE** — 95% aggregate + 85% per-module enforced      |
 | RD-006 | Security tests        | Important gap, standard testing practices                   |
-| RD-007 | Coverage improvement  | Likely a configuration issue, not missing tests             |
+| RD-007 | Coverage improvement  | **COMPLETE** — All 51 modules >= 85%, was config issue      |
 | RD-012 | flake8→ruff migration | Optional but beneficial; good timing in standalone repo     |
 | RD-013 | Line length review    | Best practice alignment needed; coordinate across repos     |
 | RD-018 | Fix broken symlinks   | **COMPLETE** — Redirect notes + removed history symlinks    |
@@ -590,7 +574,7 @@ Each documented change was validated by:
 
 **RD-002 (Dependabot)**: **COMPLETE** — No design needed. File exists and is active.
 
-**RD-005 (Coverage Reconciliation)**: Run coverage locally and update all documents to consistent value. If coverage is truly at ~60%, investigate `source_pkgs` configuration vs `source` paths. The discrepancy between 95% and 60% likely reflects different measurement scopes. Post-migration, the client code is no longer in this repo's scope, which should simplify the measurement.
+**RD-005 (Coverage Reconciliation)**: **COMPLETE** — Verified at 99.40%. The ~60% figure was from stale release notes; the 95.18% figure was closer to reality. Raised aggregate fail-under to 95%, added 85% per-module enforcement via `scripts/check_module_coverage.py`.
 
 **RD-018 (Broken Symlinks)**: Recommend a tiered approach:
 - **POLYREPO_MIGRATION_PLAN.md**: Replace with a redirect note (canonical copy is in `juniper-cascor/notes/`)
@@ -619,12 +603,7 @@ tests/unit/test_security_boundaries.py
     └── test_malformed_json_handling
 ```
 
-**RD-007 (Coverage)**: The likely root cause is coverage configuration. Tests exist for all "0% coverage" modules. Investigation steps:
-
-1. Run coverage with `--cov=juniper_data` and check which modules are included
-2. Verify `source_pkgs` in `pyproject.toml` includes all subpackages
-3. Check if conditional imports (e.g., `try: import arc_agi except ImportError`) bypass coverage
-4. **NEW**: Verify whether `pip install ".[all]"` in CI actually installs optional deps like `arc-agi`
+**RD-007 (Coverage)**: **COMPLETE** — Confirmed the 0% coverage was a measurement artifact, not missing tests. All 6 modules have comprehensive tests and coverage >= 97%. Per-module enforcement (85%) now prevents regression.
 
 ### Phase 3 Design (Client Library)
 
@@ -680,7 +659,7 @@ CAN-000 through CAN-021 (22 enhancement items) documented in PRE-DEPLOYMENT_ROAD
 | ------ | --------------------------------- | -------- | ------ | ---------------------- |
 | RD-001 | Update release notes known issues | ~~HIGH~~ | ~~S~~ | **COMPLETE**           |
 | RD-004 | Update v0.5.0 planned items       | ~~HIGH~~ | ~~S~~ | **COMPLETE**           |
-| RD-005 | Reconcile coverage metrics        | HIGH     | S      | Informed decisions     |
+| RD-005 | Reconcile coverage metrics        | ~~HIGH~~ | ~~S~~ | **COMPLETE**           |
 | RD-018 | Fix broken notes symlinks         | ~~MEDIUM~~ | ~~S~~ | **COMPLETE**           |
 
 ### Short-Term (Next 2 Sprints)
@@ -688,7 +667,7 @@ CAN-000 through CAN-021 (22 enhancement items) documented in PRE-DEPLOYMENT_ROAD
 | ID     | Item                   | Priority | Effort | Impact                |
 | ------ | ---------------------- | -------- | ------ | --------------------- |
 | RD-006 | Security-focused tests | HIGH     | M      | Security posture      |
-| RD-007 | Coverage improvement   | MEDIUM   | L      | Quality confidence    |
+| RD-007 | Coverage improvement   | ~~MEDIUM~~ | ~~L~~ | **COMPLETE**          |
 
 ### Medium-Term (Next Quarter)
 
@@ -719,6 +698,8 @@ CAN-000 through CAN-021 (22 enhancement items) documented in PRE-DEPLOYMENT_ROAD
 | RD-018 | Fix broken notes symlinks| 2026-02-24      | Redirect notes for migration plan + monorepo analysis; removed 3 history symlinks |
 | RD-001 | Update release notes     | 2026-02-24      | Updated known issues (GENERATOR_REGISTRY + coverage resolved), What's Next section |
 | RD-004 | Redefine v0.5.0 scope    | 2026-02-24      | v0.5.0 = Quality + Tooling: RD-006 security tests + RD-012/013 ruff + line length |
+| RD-005 | Reconcile coverage       | 2026-02-24      | Verified 99.40%; raised thresholds to 95% aggregate + 85% per-module              |
+| RD-007 | Coverage improvement     | 2026-02-24      | All 51 modules >= 85%; 0% modules were config artifact, not missing tests         |
 
 ---
 
@@ -727,8 +708,8 @@ CAN-000 through CAN-021 (22 enhancement items) documented in PRE-DEPLOYMENT_ROAD
 | Category                             | Count |
 | ------------------------------------ | ----- |
 | Total Items                          | 18    |
-| **COMPLETE**                         | 7     |
-| NOT STARTED                          | 5     |
+| **COMPLETE**                         | 9     |
+| NOT STARTED                          | 3     |
 | DEFERRED                             | 4     |
 | PENDING VERIFICATION                 | 0     |
 | NEW (post-migration)                 | 0     |
@@ -789,3 +770,4 @@ Items identified during the JuniperCanopy comprehensive notes/ audit that have J
 | 2026-02-24 | AI Agent               | RD-018 COMPLETE: removed 3 broken history symlinks, replaced `POLYREPO_MIGRATION_PLAN.md` and `MONOREPO_ANALYSIS.md` symlinks with redirect notes, updated CLAUDE.md Key Documentation table, updated summary statistics |
 | 2026-02-24 | AI Agent               | RD-001 COMPLETE: updated v0.4.2 release notes — moved GENERATOR_REGISTRY and coverage known issues to "Resolved Since Release" (coverage verified at 99.40%, 659 tests); updated What's Next with completed items and new roadmap link |
 | 2026-02-24 | AI Agent               | RD-004 COMPLETE: redefined v0.5.0 scope as Quality + Tooling (RD-006 security tests + RD-012/013 flake8→ruff + line length normalization); updated release notes What's Next with concrete v0.5.0 plan |
+| 2026-02-24 | AI Agent               | RD-005 + RD-007 COMPLETE: raised aggregate fail-under to 95% (pyproject.toml + CI), added 85% per-module enforcement via `scripts/check_module_coverage.py`, added pre-push hook, confirmed all 51 modules >= 96%, no test files in metrics |
