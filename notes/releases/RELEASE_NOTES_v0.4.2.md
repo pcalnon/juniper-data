@@ -234,6 +234,6 @@ See [development roadmap](../JUNIPER-DATA_POST-RELEASE_DEVELOPMENT-ROADMAP.md) f
 ## Links
 
 - [Full Changelog](../../CHANGELOG.md)
-- [Integration Development Plan](../INTEGRATION_DEVELOPMENT_PLAN.md)
+- [Integration Development Plan](../history/INTEGRATION_DEVELOPMENT_PLAN.md)
 - [API Documentation](../../docs/api/JUNIPER_DATA_API.md)
-- [Pull Request Details](../pull_requests/PR_DESCRIPTION_JUNIPER_DATA_EXTRACTION_v0.4.0_2026-02-06.md)
+- [Post-Release Development Roadmap](../JUNIPER-DATA_POST-RELEASE_DEVELOPMENT-ROADMAP.md)

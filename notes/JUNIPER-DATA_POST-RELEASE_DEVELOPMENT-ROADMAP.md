@@ -402,18 +402,21 @@ All tests pass with the PyPI-installed package (JuniperData 659, JuniperCascor 2
 
 ### RD-014: Add Documentation Build Step to CI
 
-**Priority**: LOW | **Status**: NOT STARTED | **Effort**: Small (1-2 hours)
+**Priority**: LOW | **Status**: COMPLETE (2026-02-25) | **Effort**: Small (1-2 hours)
 **Source**: TEST_SUITE_CICD_ENHANCEMENT_DEVELOPMENT_PLAN.md (L-04)
 
 **Problem**: Documentation is not validated in CI, allowing documentation drift.
 
-**Required Actions**:
+**Resolution**:
 
-- [ ] Add documentation link validation step to CI workflow
-- [ ] Consider mkdocs or sphinx for future documentation generation
-- [ ] Validate markdown link integrity
+- [x] Created `scripts/check_doc_links.py` — validates internal markdown links (file existence + heading anchors)
+- [x] Added `docs` CI job to `.github/workflows/ci.yml` (parallel, no dependencies, Python 3.12 only)
+- [x] Added `docs` to `required-checks` quality gate (failure blocks merge)
+- [x] Fixed 2 broken links in `notes/releases/RELEASE_NOTES_v0.4.2.md`
+- [x] CI excludes `templates/`, `history/`, `docs/` directories (contain expected broken links from monorepo era)
+- [x] All 22 actively-maintained markdown files pass validation
 
-**Feasibility**: Feasible when documentation volume justifies the effort. Currently low priority.
+**Script capabilities**: regex-based markdown link extraction, GitHub-style heading-to-anchor conversion, `--exclude` flag for directory filtering, `--verbose` mode, skips external URLs/data URIs.
 
 **Post-Migration Note**: Documentation link validation is now more important in the polyrepo context. Links between projects that previously used relative paths within the monorepo must now use absolute GitHub URLs or be removed. The broken symlinks identified in RD-018 are a specific manifestation of this issue.
 
@@ -607,6 +610,10 @@ Each documented change was validated by:
 
 **RD-013 (line length)**: **COMPLETE** — Normalized from 512 to 120 (matching juniper-cascor-client, juniper-cascor-worker, and AGENTS.md documentation). Single source of truth in `[tool.ruff] line-length = 120`. 24 files reformatted; 54 auto-fixable lint issues resolved (UP017 timezone.utc, import sorting, unused imports).
 
+**RD-014 (documentation CI)**: **COMPLETE** — Created `scripts/check_doc_links.py` for internal markdown link validation (file existence + heading anchor checking). Added `docs` job to CI workflow (parallel, Python 3.12, no dependencies). Integrated into quality gate (`required-checks` needs list). CI excludes `templates/`, `history/`, `docs/` directories (monorepo carry-over links). Fixed 2 broken links in release notes. All 22 actively-maintained markdown files pass.
+
+**PHASE COMPLETE** — All 3 Phase 4 items resolved.
+
 ### Phase 5 Design
 
 Detailed in the Design Options sections of each item above, with post-migration notes.
@@ -680,7 +687,7 @@ CAN-000 through CAN-021 (22 enhancement items) documented in PRE-DEPLOYMENT_ROAD
 
 | ID     | Item                  | Priority | Effort | Trigger                |
 | ------ | --------------------- | -------- | ------ | ---------------------- |
-| RD-014 | Documentation CI step | LOW      | S      | Documentation growth   |
+| RD-014 | Documentation CI step | ~~LOW~~  | ~~S~~  | **COMPLETE**           |
 | RD-015 | IPC Architecture      | LOW      | XL     | Performance bottleneck |
 | RD-016 | GPU Acceleration      | LOW      | XL     | Dataset size >1M       |
 | RD-017 | Continuous Profiling  | LOW      | L      | Production deployment  |
@@ -702,6 +709,7 @@ CAN-000 through CAN-021 (22 enhancement items) documented in PRE-DEPLOYMENT_ROAD
 | RD-012 | flake8→ruff migration    | 2026-02-25      | Full cutover: ruff v0.15.2 replaces black+isort+flake8+pyupgrade; removed `.flake8` |
 | RD-013 | Line length normalization| 2026-02-25      | 512→120; 24 files reformatted; 54 auto-fixes (UP017, I001, F401, UP037)          |
 | RD-009 | Performance test infra   | 2026-02-25      | 41 benchmarks via pytest-benchmark; generators (21) + storage (20); disabled by default |
+| RD-014 | Documentation CI step    | 2026-02-25      | `scripts/check_doc_links.py` validates internal links; `docs` CI job in quality gate; 22 files validated |
 
 ---
 
@@ -710,15 +718,15 @@ CAN-000 through CAN-021 (22 enhancement items) documented in PRE-DEPLOYMENT_ROAD
 | Category                             | Count |
 | ------------------------------------ | ----- |
 | Total Items                          | 18    |
-| **COMPLETE**                         | 13    |
-| NOT STARTED                          | 1     |
+| **COMPLETE**                         | 14    |
+| NOT STARTED                          | 0     |
 | DEFERRED                             | 4     |
 | PENDING VERIFICATION                 | 0     |
 | NEW (post-migration)                 | 0     |
 | Phase 1 (Housekeeping)              | 6     |
 | Phase 2 (Quality)                    | 4     |
 | Phase 3 (Client Library)             | 2 (both COMPLETE) |
-| Phase 4 (Tooling)                    | 3 (2 COMPLETE, 1 NOT STARTED) |
+| Phase 4 (Tooling)                    | 3 (all COMPLETE)  |
 | Phase 5 (Advanced)                   | 3     |
 
 ---
@@ -776,3 +784,4 @@ Items identified during the JuniperCanopy comprehensive notes/ audit that have J
 | 2026-02-24 | AI Agent               | RD-006 COMPLETE: created `test_security_boundaries.py` with 41 tests across 5 classes (path traversal, CSV import path security, input bounds, resource exhaustion, API boundaries); 700 total tests; documented path traversal findings in LocalFSDatasetStore and CsvImportGenerator |
 | 2026-02-25 | AI Agent               | RD-012 + RD-013 COMPLETE: migrated from flake8+isort+black+pyupgrade to ruff v0.15.2 (full cutover); normalized line length from 512 to 120; replaced 5 pre-commit hooks with 2 ruff hooks; removed `.flake8`, `[tool.black]`, `[tool.isort]` sections; updated dev dependencies; 24 files reformatted, 54 auto-fixes applied; all 700 tests pass at 99.40% coverage |
 | 2026-02-25 | AI Agent               | RD-009 COMPLETE: created `tests/performance/` with 41 benchmarks via pytest-benchmark — generator throughput (5 generators at 1000pts), scaling (spiral/gaussian at 100-5000pts), multi-class (2-8 classes), storage ops (InMemory + LocalFS: save/get/list/delete), dataset size scaling (100-10000pts); `--benchmark-disable` in default addopts |
+| 2026-02-25 | AI Agent               | RD-014 COMPLETE: created `scripts/check_doc_links.py` for internal markdown link validation; added `docs` CI job (parallel, Python 3.12); integrated into quality gate; fixed 2 broken links in release notes; CI excludes templates/history/docs; 22 files validated; Phase 4 fully complete |
