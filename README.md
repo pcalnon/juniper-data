@@ -19,11 +19,11 @@ For full-stack Docker deployment and integration tests, see [juniper-deploy](htt
 
 ## Architecture
 
-JuniperData is the **foundational data layer** of the Juniper ecosystem. JuniperCascor and JuniperCanopy both call JuniperData to generate and retrieve datasets.
+JuniperData is the **foundational data layer** of the Juniper ecosystem. JuniperCascor and juniper-canopy both call JuniperData to generate and retrieve datasets.
 
 ```
 ┌─────────────────────┐     REST+WS      ┌──────────────────────┐
-│   JuniperCanopy     │ ◄──────────────► │    JuniperCascor     │
+│   juniper-canopy     │ ◄──────────────► │    JuniperCascor     │
 │   Dashboard         │                  │    Training Svc      │
 │   Port 8050         │                  │    Port 8200         │
 └──────────┬──────────┘                  └──────────┬───────────┘
