@@ -181,6 +181,11 @@ dist/**
 
 # Ignore environment Variable file
 .env
+.env.local
+.env.development
+.env.production
+.env.staging
+.env.test
 
 # CascadeCorrelationNetwork class snapshots
 cascor_snapshot_*.h5
