@@ -61,6 +61,16 @@ git clone https://github.com/pcalnon/juniper-deploy.git
 cd juniper-deploy && docker compose up --build
 ```
 
+## Dependency Lockfile
+
+The `requirements.lock` file pins exact dependency versions for reproducible Docker builds. The `pyproject.toml` retains flexible `>=` ranges for local development.
+
+**Regenerate after changing dependencies in `pyproject.toml`:**
+
+```bash
+uv pip compile pyproject.toml --extra api --extra observability -o requirements.lock
+```
+
 ## Installation
 
 ### Basic Installation

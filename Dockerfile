@@ -7,7 +7,7 @@
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# Stage 1: Builder - Install dependencies and build wheel
+# Stage 1: Builder - Install dependencies and project
 # -----------------------------------------------------------------------------
 FROM python:3.11-slim AS builder
 
@@ -16,12 +16,14 @@ WORKDIR /build
 # Install build dependencies
 RUN pip install --no-cache-dir --upgrade pip wheel setuptools
 
-# Copy only files needed for installation
+# Install pinned dependencies from lockfile (best layer caching)
+COPY requirements.lock ./
+RUN pip install --no-cache-dir -r requirements.lock
+
+# Copy project files and install without deps (already installed above)
 COPY pyproject.toml README.md LICENSE ./
 COPY juniper_data/ ./juniper_data/
-
-# Build wheel with API dependencies
-RUN pip wheel --no-cache-dir --wheel-dir=/wheels .[api]
+RUN pip install --no-cache-dir --no-deps .
 
 # -----------------------------------------------------------------------------
 # Stage 2: Runtime - Minimal production image
@@ -34,7 +36,7 @@ LABEL org.opencontainers.image.description="Dataset generation service for the J
 LABEL org.opencontainers.image.version="0.4.0"
 LABEL org.opencontainers.image.authors="Paul Calnon"
 LABEL org.opencontainers.image.licenses="MIT"
-LABEL org.opencontainers.image.source="https://github.com/pcalnon/Juniper"
+LABEL org.opencontainers.image.source="https://github.com/pcalnon/juniper-data"
 
 # Create non-root user for security
 RUN groupadd --gid 1000 juniper && \
@@ -42,10 +44,9 @@ RUN groupadd --gid 1000 juniper && \
 
 WORKDIR /app
 
-# Install wheels from builder stage
-COPY --from=builder /wheels /wheels
-RUN pip install --no-cache-dir --no-index --find-links=/wheels juniper-data[api] && \
-    rm -rf /wheels
+# Copy installed packages from builder
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Create data directory with proper ownership
 RUN mkdir -p /app/data/datasets && \
