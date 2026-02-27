@@ -13,6 +13,13 @@ from juniper_data import __version__
 from juniper_data.storage import LocalFSDatasetStore
 
 from .middleware import SecurityMiddleware
+from .observability import (
+    PrometheusMiddleware,
+    RequestIdMiddleware,
+    configure_logging,
+    configure_sentry,
+    get_prometheus_app,
+)
 from .routes import datasets, generators, health
 from .security import APIKeyAuth, RateLimiter
 from .settings import Settings, get_settings
@@ -26,10 +33,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     store = LocalFSDatasetStore(storage_path)
     datasets.set_store(store)
 
-    logging.basicConfig(
-        level=getattr(logging, settings.log_level.upper(), logging.INFO),
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
+    configure_logging(settings.log_level, settings.log_format, "juniper-data")
+    configure_sentry(settings.sentry_dsn, "juniper-data", __version__)
+
     logger = logging.getLogger("juniper_data")
     logger.info(f"JuniperData API v{__version__} starting")
     logger.info(f"Storage path: {storage_path.absolute()}")
@@ -86,9 +92,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         rate_limiter=rate_limiter,
     )
 
+    # Observability middleware (added after SecurityMiddleware, before CORS)
+    # Middleware execution is LIFO: last added runs first.
+    # Order: RequestIdMiddleware → PrometheusMiddleware → SecurityMiddleware → CORS
+    if settings.metrics_enabled:
+        app.add_middleware(PrometheusMiddleware, service_name="juniper-data")
+    app.add_middleware(RequestIdMiddleware)
+
     app.include_router(health.router, prefix="/v1")
     app.include_router(generators.router, prefix="/v1")
     app.include_router(datasets.router, prefix="/v1")
+
+    # Mount Prometheus metrics endpoint
+    if settings.metrics_enabled:
+        app.mount("/metrics", get_prometheus_app())
 
     @app.exception_handler(ValueError)
     async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
