@@ -61,6 +61,15 @@ _JUNIPER_DATA_API_KEYS_LIST_EMPTY: list[str] | None = None
 _JUNIPER_DATA_API_KEYS_LIST_VALUES: list[str] | None = []
 _JUNIPER_DATA_API_KEYS_LIST_DEFAULT: list[str] | None = _JUNIPER_DATA_API_KEYS_LIST_EMPTY
 
+_JUNIPER_DATA_API_LOG_FORMAT_TEXT: str = "text"
+_JUNIPER_DATA_API_LOG_FORMAT_DEFAULT: str = _JUNIPER_DATA_API_LOG_FORMAT_TEXT
+
+_JUNIPER_DATA_API_SENTRY_DSN_NONE: str | None = None
+_JUNIPER_DATA_API_SENTRY_DSN_DEFAULT: str | None = _JUNIPER_DATA_API_SENTRY_DSN_NONE
+
+_JUNIPER_DATA_API_METRICS_ENABLED_DISABLED: bool = False
+_JUNIPER_DATA_API_METRICS_ENABLED_DEFAULT: bool = _JUNIPER_DATA_API_METRICS_ENABLED_DISABLED
+
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables.
@@ -101,6 +110,10 @@ class Settings(BaseSettings):
     api_keys: list[str] | None = _JUNIPER_DATA_API_KEYS_LIST_DEFAULT
     rate_limit_enabled: bool = _JUNIPER_DATA_API_RATELIMIT_ACTIVE_DEFAULT
     rate_limit_requests_per_minute: int = _JUNIPER_DATA_API_RATELIMIT_DEFAULT
+
+    log_format: str = _JUNIPER_DATA_API_LOG_FORMAT_DEFAULT
+    sentry_dsn: str | None = _JUNIPER_DATA_API_SENTRY_DSN_DEFAULT
+    metrics_enabled: bool = _JUNIPER_DATA_API_METRICS_ENABLED_DEFAULT
 
 
 @lru_cache
