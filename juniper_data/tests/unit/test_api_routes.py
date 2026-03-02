@@ -399,9 +399,11 @@ class TestHealthEndpoint:
         assert response.json()["status"] == "alive"
 
     def test_readiness_probe(self, client: TestClient) -> None:
-        """Test readiness probe returns ready status with version."""
+        """Test readiness probe returns ReadinessResponse with version."""
         response = client.get("/v1/health/ready")
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "ready"
+        assert data["status"] in ("ready", "degraded")
         assert "version" in data
+        assert data["service"] == "juniper-data"
+        assert "dependencies" in data

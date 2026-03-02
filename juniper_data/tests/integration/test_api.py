@@ -85,13 +85,15 @@ class TestHealthEndpoint:
         assert data["status"] == "alive"
 
     def test_readiness_probe(self, client: TestClient) -> None:
-        """GET /v1/health/ready returns readiness status with version."""
+        """GET /v1/health/ready returns ReadinessResponse with version."""
         response = client.get("/v1/health/ready")
 
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "ready"
+        assert data["status"] in ("ready", "degraded")
         assert data["version"] == __version__
+        assert data["service"] == "juniper-data"
+        assert "dependencies" in data
 
 
 @pytest.mark.integration
