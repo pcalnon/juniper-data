@@ -106,8 +106,9 @@ class TestEnhancedReadinessEndpoint:
         body = response.json()
         assert "2 datasets" in body["dependencies"]["storage"]["message"]
 
-    def test_readiness_with_missing_storage(self):
+    def test_readiness_with_missing_storage(self, monkeypatch):
         """Degraded when storage directory is missing."""
+        monkeypatch.setenv("JUNIPER_DATA_STORAGE_PATH", "/nonexistent/path/datasets")
         settings = Settings(storage_path="/nonexistent/path/datasets")
         app = create_app(settings=settings)
         c = TestClient(app)
