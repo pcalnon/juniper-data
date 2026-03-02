@@ -159,8 +159,8 @@ pytest --cov=juniper_data --cov-report=html
 ### Code Formatting
 
 ```bash
-black juniper_data tests
-isort juniper_data tests
+ruff format juniper_data tests
+ruff check --fix juniper_data tests
 ```
 
 ### Type Checking

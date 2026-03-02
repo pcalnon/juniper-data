@@ -1,7 +1,7 @@
 # AGENTS.md - Juniper Data Project Guide
 
 **Project**: Juniper Data - Dataset Generation Service
-**Version**: 0.4.0
+**Version**: 0.4.2
 **License**: MIT License
 **Author**: Paul Calnon
 **Last Updated**: 2026-02-06
