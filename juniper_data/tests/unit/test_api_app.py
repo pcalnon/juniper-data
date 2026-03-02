@@ -20,7 +20,7 @@ def test_settings() -> Settings:
     return Settings(
         storage_path="/tmp/juniper_test",
         host="127.0.0.1",
-        port=8200,
+        port=8100,
         log_level="DEBUG",
         cors_origins=["http://localhost:3000"],
     )

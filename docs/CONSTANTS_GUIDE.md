@@ -70,7 +70,7 @@ class DashboardConstants:
 class ServerConstants:
     """Server configuration constants."""
     DEFAULT_HOST: Final[str] = "127.0.0.1"
-    DEFAULT_PORT: Final[int] = 8050
+    DEFAULT_PORT: Final[int] = 8100
     # ...
 ```
 
@@ -315,7 +315,7 @@ training:
 
 server:
   host: 127.0.0.1  # Environment-specific
-  port: 8050
+  port: 8100
 ```
 
 ### Relationship
@@ -720,11 +720,11 @@ Having the same value in both constants and config:
 
 ```python
 # constants.py
-DEFAULT_PORT: Final[int] = 8050
+DEFAULT_PORT: Final[int] = 8100
 
 # app_config.yaml
 server:
-  port: 8050  # Duplicates constant
+  port: 8100  # Duplicates constant
 ```
 
 **Solution:**
