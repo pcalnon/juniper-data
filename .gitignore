@@ -181,6 +181,7 @@ dist/**
 
 # Ignore environment Variable file
 .env
+.env.secrets
 .env.local
 .env.development
 .env.production
