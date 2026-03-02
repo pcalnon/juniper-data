@@ -182,11 +182,13 @@ class TestLifespan:
 
         with patch("juniper_data.api.app.LocalFSDatasetStore"):
             with patch("juniper_data.api.app.datasets"):
-                with patch("logging.basicConfig") as mock_config:
+                with patch("juniper_data.api.app.configure_logging") as mock_config:
                     async with lifespan(app):
-                        mock_config.assert_called_once()
-                        call_kwargs = mock_config.call_args[1]
-                        assert call_kwargs["level"] == logging.DEBUG
+                        mock_config.assert_called_once_with(
+                            test_settings.log_level,
+                            test_settings.log_format,
+                            "juniper-data",
+                        )
 
 
 @pytest.mark.unit
