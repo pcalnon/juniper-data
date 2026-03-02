@@ -127,7 +127,7 @@ uvicorn juniper_data.api.app:app --reload
 ## Project Structure
 
 ```bash
-JuniperData/
+juniper-data/
 ├── juniper_data/
 │   ├── core/           # Core functionality and base classes
 │   ├── generators/     # Dataset generators
