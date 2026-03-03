@@ -29,9 +29,9 @@
 #     This file may be used to create the Juniper Project, juniper-data Application environment
 #         with conda and miniforge3 using:
 #     create env: conda create --name [env] --file [filename]
-#         e.g., $ conda create --name JuniperPython --file juniper-data/conf/conda_environment_ci.yaml
+#         e.g., $ conda create --name JuniperData --file juniper-data/conf/conda_environment_ci.yaml
 #     Update env: conda env update --name [env] --file [filename]
-#         e.g., $ conda env update --name JuniperPython --file juniper-data/conf/conda_environment_ci.yaml
+#         e.g., $ conda env update --name JuniperData --file juniper-data/conf/conda_environment_ci.yaml
 #     Generate deps: conda list --explicit > [filename]
 #         e.g., $ conda list -e >> juniper-data/conf/conda_environment_ci.yaml
 #

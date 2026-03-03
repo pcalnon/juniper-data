@@ -1,746 +1,150 @@
 # Quick Start Guide
 
-## Get Juniper Data running in 5 minutes
+Get Juniper Data running in 5 minutes.
 
-**Version:** 0.4.0  
-**Status:** ✅ Production Ready  
-**Last Updated:** February 8, 2026  
-**Project:** Juniper - Data Generator and Manager for the Cascade Correlation Neural Network and Monitoring Applications
-
----
-
-## Table of Contents
-
-- [Prerequisites](#prerequisites)
-- [Quick Start (Demo Mode)](#quick-start-demo-mode)
-- [Verify Installation](#verify-installation)
-- [Production Mode Setup](#production-mode-setup)
-- [First-Time Configuration](#first-time-configuration)
-- [Common Issues](#common-issues)
-- [Next Steps](#next-steps)
+**Version:** 0.4.2
+**Last Updated:** March 2026
 
 ---
 
 ## Prerequisites
 
-**Before you begin, ensure you have:**
-
-- [ ] **Python 3.11 or higher** installed
-- [ ] **Conda/Mamba** (Miniforge3 or Miniconda)
-- [ ] **Git** for cloning the repository
-- [ ] **Terminal/Shell** access
-- [ ] **5 minutes** of your time
-
-**Check your versions:**
-
-```bash
-# Python version
-python --version  # Should be 3.11+
-
-# Conda version
-conda --version
-
-# Git version
-git --version
-```
-
-**Don't have these?** See [ENVIRONMENT_SETUP.md](ENVIRONMENT_SETUP.md) for installation instructions.
+- **Python 3.12+** (`python --version`)
+- **Conda** (Miniforge3 or Miniconda) (`conda --version`)
+- **Git** (`git --version`)
 
 ---
 
-## Quick Start (Demo Mode)
-
-**Demo mode runs without the CasCor backend, simulating training data for development and testing.**
-
-### Step 1: Clone Repository
+## 1. Clone and Install
 
 ```bash
-# Navigate to your workspace
-cd ~/Development/python/Juniper/JuniperData
+git clone https://github.com/pcalnon/juniper-data.git
+cd juniper-data
 
-# Clone from Juniper repository
-git clone https://github.com/pcalnon/Juniper.git
-```
-
-### Step 2: Navigate to Project
-
-```bash
-cd juniper_data
-```
-
-### Step 3: Activate Environment
-
-#### Option A: Using conda (recommended)
-
-```bash
-# Activate JuniperData environment
 conda activate JuniperData
+pip install -e ".[dev]"
 ```
 
-#### Option B: Let the demo script handle it
-
-The `./demo` script automatically activates the conda environment.
-
-### Step 4: Run Demo Mode
-
-```bash
-# Launch demo mode
-./demo
-```
-
-#### What happens
-
-1. Script activates conda environment
-2. Sets `CASCOR_DEMO_MODE=1` environment variable
-3. Starts FastAPI + Dash server
-4. Demo mode generates simulated training data
-
-#### Expected output
-
-```bash
-$ ./demo
-[INFO] Activating conda environment 'JuniperData'...
-[INFO] Setting CASCOR_DEMO_MODE=1
-[INFO] Starting Juniper Data demo server...
-[INFO] FastAPI running at http://127.0.0.1:8000
-[INFO] Dash dashboard available at http://localhost:8050/dashboard/
-# Loading configuration and environment...
-# Demo server is now running.
-```
-
-### Step 5: Open Dashboard
-
-#### In your browser, navigate to
-
-```bash
-http://localhost:8050/dashboard/
-```
-
-**You should see:**
-
-- ✅ **Training Metrics** tab with live loss/accuracy plots
-- ✅ **Network Topology** tab with network visualization
-- ✅ **Decision Boundaries** tab with boundary plot
-- ✅ **Dataset View** tab with data points
-- ✅ **HDF5 Snapshots** tab with data points
-- ✅ **Redis** tab with data points
-- ✅ **Cassandra** tab with data points
-- ✅ **About** tab with data points
-
-**Congratulations! 🎉 You're running Juniper Data!**
+For API support only: `pip install -e ".[api]"`
+For everything: `pip install -e ".[all]"`
 
 ---
 
-## Verify Installation
-
-### Check API Endpoints
-
-**Open a new terminal and test the API:**
+## 2. Start the Service
 
 ```bash
-# Health check
-curl http://localhost:8050/health
-
-# Expected: {"status": "healthy"}
-
-# Get current metrics
-curl http://localhost:8050/api/metrics
-
-# Expected: JSON with epoch, loss, accuracy, etc.
-
-# Get network topology
-curl http://localhost:8050/api/network/topology
-
-# Expected: JSON with network structure
+python -m juniper_data
 ```
 
-### Check WebSocket Connection
-
-**In browser console (F12 → Console tab):**
-
-```javascript
-// Connect to training WebSocket
-const ws = new WebSocket('ws://localhost:8050/ws/training');
-
-ws.onopen = () => console.log('Connected!');
-ws.onmessage = (event) => console.log('Received:', JSON.parse(event.data));
-
-// You should see real-time metric updates
-```
-
-### Check Logs
+The API server starts on **port 8100**. Verify it's running:
 
 ```bash
-# View system logs
-tail -f logs/system.log
-
-# View training logs
-tail -f logs/training.log
-
-# View UI logs
-tail -f logs/ui.log
+curl http://localhost:8100/v1/health
+# {"status": "ok", "version": "0.4.2"}
 ```
 
-**If everything works:** ✅ Installation verified!
+Optional CLI flags: `--host`, `--port`, `--storage-path`, `--log-level`, `--reload`.
 
-**If something fails:** See [Common Issues](#common-issues) below.
-
----
-
-## Production Mode Setup
-
-**Production mode connects to the real CasCor backend for actual neural network training.**
-
-### Prerequisites, Production Mode
-
-- [ ] CasCor backend installed at `../cascor/` (or custom path)
-- [ ] CasCor backend tested and working
-- [ ] Environment variables configured
-
-### Step 1: Set Backend Path
+For production deployments:
 
 ```bash
-# Set CasCor backend path (default: ../cascor)
-export CASCOR_BACKEND_PATH=/path/to/cascor
-
-# Or use default (../cascor)
-# No export needed if using default
-```
-
-### Step 2: Disable Demo Mode
-
-```bash
-# Ensure demo mode is NOT forced
-unset CASCOR_DEMO_MODE
-
-# Or explicitly set to 0
-export CASCOR_DEMO_MODE=0
-```
-
-### Step 3: Launch Production Mode
-
-#### Option A: Using try script (recommended)
-
-```bash
-./try
-```
-
-#### Option B: Manual launch
-
-```bash
-cd src
-/opt/miniforge3/envs/JuniperPython/bin/python main.py
-```
-
-### Step 4: Verify Backend Connection
-
-#### Check logs for backend integration
-
-```bash
-tail -f logs/system.log | grep -i "cascor"
-```
-
-#### Expected
-
-```bash
-INFO: CasCor backend found at: /path/to/cascor
-INFO: CasCor integration initialized successfully
-INFO: Connected to CasCor backend
-```
-
-#### If backend not found
-
-```bash
-WARNING: CasCor backend not found, falling back to demo mode
+uvicorn juniper_data.api.app:app --host 0.0.0.0 --port 8100
 ```
 
 ---
 
-## First-Time Configuration
+## 3. Generate a Dataset
 
-### Environment Variables
-
-#### Create `.env` file in project root
+Create a two-spiral classification dataset:
 
 ```bash
-# Server configuration
-CASCOR_SERVER_PORT=8050
-CASCOR_SERVER_HOST=0.0.0.0
-
-# Demo mode (0=production, 1=demo)
-CASCOR_DEMO_MODE=1
-
-# Debug logging (0=off, 1=on)
-CASCOR_DEBUG=0
-
-# Backend path (default: ../cascor)
-CASCOR_BACKEND_PATH=../cascor
-
-# Update interval (seconds)
-CASCOR_DEMO_UPDATE_INTERVAL=1.0
-CASCOR_DEMO_MAX_EPOCHS=100
+curl -X POST http://localhost:8100/v1/datasets \
+  -H "Content-Type: application/json" \
+  -d '{
+    "generator": "spiral",
+    "params": {"n_points": 200, "n_spirals": 2, "noise": 0.1},
+    "persist": true
+  }'
 ```
 
-#### Load environment variables
-
-```bash
-# Linux/macOS
-source .env
-
-# Or use export manually
-export CASCOR_SERVER_PORT=8050
-export CASCOR_DEMO_MODE=1
-```
-
-### Configuration File
-
-#### Edit `conf/app_config.yaml`
-
-```yaml
-server:
-  host: "0.0.0.0"
-  port: 8050
-  reload: false
-
-demo:
-  enabled: true
-  update_interval: 1.0
-  max_epochs: 100
-
-logging:
-  level: "INFO"
-  format: "detailed"
-
-backend:
-  path: "../cascor"
-  timeout: 30
-```
-
-#### Environment variables override config file values
-
-**See:** [ENVIRONMENT_SETUP.md](ENVIRONMENT_SETUP.md) for complete configuration guide.
+The response includes a `dataset_id` and `artifact_url`.
 
 ---
 
-## Common Issues
-
-### Issue 1: ModuleNotFoundError
-
-#### Error
+## 4. Retrieve Data
 
 ```bash
-ModuleNotFoundError: No module named 'uvicorn'
+# Get dataset metadata
+curl http://localhost:8100/v1/datasets/{dataset_id}
+
+# Preview first samples as JSON
+curl http://localhost:8100/v1/datasets/{dataset_id}/preview
+
+# Download the NPZ artifact
+curl -O http://localhost:8100/v1/datasets/{dataset_id}/artifact
 ```
 
-**Cause:** Not using conda environment's Python
+The NPZ artifact contains keys: `X_train`, `y_train`, `X_test`, `y_test`, `X_full`, `y_full` (all `float32`).
 
-**Solution:**
+---
+
+## 5. Available Generators
+
+| Generator | Description |
+|-----------|-------------|
+| `spiral` | Multi-spiral classification |
+| `xor` | XOR classification (4 quadrants) |
+| `gaussian` | Mixture of Gaussians |
+| `circles` | Concentric circles |
+| `checkerboard` | 2D checkerboard pattern |
+| `csv_import` | CSV/JSON file import |
+| `mnist` | MNIST / Fashion-MNIST |
+| `arc_agi` | ARC-AGI visual reasoning tasks |
+
+List all generators and their parameter schemas:
 
 ```bash
-# Activate conda environment
-conda activate JuniperPython
-
-# Or use explicit Python path
-/opt/miniforge3/envs/JuniperPython/bin/python src/main.py
+curl http://localhost:8100/v1/generators
+curl http://localhost:8100/v1/generators/spiral/schema
 ```
 
 ---
 
-### Issue 2: Port Already in Use
+## 6. Configuration
 
-**Error:**
+Settings use Pydantic BaseSettings with the `JUNIPER_DATA_` prefix:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `JUNIPER_DATA_HOST` | `127.0.0.1` | Listen address |
+| `JUNIPER_DATA_PORT` | `8100` | Service port |
+| `JUNIPER_DATA_STORAGE_PATH` | `./data/datasets` | Dataset artifact storage |
+| `JUNIPER_DATA_LOG_LEVEL` | `INFO` | Log verbosity |
+| `JUNIPER_DATA_API_KEYS` | *(none)* | Optional API key list for auth |
+| `JUNIPER_DATA_CORS_ORIGINS` | `["*"]` | Allowed CORS origins |
+
+---
+
+## 7. Running Tests
 
 ```bash
-OSError: [Errno 48] Address already in use
-```
+# Run all tests
+pytest
 
-**Cause:** Port 8050 already occupied
+# Run with coverage
+pytest juniper_data/tests/ --cov=juniper_data --cov-report=html --cov-report=term-missing --cov-fail-under=80
 
-**Solution:**
-
-```bash
-# Check what's using port 8050
-lsof -i :8050
-
-# Kill the process
-kill -9 <PID>
-
-# Or use different port
-export CASCOR_SERVER_PORT=8051
-./demo
+# Run by marker
+pytest -m unit
+pytest -m integration
+pytest -m api
+pytest -m generators
 ```
 
 ---
 
-### Issue 3: Dashboard Shows "No Data Available"
-
-**Symptoms:** Dashboard loads but all tabs show "No data available"
-
-**Causes:**
-
-1. Demo mode not activated
-2. API endpoints not responding
-3. CORS issues
-
-**Solutions:**
-
-```bash
-# 1. Verify demo mode is running
-curl http://localhost:8050/api/metrics
-
-# Should return JSON, not 404
-
-# 2. Check logs
-tail -f logs/system.log
-
-# Look for errors or warnings
-
-# 3. Restart with explicit demo mode
-export CASCOR_DEMO_MODE=1
-./demo
-```
-
----
-
-### Issue 4: WebSocket Connection Failed
-
-**Error in browser console:**
-
-```bash
-WebSocket connection to 'ws://localhost:8050/ws/training' failed
-```
-
-**Solutions:**
-
-```bash
-# 1. Verify server is running
-curl http://localhost:8050/health
-
-# 2. Check WebSocket endpoint
-wscat -c ws://localhost:8050/ws/training
-# Install wscat: npm install -g wscat
-
-# 3. Check firewall/CORS settings
-# Ensure localhost connections allowed
-```
-
----
-
-### Issue 5: Import Errors in Tests
-
-**Error:**
-
-```bash
-ImportError: cannot import name 'get_system_logger' from 'logger'
-```
-
-**Cause:** Running tests from wrong directory
-
-**Solution:**
-
-```bash
-# CORRECT: Run from src/ directory
-cd src
-pytest tests/ -v
-
-# WRONG: Running from project root
-pytest src/tests/ -v  # This will fail
-```
-
----
-
-### Issue 6: Conda Environment Not Found
-
-**Error:**
-
-```bash
-CondaEnvironmentError: environment 'JuniperPython' not found
-```
-
-**Solution:**
-
-```bash
-# Create conda environment
-conda env create -f conf/conda_environment.yaml
-
-# Or manually
-conda create -n JuniperPython python=3.11
-conda activate JuniperPython
-pip install -r conf/requirements.txt
-```
-
-**See:** [ENVIRONMENT_SETUP.md](ENVIRONMENT_SETUP.md) for complete setup.
-
----
-
-## Next Steps
-
-### Learn More
-
-- **[README.md](README.md)** - Complete project overview and features
-- **[ENVIRONMENT_SETUP.md](ENVIRONMENT_SETUP.md)** - Detailed environment configuration
-- **[AGENTS.md](AGENTS.md)** - Development guide and conventions
-- **CI_CD.md (see ci_cd/CICD_MANUAL.md)** - Testing and CI/CD workflows
-
-### Start Developing
-
-```bash
-# Install pre-commit hooks
-pip install pre-commit
-pre-commit install
-
-# Run tests
-cd src
-pytest tests/ -v
-
-# Run tests with coverage
-pytest tests/ --cov=. --cov-report=html
-
-# View coverage
-open reports/coverage/index.html  # macOS
-xdg-open reports/coverage/index.html  # Linux
-```
-
-### Explore the Dashboard
-
-1. **Training Metrics Tab**
-   - Watch loss and accuracy update in real-time
-   - Observe convergence behavior
-
-2. **Network Topology Tab**
-   - See hidden units added dynamically
-   - Explore connection weights
-
-3. **Decision Boundary Tab**
-   - Visualize learned decision boundaries
-   - See class separation
-
-4. **Dataset Tab**
-   - View training data distribution
-   - Understand data characteristics
-
-### Customize Demo Mode
-
-**Edit `src/demo_mode.py` to:**
-
-- Change dataset (spiral, circles, XOR, etc.)
-- Adjust update interval
-- Modify max epochs
-- Customize metric generation
-
-**Example:**
-
-```python
-# In demo_mode.py
-def __init__(self):
-    # ...
-    self.update_interval = 0.5  # Faster updates
-    self.max_epochs = 200       # More epochs
-    # ...
-```
-
-### Connect to Real CasCor Backend
-
-**When ready for production:**
-
-1. Install CasCor backend
-2. Set `CASCOR_BACKEND_PATH`
-3. Disable demo mode: `unset CASCOR_DEMO_MODE`
-4. Run: `./try`
-
-**See production mode setup above.**
-
----
-
-## Performance Tips
-
-### Faster Dashboard Updates
-
-```bash
-# Reduce update interval (default: 1.0s)
-export CASCOR_DEMO_UPDATE_INTERVAL=0.5
-./demo
-```
-
-### Reduce Log Verbosity
-
-```bash
-# Set logging level to WARNING
-export CASCOR_LOGGING_LEVEL=WARNING
-./demo
-```
-
-### Optimize for Production
-
-```yaml
-# In conf/app_config.yaml
-server:
-  reload: false  # Disable auto-reload
-  workers: 4     # Multiple workers
-
-logging:
-  level: "WARNING"  # Reduce log volume
-```
-
----
-
-## Command Reference
-
-### Essential Commands
-
-```bash
-# Run demo mode
-./demo
-
-# Run production mode
-./try
-
-# Run tests
-cd src && pytest tests/ -v
-
-# Run tests with coverage
-cd src && pytest tests/ --cov=.
-
-# Pre-commit checks
-pre-commit run --all-files
-
-# Check syntax
-python -m py_compile src/**/*.py
-
-# Format code
-black src/ && isort src/
-```
-
-### API Endpoints
-
-```bash
-# Health check
-curl http://localhost:8050/health
-
-# Current metrics
-curl http://localhost:8050/api/metrics
-
-# Metrics history
-curl http://localhost:8050/api/metrics/history
-
-# Network topology
-curl http://localhost:8050/api/network/topology
-
-# Decision boundary
-curl http://localhost:8050/api/decision_boundary
-
-# Dataset
-curl http://localhost:8050/api/dataset
-```
-
-### WebSocket Channels
-
-```javascript
-// Training metrics stream
-ws://localhost:8050/ws/training
-
-// Control commands
-ws://localhost:8050/ws/control
-```
-
----
-
-## Troubleshooting Checklist
-
-**If something doesn't work:**
-
-- [ ] Conda environment activated? (`conda activate JuniperPython`)
-- [ ] Python version 3.11+? (`python --version`)
-- [ ] Dependencies installed? (`pip install -r conf/requirements.txt`)
-- [ ] Port 8050 available? (`lsof -i :8050`)
-- [ ] Demo mode enabled? (`export CASCOR_DEMO_MODE=1`)
-- [ ] Running from correct directory? (`pwd` should end with juniper_data)
-- [ ] Logs showing errors? (`tail -f logs/system.log`)
-
-**Still stuck?** See [AGENTS.md](AGENTS.md) Common Issues section.
-
----
-
-## Getting Help
-
-### Documentation
-
-- **[DOCUMENTATION_OVERVIEW.md](DOCUMENTATION_OVERVIEW.md)** - Complete doc navigation
-- **[AGENTS.md](AGENTS.md)** - Development guide with troubleshooting
-- **[CHANGELOG.md](CHANGELOG.md)** - Version history and known issues
-
-### Check Logs for Issues
-
-```bash
-# System log (startup, configuration)
-tail -f logs/system.log
-
-# Training log (metrics, demo mode)
-tail -f logs/training.log
-
-# UI log (dashboard events)
-tail -f logs/ui.log
-
-# All logs
-tail -f logs/*.log
-```
-
-### Verify Configuration
-
-```bash
-# Check environment variables
-env | grep CASCOR
-
-# Check config file
-cat conf/app_config.yaml
-
-# Check conda environment
-conda list | grep -E "(fastapi|dash|uvicorn)"
-```
-
----
-
-## Success Criteria
-
-### You've successfully completed quick start when
-
-- ✅ Demo mode launches without errors
-- ✅ Dashboard accessible at <http://localhost:8050/dashboard/>
-- ✅ All 4 tabs display data (not "No data available")
-- ✅ Training metrics update in real-time
-- ✅ API endpoints respond correctly
-- ✅ Logs show no errors
-
-### Congratulations! You're ready to use Juniper Data! 🎉
-
----
-
-## What's Next?
-
-### For Developers
-
-1. Read [AGENTS.md](AGENTS.md) development guide
-2. Set up pre-commit hooks
-3. Run test suite
-4. Review [code style guidelines](AGENTS.md#code-style-guidelines)
-
-### For Users
-
-1. Review [feature documentation](README.md#key-features)
-
-### For Contributors
-
-1. Read [contributing guidelines](AGENTS.md#contributing)
-2. Review [definition of done](AGENTS.md#definition-of-done)
-3. Check [development roadmap](docs/history/) for open tasks
-4. Set up CI/CD locally
-
----
-
-**Last Updated:** February 8, 2026  
-**Version:** 0.4.0  
-**Status:** ✅ Production Ready
-
-```markdown
-**Happy coding! 🚀**
-```
+## 8. Next Steps
+
+- **[API Reference](api/JUNIPER_DATA_API.md)** — Full endpoint documentation with schemas
+- **[README.md](../README.md)** — Project overview and ecosystem context
+- **[AGENTS.md](../AGENTS.md)** — Development guide, conventions, and architecture

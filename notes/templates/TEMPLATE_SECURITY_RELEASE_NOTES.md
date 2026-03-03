@@ -1,13 +1,13 @@
 # Security Release Notes Template
 
-**Purpose:** This template defines the required structure, formatting, and organization for all JuniperCanopy security patch release notes.
+**Purpose:** This template defines the required structure, formatting, and organization for all JuniperData security patch release notes.
 
 **Usage:** Copy this template and replace placeholder text (indicated by `[PLACEHOLDER]`) with actual release information.
 **Emoji usage:** Use emoji shortcodes (for example, `:lock:`) instead of raw emoji characters to ensure consistent rendering across Markdown viewers.
 
 ---
 
-# JuniperCanopy v[VERSION] – :lock: SECURITY PATCH RELEASE
+# JuniperData v[VERSION] – :lock: SECURITY PATCH RELEASE
 
 **Release Date:** [RELEASE_DATE]
 **Release Type:** Security Patch  
@@ -18,7 +18,7 @@
 
 **This is a security-focused point release addressing a critical vulnerability in a transitive dependency (`[PACKAGE_NAME]`). All users whose environments resolve `[PACKAGE_NAME]` to version [VULNERABLE_VERSION] are strongly advised to upgrade.**
 
-JuniperCanopy is a real-time monitoring and diagnostic frontend for Cascade Correlation Neural Networks (CasCor). This release does not introduce new features; it focuses on security hardening.
+JuniperData is a dataset generation and management service for the Juniper ecosystem. This release does not introduce new features; it focuses on security hardening.
 
 ---
 
@@ -41,20 +41,20 @@ JuniperCanopy is a real-time monitoring and diagnostic frontend for Cascade Corr
 
 ## Affected Versions
 
-JuniperCanopy deployments are affected if **both** of the following are true:
+JuniperData deployments are affected if **both** of the following are true:
 
 1. They are based on **v[PREVIOUS_VERSION]** (or earlier versions/alpha snapshots that allow `[PACKAGE_NAME]` [VULNERABLE_VERSION]) **and**
 2. Their environment resolves `[PACKAGE_NAME]` to **[VULNERABLE_VERSION]** (for example, via `pip`, a requirements file, or a lockfile that includes this version).
 
-Any JuniperCanopy environment that installs `[PACKAGE_NAME]==[VULNERABLE_VERSION]` is potentially vulnerable.
+Any JuniperData environment that installs `[PACKAGE_NAME]==[VULNERABLE_VERSION]` is potentially vulnerable.
 
 ---
 
 ## Remediation / Upgrade Instructions
 
-**Recommended action:** Upgrade to **JuniperCanopy v[VERSION]** and ensure `[PACKAGE_NAME]` is at least **[FIXED_VERSION]**.
+**Recommended action:** Upgrade to **JuniperData v[VERSION]** and ensure `[PACKAGE_NAME]` is at least **[FIXED_VERSION]**.
 
-### 1. Upgrade JuniperCanopy
+### 1. Upgrade JuniperData
 
 If using Git directly:
 
@@ -66,7 +66,7 @@ git checkout v[VERSION]
 
 If using a dependency manager (e.g., `requirements.txt`, `pyproject.toml`, or a lockfile):
 
-1. Update the JuniperCanopy version to **v[VERSION]**.
+1. Update the JuniperData version to **v[VERSION]**.
 2. Regenerate and reinstall dependencies.
 
 ### 2. Ensure a Safe `[PACKAGE_NAME]` Version
@@ -86,7 +86,7 @@ pip install --upgrade -r requirements.txt
 
 ### Temporary Mitigation (Not a Substitute for Upgrading)
 
-If you cannot immediately update JuniperCanopy, you should at minimum:
+If you cannot immediately update JuniperData, you should at minimum:
 
 - Explicitly pin `[PACKAGE_NAME]` to **[FIXED_VERSION]** (or later) in your environment
 - Reinstall dependencies to ensure the vulnerable version is no longer present
@@ -102,7 +102,7 @@ However, the **recommended** and supported remediation is to upgrade to **v[VERS
 
 - **Updated dependency:** `[PACKAGE_NAME]` **[VULNERABLE_VERSION] → [FIXED_VERSION]**
   - [DESCRIPTION_OF_WHAT_THE_FIX_ADDRESSES]
-  - Aligns JuniperCanopy with the upstream security fix described in the Dependabot advisory
+  - Aligns JuniperData with the upstream security fix described in the Dependabot advisory
 
 ### Documentation
 
@@ -125,7 +125,7 @@ These results cover the updated dependency set and related code paths.
 
 ## Upgrade Recommendation
 
-We recommend that all users, especially those running JuniperCanopy in [RELEVANT_RISK_ENVIRONMENTS], upgrade to **v[VERSION]** as soon as practicable.
+We recommend that all users, especially those running JuniperData in [RELEVANT_RISK_ENVIRONMENTS], upgrade to **v[VERSION]** as soon as practicable.
 
 If you encounter issues during upgrade or have questions about this advisory, please open an issue in this repository (avoiding sensitive environment details in public tickets). We will coordinate on secure channels as needed.
 
@@ -135,5 +135,5 @@ If you encounter issues during upgrade or have questions about this advisory, pl
 
 - [Dependabot Security Advisory](<DEPENDABOT_ALERT_URL>)
 - [<CWE_ID>: <CWE_TITLE>](<CWE_URL>)
-- [JuniperCanopy v[PREVIOUS_VERSION] Release Notes](RELEASE_NOTES_v[PREVIOUS_VERSION].md)
+- [JuniperData v[PREVIOUS_VERSION] Release Notes](RELEASE_NOTES_v[PREVIOUS_VERSION].md)
 - [CHANGELOG.md](../../CHANGELOG.md)

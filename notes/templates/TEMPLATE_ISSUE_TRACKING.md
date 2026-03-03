@@ -1,6 +1,6 @@
 # Issue Tracking Template
 
-**Purpose:** This template defines the required structure and formatting for all JuniperCanopy issue and bug tracking reports.
+**Purpose:** This template defines the required structure and formatting for all JuniperData issue and bug tracking reports.
 
 **Usage:** Copy this template and replace placeholder text (indicated by `[PLACEHOLDER]`) with actual issue information. Update sections as the issue progresses from Open to Resolved.
 

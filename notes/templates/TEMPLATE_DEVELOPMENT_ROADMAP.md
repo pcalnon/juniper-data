@@ -1,6 +1,6 @@
 # Development Roadmap Template
 
-**Purpose:** This template defines the required structure and formatting for JuniperCanopy development roadmaps and implementation plans.
+**Purpose:** This template defines the required structure and formatting for JuniperData development roadmaps and implementation plans.
 
 **Usage:** Copy this template and replace placeholder text (indicated by `[PLACEHOLDER]`) with actual roadmap information. Update status fields as work progresses.
 
