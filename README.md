@@ -57,7 +57,7 @@ JuniperData is the **foundational data layer** of the Juniper ecosystem. Juniper
 
 ```bash
 # Full stack with all three services:
-git clone https://github.com/pcalnon/juniper-deploy.git
+git clone https://github.com/pcalnon/juniper-deploy.git  # (private repository)
 cd juniper-deploy && docker compose up --build
 ```
 
