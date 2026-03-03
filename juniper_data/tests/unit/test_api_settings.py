@@ -23,10 +23,10 @@ class TestSettings:
 
     def test_default_host(self) -> None:
         """Test default host is set."""
-        settings = Settings()
-        # assert settings.host == "127.0.0.1"
-        # assert settings.host == "0.0.0.0"
-        assert settings.host == _JUNIPER_DATA_API_HOST_DEFAULT
+        env = {k: v for k, v in os.environ.items() if not k.startswith("JUNIPER_DATA_")}
+        with patch.dict(os.environ, env, clear=True):
+            settings = Settings()
+            assert settings.host == _JUNIPER_DATA_API_HOST_DEFAULT
 
     def test_default_port(self) -> None:
         """Test default port is set."""

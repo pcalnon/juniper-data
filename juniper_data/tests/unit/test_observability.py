@@ -131,6 +131,7 @@ class TestConfigureSentry:
         configure_sentry("", "test-service", "1.0.0")
 
     def test_initializes_when_dsn_provided(self):
+        pytest.importorskip("sentry_sdk")
         with patch("sentry_sdk.init") as mock_init:
             configure_sentry("https://examplePublicKey@o0.ingest.sentry.io/0", "test-service", "1.0.0")
             mock_init.assert_called_once()
@@ -189,6 +190,7 @@ class TestPrometheusMiddleware:
 
     @pytest.mark.asyncio
     async def test_increments_counter_and_records_histogram(self):
+        pytest.importorskip("prometheus_client")
         with patch("prometheus_client.Counter") as MockCounter, patch(
             "prometheus_client.Histogram"
         ) as MockHistogram:
@@ -223,5 +225,6 @@ class TestGetPrometheusApp:
     """Tests for get_prometheus_app function."""
 
     def test_returns_asgi_app(self):
+        pytest.importorskip("prometheus_client")
         app = get_prometheus_app()
         assert callable(app)

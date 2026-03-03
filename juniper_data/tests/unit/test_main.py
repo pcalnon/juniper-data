@@ -1,5 +1,6 @@
 """Unit tests for __main__.py entry point."""
 
+import os
 import sys
 from unittest.mock import patch
 
@@ -87,10 +88,11 @@ class TestMain:
 
     def test_main_uses_default_settings_when_no_args(self) -> None:
         """Test main uses settings defaults when no args provided."""
-        with patch("uvicorn.run") as mock_run:
-            with patch.object(sys, "argv", ["juniper_data"]):
-                # self._validate_mocked_host_name_and_port_args(mock_run, "0.0.0.0")
-                self._validate_mocked_host_name_and_port_args(mock_run, _JUNIPER_DATA_API_HOST_DEFAULT)
+        env = {k: v for k, v in os.environ.items() if not k.startswith("JUNIPER_DATA_")}
+        with patch.dict(os.environ, env, clear=True):
+            with patch("uvicorn.run") as mock_run:
+                with patch.object(sys, "argv", ["juniper_data"]):
+                    self._validate_mocked_host_name_and_port_args(mock_run, _JUNIPER_DATA_API_HOST_DEFAULT)
 
     def test_main_returns_zero_on_success(self) -> None:
         """Test main returns 0 on successful run."""
