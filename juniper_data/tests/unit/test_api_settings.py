@@ -41,7 +41,7 @@ class TestSettings:
     def test_default_cors_origins(self) -> None:
         """Test default CORS origins is set."""
         settings = Settings()
-        assert settings.cors_origins == ["*"]
+        assert settings.cors_origins == []
 
     def test_custom_values(self) -> None:
         """Test custom values can be set."""

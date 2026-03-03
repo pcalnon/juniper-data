@@ -107,7 +107,7 @@ class TestExceptionHandlers:
         response = client.get("/test-value-error")
 
         assert response.status_code == 400
-        assert response.json()["detail"] == "Test error message"
+        assert response.json()["detail"] == "Invalid request parameters"
 
     def test_general_exception_returns_500(self, test_settings: Settings, memory_store: InMemoryDatasetStore) -> None:
         """Test unhandled Exception returns 500 status."""
