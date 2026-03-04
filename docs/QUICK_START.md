@@ -1,9 +1,25 @@
 # Quick Start Guide
 
-Get Juniper Data running in 5 minutes.
+## Get juniper-data Running in 5 Minutes
 
 **Version:** 0.4.2
-**Last Updated:** March 2026
+**Status:** Active
+**Last Updated:** March 3, 2026
+**Project:** Juniper - Dataset Generation Service
+
+---
+
+## Table of Contents
+
+- [Prerequisites](#prerequisites)
+- [Clone and Install](#1-clone-and-install)
+- [Start the Service](#2-start-the-service)
+- [Generate a Dataset](#3-generate-a-dataset)
+- [Retrieve Data](#4-retrieve-data)
+- [Available Generators](#5-available-generators)
+- [Configuration](#6-configuration)
+- [Running Tests](#7-running-tests)
+- [Next Steps](#8-next-steps)
 
 ---
 
@@ -145,6 +161,15 @@ pytest -m generators
 
 ## 8. Next Steps
 
-- **[API Reference](api/JUNIPER_DATA_API.md)** — Full endpoint documentation with schemas
-- **[README.md](../README.md)** — Project overview and ecosystem context
-- **[AGENTS.md](../AGENTS.md)** — Development guide, conventions, and architecture
+- [Documentation Overview](DOCUMENTATION_OVERVIEW.md) -- navigation index for all juniper-data docs
+- [Environment Setup](ENVIRONMENT_SETUP.md) -- complete environment configuration from scratch
+- [User Manual](USER_MANUAL.md) -- comprehensive usage guide
+- [API Reference](api/JUNIPER_DATA_API.md) -- full endpoint documentation with schemas
+- [Testing Quick Start](testing/TESTING_QUICK_START.md) -- get tests running in 5 minutes
+- [CI/CD Quick Start](ci_cd/CICD_QUICK_START.md) -- run CI checks locally
+
+---
+
+**Last Updated:** March 3, 2026
+**Version:** 0.4.2
+**Status:** Active
