@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-03-03
+
+**Summary**: Comprehensive security hardening — security headers middleware, request body limits, error response sanitization, restrictive CORS defaults, rate limiting enabled by default, /metrics authentication, conditional API docs, and scheduled security scanning.
+
+### Security: [0.5.0]
+
+- Added `SecurityHeadersMiddleware` — X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy, conditional HSTS
+- Added `RequestBodyLimitMiddleware` with configurable max body size (default 10MB)
+- Sanitized `ValueError` handler to return generic error messages; internal details logged at DEBUG level
+- Changed CORS origins default from `["*"]` to `[]` (no origins allowed by default)
+- Changed rate limiting default from disabled to enabled
+- Added API key requirement for `/metrics` endpoint (removed from exempt paths)
+- Added conditional API docs — `/docs`, `/redoc`, `/openapi.json` disabled when API keys are configured
+
+### Added: [0.5.0]
+
+- `.github/workflows/security-scan.yml` — Weekly scheduled security scanning (Bandit, pip-audit)
+
+### Changed: [0.5.0]
+
+- Updated test fixtures for new security defaults (rate limiting, CORS)
+
+### Technical Notes: [0.5.0]
+
+- **SemVer impact**: MINOR — New middleware, changed security defaults (non-breaking: configurable via env vars)
+- **Test count**: 766 passed, 0 failed
+- **Part of**: Cross-ecosystem security audit (7 repos, 24 findings)
+
+---
+
 ## [0.4.2] - 2026-02-17
 
 **Summary**: CI/CD workflow triggers expanded to cover all JuniperData branches, and `.gitignore` updated to properly exclude `__pycache__` directories.
