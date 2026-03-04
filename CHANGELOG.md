@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed: [Unreleased]
+
+- **DOCKER-001: Dockerfile Python version mismatch** — Updated Dockerfile base images from `python:3.11-slim` to `python:3.12-slim` in both builder and runtime stages, and updated site-packages copy path from `python3.11` to `python3.12`, to match `requires-python = ">=3.12"` in `pyproject.toml`
+- **SETTINGS-001: api_keys empty string validation** — Added `field_validator` for `api_keys` in `Settings` to handle empty strings from Docker Compose environment variable substitution (`${VAR:-}`). Empty strings are now treated as `None` (auth disabled). Comma-separated strings are parsed into lists.
+
+---
+
 ## [0.4.2] - 2026-02-17
 
 **Summary**: CI/CD workflow triggers expanded to cover all JuniperData branches, and `.gitignore` updated to properly exclude `__pycache__` directories.
@@ -165,7 +174,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 10 cross-project references (JuniperCascor: 5, JuniperCanopy: 5)
 
 - **DATA-006: Dockerfile for JuniperData Service**
-  - Multi-stage build (builder + runtime) using `python:3.11-slim`
+  - Multi-stage build (builder + runtime) using `python:3.12-slim`
   - Installs with `pip install .[api]` for minimal dependencies
   - Non-root `juniper` user (UID 1000) for security
   - Exposes port 8100 with environment variable configuration

@@ -3,6 +3,7 @@
 # import json
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Define Safe and Reasonable Defaults for API Model Config
@@ -108,6 +109,16 @@ class Settings(BaseSettings):
     # api_keys: list[str] | None = _JUNIPER_DATA_API_KEYS_LIST_DEFAULT
     # api_keys: JSON[list[str]] | None = _JUNIPER_DATA_API_KEYS_LIST_DEFAULT
     api_keys: list[str] | None = _JUNIPER_DATA_API_KEYS_LIST_DEFAULT
+
+    @field_validator("api_keys", mode="before")
+    @classmethod
+    def _parse_api_keys(cls, v: object) -> list[str] | None:
+        if v is None or v == "":
+            return None
+        if isinstance(v, str):
+            return [k.strip() for k in v.split(",") if k.strip()]
+        return v  # type: ignore[return-value]
+
     rate_limit_enabled: bool = _JUNIPER_DATA_API_RATELIMIT_ACTIVE_DEFAULT
     rate_limit_requests_per_minute: int = _JUNIPER_DATA_API_RATELIMIT_DEFAULT
 
