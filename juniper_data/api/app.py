@@ -19,6 +19,7 @@ from .observability import (
     configure_logging,
     configure_sentry,
     get_prometheus_app,
+    set_build_info,
 )
 from .routes import datasets, generators, health
 from .security import APIKeyAuth, RateLimiter
@@ -35,6 +36,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     configure_logging(settings.log_level, settings.log_format, "juniper-data")
     configure_sentry(settings.sentry_dsn, "juniper-data", __version__)
+    if settings.metrics_enabled:
+        set_build_info("juniper_data", __version__)
 
     logger = logging.getLogger("juniper_data")
     logger.info(f"JuniperData API v{__version__} starting")
@@ -96,7 +99,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Middleware execution is LIFO: last added runs first.
     # Order: RequestIdMiddleware → PrometheusMiddleware → SecurityMiddleware → CORS
     if settings.metrics_enabled:
-        app.add_middleware(PrometheusMiddleware, service_name="juniper-data")
+        app.add_middleware(PrometheusMiddleware, service_name="juniper-data", namespace="juniper_data")
     app.add_middleware(RequestIdMiddleware)
 
     app.include_router(health.router, prefix="/v1")
