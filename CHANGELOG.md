@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added: [Unreleased]
+
+- Namespaced Prometheus metrics (`juniper_data_` prefix) with custom dataset generation metrics
+- `juniper_data_dataset_generations_total` Counter (by generator, status)
+- `juniper_data_dataset_generation_duration_seconds` Histogram (by generator)
+- `juniper_data_datasets_cached` Gauge
+- `juniper_data_build_info` Info metric
+
+### Changed: [Unreleased]
+
+- Renamed HTTP metrics: `http_requests_total` → `juniper_data_http_requests_total`, `http_request_duration_seconds` → `juniper_data_http_request_duration_seconds`
+
 ### Fixed: [Unreleased]
 
 - **DOCKER-001: Dockerfile Python version mismatch** — Updated Dockerfile base images from `python:3.11-slim` to `python:3.12-slim` in both builder and runtime stages, and updated site-packages copy path from `python3.11` to `python3.12`, to match `requires-python = ">=3.12"` in `pyproject.toml`
