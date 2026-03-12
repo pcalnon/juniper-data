@@ -151,11 +151,7 @@ class DatasetStore(ABC):
             List of dataset IDs that were deleted.
         """
         deleted: list[str] = []
-        deleted.extend(
-            meta.dataset_id
-            for meta in self.list_all_metadata()
-            if self.is_expired(meta) and self.delete(meta.dataset_id)
-        )
+        deleted.extend(meta.dataset_id for meta in self.list_all_metadata() if self.is_expired(meta) and self.delete(meta.dataset_id))
         return deleted
 
     def filter_datasets(

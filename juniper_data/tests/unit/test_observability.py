@@ -48,9 +48,7 @@ class TestJuniperJsonFormatter:
         formatter = JuniperJsonFormatter(service="test-service")
         token = request_id_var.set("abc-123")
         try:
-            record = logging.LogRecord(
-                name="test", level=logging.INFO, pathname="", lineno=0, msg="hi", args=None, exc_info=None
-            )
+            record = logging.LogRecord(name="test", level=logging.INFO, pathname="", lineno=0, msg="hi", args=None, exc_info=None)
             output = formatter.format(record)
             parsed = json.loads(output)
             assert parsed["request_id"] == "abc-123"
@@ -65,9 +63,7 @@ class TestJuniperJsonFormatter:
             import sys
 
             exc_info = sys.exc_info()
-            record = logging.LogRecord(
-                name="test", level=logging.ERROR, pathname="", lineno=0, msg="error", args=None, exc_info=exc_info
-            )
+            record = logging.LogRecord(name="test", level=logging.ERROR, pathname="", lineno=0, msg="error", args=None, exc_info=exc_info)
             output = formatter.format(record)
             parsed = json.loads(output)
             assert "exception" in parsed
@@ -75,9 +71,7 @@ class TestJuniperJsonFormatter:
 
     def test_format_default_service_name(self):
         formatter = JuniperJsonFormatter()
-        record = logging.LogRecord(
-            name="test", level=logging.INFO, pathname="", lineno=0, msg="hi", args=None, exc_info=None
-        )
+        record = logging.LogRecord(name="test", level=logging.INFO, pathname="", lineno=0, msg="hi", args=None, exc_info=None)
         output = formatter.format(record)
         parsed = json.loads(output)
         assert parsed["service"] == "juniper-data"
@@ -194,9 +188,7 @@ class TestPrometheusMiddleware:
     @pytest.mark.asyncio
     async def test_increments_counter_and_records_histogram(self):
         pytest.importorskip("prometheus_client")
-        with patch("prometheus_client.Counter") as MockCounter, patch(
-            "prometheus_client.Histogram"
-        ) as MockHistogram:
+        with patch("prometheus_client.Counter") as MockCounter, patch("prometheus_client.Histogram") as MockHistogram:
             mock_counter = MagicMock()
             mock_histogram = MagicMock()
             MockCounter.return_value = mock_counter
@@ -226,9 +218,7 @@ class TestPrometheusMiddleware:
     async def test_namespace_prefix_applied_to_metric_names(self):
         """Verify that the namespace parameter prefixes metric names."""
         pytest.importorskip("prometheus_client")
-        with patch("prometheus_client.Counter") as MockCounter, patch(
-            "prometheus_client.Histogram"
-        ) as MockHistogram:
+        with patch("prometheus_client.Counter") as MockCounter, patch("prometheus_client.Histogram") as MockHistogram:
             MockCounter.return_value = MagicMock()
             MockHistogram.return_value = MagicMock()
 
@@ -249,9 +239,7 @@ class TestPrometheusMiddleware:
     async def test_empty_namespace_produces_unprefixed_names(self):
         """Verify that an empty namespace does not add a prefix."""
         pytest.importorskip("prometheus_client")
-        with patch("prometheus_client.Counter") as MockCounter, patch(
-            "prometheus_client.Histogram"
-        ) as MockHistogram:
+        with patch("prometheus_client.Counter") as MockCounter, patch("prometheus_client.Histogram") as MockHistogram:
             MockCounter.return_value = MagicMock()
             MockHistogram.return_value = MagicMock()
 
@@ -300,9 +288,7 @@ class TestDatasetMetrics:
         import juniper_data.api.observability as obs
 
         obs._dataset_metrics = None  # Reset lazy cache
-        with patch("prometheus_client.Counter") as MockCounter, patch(
-            "prometheus_client.Histogram"
-        ) as MockHistogram, patch("prometheus_client.Gauge"):
+        with patch("prometheus_client.Counter") as MockCounter, patch("prometheus_client.Histogram") as MockHistogram, patch("prometheus_client.Gauge"):
             mock_counter = MagicMock()
             mock_histogram = MagicMock()
             MockCounter.return_value = mock_counter
@@ -322,9 +308,7 @@ class TestDatasetMetrics:
         import juniper_data.api.observability as obs
 
         obs._dataset_metrics = None
-        with patch("prometheus_client.Counter") as MockCounter, patch(
-            "prometheus_client.Histogram"
-        ) as MockHistogram, patch("prometheus_client.Gauge"):
+        with patch("prometheus_client.Counter") as MockCounter, patch("prometheus_client.Histogram") as MockHistogram, patch("prometheus_client.Gauge"):
             mock_counter = MagicMock()
             mock_histogram = MagicMock()
             MockCounter.return_value = mock_counter
@@ -342,9 +326,7 @@ class TestDatasetMetrics:
         import juniper_data.api.observability as obs
 
         obs._dataset_metrics = None
-        with patch("prometheus_client.Counter"), patch("prometheus_client.Histogram"), patch(
-            "prometheus_client.Gauge"
-        ) as MockGauge:
+        with patch("prometheus_client.Counter"), patch("prometheus_client.Histogram"), patch("prometheus_client.Gauge") as MockGauge:
             mock_gauge = MagicMock()
             MockGauge.return_value = mock_gauge
 

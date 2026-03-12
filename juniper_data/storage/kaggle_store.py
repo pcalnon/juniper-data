@@ -140,9 +140,7 @@ class KaggleDatasetStore(DatasetStore):
             if csv_files:
                 file_path = csv_files[0]
             else:
-                raise FileNotFoundError(
-                    f"File '{file_name}' not found in dataset. Available files: {[f.name for f in all_files]}"
-                )
+                raise FileNotFoundError(f"File '{file_name}' not found in dataset. Available files: {[f.name for f in all_files]}")
 
         import csv
 

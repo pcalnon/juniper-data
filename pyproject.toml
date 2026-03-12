@@ -80,7 +80,8 @@ where = ["."]
 include = ["juniper_data*"]
 
 [tool.ruff]
-line-length = 512
+# line-length = 512
+line-length = 320
 target-version = "py312"
 
 [tool.ruff.lint]
