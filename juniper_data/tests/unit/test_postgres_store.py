@@ -63,9 +63,7 @@ def mock_psycopg2():
     with patch.dict("sys.modules", {"psycopg2": mock_pg, "psycopg2.extras": mock_pg.extras}):
         with patch("juniper_data.storage.postgres_store.POSTGRES_AVAILABLE", True):
             with patch("juniper_data.storage.postgres_store.psycopg2", mock_pg):
-                with patch(
-                    "juniper_data.storage.postgres_store.RealDictCursor", mock_pg.extras.RealDictCursor, create=True
-                ):
+                with patch("juniper_data.storage.postgres_store.RealDictCursor", mock_pg.extras.RealDictCursor, create=True):
                     yield mock_pg, mock_conn, mock_cursor
 
 
@@ -107,9 +105,7 @@ class TestPostgresDatasetStoreInit:
         """Initialize with connection string overrides individual params."""
         from juniper_data.storage.postgres_store import PostgresDatasetStore
 
-        store = PostgresDatasetStore(
-            connection_string="postgresql://user:pass@host/db", artifact_path=tmp_path / "data"
-        )
+        store = PostgresDatasetStore(connection_string="postgresql://user:pass@host/db", artifact_path=tmp_path / "data")
         assert store._conn_params == {"dsn": "postgresql://user:pass@host/db"}
 
     def test_init_without_auto_schema(self, mock_psycopg2, tmp_path) -> None:

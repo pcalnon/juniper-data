@@ -60,10 +60,7 @@ class ArcAgiGenerator:
             ImportError: If datasets package is not installed (HF source).
             FileNotFoundError: If local path does not exist.
         """
-        if params.source == "huggingface":
-            tasks = ArcAgiGenerator._load_from_huggingface(params)
-        else:
-            tasks = ArcAgiGenerator._load_from_local(params)
+        tasks = ArcAgiGenerator._load_from_huggingface(params) if params.source == "huggingface" else ArcAgiGenerator._load_from_local(params)
 
         X, y, task_ids = ArcAgiGenerator._convert_tasks_to_arrays(tasks, params)
 

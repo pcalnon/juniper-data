@@ -96,10 +96,7 @@ class CsvImportGenerator:
             else:
                 raise ValueError(f"Cannot auto-detect format for extension: {suffix}")
 
-        if file_format == "csv":
-            data = CsvImportGenerator._load_csv(path, params)
-        else:
-            data = CsvImportGenerator._load_json(path, params)
+        data = CsvImportGenerator._load_csv(path, params) if file_format == "csv" else CsvImportGenerator._load_json(path, params)
 
         return CsvImportGenerator._convert_to_arrays(data, params)
 
@@ -129,10 +126,7 @@ class CsvImportGenerator:
         with open(path, encoding="utf-8") as f:
             content = f.read().strip()
 
-            if content.startswith("["):
-                data = json.loads(content)
-            else:
-                data = [json.loads(line) for line in content.split("\n") if line.strip()]
+            data = json.loads(content) if content.startswith("[") else [json.loads(line) for line in content.split("\n") if line.strip()]
 
         return data
 
@@ -144,10 +138,7 @@ class CsvImportGenerator:
 
         all_columns = list(data[0].keys())
 
-        if params.feature_columns is not None:
-            feature_cols = params.feature_columns
-        else:
-            feature_cols = [c for c in all_columns if c != params.label_column]
+        feature_cols = params.feature_columns if params.feature_columns is not None else [c for c in all_columns if c != params.label_column]
 
         features = []
         labels = []

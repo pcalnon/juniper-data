@@ -127,7 +127,7 @@ repos:
   # Security Scanning - Bandit
   # ═══════════════════════════════════════════════════════════════════════════
   - repo: https://github.com/PyCQA/bandit
-    rev: 1.7.9
+    rev: 1.9.4
     hooks:
       - id: bandit
         name: Security scan with Bandit
@@ -184,7 +184,8 @@ repos:
     hooks:
       - id: no-unencrypted-env
         name: Block unencrypted .env files
-        entry: bash -c 'echo "ERROR: Unencrypted .env file detected. Use sops to encrypt." && exit 1'
+        # entry: bash -c 'echo "ERROR: Unencrypted .env file detected. Use sops to encrypt." && exit 1'
+        entry: bash -c "echo \"ERROR Unencrypted .env file detected. Use sops to encrypt.\" && exit 1"
         language: system
         files: ^\.env(\.secrets)?$
         types: [file]

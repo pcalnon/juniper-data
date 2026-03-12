@@ -2,6 +2,7 @@
 
 import json
 import logging
+import sys
 import time
 import uuid
 from contextvars import ContextVar
@@ -13,6 +14,7 @@ from starlette.responses import Response
 request_id_var: ContextVar[str] = ContextVar("request_id", default="")
 
 _SERVICE_NAME_DEFAULT: str = "juniper-data"
+_NAMESPACE_DEFAULT: str = "juniper_data"
 
 
 class JuniperJsonFormatter(logging.Formatter):
@@ -55,19 +57,20 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
 
 
 class PrometheusMiddleware(BaseHTTPMiddleware):
-    """Tracks http_requests_total and http_request_duration_seconds."""
+    """Tracks http_requests_total and http_request_duration_seconds with namespace prefix."""
 
-    def __init__(self, app: object, service_name: str = _SERVICE_NAME_DEFAULT) -> None:
+    def __init__(self, app: object, service_name: str = _SERVICE_NAME_DEFAULT, namespace: str = _NAMESPACE_DEFAULT) -> None:
         super().__init__(app)
         from prometheus_client import Counter, Histogram
 
+        prefix = f"{namespace}_" if namespace else ""
         self._request_count = Counter(
-            "http_requests_total",
+            f"{prefix}http_requests_total",
             "Total HTTP requests",
             ["method", "endpoint", "status"],
         )
         self._request_duration = Histogram(
-            "http_request_duration_seconds",
+            f"{prefix}http_request_duration_seconds",
             "HTTP request duration in seconds",
             ["method", "endpoint"],
         )
@@ -149,3 +152,74 @@ def get_prometheus_app():
     from prometheus_client import make_asgi_app
 
     return make_asgi_app()
+
+
+def set_build_info(namespace: str, version: str) -> None:
+    """Set build information as a Prometheus Info metric.
+
+    Args:
+        namespace: Metric namespace prefix (e.g. "juniper_data").
+        version: Application version string.
+    """
+    from prometheus_client import Info
+
+    python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    info = Info(f"{namespace}_build", f"Build information for {namespace.replace('_', '-')} service")
+    info.info({"version": version, "python_version": python_version})
+
+
+# ---------------------------------------------------------------------------
+# Custom application metrics — lazily initialized to avoid requiring
+# prometheus_client at import time (it is an optional dependency).
+# ---------------------------------------------------------------------------
+
+_dataset_metrics: dict | None = None
+
+
+def _ensure_dataset_metrics() -> dict:
+    """Create dataset-related Prometheus metrics on first access."""
+    global _dataset_metrics
+    if _dataset_metrics is None:
+        from prometheus_client import Counter, Gauge, Histogram
+
+        _dataset_metrics = {
+            "generations_total": Counter(
+                "juniper_data_dataset_generations_total",
+                "Total dataset generation requests",
+                ["generator", "status"],
+            ),
+            "generation_duration_seconds": Histogram(
+                "juniper_data_dataset_generation_duration_seconds",
+                "Dataset generation duration in seconds",
+                ["generator"],
+                buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, float("inf")),
+            ),
+            "datasets_cached": Gauge(
+                "juniper_data_datasets_cached",
+                "Number of datasets currently cached in storage",
+            ),
+        }
+    return _dataset_metrics
+
+
+def record_dataset_generation(generator: str, status: str, duration: float) -> None:
+    """Record a dataset generation event in Prometheus metrics.
+
+    Args:
+        generator: Generator type name (e.g. "spiral").
+        status: Outcome — "success" or "error".
+        duration: Generation duration in seconds.
+    """
+    m = _ensure_dataset_metrics()
+    m["generations_total"].labels(generator=generator, status=status).inc()
+    if status == "success":
+        m["generation_duration_seconds"].labels(generator=generator).observe(duration)
+
+
+def set_datasets_cached(count: int) -> None:
+    """Update the cached datasets gauge.
+
+    Args:
+        count: Current number of datasets in cache/storage.
+    """
+    _ensure_dataset_metrics()["datasets_cached"].set(count)

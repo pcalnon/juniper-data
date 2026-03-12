@@ -195,7 +195,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 10 cross-project references (JuniperCascor: 5, JuniperCanopy: 5)
 
 - **DATA-006: Dockerfile for JuniperData Service**
-  - Multi-stage build (builder + runtime) using `python:3.11-slim`
+  - Multi-stage build (builder + runtime) using `python:3.12-slim`
   - Installs with `pip install .[api]` for minimal dependencies
   - Non-root `juniper` user (UID 1000) for security
   - Exposes port 8100 with environment variable configuration

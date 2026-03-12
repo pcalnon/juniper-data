@@ -165,9 +165,7 @@ async def list_datasets(
 async def filter_datasets(
     generator: str | None = Query(default=None, description="Filter by generator name"),
     tags: str | None = Query(default=None, description="Comma-separated list of tags to filter by"),
-    tags_match: str = Query(
-        default="any", pattern="^(any|all)$", description="Tag matching mode: 'any' (OR) or 'all' (AND)"
-    ),
+    tags_match: str = Query(default="any", pattern="^(any|all)$", description="Tag matching mode: 'any' (OR) or 'all' (AND)"),
     created_after: datetime | None = Query(default=None, description="Filter by creation date (after)"),
     created_before: datetime | None = Query(default=None, description="Filter by creation date (before)"),
     min_samples: int | None = Query(default=None, ge=1, description="Minimum number of samples"),

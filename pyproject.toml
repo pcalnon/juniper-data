@@ -67,7 +67,7 @@ observability = [
 dev = [
     "ruff>=0.9.0",
     "mypy>=1.0.0",
-    "bandit[sarif]>=1.7.9",
+    "bandit[sarif]>=1.9.4",
     "pip-audit>=2.7.0",
     "pre-commit>=3.0.0",
 ]
@@ -80,8 +80,9 @@ where = ["."]
 include = ["juniper_data*"]
 
 [tool.ruff]
-line-length = 120
-target-version = "py311"
+# line-length = 512
+line-length = 320
+target-version = "py312"
 
 [tool.ruff.lint]
 select = [

@@ -71,9 +71,7 @@ def _make_mock_hf_dataset(n_samples=20, n_classes=3, feature_type="tabular"):
             mock_img.convert.return_value = np_arr
             mock_images.append({"image": mock_img, "label": labels[_ % len(labels)]})
         mock_ds.__iter__ = MagicMock(return_value=iter(mock_images))
-        mock_ds.__getitem__.side_effect = lambda key: (
-            labels if key == "label" else [m["image"] for m in mock_images] if key == "image" else []
-        )
+        mock_ds.__getitem__.side_effect = lambda key: labels if key == "label" else [m["image"] for m in mock_images] if key == "image" else []
 
     mock_ds.shuffle.return_value = mock_ds
     mock_ds.select.return_value = mock_ds
@@ -141,9 +139,7 @@ class TestHuggingFaceDatasetStoreLoadDataset:
         mock_hf_module.return_value = mock_ds
 
         store = HuggingFaceDatasetStore()
-        dataset_id, meta, arrays = store.load_hf_dataset(
-            "test-dataset", feature_columns=["feature1", "feature2"], label_column="label"
-        )
+        dataset_id, meta, arrays = store.load_hf_dataset("test-dataset", feature_columns=["feature1", "feature2"], label_column="label")
 
         assert "hf-test-dataset" in dataset_id
         assert meta.generator == "huggingface"
@@ -160,9 +156,7 @@ class TestHuggingFaceDatasetStoreLoadDataset:
         mock_hf_module.return_value = mock_ds
 
         store = HuggingFaceDatasetStore()
-        dataset_id, meta, arrays = store.load_hf_dataset(
-            "test-dataset", config_name="v2", feature_columns=["feature1", "feature2"]
-        )
+        dataset_id, meta, arrays = store.load_hf_dataset("test-dataset", config_name="v2", feature_columns=["feature1", "feature2"])
 
         assert "-v2-" in dataset_id
 
@@ -198,9 +192,7 @@ class TestHuggingFaceDatasetStoreLoadDataset:
         mock_hf_module.return_value = mock_ds
 
         store = HuggingFaceDatasetStore()
-        _, meta, arrays = store.load_hf_dataset(
-            "test-dataset", one_hot_labels=False, feature_columns=["feature1", "feature2"]
-        )
+        _, meta, arrays = store.load_hf_dataset("test-dataset", one_hot_labels=False, feature_columns=["feature1", "feature2"])
 
         assert arrays["y_full"].shape[1] == 1
 
@@ -291,9 +283,7 @@ class TestHuggingFaceDatasetStoreExtractFeaturesLabels:
 
         mock_ds.__getitem__.side_effect = lambda key: [1.0, 2.0] if key in ("feature1", "feature2") else [0, 1]
 
-        X, y, n_classes = store._extract_features_labels(
-            mock_ds, feature_columns=None, label_column="label", flatten=True, normalize=False, one_hot_labels=True
-        )
+        X, y, n_classes = store._extract_features_labels(mock_ds, feature_columns=None, label_column="label", flatten=True, normalize=False, one_hot_labels=True)
         assert X.dtype == np.float32
 
     def test_single_image_feature(self, mock_hf_module) -> None:
@@ -309,9 +299,7 @@ class TestHuggingFaceDatasetStoreExtractFeaturesLabels:
         mock_ds.__iter__ = MagicMock(return_value=iter([{"image": mock_img}, {"image": mock_img}]))
         mock_ds.__getitem__.side_effect = lambda key: [0, 1] if key == "label" else [mock_img, mock_img]
 
-        X, y, n_classes = store._extract_features_labels(
-            mock_ds, feature_columns=["image"], label_column="label", flatten=True, normalize=True, one_hot_labels=True
-        )
+        X, y, n_classes = store._extract_features_labels(mock_ds, feature_columns=["image"], label_column="label", flatten=True, normalize=True, one_hot_labels=True)
         assert X.shape[0] == 2
         assert n_classes == 2
 
@@ -329,9 +317,7 @@ class TestHuggingFaceDatasetStoreExtractFeaturesLabels:
 
         mock_ds.__getitem__.side_effect = lambda key: [mock_tensor, mock_tensor] if key == "feat" else [0, 1]  # type: ignore[list-item]
 
-        X, y, n_classes = store._extract_features_labels(
-            mock_ds, feature_columns=["feat"], label_column="label", flatten=True, normalize=False, one_hot_labels=False
-        )
+        X, y, n_classes = store._extract_features_labels(mock_ds, feature_columns=["feat"], label_column="label", flatten=True, normalize=False, one_hot_labels=False)
         assert y.shape[1] == 1
 
 
