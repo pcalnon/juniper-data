@@ -57,7 +57,7 @@ JuniperData is the **foundational data layer** of the Juniper ecosystem. Juniper
 
 ```bash
 # Full stack with all three services:
-git clone https://github.com/pcalnon/juniper-deploy.git
+git clone https://github.com/pcalnon/juniper-deploy.git  # (private repository)
 cd juniper-deploy && docker compose up --build
 ```
 
@@ -116,13 +116,21 @@ uvicorn juniper_data.api.app:app --reload
 
 ## API Endpoints
 
-| Endpoint                        | Method | Description                        |
-| ------------------------------- | ------ | ---------------------------------- |
-| `/v1/health`                    | GET    | Health check endpoint              |
-| `/v1/datasets`                  | GET    | List available datasets            |
-| `/v1/datasets/{id}`             | GET    | Get a specific dataset             |
-| `/v1/generators/spiral`         | POST   | Generate a new spiral dataset      |
-| `/v1/generators/spiral/config`  | GET    | Get spiral generator configuration |
+| Endpoint                              | Method | Description                           |
+| ------------------------------------- | ------ | ------------------------------------- |
+| `/v1/health`                          | GET    | Health check                          |
+| `/v1/health/live`                     | GET    | Liveness probe                        |
+| `/v1/health/ready`                    | GET    | Readiness probe (checks storage)      |
+| `/v1/generators`                      | GET    | List all generators with schemas      |
+| `/v1/generators/{name}/schema`        | GET    | Get parameter schema for a generator  |
+| `/v1/datasets`                        | POST   | Generate a new dataset                |
+| `/v1/datasets`                        | GET    | List all dataset IDs                  |
+| `/v1/datasets/{id}`                   | GET    | Get dataset metadata                  |
+| `/v1/datasets/{id}`                   | DELETE | Delete a dataset                      |
+| `/v1/datasets/{id}/artifact`          | GET    | Download NPZ artifact                 |
+| `/v1/datasets/{id}/preview`           | GET    | Preview first N samples as JSON       |
+
+See [docs/api/JUNIPER_DATA_API.md](docs/api/JUNIPER_DATA_API.md) for full endpoint documentation including filtering, batch operations, and tagging.
 
 ## Project Structure
 
@@ -130,14 +138,21 @@ uvicorn juniper_data.api.app:app --reload
 juniper-data/
 ├── juniper_data/
 │   ├── core/           # Core functionality and base classes
-│   ├── generators/     # Dataset generators
-│   │   └── spiral/     # Spiral dataset generator
+│   ├── generators/     # Dataset generators (8 types)
+│   │   ├── spiral/     # Multi-spiral classification
+│   │   ├── xor/        # XOR classification
+│   │   ├── gaussian/   # Mixture of Gaussians
+│   │   ├── circles/    # Concentric circles
+│   │   ├── checkerboard/ # 2D checkerboard pattern
+│   │   ├── csv_import/ # CSV/JSON file import
+│   │   ├── mnist/      # MNIST / Fashion-MNIST
+│   │   └── arc_agi/    # ARC-AGI visual reasoning
 │   ├── storage/        # Dataset persistence layer
-│   └── api/            # FastAPI application
-│       └── routes/     # API route handlers
-├── tests/
-│   ├── unit/           # Unit tests
-│   └── integration/    # Integration tests
+│   ├── api/            # FastAPI application
+│   │   └── routes/     # API route handlers
+│   └── tests/          # Test suite
+│       ├── unit/       # Unit tests
+│       └── integration/ # Integration tests
 ├── pyproject.toml      # Project configuration
 └── README.md           # This file
 ```

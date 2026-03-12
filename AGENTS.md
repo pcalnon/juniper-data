@@ -72,25 +72,26 @@ uvicorn juniper_data.api.app:app --host 0.0.0.0 --port 8100
 ```bash
 juniper-data/
 ├── juniper_data/              # Main package
-│   ├── __init__.py            # Package init with version
+│   ├── __init__.py            # Package init with version (0.4.2)
+│   ├── __main__.py            # CLI entry point (python -m juniper_data)
 │   ├── core/                  # Core functionality
-│   │   └── __init__.py
-│   ├── generators/            # Dataset generators
-│   │   ├── __init__.py
-│   │   └── spiral/            # Spiral dataset generator
-│   │       └── __init__.py
+│   ├── generators/            # Dataset generators (8 types)
+│   │   ├── spiral/            # Multi-spiral classification
+│   │   ├── xor/               # XOR classification
+│   │   ├── gaussian/          # Mixture of Gaussians
+│   │   ├── circles/           # Concentric circles
+│   │   ├── checkerboard/      # 2D checkerboard pattern
+│   │   ├── csv_import/        # CSV/JSON file import
+│   │   ├── mnist/             # MNIST / Fashion-MNIST
+│   │   └── arc_agi/           # ARC-AGI visual reasoning
 │   ├── storage/               # Dataset persistence
-│   │   └── __init__.py
-│   └── api/                   # FastAPI application
-│       ├── __init__.py
-│       └── routes/            # API route handlers
-│           └── __init__.py
-├── tests/                     # Test suite
-│   ├── __init__.py
-│   ├── unit/                  # Unit tests
-│   │   └── __init__.py
-│   └── integration/           # Integration tests
-│       └── __init__.py
+│   ├── api/                   # FastAPI application
+│   │   ├── app.py             # Factory-pattern app creation
+│   │   ├── settings.py        # Pydantic BaseSettings (JUNIPER_DATA_ prefix)
+│   │   └── routes/            # API route handlers
+│   └── tests/                 # Test suite
+│       ├── unit/              # Unit tests
+│       └── integration/       # Integration tests
 ├── pyproject.toml             # Project configuration
 ├── README.md                  # Project documentation
 └── AGENTS.md                  # This file

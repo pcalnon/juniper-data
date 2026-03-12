@@ -134,7 +134,7 @@ After creating the worktree and navigating to it, verify the environment:
 
 ```bash
 cd "$WORKTREE_DIR"
-conda activate JuniperPython
+conda activate JuniperData
 
 # Install in development mode
 pip install -e ".[dev]"

@@ -66,6 +66,6 @@ For conda/mamba-managed dependencies, see `conf/conda_environment_ci.yaml`.
 ## Notes
 
 - CUDA/cuDNN are optional; the service can run CPU-only.
-- The shared `JuniperPython` conda environment is managed at the ecosystem level.
+- The `JuniperData` conda environment is managed at the ecosystem level.
 - Docker is used for optional containerized deployment via `conf/docker-compose.yaml`.
 - CodeQL security scanning is configured separately in `.github/workflows/codeql.yml`.

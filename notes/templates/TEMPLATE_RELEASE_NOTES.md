@@ -1,6 +1,6 @@
 # Release Notes Template
 
-**Purpose:** This template defines the required structure and formatting for all JuniperCanopy standard release notes.
+**Purpose:** This template defines the required structure and formatting for all JuniperData standard release notes.
 
 **Usage:** Copy this template and replace placeholder text (indicated by `[PLACEHOLDER]`) with actual release information. For security patch releases, use `TEMPLATE_SECURITY_RELEASE_NOTES.md` instead.
 

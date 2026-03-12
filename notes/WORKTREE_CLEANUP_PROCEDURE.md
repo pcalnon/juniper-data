@@ -24,7 +24,7 @@ Before beginning cleanup, run the project's test suite in the worktree:
 
 ```bash
 cd <worktree-dir>
-conda activate JuniperPython
+conda activate JuniperData
 pytest juniper_data/tests/ -v --cov=juniper_data --cov-fail-under=80
 ```
 

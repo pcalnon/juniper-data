@@ -1,6 +1,6 @@
 # Pull Request Description Template
 
-**Purpose:** This template defines the required structure and formatting for all JuniperCanopy pull request descriptions.
+**Purpose:** This template defines the required structure and formatting for all JuniperData pull request descriptions.
 
 **Usage:** Copy this template and replace placeholder text (indicated by `[PLACEHOLDER]`) with actual pull request information.
 
