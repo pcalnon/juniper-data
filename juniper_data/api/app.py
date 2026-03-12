@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from juniper_data import __version__
 from juniper_data.storage import LocalFSDatasetStore
 
-from .middleware import SecurityMiddleware
+from .middleware import RequestBodyLimitMiddleware, SecurityHeadersMiddleware, SecurityMiddleware
 from .observability import (
     PrometheusMiddleware,
     RequestIdMiddleware,
@@ -61,28 +61,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if settings is None:
         settings = get_settings()
 
+    # Disable interactive API docs when authentication is enabled (production).
+    docs_enabled = not settings.api_keys
     app = FastAPI(
         title="Juniper Data API",
         description="Dataset generation and management service for the Juniper ecosystem",
         version=__version__,
         lifespan=lifespan,
+        docs_url="/docs" if docs_enabled else None,
+        redoc_url="/redoc" if docs_enabled else None,
+        openapi_url="/openapi.json" if docs_enabled else None,
     )
 
     app.state.settings = settings
 
-    # Only allow credentialed CORS requests when origins are explicitly specified.
-    # Browsers do not permit Access-Control-Allow-Credentials: true with a wildcard
-    # origin (Access-Control-Allow-Origin: "*"), so the default ["*"] intentionally
-    # disables credentials unless concrete origins are configured.
+    # CORS: only enable when origins are explicitly configured.
     allow_credentials = bool(settings.cors_origins) and "*" not in settings.cors_origins
 
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.cors_origins,
-        allow_credentials=allow_credentials,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    if settings.cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_origins,
+            allow_credentials=allow_credentials,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+    # Request body size limit
+    app.add_middleware(RequestBodyLimitMiddleware)
+
+    # Security headers (outermost — runs on every response)
+    app.add_middleware(SecurityHeadersMiddleware)
 
     api_key_auth = APIKeyAuth(settings.api_keys)
     rate_limiter = RateLimiter(
@@ -97,7 +106,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Observability middleware (added after SecurityMiddleware, before CORS)
     # Middleware execution is LIFO: last added runs first.
-    # Order: RequestIdMiddleware → PrometheusMiddleware → SecurityMiddleware → CORS
+    # Order: RequestIdMiddleware → PrometheusMiddleware → SecurityMiddleware → SecurityHeaders → CORS
     if settings.metrics_enabled:
         app.add_middleware(PrometheusMiddleware, service_name="juniper-data", namespace="juniper_data")
     app.add_middleware(RequestIdMiddleware)
@@ -112,9 +121,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.exception_handler(ValueError)
     async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
+        logging.getLogger("juniper_data").debug("Validation error: %s", exc)
         return JSONResponse(
             status_code=400,
-            content={"detail": str(exc)},
+            content={"detail": "Invalid request parameters"},
         )
 
     @app.exception_handler(Exception)

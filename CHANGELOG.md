@@ -5,24 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0] - 2026-03-03
 
-### Added: [Unreleased]
+**Summary**: Comprehensive security hardening — security headers middleware, request body limits, error response sanitization, restrictive CORS defaults, rate limiting enabled by default, /metrics authentication, conditional API docs, and scheduled security scanning.
 
-- Namespaced Prometheus metrics (`juniper_data_` prefix) with custom dataset generation metrics
-- `juniper_data_dataset_generations_total` Counter (by generator, status)
-- `juniper_data_dataset_generation_duration_seconds` Histogram (by generator)
-- `juniper_data_datasets_cached` Gauge
-- `juniper_data_build_info` Info metric
+### Security: [0.5.0]
 
-### Changed: [Unreleased]
+- Added `SecurityHeadersMiddleware` — X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy, conditional HSTS
+- Added `RequestBodyLimitMiddleware` with configurable max body size (default 10MB)
+- Sanitized `ValueError` handler to return generic error messages; internal details logged at DEBUG level
+- Changed CORS origins default from `["*"]` to `[]` (no origins allowed by default)
+- Changed rate limiting default from disabled to enabled
+- Added API key requirement for `/metrics` endpoint (removed from exempt paths)
+- Added conditional API docs — `/docs`, `/redoc`, `/openapi.json` disabled when API keys are configured
 
-- Renamed HTTP metrics: `http_requests_total` → `juniper_data_http_requests_total`, `http_request_duration_seconds` → `juniper_data_http_request_duration_seconds`
+### Added: [0.5.0]
 
-### Fixed: [Unreleased]
+- `.github/workflows/security-scan.yml` — Weekly scheduled security scanning (Bandit, pip-audit)
 
-- **DOCKER-001: Dockerfile Python version mismatch** — Updated Dockerfile base images from `python:3.11-slim` to `python:3.12-slim` in both builder and runtime stages, and updated site-packages copy path from `python3.11` to `python3.12`, to match `requires-python = ">=3.12"` in `pyproject.toml`
-- **SETTINGS-001: api_keys empty string validation** — Added `field_validator` for `api_keys` in `Settings` to handle empty strings from Docker Compose environment variable substitution (`${VAR:-}`). Empty strings are now treated as `None` (auth disabled). Comma-separated strings are parsed into lists.
+### Changed: [0.5.0]
+
+- Updated test fixtures for new security defaults (rate limiting, CORS)
+
+### Technical Notes: [0.5.0]
+
+- **SemVer impact**: MINOR — New middleware, changed security defaults (non-breaking: configurable via env vars)
+- **Test count**: 766 passed, 0 failed
+- **Part of**: Cross-ecosystem security audit (7 repos, 24 findings)
 
 ---
 
