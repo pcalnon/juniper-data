@@ -48,6 +48,7 @@
 | **Learn CI/CD workflow** | [CICD_MANUAL.md](ci_cd/CICD_MANUAL.md) | docs/ci_cd/ |
 | **CI/CD reference** | [CICD_REFERENCE.md](ci_cd/CICD_REFERENCE.md) | docs/ci_cd/ |
 | **See version history** | [CHANGELOG.md](../CHANGELOG.md) | Root |
+| **Quick-reference dev tasks** | [DEVELOPER_CHEATSHEET.md](DEVELOPER_CHEATSHEET.md) | docs/ |
 | **Contribute code** | [AGENTS.md](../AGENTS.md) | Root |
 
 ---
@@ -221,6 +222,12 @@ juniper_data/
 | [CICD_QUICK_START.md](ci_cd/CICD_QUICK_START.md) | docs/ci_cd/ | Quick Start | DevOps | Active |
 | [CICD_MANUAL.md](ci_cd/CICD_MANUAL.md) | docs/ci_cd/ | Manual | DevOps | Active |
 | [CICD_REFERENCE.md](ci_cd/CICD_REFERENCE.md) | docs/ci_cd/ | Reference | DevOps | Active |
+
+### notes/ Directory
+
+| Document | Location | Type | Audience | Status |
+|----------|----------|------|----------|--------|
+| [DEVELOPER_CHEATSHEET.md](DEVELOPER_CHEATSHEET.md) | docs/ | Cheatsheet | Developers | Active |
 
 ---
 
