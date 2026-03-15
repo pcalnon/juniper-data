@@ -528,6 +528,14 @@ juniper-data/
 
 ---
 
+## Version Compatibility
+
+| juniper-data | Python | FastAPI | Pydantic | juniper-data-client |
+|-------------|--------|---------|----------|---------------------|
+| 0.5.x | >=3.12 | >=0.100.0 | >=2.0.0 | >=0.3.0 |
+
+---
+
 **Last Updated:** March 3, 2026
 **Version:** 0.4.2
 **Maintainer:** Paul Calnon
