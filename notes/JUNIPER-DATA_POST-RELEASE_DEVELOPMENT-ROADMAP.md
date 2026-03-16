@@ -1,7 +1,7 @@
 # JuniperData Post-Release Development Roadmap
 
 **Project**: JuniperData - Dataset Generation Microservice
-**Version**: 0.4.2 (Current Release)
+**Version**: 0.5.0 (Current Release)
 **Created**: 2026-02-17
 **Author**: Paul Calnon
 **Status**: Active - Post-Migration Reassessment
@@ -149,11 +149,13 @@ On 2026-02-24, the JuniperData codebase was extracted from the monorepo (`pcalno
 - [x] Updated `notes/releases/RELEASE_NOTES_v0.4.2.md` "What's Next" section with new v0.5.0 scope (completed items already moved to "Completed Since Release" in RD-001)
 - [x] v0.5.0 will be a MINOR release focused on quality infrastructure and linting modernization — no new features or API changes
 
+> **Audit note (2026-03-15):** v0.5.0 shipped as security hardening release (SecurityHeadersMiddleware, RequestBodyLimitMiddleware, CORS, rate limiting), not the Quality+Tooling scope originally planned.
+
 ---
 
 ### RD-005: Reconcile Coverage Metrics
 
-**Priority**: HIGH | **Status**: COMPLETE (2026-02-24) | **Effort**: Small (1 hour)
+**Priority**: HIGH | **Status**: PARTIALLY COMPLETE (2026-02-24) | **Effort**: Small (1 hour)
 **Source**: Cross-document discrepancy
 
 **Problem**: Conflicting coverage metrics across documents and insufficient coverage enforcement.
@@ -168,6 +170,8 @@ On 2026-02-24, the JuniperData codebase was extracted from the monorepo (`pcalno
 - [x] Added `coverage.json` to `.gitignore`
 - [x] Confirmed no test files are included in coverage calculations or metrics (`source_pkgs = ["juniper_data"]` + `omit = ["*/tests/*"]`)
 - [x] All 51 modules individually >= 85% (lowest: `__init__.py` at 96.30%)
+
+> **Audit note (2026-03-15):** Aggregate fail_under reverted from 95% to 80% in commit e7ebb91 (actual coverage 85.56%). Per-module 85% gate remains in CI.
 
 ---
 
@@ -257,6 +261,8 @@ On 2026-02-24, the JuniperData codebase was extracted from the monorepo (`pcalno
 **Feasibility**: Straightforward refactoring. No functional impact. May improve test readability.
 
 **Post-Migration Note**: No migration impact. If RD-012 (flake8→ruff) is pursued, SIM117 handling can be addressed during that migration rather than as a separate effort.
+
+> **Audit note (2026-03-15):** Description references .flake8 which no longer exists (removed during ruff migration). SIM117 is now in ruff ignore list in pyproject.toml.
 
 ---
 
@@ -383,7 +389,7 @@ All tests pass with the PyPI-installed package (JuniperData 659, JuniperCascor 2
 
 ### RD-013: Review Line Length Configuration
 
-**Priority**: LOW | **Status**: COMPLETE (2026-02-25) | **Effort**: Small (1-2 hours)
+**Priority**: LOW | **Status**: NEEDS DECISION | **Effort**: Small (1-2 hours)
 **Source**: TEST_SUITE_CICD_ENHANCEMENT_DEVELOPMENT_PLAN.md (P4-T4), CFG-002
 
 **Problem**: Line length is set to 512 characters in `pyproject.toml` (black/isort) and `.flake8`. The CLAUDE.md says 120. 512 is excessively permissive and effectively disables line-length enforcement.
@@ -397,6 +403,8 @@ All tests pass with the PyPI-installed package (JuniperData 659, JuniperCascor 2
 - [x] Verified all 700 tests pass with 99.40% coverage after reformatting
 
 **Scope**: Completed alongside RD-012 (ruff migration). The ruff config in `pyproject.toml` is now the single source of truth for line length — the old `[tool.black]` (512), `[tool.isort]` (512), `.flake8` (512), and `.pre-commit-config.yaml` args (512) have all been removed.
+
+> **Audit note (2026-03-15):** Line length changed 3 times since roadmap: 120 → 512 (ffd901d) → 320 (fd99984). Current value: 320. Stable decision needed.
 
 ---
 
@@ -503,6 +511,8 @@ All tests pass with the PyPI-installed package (JuniperData 659, JuniperCascor 2
 3. **Option C: OpenTelemetry** — Vendor-neutral telemetry standard. Supports traces, metrics, and logs. Growing ecosystem.
 
 **Post-Migration Note**: The Phase 6 (Post-Migration Hardening) plan in the polyrepo migration document includes Docker Compose full-stack deployment with health checks. Continuous profiling would naturally fit into that deployment infrastructure. The migration plan also calls for a version compatibility matrix and integration test suite (Phase 6, Steps 6.1–6.2) — profiling could be layered on top of that.
+
+> **Audit note (2026-03-15):** Partially addressed — Prometheus metrics and Sentry integration added (commit 830a0ef, observability optional dependency group). Full continuous profiling (Pyroscope) still deferred.
 
 ---
 
@@ -785,3 +795,4 @@ Items identified during the JuniperCanopy comprehensive notes/ audit that have J
 | 2026-02-25 | AI Agent               | RD-012 + RD-013 COMPLETE: migrated from flake8+isort+black+pyupgrade to ruff v0.15.2 (full cutover); normalized line length from 512 to 120; replaced 5 pre-commit hooks with 2 ruff hooks; removed `.flake8`, `[tool.black]`, `[tool.isort]` sections; updated dev dependencies; 24 files reformatted, 54 auto-fixes applied; all 700 tests pass at 99.40% coverage |
 | 2026-02-25 | AI Agent               | RD-009 COMPLETE: created `tests/performance/` with 41 benchmarks via pytest-benchmark — generator throughput (5 generators at 1000pts), scaling (spiral/gaussian at 100-5000pts), multi-class (2-8 classes), storage ops (InMemory + LocalFS: save/get/list/delete), dataset size scaling (100-10000pts); `--benchmark-disable` in default addopts |
 | 2026-02-25 | AI Agent               | RD-014 COMPLETE: created `scripts/check_doc_links.py` for internal markdown link validation; added `docs` CI job (parallel, Python 3.12); integrated into quality gate; fixed 2 broken links in release notes; CI excludes templates/history/docs; 22 files validated; Phase 4 fully complete |
+| 2026-03-15 | Documentation Audit | Version updated to 0.5.0. RD-005 status changed to PARTIALLY COMPLETE (coverage reverted). RD-013 status changed to NEEDS DECISION (line length unstable). RD-004, RD-008, RD-017 descriptions updated. |
