@@ -196,7 +196,7 @@ jobs:
           python scripts/check_module_coverage.py
 
       - name: Upload Coverage Artifacts
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08  # v4.6.0
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
         if: always()
         with:
           name: coverage-report-py${{ matrix.python-version }}
@@ -216,7 +216,7 @@ jobs:
           fail_ci_if_error: false
 
       - name: Upload Test Results
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08  # v4.6.0
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
         if: always()
         with:
           name: unit-test-results-py${{ matrix.python-version }}
@@ -260,7 +260,7 @@ jobs:
           test -f dist/*.whl
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08  # v4.6.0
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
         with:
           name: build-artifacts
           path: dist/
@@ -306,7 +306,7 @@ jobs:
           bash scripts/generate_dep_docs.sh
 
       - name: Upload Dependency Documentation
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08  # v4.6.0
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
         with:
           name: dependency-docs
           path: |
@@ -365,7 +365,7 @@ jobs:
             --junitxml=reports/junit-integration.xml
 
       - name: Upload Integration Test Results
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08  # v4.6.0
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
         if: always()
         with:
           name: integration-test-results
@@ -437,7 +437,7 @@ jobs:
           pip-audit -r reports/security/requirements.txt --strict
 
       - name: Upload Security Reports
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08  # v4.6.0
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
         if: always()
         with:
           name: security-reports
