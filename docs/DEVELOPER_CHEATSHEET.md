@@ -6,40 +6,42 @@
 
 ## Common Commands
 
-| Command | Description |
-|---------|-------------|
-| `conda activate JuniperData` | Activate conda environment (Python 3.14) |
-| `pip install -e ".[all]"` | Install all extras (api, dev, test, observability, arc-agi) |
-| `python -m juniper_data` | Start dev server on port 8100 |
-| `uvicorn juniper_data.api.app:app --host 0.0.0.0 --port 8100` | Production server |
-| `pytest` | Run all tests |
-| `pytest -m unit` / `integration` / `generators` / `storage` / `api` | Run by marker |
-| `pytest --cov=juniper_data --cov-report=term-missing --cov-fail-under=80` | Coverage |
-| `ruff check juniper_data` | Lint (replaces flake8) |
-| `ruff check --fix juniper_data` | Lint with auto-fix |
-| `ruff format juniper_data` | Format (replaces black) |
-| `mypy juniper_data --ignore-missing-imports` | Type check |
-| `pre-commit run --all-files` | Run all pre-commit hooks |
-| `uv pip compile pyproject.toml --extra api --extra observability -o requirements.lock` | Regenerate lockfile |
+| Command                                                                                | Description                                                                     |
+|----------------------------------------------------------------------------------------|---------------------------------------------------------------------------------|
+| `conda activate JuniperData`                                                           | Activate conda environment (Python 3.14)                                        |
+| `pip install -e ".[all]"`                                                              | Install all extras (api, dev, test, observability, arc-agi)                     |
+| `python -m juniper_data`                                                               | Start dev server on port 8100                                                   |
+| `uvicorn juniper_data.api.app:app --host 0.0.0.0 --port 8100`                          | Production server                                                               |
+| `PYTHON_GIL=0 uvicorn juniper_data.api.app:app --host 0.0.0.0 --port 8100`             | Production server, GIL disabled (httptools.parser.parser compatability unknown) |
+| `uvicorn -Xgil=0 juniper_data.api.app:app --host 0.0.0.0 --port 8100`                  | Production server, GIL disabled (httptools.parser.parser compatability unknown) |
+| `pytest`                                                                               | Run all tests                                                                   |
+| `pytest -m unit` / `integration` / `generators` / `storage` / `api`                    | Run by marker                                                                   |
+| `pytest --cov=juniper_data --cov-report=term-missing --cov-fail-under=80`              | Coverage                                                                        |
+| `ruff check juniper_data`                                                              | Lint (replaces flake8)                                                          |
+| `ruff check --fix juniper_data`                                                        | Lint with auto-fix                                                              |
+| `ruff format juniper_data`                                                             | Format (replaces black)                                                         |
+| `mypy juniper_data --ignore-missing-imports`                                           | Type check                                                                      |
+| `pre-commit run --all-files`                                                           | Run all pre-commit hooks                                                        |
+| `uv pip compile pyproject.toml --extra api --extra observability -o requirements.lock` | Regenerate lockfile                                                             |
 
 ---
 
 ## API Endpoints
 
-| Endpoint | Method | Auth* |
-|----------|--------|-------|
-| `/v1/health`, `/v1/health/live`, `/v1/health/ready` | GET | No |
-| `/v1/generators` | GET | Yes |
-| `/v1/generators/{name}/schema` | GET | Yes |
-| `/v1/datasets` | POST (create), GET (list) | Yes |
-| `/v1/datasets/{id}` | GET (meta), DELETE | Yes |
-| `/v1/datasets/{id}/artifact` | GET (NPZ download) | Yes |
-| `/v1/datasets/{id}/preview` | GET (JSON preview) | Yes |
-| `/v1/datasets/filter` | GET (filter datasets) | Yes |
-| `/v1/datasets/stats` | GET (dataset statistics) | Yes |
-| `/v1/datasets/batch-delete` | POST (bulk delete) | Yes |
-| `/v1/datasets/cleanup-expired` | POST (cleanup expired) | Yes |
-| `/v1/datasets/{id}/tags` | PATCH (update tags) | Yes |
+| Endpoint                                            | Method                    | Auth* |
+|-----------------------------------------------------|---------------------------|-------|
+| `/v1/health`, `/v1/health/live`, `/v1/health/ready` | GET                       | No    |
+| `/v1/generators`                                    | GET                       | Yes   |
+| `/v1/generators/{name}/schema`                      | GET                       | Yes   |
+| `/v1/datasets`                                      | POST (create), GET (list) | Yes   |
+| `/v1/datasets/{id}`                                 | GET (meta), DELETE        | Yes   |
+| `/v1/datasets/{id}/artifact`                        | GET (NPZ download)        | Yes   |
+| `/v1/datasets/{id}/preview`                         | GET (JSON preview)        | Yes   |
+| `/v1/datasets/filter`                               | GET (filter datasets)     | Yes   |
+| `/v1/datasets/stats`                                | GET (dataset statistics)  | Yes   |
+| `/v1/datasets/batch-delete`                         | POST (bulk delete)        | Yes   |
+| `/v1/datasets/cleanup-expired`                      | POST (cleanup expired)    | Yes   |
+| `/v1/datasets/{id}/tags`                            | PATCH (update tags)       | Yes   |
 
 *Auth required only when `JUNIPER_DATA_API_KEYS` is set.
 
@@ -62,19 +64,19 @@ Stack order in `create_app()`: CORS -> SecurityMiddleware -> PrometheusMiddlewar
 
 All use `JUNIPER_DATA_` prefix (pydantic-settings in `juniper_data/api/settings.py`).
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `JUNIPER_DATA_HOST` | `127.0.0.1` | Listen address |
-| `JUNIPER_DATA_PORT` | `8100` | Service port |
-| `JUNIPER_DATA_STORAGE_PATH` | `./data/datasets` | Artifact storage directory |
-| `JUNIPER_DATA_LOG_LEVEL` | `INFO` | DEBUG, INFO, WARNING, ERROR, CRITICAL |
-| `JUNIPER_DATA_LOG_FORMAT` | `text` | `text` or `json` (structured JSON logging) |
-| `JUNIPER_DATA_API_KEYS` | *(none)* | Comma-separated API keys; unset = open access |
-| `JUNIPER_DATA_RATE_LIMIT_ENABLED` | `true` | Enable rate limiting |
-| `JUNIPER_DATA_RATE_LIMIT_REQUESTS_PER_MINUTE` | `60` | Max requests/min per client |
-| `JUNIPER_DATA_CORS_ORIGINS` | `[]` | Allowed CORS origins |
-| `JUNIPER_DATA_METRICS_ENABLED` | `false` | Prometheus `/metrics` endpoint |
-| `JUNIPER_DATA_SENTRY_DSN` | *(none)* | Sentry DSN for error tracking |
+| Variable                                      | Default           | Description                                   |
+|-----------------------------------------------|-------------------|-----------------------------------------------|
+| `JUNIPER_DATA_HOST`                           | `127.0.0.1`       | Listen address                                |
+| `JUNIPER_DATA_PORT`                           | `8100`            | Service port                                  |
+| `JUNIPER_DATA_STORAGE_PATH`                   | `./data/datasets` | Artifact storage directory                    |
+| `JUNIPER_DATA_LOG_LEVEL`                      | `INFO`            | DEBUG, INFO, WARNING, ERROR, CRITICAL         |
+| `JUNIPER_DATA_LOG_FORMAT`                     | `text`            | `text` or `json` (structured JSON logging)    |
+| `JUNIPER_DATA_API_KEYS`                       | *(none)*          | Comma-separated API keys; unset = open access |
+| `JUNIPER_DATA_RATE_LIMIT_ENABLED`             | `true`            | Enable rate limiting                          |
+| `JUNIPER_DATA_RATE_LIMIT_REQUESTS_PER_MINUTE` | `60`              | Max requests/min per client                   |
+| `JUNIPER_DATA_CORS_ORIGINS`                   | `[]`              | Allowed CORS origins                          |
+| `JUNIPER_DATA_METRICS_ENABLED`                | `false`           | Prometheus `/metrics` endpoint                |
+| `JUNIPER_DATA_SENTRY_DSN`                     | *(none)*          | Sentry DSN for error tracking                 |
 
 **Add a setting:** Add field to `Settings` in `settings.py`, define `_JUNIPER_DATA_*` default constant. Auto-maps to `JUNIPER_DATA_<FIELD>` env var.
 
@@ -86,15 +88,15 @@ All use `JUNIPER_DATA_` prefix (pydantic-settings in `juniper_data/api/settings.
 
 Seven backends extend `DatasetStore` (`juniper_data/storage/base.py`):
 
-| Backend | Class | Requires |
-|---------|-------|----------|
-| Local filesystem (default) | `LocalFSDatasetStore` | *(core)* |
-| In-memory | `InMemoryDatasetStore` | *(core)* |
-| Cached wrapper | `CachedDatasetStore` | *(core)* |
-| PostgreSQL | `PostgresDatasetStore` | `psycopg2` |
-| Redis | `RedisDatasetStore` | `redis` |
-| HuggingFace Hub | `HuggingFaceDatasetStore` | `datasets` |
-| Kaggle | `KaggleDatasetStore` | `kaggle` |
+| Backend                    | Class                     | Requires   |
+|----------------------------|---------------------------|------------|
+| Local filesystem (default) | `LocalFSDatasetStore`     | *(core)*   |
+| In-memory                  | `InMemoryDatasetStore`    | *(core)*   |
+| Cached wrapper             | `CachedDatasetStore`      | *(core)*   |
+| PostgreSQL                 | `PostgresDatasetStore`    | `psycopg2` |
+| Redis                      | `RedisDatasetStore`       | `redis`    |
+| HuggingFace Hub            | `HuggingFaceDatasetStore` | `datasets` |
+| Kaggle                     | `KaggleDatasetStore`      | `kaggle`   |
 
 Default filesystem layout: `{JUNIPER_DATA_STORAGE_PATH}/{dataset_id}.meta.json` + `.npz`. Optional backends use lazy imports; missing packages degrade gracefully. Factory helpers: `get_redis_store()`, `get_hf_store()`, `get_postgres_store()`, `get_kaggle_store()`.
 
@@ -107,6 +109,7 @@ Default filesystem layout: `{JUNIPER_DATA_STORAGE_PATH}/{dataset_id}.meta.json` 
 Generators: `spiral`, `xor`, `gaussian`, `circles`, `checkerboard`, `csv_import`, `mnist`, `arc_agi`.
 
 **Add a new generator:**
+
 1. Create subpackage `juniper_data/generators/<name>/`
 2. Implement class following `SpiralGenerator` pattern
 3. Register in `generators/__init__.py`
@@ -128,13 +131,13 @@ All arrays `float32`. Keys: `X_train`, `y_train`, `X_test`, `y_test`, `X_full`, 
 
 ## Testing
 
-| Marker | Scope |
-|--------|-------|
-| `unit` | Fast isolated tests |
-| `integration` | Full workflow with real storage |
-| `performance` | Benchmarks (`--benchmark-enable`) |
-| `slow` | Tests > 1 second |
-| `spiral` / `api` / `generators` / `storage` | Component-specific |
+| Marker                                      | Scope                             |
+|---------------------------------------------|-----------------------------------|
+| `unit`                                      | Fast isolated tests               |
+| `integration`                               | Full workflow with real storage   |
+| `performance`                               | Benchmarks (`--benchmark-enable`) |
+| `slow`                                      | Tests > 1 second                  |
+| `spiral` / `api` / `generators` / `storage` | Component-specific                |
 
 Coverage thresholds: 80% fail-under (`pyproject.toml`), 95% aggregate + 85% per-module (pre-push hook).
 
@@ -160,18 +163,18 @@ Metrics use `juniper_data_` namespace. Pattern: `juniper_data_<subsystem>_<name>
 
 ## CI/CD and Pre-commit
 
-| Hook | Stage | Tool |
-|------|-------|------|
-| Lint | pre-commit | `ruff check --fix` |
-| Format | pre-commit | `ruff-format` |
-| Type check (prod) | pre-commit | `mypy` (`--ignore-missing-imports --no-strict-optional`) |
-| Type check (tests) | pre-commit | `mypy` (relaxed) |
-| Security scan | pre-commit | `bandit` (skips B101, B311) |
-| YAML/TOML validation | pre-commit | `pre-commit-hooks` (check-yaml, check-toml, end-of-file-fixer, etc.) |
-| YAML lint | pre-commit | `yamllint` |
-| Shell lint | pre-commit | `shellcheck` |
-| Coverage gate | **pre-push** | 95% aggregate, 85% per-module |
-| SOPS guard | pre-commit | Block unencrypted `.env` files |
+| Hook                 | Stage        | Tool                                                                 |
+|----------------------|--------------|----------------------------------------------------------------------|
+| Lint                 | pre-commit   | `ruff check --fix`                                                   |
+| Format               | pre-commit   | `ruff-format`                                                        |
+| Type check (prod)    | pre-commit   | `mypy` (`--ignore-missing-imports --no-strict-optional`)             |
+| Type check (tests)   | pre-commit   | `mypy` (relaxed)                                                     |
+| Security scan        | pre-commit   | `bandit` (skips B101, B311)                                          |
+| YAML/TOML validation | pre-commit   | `pre-commit-hooks` (check-yaml, check-toml, end-of-file-fixer, etc.) |
+| YAML lint            | pre-commit   | `yamllint`                                                           |
+| Shell lint           | pre-commit   | `shellcheck`                                                         |
+| Coverage gate        | **pre-push** | 95% aggregate, 85% per-module                                        |
+| SOPS guard           | pre-commit   | Block unencrypted `.env` files                                       |
 
 GitHub Actions: `ci.yml`, `publish.yml`, `security-scan.yml`, `codeql.yml`, `lockfile-update.yml`.
 
@@ -184,14 +187,14 @@ pre-commit install --hook-type pre-push  # coverage gate (one-time)
 
 ## Troubleshooting
 
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| `ruff` not found | Dev extras missing | `pip install -e ".[dev]"` |
-| 401 Unauthorized | API keys set | Pass `X-API-Key` header or unset `JUNIPER_DATA_API_KEYS` |
-| 429 Too Many Requests | Rate limiter | Wait, or `JUNIPER_DATA_RATE_LIMIT_ENABLED=false` |
-| Storage path error | Dir missing | Set `JUNIPER_DATA_STORAGE_PATH` to writable path |
-| `ImportError: redis` | Optional backend | `pip install redis` |
-| Coverage pre-push fails | Below threshold | Add tests; see `scripts/check_module_coverage.py` |
+| Symptom                 | Cause              | Fix                                                      |
+|-------------------------|--------------------|----------------------------------------------------------|
+| `ruff` not found        | Dev extras missing | `pip install -e ".[dev]"`                                |
+| 401 Unauthorized        | API keys set       | Pass `X-API-Key` header or unset `JUNIPER_DATA_API_KEYS` |
+| 429 Too Many Requests   | Rate limiter       | Wait, or `JUNIPER_DATA_RATE_LIMIT_ENABLED=false`         |
+| Storage path error      | Dir missing        | Set `JUNIPER_DATA_STORAGE_PATH` to writable path         |
+| `ImportError: redis`    | Optional backend   | `pip install redis`                                      |
+| Coverage pre-push fails | Below threshold    | Add tests; see `scripts/check_module_coverage.py`        |
 
 ---
 
