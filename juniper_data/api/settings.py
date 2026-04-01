@@ -2,9 +2,12 @@
 
 # import json
 from functools import lru_cache
+from typing import Any
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from juniper_data.core.secrets import get_secret
 
 # Define Safe and Reasonable Defaults for API Model Config
 _JUNIPER_DATA_ENV_PREFIX: str = "JUNIPER_DATA_"
@@ -109,6 +112,16 @@ class Settings(BaseSettings):
     # api_keys: list[str] | None = _JUNIPER_DATA_API_KEYS_LIST_DEFAULT
     # api_keys: JSON[list[str]] | None = _JUNIPER_DATA_API_KEYS_LIST_DEFAULT
     api_keys: list[str] | None = _JUNIPER_DATA_API_KEYS_LIST_DEFAULT
+
+    @model_validator(mode="before")
+    @classmethod
+    def _inject_secrets(cls, data: Any) -> Any:
+        """Inject file-based Docker secrets into settings data before field validation."""
+        if isinstance(data, dict) and not data.get("api_keys"):
+            secret_value = get_secret("JUNIPER_DATA_API_KEYS")
+            if secret_value:
+                data["api_keys"] = secret_value
+        return data
 
     @field_validator("api_keys", mode="before")
     @classmethod
