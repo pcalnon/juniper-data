@@ -9,8 +9,14 @@ from fastapi.responses import StreamingResponse
 
 from juniper_data.core.dataset_id import generate_dataset_id
 from juniper_data.core.models import (
+    BatchCreateRequest,
+    BatchCreateResponse,
+    BatchCreateResultItem,
     BatchDeleteRequest,
     BatchDeleteResponse,
+    BatchExportRequest,
+    BatchUpdateTagsRequest,
+    BatchUpdateTagsResponse,
     CreateDatasetRequest,
     CreateDatasetResponse,
     DatasetListResponse,
@@ -252,6 +258,153 @@ async def batch_delete_datasets(
         deleted=deleted,
         not_found=not_found,
         total_deleted=len(deleted),
+    )
+
+
+@router.post("/batch-create", response_model=BatchCreateResponse, status_code=201)
+async def batch_create_datasets(
+    request: BatchCreateRequest,
+    store: DatasetStore = Depends(get_store),
+) -> BatchCreateResponse:
+    """Create multiple datasets in a single request.
+
+    Each item is processed independently; failures in one item do not
+    affect others. Results include per-item success/failure status.
+
+    Args:
+        request: Batch create request with list of dataset specifications.
+        store: Dataset storage backend.
+
+    Returns:
+        Batch create response with per-item results.
+    """
+    results: list[BatchCreateResultItem] = []
+    total_created = 0
+    total_failed = 0
+
+    for idx, item in enumerate(request.datasets):
+        try:
+            # Reuse the single-create logic
+            create_req = CreateDatasetRequest(
+                generator=item.generator,
+                params=item.params,
+                persist=item.persist,
+                tags=item.tags,
+                ttl_seconds=item.ttl_seconds,
+            )
+            resp = await create_dataset(create_req, store)
+            results.append(
+                BatchCreateResultItem(
+                    index=idx,
+                    dataset_id=resp.dataset_id,
+                    generator=item.generator,
+                    success=True,
+                    artifact_url=resp.artifact_url,
+                )
+            )
+            total_created += 1
+        except HTTPException as e:
+            results.append(
+                BatchCreateResultItem(
+                    index=idx,
+                    generator=item.generator,
+                    success=False,
+                    error=e.detail,
+                )
+            )
+            total_failed += 1
+        except Exception as e:
+            results.append(
+                BatchCreateResultItem(
+                    index=idx,
+                    generator=item.generator,
+                    success=False,
+                    error=str(e),
+                )
+            )
+            total_failed += 1
+
+    return BatchCreateResponse(
+        results=results,
+        total_created=total_created,
+        total_failed=total_failed,
+    )
+
+
+@router.patch("/batch-tags", response_model=BatchUpdateTagsResponse)
+async def batch_update_tags(
+    request: BatchUpdateTagsRequest,
+    store: DatasetStore = Depends(get_store),
+) -> BatchUpdateTagsResponse:
+    """Add or remove tags from multiple datasets.
+
+    Args:
+        request: Batch tag update request with dataset IDs and tag changes.
+        store: Dataset storage backend.
+
+    Returns:
+        Batch tag update response with updated and not found IDs.
+    """
+    updated: list[str] = []
+    not_found: list[str] = []
+
+    for dataset_id in request.dataset_ids:
+        meta = store.get_meta(dataset_id)
+        if meta is None:
+            not_found.append(dataset_id)
+            continue
+
+        current_tags = set(meta.tags)
+        current_tags.update(request.add_tags)
+        current_tags -= set(request.remove_tags)
+        meta.tags = sorted(current_tags)
+        store.update_meta(dataset_id, meta)
+        updated.append(dataset_id)
+
+    return BatchUpdateTagsResponse(
+        updated=updated,
+        not_found=not_found,
+        total_updated=len(updated),
+    )
+
+
+@router.post("/batch-export")
+async def batch_export_datasets(
+    request: BatchExportRequest,
+    store: DatasetStore = Depends(get_store),
+) -> StreamingResponse:
+    """Export multiple datasets as a ZIP archive of NPZ files.
+
+    Args:
+        request: Batch export request with list of dataset IDs.
+        store: Dataset storage backend.
+
+    Returns:
+        Streaming response with ZIP file containing NPZ artifacts.
+
+    Raises:
+        HTTPException: 404 if none of the requested datasets exist.
+    """
+    import zipfile
+
+    buffer = io.BytesIO()
+    found_count = 0
+
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for dataset_id in request.dataset_ids:
+            artifact_bytes = store.get_artifact_bytes(dataset_id)
+            if artifact_bytes is not None:
+                zf.writestr(f"{dataset_id}.npz", artifact_bytes)
+                found_count += 1
+
+    if found_count == 0:
+        raise HTTPException(status_code=404, detail="None of the requested datasets were found")
+
+    buffer.seek(0)
+    return StreamingResponse(
+        buffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=datasets.zip"},
     )
 
 

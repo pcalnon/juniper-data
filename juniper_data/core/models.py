@@ -123,6 +123,63 @@ class UpdateTagsRequest(BaseModel):
     remove_tags: list[str] = Field(default_factory=list)
 
 
+class BatchCreateItem(BaseModel):
+    """Single item in a batch create request."""
+
+    generator: str
+    params: dict[str, Any] = Field(default_factory=dict)
+    persist: bool = True
+    tags: list[str] = Field(default_factory=list)
+    ttl_seconds: int | None = Field(default=None, ge=1)
+
+
+class BatchCreateRequest(BaseModel):
+    """Request model for batch create operation."""
+
+    datasets: list[BatchCreateItem] = Field(min_length=1, max_length=50)
+
+
+class BatchCreateResultItem(BaseModel):
+    """Result for a single item in a batch create response."""
+
+    index: int
+    dataset_id: str | None = None
+    generator: str
+    success: bool
+    error: str | None = None
+    artifact_url: str | None = None
+
+
+class BatchCreateResponse(BaseModel):
+    """Response model for batch create operation."""
+
+    results: list[BatchCreateResultItem]
+    total_created: int
+    total_failed: int
+
+
+class BatchUpdateTagsRequest(BaseModel):
+    """Request model for batch tag update operation."""
+
+    dataset_ids: list[str] = Field(min_length=1, max_length=100)
+    add_tags: list[str] = Field(default_factory=list)
+    remove_tags: list[str] = Field(default_factory=list)
+
+
+class BatchUpdateTagsResponse(BaseModel):
+    """Response model for batch tag update operation."""
+
+    updated: list[str]
+    not_found: list[str]
+    total_updated: int
+
+
+class BatchExportRequest(BaseModel):
+    """Request model for batch export operation."""
+
+    dataset_ids: list[str] = Field(min_length=1, max_length=50)
+
+
 class DatasetStats(BaseModel):
     """Aggregate statistics about stored datasets."""
 
