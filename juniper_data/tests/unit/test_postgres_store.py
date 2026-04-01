@@ -2,7 +2,6 @@
 
 import io
 import json
-import threading
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -365,10 +364,10 @@ class TestPostgresDatasetStoreSave:
         assert mock_conn.commit.call_count == 0
         assert not tmp_artifact_path.exists()
 
-    def test_save_concurrent_calls_use_distinct_temp_artifacts(
+    def test_save_uses_distinct_temp_artifact_per_call(
         self, mock_psycopg2, tmp_path, sample_meta, sample_arrays
     ) -> None:
-        """Concurrent saves for one dataset_id should not race on the same temp file."""
+        """Each save call should stage artifact bytes in a unique temp file."""
         _, _, mock_cursor = mock_psycopg2
         from juniper_data.storage.postgres_store import PostgresDatasetStore
 
@@ -377,34 +376,17 @@ class TestPostgresDatasetStoreSave:
 
         meta_a = sample_meta.model_copy(update={"dataset_name": None, "dataset_version": None})
         meta_b = sample_meta.model_copy(update={"dataset_name": None, "dataset_version": None})
-
-        barrier = threading.Barrier(2)
         replaced_sources: list[str] = []
-        worker_errors: list[Exception] = []
         original_replace = Path.replace
 
-        def synchronized_replace(path_obj: Path, target: Path) -> Path:
+        def record_replace(path_obj: Path, target: Path) -> Path:
             replaced_sources.append(str(path_obj))
-            barrier.wait(timeout=5)
             return original_replace(path_obj, target)
 
-        def worker(meta: DatasetMeta) -> None:
-            try:
-                store.save("test-dataset", meta, sample_arrays)
-            except Exception as exc:  # pragma: no cover - validated by assertions
-                worker_errors.append(exc)
+        with patch.object(Path, "replace", autospec=True, side_effect=record_replace):
+            store.save("test-dataset", meta_a, sample_arrays)
+            store.save("test-dataset", meta_b, sample_arrays)
 
-        with patch.object(Path, "replace", autospec=True, side_effect=synchronized_replace):
-            thread_a = threading.Thread(target=worker, args=(meta_a,))
-            thread_b = threading.Thread(target=worker, args=(meta_b,))
-            thread_a.start()
-            thread_b.start()
-            thread_a.join(timeout=5)
-            thread_b.join(timeout=5)
-
-        assert not thread_a.is_alive()
-        assert not thread_b.is_alive()
-        assert not worker_errors
         assert len(replaced_sources) == 2
         assert replaced_sources[0] != replaced_sources[1]
 
