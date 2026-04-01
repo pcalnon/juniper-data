@@ -2,7 +2,7 @@
 
 **Version:** 0.4.2
 **Status:** Active
-**Last Updated:** March 3, 2026
+**Last Updated:** April 1, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -298,6 +298,28 @@ class DatasetStore:
 ### Default Configuration
 
 The API service uses `LocalFSDatasetStore` by default, storing NPZ artifacts in `JUNIPER_DATA_STORAGE_PATH` (default: `./data/datasets`).
+
+### PostgreSQL Backend Behavior (`PostgresDatasetStore`)
+
+`PostgresDatasetStore` splits storage into:
+
+- Metadata in PostgreSQL (`datasets` table)
+- Artifacts on disk (`{artifact_path}/{dataset_id}.npz`)
+
+On `save`, it stages the artifact to `{dataset_id}.npz.tmp`, writes metadata in a DB transaction, then atomically renames the temp file to the final `.npz` before commit.
+
+Practical implications:
+
+1. If artifact finalize/rename fails, metadata is rolled back (no metadata/artifact split state).
+2. For existing `dataset_id`, stored `dataset_name` and `dataset_version` remain canonical on upsert.
+3. For new named datasets, version is allocated from DB as `MAX(dataset_version) + 1` for that name.
+4. For `persist=false` API requests with a name, version is previewed but not stored.
+
+Operational constraints:
+
+- `artifact_path` must be writable.
+- Keep temp and final artifact files on the same filesystem for atomic rename behavior.
+- Install backend dependency: `pip install psycopg2-binary`.
 
 ---
 
