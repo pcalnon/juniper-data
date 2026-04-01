@@ -186,6 +186,11 @@ class TestPostgresDatasetStoreMetaConversion:
             "artifact_formats": ["npz"],
             "created_at": datetime(2026, 1, 1, tzinfo=UTC),
             "checksum": None,
+            "dataset_name": "exp-1",
+            "dataset_version": 2,
+            "parent_dataset_id": "exp-1-parent",
+            "description": "Row metadata description",
+            "created_by": "db-user",
             "tags": ["test"],
             "ttl_seconds": None,
             "expires_at": None,
@@ -196,6 +201,11 @@ class TestPostgresDatasetStoreMetaConversion:
         meta = store._row_to_meta(row)
         assert meta.dataset_id == "test-dataset"
         assert meta.params == {"seed": 42}
+        assert meta.dataset_name == "exp-1"
+        assert meta.dataset_version == 2
+        assert meta.parent_dataset_id == "exp-1-parent"
+        assert meta.description == "Row metadata description"
+        assert meta.created_by == "db-user"
 
     def test_row_to_meta_with_string_params(self, mock_psycopg2, tmp_path) -> None:
         """_row_to_meta handles string params (JSON string from DB)."""
