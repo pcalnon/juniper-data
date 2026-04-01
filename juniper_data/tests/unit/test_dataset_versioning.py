@@ -214,6 +214,19 @@ class TestStorageVersioningMethods:
 
         assert memory_store.next_version_number("experiment") == 4
 
+    def test_next_version_number_ignores_legacy_none_versions(
+        self,
+        memory_store: InMemoryDatasetStore,
+        sample_arrays: dict[str, np.ndarray],
+    ) -> None:
+        """Legacy entries without a numeric version do not block incrementing."""
+        legacy_meta = _make_meta("ds-legacy", dataset_name="experiment", dataset_version=None)
+        v2_meta = _make_meta("ds-v2", dataset_name="experiment", dataset_version=2)
+        memory_store.save("ds-legacy", legacy_meta, sample_arrays)
+        memory_store.save("ds-v2", v2_meta, sample_arrays)
+
+        assert memory_store.next_version_number("experiment") == 3
+
     def test_filter_by_dataset_name(self, memory_store: InMemoryDatasetStore, sample_arrays: dict[str, np.ndarray]) -> None:
         """filter_datasets filters by dataset_name."""
         meta_a = _make_meta("ds-a", dataset_name="alpha", dataset_version=1)
@@ -407,6 +420,19 @@ class TestVersioningAPIEndpoints:
         data = resp.json()
         assert all(d["dataset_version"] == 1 for d in data["datasets"])
 
+    def test_filter_endpoint_with_dataset_name_and_version(self, client: TestClient) -> None:
+        """Filter endpoint combines dataset_name and dataset_version."""
+        _create_named_spiral(client, seed=820, name="combined-filter")
+        _create_named_spiral(client, seed=821, name="combined-filter")
+        _create_named_spiral(client, seed=822, name="other-filter")
+
+        resp = client.get("/v1/datasets/filter?dataset_name=combined-filter&dataset_version=2")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["datasets"][0]["dataset_name"] == "combined-filter"
+        assert data["datasets"][0]["dataset_version"] == 2
+
     def test_cached_dataset_returns_without_version_assignment(self, client: TestClient) -> None:
         """Returning a cached dataset does not re-assign version."""
         data1 = _create_named_spiral(client, seed=900, name="cached-test")
@@ -426,6 +452,30 @@ class TestVersioningAPIEndpoints:
         assert data2["dataset_id"] == dataset_id
         # Version should be 1 (not 2) since it was cached
         assert data2["meta"]["dataset_version"] == 1
+
+    def test_cached_dataset_with_different_name_keeps_original_name(self, client: TestClient) -> None:
+        """Cache hits keep original metadata even when requested with a new name."""
+        data1 = _create_named_spiral(client, seed=910, name="canonical-name")
+        dataset_id = data1["dataset_id"]
+
+        response = client.post(
+            "/v1/datasets",
+            json={
+                "generator": "spiral",
+                "params": {"n_spirals": 2, "n_points_per_spiral": 50, "seed": 910},
+                "persist": True,
+                "name": "alternate-name",
+            },
+        )
+        assert response.status_code == 201
+        data2 = response.json()
+        assert data2["dataset_id"] == dataset_id
+        assert data2["meta"]["dataset_name"] == "canonical-name"
+        assert data2["meta"]["dataset_version"] == 1
+
+        versions_resp = client.get("/v1/datasets/versions?name=alternate-name")
+        assert versions_resp.status_code == 200
+        assert versions_resp.json()["total"] == 0
 
     def test_batch_create_with_versioning(self, client: TestClient) -> None:
         """Batch create passes versioning fields through."""
