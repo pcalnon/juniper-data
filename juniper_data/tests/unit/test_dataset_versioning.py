@@ -40,11 +40,12 @@ def client(memory_store: InMemoryDatasetStore, test_settings: Settings) -> TestC
 @pytest.fixture
 def sample_arrays() -> dict[str, np.ndarray]:
     """Create sample arrays for testing."""
+    rng = np.random.default_rng(42)
     return {
-        "X_train": np.random.randn(16, 2).astype(np.float32),
-        "y_train": np.eye(2, dtype=np.float32)[np.random.randint(0, 2, 16)],
-        "X_test": np.random.randn(4, 2).astype(np.float32),
-        "y_test": np.eye(2, dtype=np.float32)[np.random.randint(0, 2, 4)],
+        "X_train": rng.standard_normal((16, 2)).astype(np.float32),
+        "y_train": np.eye(2, dtype=np.float32)[rng.integers(0, 2, 16)],
+        "X_test": rng.standard_normal((4, 2)).astype(np.float32),
+        "y_test": np.eye(2, dtype=np.float32)[rng.integers(0, 2, 4)],
     }
 
 
@@ -508,3 +509,59 @@ class TestVersioningAPIEndpoints:
         assert versions_data["total"] == 2
         version_nums = [v["dataset_version"] for v in versions_data["versions"]]
         assert version_nums == [1, 2]
+
+    def test_create_dataset_rejects_overlong_description(self, client: TestClient) -> None:
+        """Create endpoint rejects description longer than 500 chars."""
+        response = client.post(
+            "/v1/datasets",
+            json={
+                "generator": "spiral",
+                "params": {"n_spirals": 2, "n_points_per_spiral": 50, "seed": 960},
+                "persist": True,
+                "name": "validation-test",
+                "description": "x" * 501,
+            },
+        )
+        assert response.status_code == 422
+
+    def test_create_dataset_rejects_overlong_created_by(self, client: TestClient) -> None:
+        """Create endpoint rejects created_by longer than 100 chars."""
+        response = client.post(
+            "/v1/datasets",
+            json={
+                "generator": "spiral",
+                "params": {"n_spirals": 2, "n_points_per_spiral": 50, "seed": 961},
+                "persist": True,
+                "name": "validation-test",
+                "created_by": "u" * 101,
+            },
+        )
+        assert response.status_code == 422
+
+    def test_batch_create_rejects_overlong_created_by(self, client: TestClient) -> None:
+        """Batch create rejects item payload with created_by > 100 chars."""
+        response = client.post(
+            "/v1/datasets/batch-create",
+            json={
+                "datasets": [
+                    {
+                        "generator": "spiral",
+                        "params": {"n_spirals": 2, "n_points_per_spiral": 50, "seed": 962},
+                        "persist": True,
+                        "name": "batch-validation",
+                        "created_by": "u" * 101,
+                    }
+                ]
+            },
+        )
+        assert response.status_code == 422
+
+    def test_versions_endpoint_requires_name(self, client: TestClient) -> None:
+        """Versions endpoint requires the name query parameter."""
+        response = client.get("/v1/datasets/versions")
+        assert response.status_code == 422
+
+    def test_latest_endpoint_requires_name(self, client: TestClient) -> None:
+        """Latest endpoint requires the name query parameter."""
+        response = client.get("/v1/datasets/latest")
+        assert response.status_code == 422
