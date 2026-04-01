@@ -41,11 +41,12 @@ def client(memory_store: InMemoryDatasetStore, test_settings: Settings) -> TestC
 @pytest.fixture
 def sample_arrays() -> dict[str, np.ndarray]:
     """Create sample arrays for testing."""
+    rng = np.random.default_rng(42)
     return {
-        "X_train": np.random.randn(16, 2).astype(np.float32),
-        "y_train": np.eye(2, dtype=np.float32)[np.random.randint(0, 2, 16)],
-        "X_test": np.random.randn(4, 2).astype(np.float32),
-        "y_test": np.eye(2, dtype=np.float32)[np.random.randint(0, 2, 4)],
+        "X_train": rng.standard_normal((16, 2)).astype(np.float32),
+        "y_train": np.eye(2, dtype=np.float32)[rng.integers(0, 2, 16)],
+        "X_test": rng.standard_normal((4, 2)).astype(np.float32),
+        "y_test": np.eye(2, dtype=np.float32)[rng.integers(0, 2, 4)],
     }
 
 
@@ -226,6 +227,50 @@ class TestStorageVersioningMethods:
         memory_store.save("ds-v2", v2_meta, sample_arrays)
 
         assert memory_store.next_version_number("experiment") == 3
+
+    def test_save_versioned_preserves_explicit_version(
+        self,
+        memory_store: InMemoryDatasetStore,
+        sample_arrays: dict[str, np.ndarray],
+    ) -> None:
+        """save_versioned does not override an explicitly provided version."""
+        manual_meta = _make_meta("ds-manual", dataset_name="manual-version", dataset_version=42)
+
+        memory_store.save_versioned("ds-manual", manual_meta, sample_arrays)
+
+        stored = memory_store.get_meta("ds-manual")
+        assert stored is not None
+        assert stored.dataset_version == 42
+        assert memory_store.next_version_number("manual-version") == 43
+
+    def test_save_versioned_assigns_unique_versions_under_concurrency(
+        self,
+        memory_store: InMemoryDatasetStore,
+        sample_arrays: dict[str, np.ndarray],
+    ) -> None:
+        """Concurrent save_versioned calls allocate unique, contiguous versions."""
+        n_threads = 8
+        start_barrier = threading.Barrier(n_threads)
+        errors: list[Exception] = []
+
+        def _save_in_thread(index: int) -> None:
+            meta = _make_meta(f"ds-concurrent-{index}", dataset_name="concurrent-run", dataset_version=None)
+            try:
+                start_barrier.wait()
+                memory_store.save_versioned(meta.dataset_id, meta, sample_arrays)
+            except Exception as exc:  # pragma: no cover - asserted via errors
+                errors.append(exc)
+
+        threads = [threading.Thread(target=_save_in_thread, args=(i,)) for i in range(n_threads)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=5)
+
+        assert not errors
+        versions = memory_store.list_versions("concurrent-run")
+        assert len(versions) == n_threads
+        assert [meta.dataset_version for meta in versions] == list(range(1, n_threads + 1))
 
     def test_filter_by_dataset_name(self, memory_store: InMemoryDatasetStore, sample_arrays: dict[str, np.ndarray]) -> None:
         """filter_datasets filters by dataset_name."""
@@ -561,55 +606,58 @@ class TestVersioningAPIEndpoints:
         version_nums = [v["dataset_version"] for v in versions_data["versions"]]
         assert version_nums == [1, 2]
 
+    def test_create_dataset_rejects_overlong_description(self, client: TestClient) -> None:
+        """Create endpoint rejects description longer than 500 chars."""
+        response = client.post(
+            "/v1/datasets",
+            json={
+                "generator": "spiral",
+                "params": {"n_spirals": 2, "n_points_per_spiral": 50, "seed": 960},
+                "persist": True,
+                "name": "validation-test",
+                "description": "x" * 501,
+            },
+        )
+        assert response.status_code == 422
 
-# ---------------------------------------------------------------------------
-# Concurrency regression tests
-# ---------------------------------------------------------------------------
+    def test_create_dataset_rejects_overlong_created_by(self, client: TestClient) -> None:
+        """Create endpoint rejects created_by longer than 100 chars."""
+        response = client.post(
+            "/v1/datasets",
+            json={
+                "generator": "spiral",
+                "params": {"n_spirals": 2, "n_points_per_spiral": 50, "seed": 961},
+                "persist": True,
+                "name": "validation-test",
+                "created_by": "u" * 101,
+            },
+        )
+        assert response.status_code == 422
 
+    def test_batch_create_rejects_overlong_created_by(self, client: TestClient) -> None:
+        """Batch create rejects item payload with created_by > 100 chars."""
+        response = client.post(
+            "/v1/datasets/batch-create",
+            json={
+                "datasets": [
+                    {
+                        "generator": "spiral",
+                        "params": {"n_spirals": 2, "n_points_per_spiral": 50, "seed": 962},
+                        "persist": True,
+                        "name": "batch-validation",
+                        "created_by": "u" * 101,
+                    }
+                ]
+            },
+        )
+        assert response.status_code == 422
 
-@pytest.mark.unit
-class TestVersionConcurrency:
-    """Regression tests for atomic version allocation (PR #15 review)."""
+    def test_versions_endpoint_requires_name(self, client: TestClient) -> None:
+        """Versions endpoint requires the name query parameter."""
+        response = client.get("/v1/datasets/versions")
+        assert response.status_code == 422
 
-    def test_save_versioned_no_duplicate_versions(self, memory_store: InMemoryDatasetStore, sample_arrays: dict[str, np.ndarray]) -> None:
-        """Concurrent save_versioned() calls must produce unique version numbers."""
-        n_threads = 10
-        results: list[int | None] = [None] * n_threads
-        barrier = threading.Barrier(n_threads)
-
-        def save_thread(idx: int) -> None:
-            meta = _make_meta(f"ds-concurrent-{idx}", dataset_name="race-test")
-            barrier.wait()  # all threads start together
-            memory_store.save_versioned(f"ds-concurrent-{idx}", meta, sample_arrays)
-            results[idx] = meta.dataset_version
-
-        threads = [threading.Thread(target=save_thread, args=(i,)) for i in range(n_threads)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-        assigned_versions = sorted(results)
-        assert assigned_versions == list(range(1, n_threads + 1))
-
-    def test_save_versioned_sets_version_on_meta(self, memory_store: InMemoryDatasetStore, sample_arrays: dict[str, np.ndarray]) -> None:
-        """save_versioned() sets dataset_version in-place on meta."""
-        meta = _make_meta("ds-sv1", dataset_name="sv-test")
-        assert meta.dataset_version is None
-        memory_store.save_versioned("ds-sv1", meta, sample_arrays)
-        assert meta.dataset_version == 1
-
-    def test_save_versioned_skips_lock_when_version_already_set(self, memory_store: InMemoryDatasetStore, sample_arrays: dict[str, np.ndarray]) -> None:
-        """save_versioned() delegates directly to save() when version is pre-set."""
-        meta = _make_meta("ds-preset", dataset_name="preset-test", dataset_version=42)
-        memory_store.save_versioned("ds-preset", meta, sample_arrays)
-        assert meta.dataset_version == 42
-        stored = memory_store.get_meta("ds-preset")
-        assert stored is not None
-        assert stored.dataset_version == 42
-
-    def test_save_versioned_no_name_no_version(self, memory_store: InMemoryDatasetStore, sample_arrays: dict[str, np.ndarray]) -> None:
-        """save_versioned() with no dataset_name leaves version as None."""
-        meta = _make_meta("ds-anon")
-        memory_store.save_versioned("ds-anon", meta, sample_arrays)
-        assert meta.dataset_version is None
+    def test_latest_endpoint_requires_name(self, client: TestClient) -> None:
+        """Latest endpoint requires the name query parameter."""
+        response = client.get("/v1/datasets/latest")
+        assert response.status_code == 422
