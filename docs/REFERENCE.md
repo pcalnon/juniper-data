@@ -11,6 +11,7 @@
 
 - [API Reference](#api-reference)
 - [Configuration Reference](#configuration-reference)
+- [Storage Backend Notes](#storage-backend-notes)
 - [Command Reference](#command-reference)
 - [Test Reference](#test-reference)
 - [Code Quality Tools](#code-quality-tools)
@@ -171,6 +172,42 @@ skips = ["B101", "B311"]
 
 - `B101`: Skip assert checks (used extensively in tests)
 - `B311`: Skip random usage warnings (used for data generation)
+
+---
+
+## Storage Backend Notes
+
+### `PostgresDatasetStore` Write Consistency Model
+
+`PostgresDatasetStore` stores metadata in PostgreSQL (`datasets` table) and artifacts as NPZ files on disk (`{artifact_path}/{dataset_id}.npz`).
+
+When saving, it uses a staged write path to keep metadata and artifacts aligned:
+
+1. Write NPZ bytes to a temp file: `{dataset_id}.npz.tmp`.
+2. Start DB transaction and acquire advisory lock on `dataset_id`.
+3. Resolve versioning metadata:
+   - If `dataset_id` already exists, preserve stored `dataset_name` and `dataset_version`.
+   - Else, if `dataset_name` is set, acquire advisory lock on `dataset_name` and assign `MAX(dataset_version) + 1`.
+4. Upsert metadata row.
+5. Atomically replace temp artifact with final `.npz`.
+6. Commit transaction.
+
+If artifact finalization fails, the transaction is rolled back and the temp file is removed. This prevents metadata-only commits (metadata/artifact split-brain).
+
+### PostgreSQL Versioning Rules
+
+| Scenario | Behavior |
+|----------|----------|
+| New persisted dataset with `dataset_name` | Allocates next integer version for that name in DB |
+| Existing `dataset_id` upsert | Keeps canonical stored `dataset_name` + `dataset_version` |
+| Request without `dataset_name` | Leaves `dataset_version` as `NULL` |
+| Non-persisted named create (`persist=false`) | API previews next version but does not reserve or store it |
+
+### Operational Constraints
+
+- `artifact_path` must be writable by the service process.
+- Temp and final artifact files must be on the same filesystem for atomic rename semantics.
+- Install PostgreSQL backend dependency: `pip install psycopg2-binary`.
 
 ---
 
@@ -546,6 +583,6 @@ juniper-data/
 
 ---
 
-**Last Updated:** March 3, 2026
+**Last Updated:** April 1, 2026
 **Version:** 0.4.2
 **Maintainer:** Paul Calnon
