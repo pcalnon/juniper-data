@@ -364,6 +364,31 @@ class TestPostgresDatasetStoreSave:
         assert mock_conn.commit.call_count == 0
         assert not tmp_artifact_path.exists()
 
+    def test_save_uses_distinct_temp_artifact_per_call(
+        self, mock_psycopg2, tmp_path, sample_meta, sample_arrays
+    ) -> None:
+        """Each save call should stage artifact bytes in a unique temp file."""
+        _, _, mock_cursor = mock_psycopg2
+        from juniper_data.storage.postgres_store import PostgresDatasetStore
+
+        store = PostgresDatasetStore(auto_create_schema=False, artifact_path=tmp_path / "data")
+        mock_cursor.fetchone.return_value = None
+
+        meta_a = sample_meta.model_copy(update={"dataset_name": None, "dataset_version": None})
+        meta_b = sample_meta.model_copy(update={"dataset_name": None, "dataset_version": None})
+        replaced_sources: list[str] = []
+        original_replace = Path.replace
+
+        def record_replace(path_obj: Path, target: Path) -> Path:
+            replaced_sources.append(str(path_obj))
+            return original_replace(path_obj, target)
+
+        with patch.object(Path, "replace", autospec=True, side_effect=record_replace):
+            store.save("test-dataset", meta_a, sample_arrays)
+            store.save("test-dataset", meta_b, sample_arrays)
+
+        assert len(replaced_sources) == 2
+        assert replaced_sources[0] != replaced_sources[1]
     def test_save_cleans_temp_artifact_when_db_write_fails(
         self, mock_psycopg2, tmp_path, sample_meta, sample_arrays
     ) -> None:
