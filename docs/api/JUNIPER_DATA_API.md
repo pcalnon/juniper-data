@@ -362,6 +362,11 @@ List stored dataset IDs.
 - `limit` (int, optional): Maximum IDs to return (default: `100`, max: `1000`)
 - `offset` (int, optional): Number of IDs to skip (default: `0`)
 
+**Query Parameters:**
+
+- `limit` (int, optional): Maximum IDs to return (default: `100`, range: `1..1000`)
+- `offset` (int, optional): Number of IDs to skip (default: `0`)
+
 **Response:**
 
 ```json
@@ -370,6 +375,131 @@ List stored dataset IDs.
   "spiral-1.0.0-f6e5d4c3b2a1..."
 ]
 ```
+
+The endpoint returns dataset IDs only. Use `GET /v1/datasets/{id}` for metadata.
+
+---
+
+### GET /v1/datasets/filter
+
+Filter dataset metadata by generator, tags, creation time, size, and version fields.
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+| --------- | ---- | ------- | ----------- |
+| `generator` | string | `null` | Filter by generator name |
+| `tags` | string | `null` | Comma-separated tags (for example, `prod,baseline`) |
+| `tags_match` | string | `"any"` | Tag matching mode: `any` or `all` |
+| `created_after` | datetime | `null` | Include datasets created at/after timestamp |
+| `created_before` | datetime | `null` | Include datasets created at/before timestamp |
+| `min_samples` | integer | `null` | Minimum `n_samples` |
+| `max_samples` | integer | `null` | Maximum `n_samples` |
+| `include_expired` | boolean | `false` | Include TTL-expired datasets |
+| `dataset_name` | string | `null` | Filter by logical dataset name |
+| `dataset_version` | integer | `null` | Filter by version number |
+| `limit` | integer | `100` | Page size (`1..1000`) |
+| `offset` | integer | `0` | Page offset |
+
+**Response:**
+
+```json
+{
+  "datasets": [
+    {
+      "dataset_id": "spiral-1.0.0-a1b2c3d4e5f6...",
+      "generator": "spiral",
+      "generator_version": "1.0.0",
+      "params": {"n_spirals": 2, "seed": 42},
+      "n_samples": 200,
+      "n_features": 2,
+      "n_classes": 2,
+      "n_train": 160,
+      "n_test": 40,
+      "class_distribution": {"0": 100, "1": 100},
+      "artifact_formats": ["npz"],
+      "created_at": "2026-02-05T12:00:00.000000",
+      "checksum": "f95ad2200996f29c4f9f48f2e7f1844f36f31472f17032cae78363493ee4f4b3",
+      "dataset_name": "spiral-baseline",
+      "dataset_version": 1
+    }
+  ],
+  "total": 1,
+  "limit": 100,
+  "offset": 0
+}
+```
+
+---
+
+### GET /v1/datasets/versions
+
+List all stored versions for a logical dataset name.
+
+**Query Parameters:**
+
+- `name` (string, required): Logical dataset name
+
+**Response:**
+
+```json
+{
+  "dataset_name": "spiral-baseline",
+  "versions": [
+    {"dataset_id": "spiral-...111", "dataset_name": "spiral-baseline", "dataset_version": 1},
+    {"dataset_id": "spiral-...222", "dataset_name": "spiral-baseline", "dataset_version": 2}
+  ],
+  "total": 2,
+  "latest_version": 2
+}
+```
+
+`versions` are sorted by `dataset_version` ascending.
+
+---
+
+### GET /v1/datasets/latest
+
+Get metadata for the latest stored version of a logical dataset name.
+
+**Query Parameters:**
+
+- `name` (string, required): Logical dataset name
+
+**Response:**
+
+Returns a full `DatasetMeta` object (same schema as `GET /v1/datasets/{id}`).
+
+```json
+{
+  "dataset_id": "spiral-...222",
+  "dataset_name": "spiral-baseline",
+  "dataset_version": 2
+}
+```
+
+**Status Codes:**
+
+- `200 OK` - Latest version metadata returned
+- `404 Not Found` - No versions exist for the requested name
+
+---
+
+### Additional Dataset Management Endpoints
+
+The dataset router also includes operational endpoints:
+
+| Endpoint | Method | Purpose |
+| -------- | ------ | ------- |
+| `/v1/datasets/stats` | GET | Aggregate dataset statistics |
+| `/v1/datasets/batch-delete` | POST | Delete multiple datasets by ID |
+| `/v1/datasets/batch-create` | POST | Create multiple datasets in one request |
+| `/v1/datasets/batch-tags` | PATCH | Add/remove tags across multiple datasets |
+| `/v1/datasets/batch-export` | POST | Export multiple NPZ artifacts as a ZIP |
+| `/v1/datasets/cleanup-expired` | POST | Delete all expired datasets |
+| `/v1/datasets/{id}/tags` | PATCH | Add/remove tags for a single dataset |
+
+See endpoint models in `juniper_data/core/models.py` and route behavior in `juniper_data/api/routes/datasets.py`.
 
 ---
 

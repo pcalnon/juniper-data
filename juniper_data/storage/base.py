@@ -1,5 +1,6 @@
 """Abstract base class for dataset storage."""
 
+import threading
 from abc import ABC, abstractmethod
 
 # from collections.abc import Callable
@@ -18,6 +19,8 @@ class DatasetStore(ABC):
     Provides a common interface for storing and retrieving datasets,
     supporting different backends (in-memory, local filesystem, cloud, etc.).
     """
+
+    _version_lock = threading.Lock()
 
     @abstractmethod
     def save(
@@ -183,6 +186,9 @@ class DatasetStore(ABC):
     def next_version_number(self, dataset_name: str) -> int:
         """Get the next version number for a named dataset.
 
+        Note: This method is NOT concurrency-safe on its own. For atomic
+        version allocation during save, use ``save_versioned()`` instead.
+
         Args:
             dataset_name: The logical dataset name.
 
@@ -193,6 +199,30 @@ class DatasetStore(ABC):
         if not versions:
             return 1
         return max(m.dataset_version or 0 for m in versions) + 1
+
+    def save_versioned(
+        self,
+        dataset_id: str,
+        meta: DatasetMeta,
+        arrays: dict[str, np.ndarray],
+    ) -> None:
+        """Atomically allocate a version number and save.
+
+        If ``meta.dataset_name`` is set and ``meta.dataset_version`` is None,
+        the next version number is computed and assigned under a lock so that
+        concurrent callers cannot receive the same version.
+
+        Args:
+            dataset_id: Unique identifier for the dataset.
+            meta: Dataset metadata. ``dataset_version`` is set in-place.
+            arrays: Dictionary of numpy arrays.
+        """
+        if meta.dataset_name is not None and meta.dataset_version is None:
+            with self._version_lock:
+                meta.dataset_version = self.next_version_number(meta.dataset_name)
+                self.save(dataset_id, meta, arrays)
+        else:
+            self.save(dataset_id, meta, arrays)
 
     def filter_datasets(
         self,

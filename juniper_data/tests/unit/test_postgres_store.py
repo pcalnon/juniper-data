@@ -154,6 +154,29 @@ class TestPostgresDatasetStoreMetaConversion:
         assert row["description"] == "Versioned dataset for regression tests"
         assert row["created_by"] == "test-user"
 
+    def test_meta_to_row_includes_versioning_fields(self, mock_psycopg2, tmp_path, sample_meta) -> None:
+        """_meta_to_row includes versioning metadata fields."""
+        from juniper_data.storage.postgres_store import PostgresDatasetStore
+
+        store = PostgresDatasetStore(auto_create_schema=False, artifact_path=tmp_path / "data")
+        versioned_meta = sample_meta.model_copy(
+            update={
+                "dataset_name": "experiment-a",
+                "dataset_version": 3,
+                "parent_dataset_id": "parent-ds",
+                "description": "Versioned metadata",
+                "created_by": "integration-test",
+            }
+        )
+
+        row = store._meta_to_row(versioned_meta)
+
+        assert row["dataset_name"] == "experiment-a"
+        assert row["dataset_version"] == 3
+        assert row["parent_dataset_id"] == "parent-ds"
+        assert row["description"] == "Versioned metadata"
+        assert row["created_by"] == "integration-test"
+
     def test_row_to_meta_with_dict_params(self, mock_psycopg2, tmp_path, sample_meta) -> None:
         """_row_to_meta handles dict params (already parsed JSON)."""
         from juniper_data.storage.postgres_store import PostgresDatasetStore
@@ -252,6 +275,44 @@ class TestPostgresDatasetStoreSchema:
         assert "ALTER TABLE datasets ADD COLUMN IF NOT EXISTS description TEXT;" in schema
         assert "ALTER TABLE datasets ADD COLUMN IF NOT EXISTS created_by VARCHAR(100);" in schema
 
+    def test_row_to_meta_with_versioning_fields(self, mock_psycopg2, tmp_path) -> None:
+        """_row_to_meta maps versioning metadata from DB rows."""
+        from juniper_data.storage.postgres_store import PostgresDatasetStore
+
+        store = PostgresDatasetStore(auto_create_schema=False, artifact_path=tmp_path / "data")
+        row = {
+            "dataset_id": "test-dataset",
+            "generator": "test",
+            "generator_version": "1.0.0",
+            "params": {"seed": 42},
+            "n_samples": 100,
+            "n_features": 2,
+            "n_classes": 2,
+            "n_train": 80,
+            "n_test": 20,
+            "class_distribution": {"0": 50, "1": 50},
+            "artifact_formats": ["npz"],
+            "created_at": datetime(2026, 1, 1, tzinfo=UTC),
+            "checksum": "abc123",
+            "dataset_name": "experiment-a",
+            "dataset_version": 2,
+            "parent_dataset_id": "parent-ds",
+            "description": "Versioned row",
+            "created_by": "integration-test",
+            "tags": [],
+            "ttl_seconds": None,
+            "expires_at": None,
+            "last_accessed_at": None,
+            "access_count": 0,
+        }
+
+        meta = store._row_to_meta(row)
+        assert meta.dataset_name == "experiment-a"
+        assert meta.dataset_version == 2
+        assert meta.parent_dataset_id == "parent-ds"
+        assert meta.description == "Versioned row"
+        assert meta.created_by == "integration-test"
+
 
 @pytest.mark.unit
 @pytest.mark.storage
@@ -274,6 +335,71 @@ class TestPostgresDatasetStoreSave:
         assert executed_params["dataset_version"] == 3
         artifact_path = tmp_path / "data" / "test-dataset.npz"
         assert artifact_path.exists()
+
+    def test_save_assigns_next_version_in_db_transaction(self, mock_psycopg2, tmp_path, sample_meta, sample_arrays) -> None:
+        """save computes next version from DB for named datasets."""
+        _, _, mock_cursor = mock_psycopg2
+        from juniper_data.storage.postgres_store import PostgresDatasetStore
+
+        store = PostgresDatasetStore(auto_create_schema=False, artifact_path=tmp_path / "data")
+        sample_meta.dataset_name = "experiment-a"
+        sample_meta.dataset_version = 999  # caller-provided value should be overridden
+
+        # Existing row check -> none, next version query -> 3
+        mock_cursor.fetchone.side_effect = [None, (3,)]
+
+        store.save("test-dataset", sample_meta, sample_arrays)
+
+        assert sample_meta.dataset_version == 3
+        assert any(
+            "MAX(dataset_version)" in call.args[0] for call in mock_cursor.execute.call_args_list if call.args
+        )
+        assert mock_cursor.execute.call_args_list[-1].args[1]["dataset_version"] == 3
+
+    def test_save_preserves_existing_dataset_version_on_upsert(self, mock_psycopg2, tmp_path, sample_meta, sample_arrays) -> None:
+        """save keeps existing version metadata for cached dataset_id upserts."""
+        _, _, mock_cursor = mock_psycopg2
+        from juniper_data.storage.postgres_store import PostgresDatasetStore
+
+        store = PostgresDatasetStore(auto_create_schema=False, artifact_path=tmp_path / "data")
+        sample_meta.dataset_name = "request-name"
+        sample_meta.dataset_version = 10
+
+        # Existing dataset row in DB owns canonical version metadata.
+        mock_cursor.fetchone.return_value = ("canonical-name", 2)
+
+        store.save("test-dataset", sample_meta, sample_arrays)
+
+        assert sample_meta.dataset_name == "canonical-name"
+        assert sample_meta.dataset_version == 2
+        assert mock_cursor.execute.call_args_list[-1].args[1]["dataset_version"] == 2
+    def test_save_persists_versioning_fields(self, mock_psycopg2, tmp_path, sample_meta, sample_arrays) -> None:
+        """save sends versioning metadata fields in DB write parameters."""
+        _, _, mock_cursor = mock_psycopg2
+        from juniper_data.storage.postgres_store import PostgresDatasetStore
+
+        versioned_meta = sample_meta.model_copy(
+            update={
+                "dataset_name": "experiment-a",
+                "dataset_version": 4,
+                "parent_dataset_id": "parent-ds",
+                "description": "Versioned save",
+                "created_by": "integration-test",
+            }
+        )
+        store = PostgresDatasetStore(auto_create_schema=False, artifact_path=tmp_path / "data")
+        store.save("test-dataset", versioned_meta, sample_arrays)
+
+        execute_args = mock_cursor.execute.call_args_list[-1][0]
+        sql = execute_args[0]
+        params = execute_args[1]
+
+        assert "dataset_name" in sql
+        assert params["dataset_name"] == "experiment-a"
+        assert params["dataset_version"] == 4
+        assert params["parent_dataset_id"] == "parent-ds"
+        assert params["description"] == "Versioned save"
+        assert params["created_by"] == "integration-test"
 
 
 @pytest.mark.unit
