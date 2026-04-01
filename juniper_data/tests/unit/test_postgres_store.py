@@ -252,6 +252,44 @@ class TestPostgresDatasetStoreSave:
         artifact_path = tmp_path / "data" / "test-dataset.npz"
         assert artifact_path.exists()
 
+    def test_save_assigns_next_version_in_db_transaction(self, mock_psycopg2, tmp_path, sample_meta, sample_arrays) -> None:
+        """save computes next version from DB for named datasets."""
+        _, _, mock_cursor = mock_psycopg2
+        from juniper_data.storage.postgres_store import PostgresDatasetStore
+
+        store = PostgresDatasetStore(auto_create_schema=False, artifact_path=tmp_path / "data")
+        sample_meta.dataset_name = "experiment-a"
+        sample_meta.dataset_version = 999  # caller-provided value should be overridden
+
+        # Existing row check -> none, next version query -> 3
+        mock_cursor.fetchone.side_effect = [None, (3,)]
+
+        store.save("test-dataset", sample_meta, sample_arrays)
+
+        assert sample_meta.dataset_version == 3
+        assert any(
+            "MAX(dataset_version)" in call.args[0] for call in mock_cursor.execute.call_args_list if call.args
+        )
+        assert mock_cursor.execute.call_args_list[-1].args[1]["dataset_version"] == 3
+
+    def test_save_preserves_existing_dataset_version_on_upsert(self, mock_psycopg2, tmp_path, sample_meta, sample_arrays) -> None:
+        """save keeps existing version metadata for cached dataset_id upserts."""
+        _, _, mock_cursor = mock_psycopg2
+        from juniper_data.storage.postgres_store import PostgresDatasetStore
+
+        store = PostgresDatasetStore(auto_create_schema=False, artifact_path=tmp_path / "data")
+        sample_meta.dataset_name = "request-name"
+        sample_meta.dataset_version = 10
+
+        # Existing dataset row in DB owns canonical version metadata.
+        mock_cursor.fetchone.return_value = ("canonical-name", 2)
+
+        store.save("test-dataset", sample_meta, sample_arrays)
+
+        assert sample_meta.dataset_name == "canonical-name"
+        assert sample_meta.dataset_version == 2
+        assert mock_cursor.execute.call_args_list[-1].args[1]["dataset_version"] == 2
+
 
 @pytest.mark.unit
 @pytest.mark.storage
