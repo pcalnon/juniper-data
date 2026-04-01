@@ -68,7 +68,6 @@ class PostgresDatasetStore(DatasetStore):
     CREATE INDEX IF NOT EXISTS idx_datasets_created_at ON datasets(created_at);
     CREATE INDEX IF NOT EXISTS idx_datasets_expires_at ON datasets(expires_at);
     CREATE INDEX IF NOT EXISTS idx_datasets_dataset_name ON datasets(dataset_name);
-    CREATE INDEX IF NOT EXISTS idx_datasets_dataset_name_version ON datasets(dataset_name, dataset_version);
     """
 
     def __init__(
