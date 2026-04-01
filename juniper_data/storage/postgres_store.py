@@ -5,6 +5,7 @@ import json
 from datetime import datetime  # noqa: F401 - used by DatasetMeta serialization
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import numpy as np
 
@@ -239,7 +240,9 @@ class PostgresDatasetStore(DatasetStore):
         """
 
         artifact_path = self._artifact_file(dataset_id)
-        tmp_artifact_path = artifact_path.with_suffix(artifact_path.suffix + ".tmp")
+        # Use a per-save temp file so concurrent writes for the same dataset_id
+        # cannot clobber each other's staging artifact.
+        tmp_artifact_path = artifact_path.with_name(f"{artifact_path.name}.{uuid4().hex}.tmp")
         buffer = io.BytesIO()
         np.savez_compressed(buffer, **arrays)  # type: ignore[arg-type]
         tmp_artifact_path.write_bytes(buffer.getvalue())
