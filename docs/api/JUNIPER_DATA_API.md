@@ -256,28 +256,28 @@ Create a new dataset or retrieve an existing one with matching parameters.
     "test_ratio": 0.2
   },
   "persist": true,
-  "tags": ["benchmark", "candidate"],
-  "ttl_seconds": 3600,
+  "tags": ["baseline", "can-def-005"],
+  "ttl_seconds": 86400,
   "name": "spiral-baseline",
-  "description": "Baseline spiral run for CAN-DEF-005",
-  "created_by": "ci-bot",
-  "parent_dataset_id": null
+  "description": "Reference dataset for model comparisons",
+  "created_by": "ml-platform",
+  "parent_dataset_id": "spiral-1.0.0-previous..."
 }
 ```
 
 **Request Fields:**
 
-| Field               | Type             | Required | Description                                                      |
-| ------------------- | ---------------- | -------- | ---------------------------------------------------------------- |
-| `generator`         | string           | Yes      | Generator name (for example, `spiral`)                          |
-| `params`            | object           | No       | Generator-specific parameters                                    |
-| `persist`           | boolean          | No       | Whether to persist to storage (default: `true`)                 |
-| `tags`              | array of strings | No       | Optional metadata tags (stored when persisted)                  |
-| `ttl_seconds`       | integer          | No       | Optional TTL in seconds (`>=1`) used to compute `expires_at`    |
-| `name`              | string           | No       | Logical dataset name used for dataset versioning                |
-| `description`       | string           | No       | Optional description (`max_length=500`)                         |
-| `created_by`        | string           | No       | Optional creator identifier (`max_length=100`)                  |
-| `parent_dataset_id` | string           | No       | Optional lineage pointer to a parent dataset                    |
+| Field | Type | Required | Description |
+| ----- | ---- | -------- | ----------- |
+| `generator` | string | Yes | Generator name (e.g., `spiral`) |
+| `params` | object | No | Generator-specific parameters |
+| `persist` | boolean | No | Whether to persist to storage (default: `true`) |
+| `tags` | array[string] | No | Dataset tags for filtering and organization |
+| `ttl_seconds` | integer | No | Dataset time-to-live in seconds (minimum `1`) |
+| `name` | string | No | Logical dataset name used for version tracking |
+| `description` | string | No | Free-text description (max 500 chars) |
+| `created_by` | string | No | Creator identifier (max 100 chars) |
+| `parent_dataset_id` | string | No | Parent dataset ID for lineage tracking |
 
 **Spiral Generator Parameters:**
 
@@ -319,15 +319,15 @@ Create a new dataset or retrieve an existing one with matching parameters.
     "class_distribution": {"0": 100, "1": 100},
     "artifact_formats": ["npz"],
     "created_at": "2026-02-05T12:00:00.000000",
-    "checksum": "f95ad2200996f29c4f9f48f2e7f1844f36f31472f17032cae78363493ee4f4b3",
+    "checksum": "4bf28dcf4f5eb0866b7f2e4d3d4a2d4d4bbf2e8ab6f6fb4112d59bd95af3f412",
     "dataset_name": "spiral-baseline",
-    "dataset_version": 1,
-    "parent_dataset_id": null,
-    "description": "Baseline spiral run for CAN-DEF-005",
-    "created_by": "ci-bot",
-    "tags": ["benchmark", "candidate"],
-    "ttl_seconds": 3600,
-    "expires_at": "2026-02-05T13:00:00.000000",
+    "dataset_version": 3,
+    "parent_dataset_id": "spiral-1.0.0-previous...",
+    "description": "Reference dataset for model comparisons",
+    "created_by": "ml-platform",
+    "tags": ["baseline", "can-def-005"],
+    "ttl_seconds": 86400,
+    "expires_at": "2026-02-06T12:00:00.000000",
     "last_accessed_at": null,
     "access_count": 0
   },
@@ -338,28 +338,29 @@ Create a new dataset or retrieve an existing one with matching parameters.
 **Status Codes:**
 
 - `201 Created` - Dataset created or retrieved
-- `400 Bad Request` - Invalid parameters or unknown generator
+- `400 Bad Request` - Unknown generator or invalid parameters
 
 **Caching Behavior:**
 
 Datasets are cached by their deterministic ID (hash of generator + version + params). Requesting the same parameters returns the existing dataset.
 
-### Versioning Behavior for Named Datasets
+**Versioning Behavior (named datasets):**
 
-- If `name` is set and `persist=true`, the store assigns `meta.dataset_version` atomically during save.
-- If `name` is set and `persist=false`, the response includes a preview version number, but no dataset is saved.
-- If the request resolves to an existing cached dataset ID, the existing metadata is returned and no new version is allocated.
-- Cache identity is based on `generator + generator_version + params`; metadata fields such as `name`, `description`, and `created_by` do not change `dataset_id`.
-
-### Checksum Format
-
-- `meta.checksum` is a SHA-256 hex digest of the NPZ artifact bytes (64 lowercase hex characters, no `sha256:` prefix).
+- If `name` is provided, the service assigns `dataset_version` using stored datasets with the same `dataset_name`.
+- Only persisted datasets (`persist=true`) advance the stored version sequence.
+- The first stored version is `1`; subsequent stored versions increment by 1.
+- Repeating an identical create request returns the cached dataset and preserves its existing version (no new version is assigned).
 
 ---
 
 ### GET /v1/datasets
 
-List all stored datasets.
+List stored dataset IDs.
+
+**Query Parameters:**
+
+- `limit` (int, optional): Maximum IDs to return (default: `100`, max: `1000`)
+- `offset` (int, optional): Number of IDs to skip (default: `0`)
 
 **Query Parameters:**
 
@@ -371,7 +372,7 @@ List all stored datasets.
 ```json
 [
   "spiral-1.0.0-a1b2c3d4e5f6...",
-  "spiral-1.0.0-b2c3d4e5f6a7..."
+  "spiral-1.0.0-f6e5d4c3b2a1..."
 ]
 ```
 
@@ -502,6 +503,233 @@ See endpoint models in `juniper_data/core/models.py` and route behavior in `juni
 
 ---
 
+### GET /v1/datasets/filter
+
+Filter datasets and return full metadata results with pagination.
+
+**Query Parameters (all optional):**
+
+- `generator` - Exact generator name
+- `tags` - Comma-separated tags (example: `baseline,prod`)
+- `tags_match` - `any` (OR) or `all` (AND), default `any`
+- `created_after` - ISO datetime lower bound
+- `created_before` - ISO datetime upper bound
+- `min_samples` - Minimum sample count
+- `max_samples` - Maximum sample count
+- `include_expired` - Include expired datasets (`false` by default)
+- `dataset_name` - Logical dataset name filter
+- `dataset_version` - Exact dataset version filter
+- `limit` - Page size (default `100`, max `1000`)
+- `offset` - Pagination offset (default `0`)
+
+**Response:**
+
+```json
+{
+  "datasets": [
+    {
+      "dataset_id": "spiral-1.0.0-a1b2c3...",
+      "generator": "spiral",
+      "dataset_name": "spiral-baseline",
+      "dataset_version": 3,
+      "created_at": "2026-02-05T12:00:00.000000"
+    }
+  ],
+  "total": 1,
+  "limit": 100,
+  "offset": 0
+}
+```
+
+---
+
+### GET /v1/datasets/versions
+
+List all versions for a logical dataset name.
+
+**Query Parameters:**
+
+- `name` (string, required): Dataset name to list versions for
+
+**Response:**
+
+```json
+{
+  "dataset_name": "spiral-baseline",
+  "versions": [
+    {"dataset_id": "spiral-1.0.0-v1...", "dataset_version": 1},
+    {"dataset_id": "spiral-1.0.0-v2...", "dataset_version": 2},
+    {"dataset_id": "spiral-1.0.0-v3...", "dataset_version": 3}
+  ],
+  "total": 3,
+  "latest_version": 3
+}
+```
+
+---
+
+### GET /v1/datasets/latest
+
+Get the latest stored version for a logical dataset name.
+
+**Query Parameters:**
+
+- `name` (string, required): Dataset name
+
+**Status Codes:**
+
+- `200 OK` - Latest version metadata returned
+- `404 Not Found` - No versions found for the provided name
+
+---
+
+### GET /v1/datasets/stats
+
+Get aggregate statistics across stored datasets.
+
+**Response:**
+
+```json
+{
+  "total_datasets": 42,
+  "total_samples": 8400,
+  "by_generator": {"spiral": 30, "xor": 12},
+  "by_tag": {"baseline": 10, "prod": 8},
+  "oldest_created_at": "2026-02-01T10:00:00.000000",
+  "newest_created_at": "2026-02-06T17:30:00.000000",
+  "expired_count": 3
+}
+```
+
+---
+
+### POST /v1/datasets/batch-create
+
+Create multiple datasets in one request.
+
+Each item is processed independently. A failure in one item does not fail the whole batch.
+
+**Request Body:**
+
+```json
+{
+  "datasets": [
+    {
+      "generator": "spiral",
+      "params": {"n_spirals": 2, "seed": 42},
+      "persist": true,
+      "name": "batch-exp",
+      "tags": ["baseline"]
+    },
+    {
+      "generator": "unknown-generator",
+      "params": {},
+      "persist": true
+    }
+  ]
+}
+```
+
+**Response:**
+
+```json
+{
+  "results": [
+    {
+      "index": 0,
+      "dataset_id": "spiral-1.0.0-a1b2c3d4e5f6a7b8",
+      "generator": "spiral",
+      "success": true,
+      "error": null,
+      "artifact_url": "/v1/datasets/spiral-1.0.0-a1b2c3d4e5f6a7b8/artifact"
+    },
+    {
+      "index": 1,
+      "dataset_id": null,
+      "generator": "unknown-generator",
+      "success": false,
+      "error": "Unknown generator 'unknown-generator'. Available: ['spiral', ...]",
+      "artifact_url": null
+    }
+  ],
+  "total_created": 1,
+  "total_failed": 1
+}
+```
+
+---
+
+### POST /v1/datasets/batch-delete
+
+Delete multiple datasets by ID.
+
+**Request Body:**
+
+```json
+{
+  "dataset_ids": ["spiral-1.0.0-a1...", "spiral-1.0.0-b2..."]
+}
+```
+
+**Response:**
+
+```json
+{
+  "deleted": ["spiral-1.0.0-a1..."],
+  "not_found": ["spiral-1.0.0-b2..."],
+  "total_deleted": 1
+}
+```
+
+---
+
+### PATCH /v1/datasets/batch-tags
+
+Add/remove tags on multiple datasets.
+
+**Request Body:**
+
+```json
+{
+  "dataset_ids": ["spiral-1.0.0-a1...", "spiral-1.0.0-b2..."],
+  "add_tags": ["prod"],
+  "remove_tags": ["stale"]
+}
+```
+
+---
+
+### POST /v1/datasets/batch-export
+
+Export multiple artifacts as a ZIP archive of `*.npz` files.
+
+**Request Body:**
+
+```json
+{
+  "dataset_ids": ["spiral-1.0.0-a1...", "spiral-1.0.0-b2..."]
+}
+```
+
+**Status Codes:**
+
+- `200 OK` - ZIP archive returned (`application/zip`)
+- `404 Not Found` - None of the requested dataset IDs exist
+
+---
+
+### POST /v1/datasets/cleanup-expired
+
+Delete all datasets currently past their `expires_at` timestamp.
+
+**Response:**
+
+```json
+["spiral-1.0.0-expired1...", "spiral-1.0.0-expired2..."]
+```
+
+---
+
 ### GET /v1/datasets/{id}
 
 Get metadata for a specific dataset.
@@ -526,12 +754,9 @@ Get metadata for a specific dataset.
   "class_distribution": {"0": 100, "1": 100},
   "artifact_formats": ["npz"],
   "created_at": "2026-02-05T12:00:00.000000",
-  "checksum": "f95ad2200996f29c4f9f48f2e7f1844f36f31472f17032cae78363493ee4f4b3",
+  "checksum": "4bf28dcf4f5eb0866b7f2e4d3d4a2d4d4bbf2e8ab6f6fb4112d59bd95af3f412",
   "dataset_name": "spiral-baseline",
-  "dataset_version": 2,
-  "parent_dataset_id": "spiral-1.0.0-a1b2c3d4e5f6...",
-  "description": "Second run with tuning tweaks",
-  "created_by": "ci-bot"
+  "dataset_version": 3
 }
 ```
 
@@ -602,6 +827,26 @@ Delete a dataset.
 **Status Codes:**
 
 - `204 No Content` - Dataset deleted
+- `404 Not Found` - Dataset not found
+
+---
+
+### PATCH /v1/datasets/{id}/tags
+
+Add/remove tags on a single dataset.
+
+**Request Body:**
+
+```json
+{
+  "add_tags": ["golden", "prod"],
+  "remove_tags": ["stale"]
+}
+```
+
+**Status Codes:**
+
+- `200 OK` - Updated metadata returned
 - `404 Not Found` - Dataset not found
 
 ---

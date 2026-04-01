@@ -116,24 +116,40 @@ uvicorn juniper_data.api.app:app --reload
 
 ## API Endpoints
 
-| Endpoint                              | Method | Description                           |
-| ------------------------------------- | ------ | ------------------------------------- |
-| `/v1/health`                          | GET    | Health check                          |
-| `/v1/health/live`                     | GET    | Liveness probe                        |
-| `/v1/health/ready`                    | GET    | Readiness probe (checks storage)      |
-| `/v1/generators`                      | GET    | List all generators with schemas      |
-| `/v1/generators/{name}/schema`        | GET    | Get parameter schema for a generator  |
-| `/v1/datasets`                        | POST   | Generate a new dataset                |
-| `/v1/datasets`                        | GET    | List all dataset IDs                  |
-| `/v1/datasets/{id}`                   | GET    | Get dataset metadata                  |
-| `/v1/datasets/{id}`                   | DELETE | Delete a dataset                      |
-| `/v1/datasets/{id}/artifact`          | GET    | Download NPZ artifact                 |
-| `/v1/datasets/{id}/preview`           | GET    | Preview first N samples as JSON       |
-| `/v1/datasets/filter`                 | GET    | Filter datasets by metadata criteria  |
-| `/v1/datasets/versions`               | GET    | List versions for a logical name      |
-| `/v1/datasets/latest`                 | GET    | Get latest version by logical name    |
+| Endpoint                              | Method | Description                                          |
+| ------------------------------------- | ------ | ---------------------------------------------------- |
+| `/v1/health`                          | GET    | Health check                                         |
+| `/v1/health/live`                     | GET    | Liveness probe                                       |
+| `/v1/health/ready`                    | GET    | Readiness probe (checks storage)                     |
+| `/v1/generators`                      | GET    | List all generators with schemas                     |
+| `/v1/generators/{name}/schema`        | GET    | Get parameter schema for a generator                 |
+| `/v1/datasets`                        | POST   | Create dataset (or return cached dataset)            |
+| `/v1/datasets`                        | GET    | List dataset IDs                                     |
+| `/v1/datasets/filter`                 | GET    | Filter metadata by generator/tags/date/name/version |
+| `/v1/datasets/stats`                  | GET    | Aggregate dataset statistics                         |
+| `/v1/datasets/versions`               | GET    | List all versions for a logical dataset name         |
+| `/v1/datasets/latest`                 | GET    | Get latest version for a logical dataset name        |
+| `/v1/datasets/batch-create`           | POST   | Create multiple datasets                             |
+| `/v1/datasets/batch-delete`           | POST   | Delete multiple datasets                             |
+| `/v1/datasets/batch-tags`             | PATCH  | Update tags on multiple datasets                    |
+| `/v1/datasets/batch-export`           | POST   | Export multiple datasets as ZIP                     |
+| `/v1/datasets/cleanup-expired`        | POST   | Delete expired datasets                             |
+| `/v1/datasets/{id}`                   | GET    | Get dataset metadata                                 |
+| `/v1/datasets/{id}`                   | DELETE | Delete a dataset                                     |
+| `/v1/datasets/{id}/artifact`          | GET    | Download NPZ artifact                                |
+| `/v1/datasets/{id}/preview`           | GET    | Preview first N samples as JSON                      |
+| `/v1/datasets/{id}/tags`              | PATCH  | Add/remove tags on one dataset                       |
 
 See [docs/api/JUNIPER_DATA_API.md](docs/api/JUNIPER_DATA_API.md) for full endpoint documentation including filtering, batch operations, and tagging.
+
+### Named Dataset Versioning
+
+`POST /v1/datasets` supports logical names for versioned datasets:
+
+- Set `name` to group related datasets into a version series.
+- Persisted creates with the same `name` auto-increment `meta.dataset_version` (`1`, `2`, `3`, ...).
+- Repeating an identical request returns the cached dataset and keeps its existing version.
+- Use `GET /v1/datasets/versions?name=<dataset_name>` to view history and `GET /v1/datasets/latest?name=<dataset_name>` to resolve the latest.
 
 ## Project Structure
 
