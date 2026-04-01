@@ -27,6 +27,11 @@ def sample_meta() -> DatasetMeta:
         n_test=20,
         class_distribution={"0": 50, "1": 50},
         created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        dataset_name="experiment-a",
+        dataset_version=7,
+        parent_dataset_id="parent-dataset",
+        description="Regression metadata",
+        created_by="qa-bot",
     )
 
 
@@ -143,6 +148,11 @@ class TestPostgresDatasetStoreMetaConversion:
         assert row["n_samples"] == 100
         assert isinstance(row["params"], str)
         assert json.loads(row["params"]) == {"seed": 42}
+        assert row["dataset_name"] == "experiment-a"
+        assert row["dataset_version"] == 7
+        assert row["parent_dataset_id"] == "parent-dataset"
+        assert row["description"] == "Regression metadata"
+        assert row["created_by"] == "qa-bot"
 
     def test_row_to_meta_with_dict_params(self, mock_psycopg2, tmp_path, sample_meta) -> None:
         """_row_to_meta handles dict params (already parsed JSON)."""
@@ -163,6 +173,11 @@ class TestPostgresDatasetStoreMetaConversion:
             "artifact_formats": ["npz"],
             "created_at": datetime(2026, 1, 1, tzinfo=UTC),
             "checksum": None,
+            "dataset_name": "experiment-a",
+            "dataset_version": 7,
+            "parent_dataset_id": "parent-dataset",
+            "description": "Regression metadata",
+            "created_by": "qa-bot",
             "tags": ["test"],
             "ttl_seconds": None,
             "expires_at": None,
@@ -173,6 +188,11 @@ class TestPostgresDatasetStoreMetaConversion:
         meta = store._row_to_meta(row)
         assert meta.dataset_id == "test-dataset"
         assert meta.params == {"seed": 42}
+        assert meta.dataset_name == "experiment-a"
+        assert meta.dataset_version == 7
+        assert meta.parent_dataset_id == "parent-dataset"
+        assert meta.description == "Regression metadata"
+        assert meta.created_by == "qa-bot"
 
     def test_row_to_meta_with_string_params(self, mock_psycopg2, tmp_path) -> None:
         """_row_to_meta handles string params (JSON string from DB)."""
@@ -193,6 +213,11 @@ class TestPostgresDatasetStoreMetaConversion:
             "artifact_formats": ["npz"],
             "created_at": datetime(2026, 1, 1, tzinfo=UTC),
             "checksum": None,
+            "dataset_name": "experiment-a",
+            "dataset_version": 7,
+            "parent_dataset_id": "parent-dataset",
+            "description": "Regression metadata",
+            "created_by": "qa-bot",
             "tags": None,
             "ttl_seconds": None,
             "expires_at": None,
@@ -204,6 +229,11 @@ class TestPostgresDatasetStoreMetaConversion:
         assert meta.params == {"seed": 42}
         assert meta.class_distribution == {"0": 50, "1": 50}
         assert meta.tags == []
+        assert meta.dataset_name == "experiment-a"
+        assert meta.dataset_version == 7
+        assert meta.parent_dataset_id == "parent-dataset"
+        assert meta.description == "Regression metadata"
+        assert meta.created_by == "qa-bot"
 
 
 @pytest.mark.unit
@@ -250,6 +280,11 @@ class TestPostgresDatasetStoreGetMeta:
             "artifact_formats": ["npz"],
             "created_at": datetime(2026, 1, 1, tzinfo=UTC),
             "checksum": None,
+            "dataset_name": "experiment-a",
+            "dataset_version": 7,
+            "parent_dataset_id": "parent-dataset",
+            "description": "Regression metadata",
+            "created_by": "qa-bot",
             "tags": [],
             "ttl_seconds": None,
             "expires_at": None,
@@ -261,6 +296,8 @@ class TestPostgresDatasetStoreGetMeta:
         result = store.get_meta("test-dataset")
         assert result is not None
         assert result.dataset_id == "test-dataset"
+        assert result.dataset_name == "experiment-a"
+        assert result.dataset_version == 7
 
     def test_get_meta_not_found(self, mock_psycopg2, tmp_path) -> None:
         """get_meta returns None when not found."""
@@ -446,6 +483,11 @@ class TestPostgresDatasetStoreListAllMetadata:
                 "artifact_formats": ["npz"],
                 "created_at": datetime(2026, 1, 1, tzinfo=UTC),
                 "checksum": None,
+                "dataset_name": "experiment-a",
+                "dataset_version": 7,
+                "parent_dataset_id": "parent-dataset",
+                "description": "Regression metadata",
+                "created_by": "qa-bot",
                 "tags": [],
                 "ttl_seconds": None,
                 "expires_at": None,
@@ -457,6 +499,8 @@ class TestPostgresDatasetStoreListAllMetadata:
         result = store.list_all_metadata()
         assert len(result) == 1
         assert result[0].dataset_id == "ds-1"
+        assert result[0].dataset_name == "experiment-a"
+        assert result[0].dataset_version == 7
 
 
 @pytest.mark.unit
