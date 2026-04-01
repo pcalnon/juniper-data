@@ -129,6 +129,9 @@ uvicorn juniper_data.api.app:app --reload
 | `/v1/datasets/{id}`                   | DELETE | Delete a dataset                      |
 | `/v1/datasets/{id}/artifact`          | GET    | Download NPZ artifact                 |
 | `/v1/datasets/{id}/preview`           | GET    | Preview first N samples as JSON       |
+| `/v1/datasets/filter`                 | GET    | Filter datasets by metadata criteria  |
+| `/v1/datasets/versions`               | GET    | List versions for a logical name      |
+| `/v1/datasets/latest`                 | GET    | Get latest version by logical name    |
 
 See [docs/api/JUNIPER_DATA_API.md](docs/api/JUNIPER_DATA_API.md) for full endpoint documentation including filtering, batch operations, and tagging.
 

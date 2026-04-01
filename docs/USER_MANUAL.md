@@ -209,10 +209,20 @@ curl -X POST http://localhost:8100/v1/datasets \
 | `/v1/generators/{name}/schema` | GET | Get parameter schema |
 | `/v1/datasets` | POST | Create dataset |
 | `/v1/datasets` | GET | List all datasets |
+| `/v1/datasets/filter` | GET | Filter datasets by metadata |
+| `/v1/datasets/versions` | GET | List all versions for a dataset name |
+| `/v1/datasets/latest` | GET | Get latest version for a dataset name |
 | `/v1/datasets/{id}` | GET | Get dataset metadata |
 | `/v1/datasets/{id}` | DELETE | Delete dataset |
 | `/v1/datasets/{id}/artifact` | GET | Download NPZ artifact |
 | `/v1/datasets/{id}/preview` | GET | Preview samples as JSON |
+| `/v1/datasets/stats` | GET | Get aggregate dataset statistics |
+| `/v1/datasets/batch-create` | POST | Create multiple datasets |
+| `/v1/datasets/batch-delete` | POST | Delete multiple datasets |
+| `/v1/datasets/batch-tags` | PATCH | Add/remove tags across multiple datasets |
+| `/v1/datasets/batch-export` | POST | Export multiple datasets as ZIP |
+| `/v1/datasets/cleanup-expired` | POST | Remove all expired datasets |
+| `/v1/datasets/{id}/tags` | PATCH | Add/remove tags on a dataset |
 
 For complete API documentation with request/response schemas, see [JUNIPER_DATA_API.md](api/JUNIPER_DATA_API.md).
 

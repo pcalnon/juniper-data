@@ -36,10 +36,20 @@ Full REST API documentation is in [JUNIPER_DATA_API.md](api/JUNIPER_DATA_API.md)
 | `/v1/generators/{name}/schema` | GET | Generator schema | Yes* |
 | `/v1/datasets` | POST | Create dataset | Yes* |
 | `/v1/datasets` | GET | List datasets | Yes* |
+| `/v1/datasets/filter` | GET | Filter datasets | Yes* |
+| `/v1/datasets/versions` | GET | List versions by dataset name | Yes* |
+| `/v1/datasets/latest` | GET | Get latest version by name | Yes* |
+| `/v1/datasets/stats` | GET | Dataset statistics | Yes* |
+| `/v1/datasets/batch-create` | POST | Batch create datasets | Yes* |
+| `/v1/datasets/batch-delete` | POST | Batch delete datasets | Yes* |
+| `/v1/datasets/batch-tags` | PATCH | Batch tag updates | Yes* |
+| `/v1/datasets/batch-export` | POST | Batch export datasets | Yes* |
+| `/v1/datasets/cleanup-expired` | POST | Cleanup expired datasets | Yes* |
 | `/v1/datasets/{id}` | GET | Dataset metadata | Yes* |
 | `/v1/datasets/{id}` | DELETE | Delete dataset | Yes* |
 | `/v1/datasets/{id}/artifact` | GET | Download NPZ | Yes* |
 | `/v1/datasets/{id}/preview` | GET | Preview JSON | Yes* |
+| `/v1/datasets/{id}/tags` | PATCH | Update dataset tags | Yes* |
 
 *Auth required only when `JUNIPER_DATA_API_KEYS` is set.
 
