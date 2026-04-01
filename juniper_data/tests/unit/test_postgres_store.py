@@ -364,6 +364,29 @@ class TestPostgresDatasetStoreSave:
         assert mock_conn.commit.call_count == 0
         assert not tmp_artifact_path.exists()
 
+    def test_save_cleans_temp_artifact_when_db_write_fails(
+        self, mock_psycopg2, tmp_path, sample_meta, sample_arrays
+    ) -> None:
+        """save removes temp artifact when DB write fails before finalize."""
+        _, mock_conn, mock_cursor = mock_psycopg2
+        from juniper_data.storage.postgres_store import PostgresDatasetStore
+
+        store = PostgresDatasetStore(auto_create_schema=False, artifact_path=tmp_path / "data")
+        sample_meta.dataset_name = None
+        sample_meta.dataset_version = None
+        artifact_path = tmp_path / "data" / "test-dataset.npz"
+        tmp_artifact_path = artifact_path.with_suffix(".npz.tmp")
+
+        mock_cursor.fetchone.return_value = None
+        mock_cursor.execute.side_effect = [None, None, RuntimeError("db write failed")]
+
+        with pytest.raises(RuntimeError, match="db write failed"):
+            store.save("test-dataset", sample_meta, sample_arrays)
+
+        assert mock_conn.commit.call_count == 0
+        assert not artifact_path.exists()
+        assert not tmp_artifact_path.exists()
+
 
 @pytest.mark.unit
 @pytest.mark.storage
