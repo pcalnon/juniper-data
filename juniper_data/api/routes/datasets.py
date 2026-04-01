@@ -7,6 +7,7 @@ import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
+from juniper_data.core.artifacts import compute_checksum
 from juniper_data.core.dataset_id import generate_dataset_id
 from juniper_data.core.models import (
     BatchCreateRequest,
@@ -22,6 +23,7 @@ from juniper_data.core.models import (
     DatasetListResponse,
     DatasetMeta,
     DatasetStats,
+    DatasetVersionListResponse,
     PreviewData,
     UpdateTagsRequest,
 )
@@ -103,6 +105,8 @@ async def create_dataset(
 
     arrays = generator_class.generate(params)
 
+    checksum = compute_checksum(arrays)
+
     n_train = len(arrays["X_train"])
     n_test = len(arrays["X_test"])
     n_samples = n_train + n_test
@@ -132,13 +136,24 @@ async def create_dataset(
         class_distribution=class_distribution,
         artifact_formats=["npz"],
         created_at=now,
+        checksum=checksum,
+        dataset_name=request.name,
+        dataset_version=None,  # Assigned atomically by save_versioned()
+        description=request.description,
+        created_by=request.created_by,
+        parent_dataset_id=request.parent_dataset_id,
         tags=request.tags,
         ttl_seconds=request.ttl_seconds,
         expires_at=expires_at,
     )
 
     if request.persist:
-        store.save(dataset_id, meta, arrays)
+        # save_versioned() atomically allocates the version number under a lock
+        # to prevent concurrent requests from receiving the same version.
+        store.save_versioned(dataset_id, meta, arrays)
+    elif request.name is not None:
+        # Non-persisted: preview the next version (no race since no write)
+        meta.dataset_version = store.next_version_number(request.name)
 
     return CreateDatasetResponse(
         dataset_id=dataset_id,
@@ -177,6 +192,8 @@ async def filter_datasets(
     min_samples: int | None = Query(default=None, ge=1, description="Minimum number of samples"),
     max_samples: int | None = Query(default=None, ge=1, description="Maximum number of samples"),
     include_expired: bool = Query(default=False, description="Include expired datasets"),
+    dataset_name: str | None = Query(default=None, description="Filter by logical dataset name"),
+    dataset_version: int | None = Query(default=None, description="Filter by dataset version number"),
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
     store: DatasetStore = Depends(get_store),
@@ -192,6 +209,8 @@ async def filter_datasets(
         min_samples: Minimum number of samples.
         max_samples: Maximum number of samples.
         include_expired: Include expired datasets.
+        dataset_name: Filter by logical dataset name.
+        dataset_version: Filter by dataset version number.
         limit: Maximum number of results.
         offset: Number of results to skip.
         store: Dataset storage backend.
@@ -210,6 +229,8 @@ async def filter_datasets(
         min_samples=min_samples,
         max_samples=max_samples,
         include_expired=include_expired,
+        dataset_name=dataset_name,
+        dataset_version=dataset_version,
         limit=limit,
         offset=offset,
     )
@@ -291,6 +312,10 @@ async def batch_create_datasets(
                 persist=item.persist,
                 tags=item.tags,
                 ttl_seconds=item.ttl_seconds,
+                name=item.name,
+                description=item.description,
+                created_by=item.created_by,
+                parent_dataset_id=item.parent_dataset_id,
             )
             resp = await create_dataset(create_req, store)
             results.append(
@@ -421,6 +446,53 @@ async def cleanup_expired_datasets(
         List of deleted dataset IDs.
     """
     return store.delete_expired()
+
+
+@router.get("/versions", response_model=DatasetVersionListResponse)
+async def list_dataset_versions(
+    name: str = Query(description="Dataset name to list versions for"),
+    store: DatasetStore = Depends(get_store),
+) -> DatasetVersionListResponse:
+    """List all versions of a named dataset.
+
+    Args:
+        name: Logical dataset name to list versions for.
+        store: Dataset storage backend.
+
+    Returns:
+        Version list response with all versions sorted by version number.
+    """
+    versions = store.list_versions(name)
+    latest = versions[-1].dataset_version if versions else None
+    return DatasetVersionListResponse(
+        dataset_name=name,
+        versions=versions,
+        total=len(versions),
+        latest_version=latest,
+    )
+
+
+@router.get("/latest", response_model=DatasetMeta)
+async def get_latest_version(
+    name: str = Query(description="Dataset name to get latest version of"),
+    store: DatasetStore = Depends(get_store),
+) -> DatasetMeta:
+    """Get the latest version of a named dataset.
+
+    Args:
+        name: Logical dataset name to get the latest version of.
+        store: Dataset storage backend.
+
+    Returns:
+        Dataset metadata for the latest version.
+
+    Raises:
+        HTTPException: 404 if no versions found for the given name.
+    """
+    meta = store.get_latest_version(name)
+    if meta is None:
+        raise HTTPException(status_code=404, detail=f"No versions found for dataset '{name}'")
+    return meta
 
 
 @router.get("/{dataset_id}", response_model=DatasetMeta)

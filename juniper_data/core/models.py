@@ -36,6 +36,13 @@ class DatasetMeta(BaseModel):
     # Optional fields
     checksum: str | None = None
 
+    # Versioning (CAN-DEF-005)
+    dataset_name: str | None = None
+    dataset_version: int | None = None
+    parent_dataset_id: str | None = None
+    description: str | None = None
+    created_by: str | None = None
+
     # Lifecycle management (DATA-016)
     tags: list[str] = Field(default_factory=list)
     ttl_seconds: int | None = None
@@ -52,6 +59,10 @@ class CreateDatasetRequest(BaseModel):
     persist: bool = True
     tags: list[str] = Field(default_factory=list)
     ttl_seconds: int | None = Field(default=None, ge=1, description="Time-to-live in seconds")
+    name: str | None = Field(default=None, description="Logical dataset name for version tracking")
+    description: str | None = Field(default=None, max_length=500)
+    created_by: str | None = Field(default=None, max_length=100)
+    parent_dataset_id: str | None = Field(default=None, description="ID of parent dataset for lineage")
 
 
 class CreateDatasetResponse(BaseModel):
@@ -91,6 +102,8 @@ class DatasetListFilter(BaseModel):
     min_samples: int | None = Field(default=None, ge=1)
     max_samples: int | None = Field(default=None, ge=1)
     include_expired: bool = False
+    dataset_name: str | None = None
+    dataset_version: int | None = None
 
 
 class DatasetListResponse(BaseModel):
@@ -100,6 +113,15 @@ class DatasetListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class DatasetVersionListResponse(BaseModel):
+    """Response for version listing endpoint."""
+
+    dataset_name: str
+    versions: list[DatasetMeta]
+    total: int
+    latest_version: int | None = None
 
 
 class BatchDeleteRequest(BaseModel):
@@ -131,6 +153,10 @@ class BatchCreateItem(BaseModel):
     persist: bool = True
     tags: list[str] = Field(default_factory=list)
     ttl_seconds: int | None = Field(default=None, ge=1)
+    name: str | None = Field(default=None, description="Logical dataset name for version tracking")
+    description: str | None = Field(default=None, max_length=500)
+    created_by: str | None = Field(default=None, max_length=100)
+    parent_dataset_id: str | None = Field(default=None, description="ID of parent dataset for lineage")
 
 
 class BatchCreateRequest(BaseModel):
