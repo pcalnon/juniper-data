@@ -46,8 +46,13 @@
 | `/v1/datasets/{id}/artifact`                        | GET (NPZ download)        | Yes   |
 | `/v1/datasets/{id}/preview`                         | GET (JSON preview)        | Yes   |
 | `/v1/datasets/filter`                               | GET (filter datasets)     | Yes   |
+| `/v1/datasets/versions`                             | GET (list name versions)  | Yes   |
+| `/v1/datasets/latest`                               | GET (latest by name)      | Yes   |
 | `/v1/datasets/stats`                                | GET (dataset statistics)  | Yes   |
 | `/v1/datasets/batch-delete`                         | POST (bulk delete)        | Yes   |
+| `/v1/datasets/batch-create`                         | POST (bulk create)        | Yes   |
+| `/v1/datasets/batch-tags`                           | PATCH (bulk tag update)   | Yes   |
+| `/v1/datasets/batch-export`                         | POST (bulk NPZ export)    | Yes   |
 | `/v1/datasets/cleanup-expired`                      | POST (cleanup expired)    | Yes   |
 | `/v1/datasets/{id}/tags`                            | PATCH (update tags)       | Yes   |
 

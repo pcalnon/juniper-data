@@ -207,14 +207,40 @@ curl -X POST http://localhost:8100/v1/datasets \
 | `/v1/health/ready` | GET | Readiness probe (Kubernetes) |
 | `/v1/generators` | GET | List available generators |
 | `/v1/generators/{name}/schema` | GET | Get parameter schema |
-| `/v1/datasets` | POST | Create dataset |
-| `/v1/datasets` | GET | List all datasets |
+| `/v1/datasets` | POST | Create dataset (or return cached dataset) |
+| `/v1/datasets` | GET | List dataset IDs |
+| `/v1/datasets/filter` | GET | Filter metadata by generator/tags/date/name/version |
+| `/v1/datasets/stats` | GET | Aggregate dataset statistics |
+| `/v1/datasets/versions` | GET | List all versions for a logical dataset name |
+| `/v1/datasets/latest` | GET | Get latest version for a logical dataset name |
+| `/v1/datasets/batch-create` | POST | Create multiple datasets |
+| `/v1/datasets/batch-delete` | POST | Delete multiple datasets |
+| `/v1/datasets/batch-tags` | PATCH | Update tags on multiple datasets |
+| `/v1/datasets/batch-export` | POST | Export multiple datasets as ZIP |
+| `/v1/datasets/cleanup-expired` | POST | Delete expired datasets |
 | `/v1/datasets/{id}` | GET | Get dataset metadata |
 | `/v1/datasets/{id}` | DELETE | Delete dataset |
 | `/v1/datasets/{id}/artifact` | GET | Download NPZ artifact |
 | `/v1/datasets/{id}/preview` | GET | Preview samples as JSON |
+| `/v1/datasets/{id}/tags` | PATCH | Add/remove tags on one dataset |
 
 For complete API documentation with request/response schemas, see [JUNIPER_DATA_API.md](api/JUNIPER_DATA_API.md).
+
+### Named Dataset Versioning Workflow
+
+Use logical names when you need explicit dataset evolution over time:
+
+1. Create with `POST /v1/datasets` and include `"name": "my-experiment"`.
+2. The service assigns `meta.dataset_version` sequentially for persisted datasets with the same name (`1`, `2`, ...).
+3. Use `GET /v1/datasets/versions?name=my-experiment` to inspect full history.
+4. Use `GET /v1/datasets/latest?name=my-experiment` to resolve the current latest version.
+
+Lineage fields in metadata:
+
+- `dataset_name`: Logical grouping key.
+- `dataset_version`: Auto-assigned integer version.
+- `parent_dataset_id`: Optional parent pointer for explicit derivation links.
+- `description`, `created_by`: Optional provenance context.
 
 ### Dataset Lifecycle
 

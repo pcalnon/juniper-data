@@ -123,9 +123,6 @@ async def create_dataset(
     if request.ttl_seconds is not None:
         expires_at = now + timedelta(seconds=request.ttl_seconds)
 
-    # Auto-increment version for named datasets
-    version_num = store.next_version_number(request.name) if request.name is not None else None
-
     meta = DatasetMeta(
         dataset_id=dataset_id,
         generator=request.generator,
@@ -141,7 +138,7 @@ async def create_dataset(
         created_at=now,
         checksum=checksum,
         dataset_name=request.name,
-        dataset_version=version_num,
+        dataset_version=None,  # Assigned atomically by save_versioned()
         description=request.description,
         created_by=request.created_by,
         parent_dataset_id=request.parent_dataset_id,
@@ -151,7 +148,12 @@ async def create_dataset(
     )
 
     if request.persist:
-        store.save(dataset_id, meta, arrays)
+        # save_versioned() atomically allocates the version number under a lock
+        # to prevent concurrent requests from receiving the same version.
+        store.save_versioned(dataset_id, meta, arrays)
+    elif request.name is not None:
+        # Non-persisted: preview the next version (no race since no write)
+        meta.dataset_version = store.next_version_number(request.name)
 
     return CreateDatasetResponse(
         dataset_id=dataset_id,
