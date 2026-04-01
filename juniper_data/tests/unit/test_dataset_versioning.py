@@ -228,6 +228,50 @@ class TestStorageVersioningMethods:
 
         assert memory_store.next_version_number("experiment") == 3
 
+    def test_save_versioned_preserves_explicit_version(
+        self,
+        memory_store: InMemoryDatasetStore,
+        sample_arrays: dict[str, np.ndarray],
+    ) -> None:
+        """save_versioned does not override an explicitly provided version."""
+        manual_meta = _make_meta("ds-manual", dataset_name="manual-version", dataset_version=42)
+
+        memory_store.save_versioned("ds-manual", manual_meta, sample_arrays)
+
+        stored = memory_store.get_meta("ds-manual")
+        assert stored is not None
+        assert stored.dataset_version == 42
+        assert memory_store.next_version_number("manual-version") == 43
+
+    def test_save_versioned_assigns_unique_versions_under_concurrency(
+        self,
+        memory_store: InMemoryDatasetStore,
+        sample_arrays: dict[str, np.ndarray],
+    ) -> None:
+        """Concurrent save_versioned calls allocate unique, contiguous versions."""
+        n_threads = 8
+        start_barrier = threading.Barrier(n_threads)
+        errors: list[Exception] = []
+
+        def _save_in_thread(index: int) -> None:
+            meta = _make_meta(f"ds-concurrent-{index}", dataset_name="concurrent-run", dataset_version=None)
+            try:
+                start_barrier.wait()
+                memory_store.save_versioned(meta.dataset_id, meta, sample_arrays)
+            except Exception as exc:  # pragma: no cover - asserted via errors
+                errors.append(exc)
+
+        threads = [threading.Thread(target=_save_in_thread, args=(i,)) for i in range(n_threads)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=5)
+
+        assert not errors
+        versions = memory_store.list_versions("concurrent-run")
+        assert len(versions) == n_threads
+        assert [meta.dataset_version for meta in versions] == list(range(1, n_threads + 1))
+
     def test_filter_by_dataset_name(self, memory_store: InMemoryDatasetStore, sample_arrays: dict[str, np.ndarray]) -> None:
         """filter_datasets filters by dataset_name."""
         meta_a = _make_meta("ds-a", dataset_name="alpha", dataset_version=1)
