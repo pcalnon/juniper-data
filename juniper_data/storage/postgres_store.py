@@ -53,9 +53,16 @@ class PostgresDatasetStore(DatasetStore):
         access_count INTEGER NOT NULL DEFAULT 0
     );
 
+    ALTER TABLE datasets ADD COLUMN IF NOT EXISTS dataset_name TEXT;
+    ALTER TABLE datasets ADD COLUMN IF NOT EXISTS dataset_version INTEGER;
+    ALTER TABLE datasets ADD COLUMN IF NOT EXISTS parent_dataset_id VARCHAR(255);
+    ALTER TABLE datasets ADD COLUMN IF NOT EXISTS description TEXT;
+    ALTER TABLE datasets ADD COLUMN IF NOT EXISTS created_by VARCHAR(100);
+
     CREATE INDEX IF NOT EXISTS idx_datasets_generator ON datasets(generator);
     CREATE INDEX IF NOT EXISTS idx_datasets_created_at ON datasets(created_at);
     CREATE INDEX IF NOT EXISTS idx_datasets_expires_at ON datasets(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_datasets_name ON datasets(dataset_name);
     """
 
     def __init__(
@@ -135,6 +142,11 @@ class PostgresDatasetStore(DatasetStore):
             "artifact_formats": meta.artifact_formats,
             "created_at": meta.created_at,
             "checksum": meta.checksum,
+            "dataset_name": meta.dataset_name,
+            "dataset_version": meta.dataset_version,
+            "parent_dataset_id": meta.parent_dataset_id,
+            "description": meta.description,
+            "created_by": meta.created_by,
             "tags": meta.tags,
             "ttl_seconds": meta.ttl_seconds,
             "expires_at": meta.expires_at,
@@ -158,6 +170,11 @@ class PostgresDatasetStore(DatasetStore):
             artifact_formats=list(row["artifact_formats"]),
             created_at=row["created_at"],
             checksum=row["checksum"],
+            dataset_name=row.get("dataset_name"),
+            dataset_version=row.get("dataset_version"),
+            parent_dataset_id=row.get("parent_dataset_id"),
+            description=row.get("description"),
+            created_by=row.get("created_by"),
             tags=list(row["tags"]) if row["tags"] else [],
             ttl_seconds=row["ttl_seconds"],
             expires_at=row["expires_at"],
@@ -184,14 +201,16 @@ class PostgresDatasetStore(DatasetStore):
         INSERT INTO datasets (
             dataset_id, generator, generator_version, params, n_samples,
             n_features, n_classes, n_train, n_test, class_distribution,
-            artifact_formats, created_at, checksum, tags, ttl_seconds,
+            artifact_formats, created_at, checksum, dataset_name, dataset_version,
+            parent_dataset_id, description, created_by, tags, ttl_seconds,
             expires_at, last_accessed_at, access_count
         ) VALUES (
             %(dataset_id)s, %(generator)s, %(generator_version)s, %(params)s::jsonb,
             %(n_samples)s, %(n_features)s, %(n_classes)s, %(n_train)s, %(n_test)s,
             %(class_distribution)s::jsonb, %(artifact_formats)s, %(created_at)s,
-            %(checksum)s, %(tags)s, %(ttl_seconds)s, %(expires_at)s,
-            %(last_accessed_at)s, %(access_count)s
+            %(checksum)s, %(dataset_name)s, %(dataset_version)s,
+            %(parent_dataset_id)s, %(description)s, %(created_by)s, %(tags)s,
+            %(ttl_seconds)s, %(expires_at)s, %(last_accessed_at)s, %(access_count)s
         ) ON CONFLICT (dataset_id) DO UPDATE SET
             generator = EXCLUDED.generator,
             generator_version = EXCLUDED.generator_version,
@@ -204,6 +223,11 @@ class PostgresDatasetStore(DatasetStore):
             class_distribution = EXCLUDED.class_distribution,
             artifact_formats = EXCLUDED.artifact_formats,
             checksum = EXCLUDED.checksum,
+            dataset_name = EXCLUDED.dataset_name,
+            dataset_version = EXCLUDED.dataset_version,
+            parent_dataset_id = EXCLUDED.parent_dataset_id,
+            description = EXCLUDED.description,
+            created_by = EXCLUDED.created_by,
             tags = EXCLUDED.tags,
             ttl_seconds = EXCLUDED.ttl_seconds,
             expires_at = EXCLUDED.expires_at,
@@ -337,6 +361,11 @@ class PostgresDatasetStore(DatasetStore):
             class_distribution = %(class_distribution)s::jsonb,
             artifact_formats = %(artifact_formats)s,
             checksum = %(checksum)s,
+            dataset_name = %(dataset_name)s,
+            dataset_version = %(dataset_version)s,
+            parent_dataset_id = %(parent_dataset_id)s,
+            description = %(description)s,
+            created_by = %(created_by)s,
             tags = %(tags)s,
             ttl_seconds = %(ttl_seconds)s,
             expires_at = %(expires_at)s,
