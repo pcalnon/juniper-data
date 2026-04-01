@@ -346,6 +346,24 @@ class TestPostgresDatasetStoreSave:
         assert params["description"] == "Versioned save"
         assert params["created_by"] == "integration-test"
 
+    def test_save_does_not_commit_metadata_when_artifact_replace_fails(
+        self, mock_psycopg2, tmp_path, sample_meta, sample_arrays
+    ) -> None:
+        """save rolls back DB transaction if artifact file cannot be finalized."""
+        _, mock_conn, _ = mock_psycopg2
+        from juniper_data.storage.postgres_store import PostgresDatasetStore
+
+        store = PostgresDatasetStore(auto_create_schema=False, artifact_path=tmp_path / "data")
+        artifact_path = tmp_path / "data" / "test-dataset.npz"
+        tmp_artifact_path = artifact_path.with_suffix(".npz.tmp")
+
+        with patch.object(Path, "replace", side_effect=OSError("rename failed")):
+            with pytest.raises(OSError, match="rename failed"):
+                store.save("test-dataset", sample_meta, sample_arrays)
+
+        assert mock_conn.commit.call_count == 0
+        assert not tmp_artifact_path.exists()
+
 
 @pytest.mark.unit
 @pytest.mark.storage
