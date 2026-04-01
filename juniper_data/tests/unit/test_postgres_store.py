@@ -27,6 +27,11 @@ def sample_meta() -> DatasetMeta:
         n_test=20,
         class_distribution={"0": 50, "1": 50},
         created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        dataset_name="experiment-a",
+        dataset_version=3,
+        parent_dataset_id="parent-ds",
+        description="Versioned dataset for regression tests",
+        created_by="test-user",
     )
 
 
@@ -143,6 +148,11 @@ class TestPostgresDatasetStoreMetaConversion:
         assert row["n_samples"] == 100
         assert isinstance(row["params"], str)
         assert json.loads(row["params"]) == {"seed": 42}
+        assert row["dataset_name"] == "experiment-a"
+        assert row["dataset_version"] == 3
+        assert row["parent_dataset_id"] == "parent-ds"
+        assert row["description"] == "Versioned dataset for regression tests"
+        assert row["created_by"] == "test-user"
 
     def test_meta_to_row_includes_versioning_fields(self, mock_psycopg2, tmp_path, sample_meta) -> None:
         """_meta_to_row includes versioning metadata fields."""
@@ -186,11 +196,11 @@ class TestPostgresDatasetStoreMetaConversion:
             "artifact_formats": ["npz"],
             "created_at": datetime(2026, 1, 1, tzinfo=UTC),
             "checksum": None,
-            "dataset_name": "exp-1",
-            "dataset_version": 2,
-            "parent_dataset_id": "exp-1-parent",
-            "description": "Row metadata description",
-            "created_by": "db-user",
+            "dataset_name": "experiment-a",
+            "dataset_version": 3,
+            "parent_dataset_id": "parent-ds",
+            "description": "Versioned dataset for regression tests",
+            "created_by": "test-user",
             "tags": ["test"],
             "ttl_seconds": None,
             "expires_at": None,
@@ -201,11 +211,11 @@ class TestPostgresDatasetStoreMetaConversion:
         meta = store._row_to_meta(row)
         assert meta.dataset_id == "test-dataset"
         assert meta.params == {"seed": 42}
-        assert meta.dataset_name == "exp-1"
-        assert meta.dataset_version == 2
-        assert meta.parent_dataset_id == "exp-1-parent"
-        assert meta.description == "Row metadata description"
-        assert meta.created_by == "db-user"
+        assert meta.dataset_name == "experiment-a"
+        assert meta.dataset_version == 3
+        assert meta.parent_dataset_id == "parent-ds"
+        assert meta.description == "Versioned dataset for regression tests"
+        assert meta.created_by == "test-user"
 
     def test_row_to_meta_with_string_params(self, mock_psycopg2, tmp_path) -> None:
         """_row_to_meta handles string params (JSON string from DB)."""
@@ -226,6 +236,11 @@ class TestPostgresDatasetStoreMetaConversion:
             "artifact_formats": ["npz"],
             "created_at": datetime(2026, 1, 1, tzinfo=UTC),
             "checksum": None,
+            "dataset_name": "experiment-a",
+            "dataset_version": 3,
+            "parent_dataset_id": "parent-ds",
+            "description": "Versioned dataset for regression tests",
+            "created_by": "test-user",
             "tags": None,
             "ttl_seconds": None,
             "expires_at": None,
@@ -237,6 +252,28 @@ class TestPostgresDatasetStoreMetaConversion:
         assert meta.params == {"seed": 42}
         assert meta.class_distribution == {"0": 50, "1": 50}
         assert meta.tags == []
+        assert meta.dataset_name == "experiment-a"
+        assert meta.dataset_version == 3
+        assert meta.parent_dataset_id == "parent-ds"
+        assert meta.description == "Versioned dataset for regression tests"
+        assert meta.created_by == "test-user"
+
+
+@pytest.mark.unit
+@pytest.mark.storage
+class TestPostgresDatasetStoreSchema:
+    """Schema tests for versioning support."""
+
+    def test_schema_sql_includes_versioning_columns(self) -> None:
+        """SCHEMA_SQL includes additive versioning columns for existing deployments."""
+        from juniper_data.storage.postgres_store import PostgresDatasetStore
+
+        schema = PostgresDatasetStore.SCHEMA_SQL
+        assert "ALTER TABLE datasets ADD COLUMN IF NOT EXISTS dataset_name TEXT;" in schema
+        assert "ALTER TABLE datasets ADD COLUMN IF NOT EXISTS dataset_version INTEGER;" in schema
+        assert "ALTER TABLE datasets ADD COLUMN IF NOT EXISTS parent_dataset_id VARCHAR(255);" in schema
+        assert "ALTER TABLE datasets ADD COLUMN IF NOT EXISTS description TEXT;" in schema
+        assert "ALTER TABLE datasets ADD COLUMN IF NOT EXISTS created_by VARCHAR(100);" in schema
 
     def test_row_to_meta_with_versioning_fields(self, mock_psycopg2, tmp_path) -> None:
         """_row_to_meta maps versioning metadata from DB rows."""
@@ -291,6 +328,11 @@ class TestPostgresDatasetStoreSave:
         store.save("test-dataset", sample_meta, sample_arrays)
 
         mock_cursor.execute.assert_called()
+        executed_sql, executed_params = mock_cursor.execute.call_args.args
+        assert "dataset_name" in executed_sql
+        assert "dataset_version" in executed_sql
+        assert executed_params["dataset_name"] == "experiment-a"
+        assert executed_params["dataset_version"] == 3
         artifact_path = tmp_path / "data" / "test-dataset.npz"
         assert artifact_path.exists()
 
@@ -386,6 +428,11 @@ class TestPostgresDatasetStoreGetMeta:
             "artifact_formats": ["npz"],
             "created_at": datetime(2026, 1, 1, tzinfo=UTC),
             "checksum": None,
+            "dataset_name": "experiment-a",
+            "dataset_version": 3,
+            "parent_dataset_id": "parent-ds",
+            "description": "Versioned dataset for regression tests",
+            "created_by": "test-user",
             "tags": [],
             "ttl_seconds": None,
             "expires_at": None,
@@ -397,6 +444,8 @@ class TestPostgresDatasetStoreGetMeta:
         result = store.get_meta("test-dataset")
         assert result is not None
         assert result.dataset_id == "test-dataset"
+        assert result.dataset_name == "experiment-a"
+        assert result.dataset_version == 3
 
     def test_get_meta_not_found(self, mock_psycopg2, tmp_path) -> None:
         """get_meta returns None when not found."""
@@ -582,6 +631,11 @@ class TestPostgresDatasetStoreListAllMetadata:
                 "artifact_formats": ["npz"],
                 "created_at": datetime(2026, 1, 1, tzinfo=UTC),
                 "checksum": None,
+                "dataset_name": "experiment-a",
+                "dataset_version": 3,
+                "parent_dataset_id": "parent-ds",
+                "description": "Versioned dataset for regression tests",
+                "created_by": "test-user",
                 "tags": [],
                 "ttl_seconds": None,
                 "expires_at": None,
@@ -593,6 +647,8 @@ class TestPostgresDatasetStoreListAllMetadata:
         result = store.list_all_metadata()
         assert len(result) == 1
         assert result[0].dataset_id == "ds-1"
+        assert result[0].dataset_name == "experiment-a"
+        assert result[0].dataset_version == 3
 
 
 @pytest.mark.unit

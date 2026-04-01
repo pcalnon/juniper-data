@@ -58,7 +58,7 @@ class PostgresDatasetStore(DatasetStore):
         access_count INTEGER NOT NULL DEFAULT 0
     );
 
-    ALTER TABLE datasets ADD COLUMN IF NOT EXISTS dataset_name VARCHAR(255);
+    ALTER TABLE datasets ADD COLUMN IF NOT EXISTS dataset_name TEXT;
     ALTER TABLE datasets ADD COLUMN IF NOT EXISTS dataset_version INTEGER;
     ALTER TABLE datasets ADD COLUMN IF NOT EXISTS parent_dataset_id VARCHAR(255);
     ALTER TABLE datasets ADD COLUMN IF NOT EXISTS description TEXT;
@@ -67,7 +67,7 @@ class PostgresDatasetStore(DatasetStore):
     CREATE INDEX IF NOT EXISTS idx_datasets_generator ON datasets(generator);
     CREATE INDEX IF NOT EXISTS idx_datasets_created_at ON datasets(created_at);
     CREATE INDEX IF NOT EXISTS idx_datasets_expires_at ON datasets(expires_at);
-    CREATE INDEX IF NOT EXISTS idx_datasets_dataset_name ON datasets(dataset_name);
+    CREATE INDEX IF NOT EXISTS idx_datasets_name ON datasets(dataset_name);
     """
 
     def __init__(
@@ -211,9 +211,9 @@ class PostgresDatasetStore(DatasetStore):
             %(dataset_id)s, %(generator)s, %(generator_version)s, %(params)s::jsonb,
             %(n_samples)s, %(n_features)s, %(n_classes)s, %(n_train)s, %(n_test)s,
             %(class_distribution)s::jsonb, %(artifact_formats)s, %(created_at)s,
-            %(checksum)s, %(dataset_name)s, %(dataset_version)s, %(parent_dataset_id)s,
-            %(description)s, %(created_by)s, %(tags)s, %(ttl_seconds)s,
-            %(expires_at)s, %(last_accessed_at)s, %(access_count)s
+            %(checksum)s, %(dataset_name)s, %(dataset_version)s,
+            %(parent_dataset_id)s, %(description)s, %(created_by)s, %(tags)s,
+            %(ttl_seconds)s, %(expires_at)s, %(last_accessed_at)s, %(access_count)s
         ) ON CONFLICT (dataset_id) DO UPDATE SET
             generator = EXCLUDED.generator,
             generator_version = EXCLUDED.generator_version,
