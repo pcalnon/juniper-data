@@ -154,6 +154,25 @@ class TestPostgresDatasetStoreMetaConversion:
         assert row["description"] == "Regression metadata"
         assert row["created_by"] == "qa-bot"
 
+    def test_meta_to_row_includes_versioning_fields(self, mock_psycopg2, tmp_path, sample_meta) -> None:
+        """_meta_to_row includes dataset versioning metadata fields."""
+        from juniper_data.storage.postgres_store import PostgresDatasetStore
+
+        store = PostgresDatasetStore(auto_create_schema=False, artifact_path=tmp_path / "data")
+        sample_meta.dataset_name = "experiment-a"
+        sample_meta.dataset_version = 3
+        sample_meta.parent_dataset_id = "parent-001"
+        sample_meta.description = "Versioned dataset"
+        sample_meta.created_by = "integration-test"
+
+        row = store._meta_to_row(sample_meta)
+
+        assert row["dataset_name"] == "experiment-a"
+        assert row["dataset_version"] == 3
+        assert row["parent_dataset_id"] == "parent-001"
+        assert row["description"] == "Versioned dataset"
+        assert row["created_by"] == "integration-test"
+
     def test_row_to_meta_with_dict_params(self, mock_psycopg2, tmp_path, sample_meta) -> None:
         """_row_to_meta handles dict params (already parsed JSON)."""
         from juniper_data.storage.postgres_store import PostgresDatasetStore
@@ -173,11 +192,11 @@ class TestPostgresDatasetStoreMetaConversion:
             "artifact_formats": ["npz"],
             "created_at": datetime(2026, 1, 1, tzinfo=UTC),
             "checksum": None,
-            "dataset_name": "experiment-a",
-            "dataset_version": 7,
-            "parent_dataset_id": "parent-dataset",
-            "description": "Regression metadata",
-            "created_by": "qa-bot",
+            "dataset_name": "exp-1",
+            "dataset_version": 2,
+            "parent_dataset_id": "exp-1-parent",
+            "description": "Row metadata description",
+            "created_by": "db-user",
             "tags": ["test"],
             "ttl_seconds": None,
             "expires_at": None,
@@ -188,11 +207,11 @@ class TestPostgresDatasetStoreMetaConversion:
         meta = store._row_to_meta(row)
         assert meta.dataset_id == "test-dataset"
         assert meta.params == {"seed": 42}
-        assert meta.dataset_name == "experiment-a"
-        assert meta.dataset_version == 7
-        assert meta.parent_dataset_id == "parent-dataset"
-        assert meta.description == "Regression metadata"
-        assert meta.created_by == "qa-bot"
+        assert meta.dataset_name == "exp-1"
+        assert meta.dataset_version == 2
+        assert meta.parent_dataset_id == "exp-1-parent"
+        assert meta.description == "Row metadata description"
+        assert meta.created_by == "db-user"
 
     def test_row_to_meta_with_string_params(self, mock_psycopg2, tmp_path) -> None:
         """_row_to_meta handles string params (JSON string from DB)."""
