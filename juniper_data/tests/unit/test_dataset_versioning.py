@@ -4,6 +4,7 @@ Tests cover versioning fields on models, auto-increment logic,
 storage versioning methods, filter extensions, and API endpoints.
 """
 
+import threading
 from datetime import UTC, datetime
 
 import numpy as np
@@ -458,3 +459,56 @@ class TestVersioningAPIEndpoints:
         assert versions_data["total"] == 2
         version_nums = [v["dataset_version"] for v in versions_data["versions"]]
         assert version_nums == [1, 2]
+
+
+# ---------------------------------------------------------------------------
+# Concurrency regression tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestVersionConcurrency:
+    """Regression tests for atomic version allocation (PR #15 review)."""
+
+    def test_save_versioned_no_duplicate_versions(self, memory_store: InMemoryDatasetStore, sample_arrays: dict[str, np.ndarray]) -> None:
+        """Concurrent save_versioned() calls must produce unique version numbers."""
+        n_threads = 10
+        results: list[int | None] = [None] * n_threads
+        barrier = threading.Barrier(n_threads)
+
+        def save_thread(idx: int) -> None:
+            meta = _make_meta(f"ds-concurrent-{idx}", dataset_name="race-test")
+            barrier.wait()  # all threads start together
+            memory_store.save_versioned(f"ds-concurrent-{idx}", meta, sample_arrays)
+            results[idx] = meta.dataset_version
+
+        threads = [threading.Thread(target=save_thread, args=(i,)) for i in range(n_threads)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assigned_versions = sorted(results)
+        assert assigned_versions == list(range(1, n_threads + 1))
+
+    def test_save_versioned_sets_version_on_meta(self, memory_store: InMemoryDatasetStore, sample_arrays: dict[str, np.ndarray]) -> None:
+        """save_versioned() sets dataset_version in-place on meta."""
+        meta = _make_meta("ds-sv1", dataset_name="sv-test")
+        assert meta.dataset_version is None
+        memory_store.save_versioned("ds-sv1", meta, sample_arrays)
+        assert meta.dataset_version == 1
+
+    def test_save_versioned_skips_lock_when_version_already_set(self, memory_store: InMemoryDatasetStore, sample_arrays: dict[str, np.ndarray]) -> None:
+        """save_versioned() delegates directly to save() when version is pre-set."""
+        meta = _make_meta("ds-preset", dataset_name="preset-test", dataset_version=42)
+        memory_store.save_versioned("ds-preset", meta, sample_arrays)
+        assert meta.dataset_version == 42
+        stored = memory_store.get_meta("ds-preset")
+        assert stored is not None
+        assert stored.dataset_version == 42
+
+    def test_save_versioned_no_name_no_version(self, memory_store: InMemoryDatasetStore, sample_arrays: dict[str, np.ndarray]) -> None:
+        """save_versioned() with no dataset_name leaves version as None."""
+        meta = _make_meta("ds-anon")
+        memory_store.save_versioned("ds-anon", meta, sample_arrays)
+        assert meta.dataset_version is None
