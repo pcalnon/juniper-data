@@ -1,10 +1,10 @@
 # AGENTS.md - Juniper Data Project Guide
 
 **Project**: Juniper Data - Dataset Generation Service
-**Version**: 0.4.2
+**Version**: 0.5.0
 **License**: MIT License
 **Author**: Paul Calnon
-**Last Updated**: 2026-02-06
+**Last Updated**: 2026-04-02
 
 ---
 
@@ -31,6 +31,9 @@ pytest juniper_data/tests/unit/
 # Run integration tests only
 pytest juniper_data/tests/integration/
 
+# Run performance benchmarks
+pytest juniper_data/tests/performance/ --benchmark-enable -v
+
 # Run tests with coverage (uses source_pkgs from pyproject.toml)
 pytest juniper_data/tests/ --cov=juniper_data --cov-report=html --cov-report=term-missing --cov-fail-under=80
 
@@ -52,7 +55,6 @@ pre-commit install                        # Install git hooks (one-time)
 pre-commit run --all-files                # Run all hooks on all files
 
 # Security scanning
-pip install bandit pip-audit              # Install security tools
 bandit -r juniper_data                    # Run Bandit SAST scan
 pip-audit                                 # Check for dependency vulnerabilities
 
@@ -60,7 +62,7 @@ pip-audit                                 # Check for dependency vulnerabilities
 python -m juniper_data                    # Use module entry point on port 8100
 
 # Start API server (production)
-uvicorn juniper_data.api.app:app --host 0.0.0.0 --port 8100
+python -m juniper_data --host 0.0.0.0 --port 8100
 ```
 
 ---
@@ -71,48 +73,123 @@ uvicorn juniper_data.api.app:app --host 0.0.0.0 --port 8100
 
 ```bash
 juniper-data/
-├── juniper_data/              # Main package
-│   ├── __init__.py            # Package init with version (0.4.2)
-│   ├── __main__.py            # CLI entry point (python -m juniper_data)
-│   ├── core/                  # Core functionality
-│   ├── generators/            # Dataset generators (8 types)
-│   │   ├── spiral/            # Multi-spiral classification
-│   │   ├── xor/               # XOR classification
-│   │   ├── gaussian/          # Mixture of Gaussians
-│   │   ├── circles/           # Concentric circles
-│   │   ├── checkerboard/      # 2D checkerboard pattern
-│   │   ├── csv_import/        # CSV/JSON file import
-│   │   ├── mnist/             # MNIST / Fashion-MNIST
-│   │   └── arc_agi/           # ARC-AGI visual reasoning
-│   ├── storage/               # Dataset persistence
-│   ├── api/                   # FastAPI application
-│   │   ├── app.py             # Factory-pattern app creation
-│   │   ├── settings.py        # Pydantic BaseSettings (JUNIPER_DATA_ prefix)
-│   │   └── routes/            # API route handlers
-│   └── tests/                 # Test suite
-│       ├── unit/              # Unit tests
-│       └── integration/       # Integration tests
-├── pyproject.toml             # Project configuration
-├── README.md                  # Project documentation
-└── AGENTS.md                  # This file
+├── juniper_data/                   # Main Python package
+│   ├── __init__.py                 # Package init, version, ARC-AGI env helpers
+│   ├── __main__.py                 # CLI entry point (python -m juniper_data)
+│   ├── core/                       # Core domain logic
+│   │   ├── models.py               # Pydantic models (DatasetMeta, request/response types)
+│   │   ├── dataset_id.py           # Deterministic SHA-256 dataset ID generation
+│   │   ├── split.py                # Train/test data splitting
+│   │   ├── artifacts.py            # NPZ artifact handling and checksums
+│   │   └── secrets.py              # Docker secrets management
+│   ├── generators/                 # Dataset generators (8 types)
+│   │   ├── spiral/                 # Multi-spiral classification (configurable arms)
+│   │   ├── xor/                    # XOR classification
+│   │   ├── gaussian/               # Mixture of Gaussians
+│   │   ├── circles/                # Concentric circles
+│   │   ├── checkerboard/           # 2D checkerboard pattern
+│   │   ├── csv_import/             # CSV/JSON file import
+│   │   ├── mnist/                  # MNIST / Fashion-MNIST (HuggingFace)
+│   │   └── arc_agi/                # ARC-AGI visual reasoning (optional)
+│   ├── storage/                    # Dataset persistence (7 backends)
+│   │   ├── base.py                 # Abstract DatasetStore interface
+│   │   ├── local_fs.py             # Local filesystem (default)
+│   │   ├── memory.py               # In-memory (testing)
+│   │   ├── cached.py               # Composable caching wrapper
+│   │   ├── redis_store.py          # Redis backend
+│   │   ├── postgres_store.py       # PostgreSQL backend
+│   │   ├── hf_store.py             # Hugging Face Hub integration
+│   │   └── kaggle_store.py         # Kaggle dataset integration
+│   ├── api/                        # FastAPI application
+│   │   ├── app.py                  # Factory-pattern app creation with lifespan
+│   │   ├── settings.py             # Pydantic BaseSettings (JUNIPER_DATA_ prefix)
+│   │   ├── middleware.py           # Security headers, body limits, rate limiting
+│   │   ├── security.py             # API key auth (APIKeyAuth) and RateLimiter
+│   │   ├── observability.py        # Prometheus metrics, JSON logging, Sentry, request IDs
+│   │   ├── models/                 # Response models
+│   │   │   └── health.py           # DependencyStatus, ReadinessResponse
+│   │   └── routes/                 # API route handlers
+│   │       ├── health.py           # /v1/health, /v1/health/live, /v1/health/ready
+│   │       ├── generators.py       # /v1/generators, /v1/generators/{name}/schema
+│   │       └── datasets.py         # /v1/datasets (CRUD, batch, versioning, lifecycle)
+│   └── tests/                      # Test suite (835+ tests)
+│       ├── conftest.py             # Shared fixtures
+│       ├── unit/                   # Unit tests (30+ files)
+│       ├── integration/            # Integration tests (5 files)
+│       ├── performance/            # Benchmarks via pytest-benchmark (41 tests)
+│       ├── api/                    # API-specific tests
+│       └── fixtures/               # Golden dataset fixtures (NPZ + metadata)
+├── docs/                           # User and developer documentation
+│   ├── QUICK_START.md              # 5-minute setup guide
+│   ├── USER_MANUAL.md              # Full user documentation
+│   ├── REFERENCE.md                # API, config, and command reference
+│   ├── DEVELOPER_CHEATSHEET.md     # Quick reference for developers
+│   ├── ENVIRONMENT_SETUP.md        # Environment configuration guide
+│   ├── DOCUMENTATION_OVERVIEW.md   # Documentation navigation guide
+│   ├── api/                        # API documentation
+│   ├── testing/                    # Testing documentation
+│   └── ci_cd/                      # CI/CD documentation
+├── scripts/                        # CI and coverage scripts
+│   ├── check_module_coverage.py    # Per-module coverage enforcement (85% min)
+│   ├── check_doc_links.py          # Internal markdown link validation
+│   └── generate_dep_docs.sh        # Dependency documentation generator
+├── notes/                          # Development notes, procedures, roadmaps
+├── conf/                           # Shell and logging configuration files
+├── util/                           # Bash utility scripts (40+ scripts)
+├── .github/                        # GitHub Actions workflows and config
+│   ├── workflows/                  # CI, CodeQL, security, publish, lockfile
+│   ├── CODEOWNERS                  # Code ownership rules
+│   └── dependabot.yml              # Automated dependency updates
+├── Dockerfile                      # Multi-stage production build (Python 3.14-slim)
+├── pyproject.toml                  # Project configuration (authoritative)
+├── .pre-commit-config.yaml         # Pre-commit hooks (ruff, mypy, bandit, yamllint, shellcheck)
+├── .env.example                    # Environment variables template
+├── requirements.lock               # Pinned dependency versions for Docker builds
+├── CHANGELOG.md                    # Version history (0.1.0 to 0.5.0)
+├── README.md                       # Project overview and PyPI landing page
+├── AGENTS.md                       # This file
+└── CLAUDE.md                       # Symlink to AGENTS.md
 ```
 
 ### Component Overview
 
-| Component            | Purpose                                 |
-| -------------------- | --------------------------------------- |
-| `core/`              | Base classes, exceptions, configuration |
-| `generators/`        | Dataset generation implementations      |
-| `generators/spiral/` | Two-spiral classification dataset       |
-| `storage/`           | Dataset persistence and retrieval       |
-| `api/`               | FastAPI REST service                    |
-| `api/routes/`        | API endpoint handlers                   |
+| Component | Purpose |
+|-----------|---------|
+| `core/models.py` | Pydantic models: DatasetMeta, CreateDatasetRequest/Response, batch models, filters, stats |
+| `core/dataset_id.py` | Deterministic SHA-256 based dataset ID generation |
+| `core/split.py` | Shuffle and split data into train/test sets |
+| `core/artifacts.py` | NPZ save/load, array-to-bytes conversion, SHA-256 checksums |
+| `core/secrets.py` | Docker secrets and environment variable secret loading |
+| `generators/` | 8 dataset generator implementations (each with `generator.py` + `params.py`) |
+| `generators/spiral/` | Multi-spiral classification dataset (configurable arms, noise, rotation) |
+| `generators/xor/` | XOR 4-quadrant binary classification |
+| `generators/gaussian/` | Mixture-of-Gaussians multivariate classification |
+| `generators/circles/` | Concentric circles binary classification |
+| `generators/checkerboard/` | 2D grid pattern with alternating classes |
+| `generators/csv_import/` | Import datasets from CSV/JSON files |
+| `generators/mnist/` | MNIST and Fashion-MNIST via HuggingFace Hub |
+| `generators/arc_agi/` | ARC-AGI visual reasoning tasks (optional dependency) |
+| `storage/base.py` | Abstract `DatasetStore` interface with versioning and lifecycle |
+| `storage/local_fs.py` | Local filesystem storage (atomic writes, compressed NPZ) |
+| `storage/memory.py` | In-memory storage for testing |
+| `storage/cached.py` | Composable caching wrapper (read-through, write-through) |
+| `storage/redis_store.py` | Redis storage backend (optional) |
+| `storage/postgres_store.py` | PostgreSQL storage with JSONB metadata (optional) |
+| `storage/hf_store.py` | Hugging Face Hub read-only integration (optional) |
+| `storage/kaggle_store.py` | Kaggle dataset download integration (optional) |
+| `api/app.py` | FastAPI application factory with lifespan management |
+| `api/settings.py` | Pydantic BaseSettings with `JUNIPER_DATA_` prefix |
+| `api/middleware.py` | SecurityHeadersMiddleware, RequestBodyLimitMiddleware |
+| `api/security.py` | APIKeyAuth authentication, RateLimiter |
+| `api/observability.py` | Prometheus metrics, JSON logging, Sentry, RequestIdMiddleware |
+| `api/models/health.py` | DependencyStatus, ReadinessResponse models |
+| `api/routes/health.py` | Health, liveness, and readiness endpoints |
+| `api/routes/generators.py` | Generator listing and schema endpoints |
+| `api/routes/datasets.py` | Dataset CRUD, batch, versioning, lifecycle, filtering |
 
 ---
 
 ## Code Style Conventions
-
-Following JuniperCascor patterns:
 
 ### Naming Conventions
 
@@ -123,7 +200,7 @@ Following JuniperCascor patterns:
 
 **Classes**:
 
-- PascalCase: `SpiralGenerator`, `DatasetStorage`
+- PascalCase: `SpiralGenerator`, `DatasetStore`, `LocalFSDatasetStore`
 
 **Methods/Functions**:
 
@@ -139,10 +216,12 @@ Following JuniperCascor patterns:
 
 ### Code Formatting
 
-- Line length: 120 characters
-- Ruff formatter (replaces black)
-- Ruff isort rules for imports
+- Line length: 320 characters (configured in `[tool.ruff] line-length` in pyproject.toml)
+- Ruff formatter (replaces black) with `ruff>=0.9.0`
+- Ruff isort rules for imports (profile: known-first-party = `juniper_data`)
+- Quote style: double quotes, LF line endings
 - Type hints required for all public methods
+- Max cyclomatic complexity: 15
 
 ### Documentation
 
@@ -156,26 +235,55 @@ Following JuniperCascor patterns:
 
 ### Core Dependencies
 
-| Library    | Purpose                      |
-| ---------- | ---------------------------- |
-| `numpy`    | Numerical computations       |
-| `pydantic` | Data validation and settings |
+| Library | Purpose |
+|---------|---------|
+| `numpy>=1.24.0` | Numerical computations, array operations |
+| `pydantic>=2.0.0` | Data validation, model definitions |
+| `python-dotenv>=1.0.0` | Environment variable loading from `.env` files |
 
-### API Dependencies (Optional)
+### API Dependencies (Optional: `pip install -e ".[api]"`)
 
-| Library   | Purpose            |
-| --------- | ------------------ |
-| `fastapi` | REST API framework |
-| `uvicorn` | ASGI server        |
+| Library | Purpose |
+|---------|---------|
+| `fastapi>=0.100.0` | REST API framework |
+| `uvicorn[standard]>=0.23.0` | ASGI server |
+| `pydantic-settings>=2.0.0` | Settings management with env var prefix support |
 
-### Development Dependencies
+### ARC-AGI Dependencies (Optional: `pip install -e ".[arc-agi]"`)
 
-| Library      | Purpose                                  |
-| ------------ | ---------------------------------------- |
-| `pytest`     | Testing framework                        |
-| `pytest-cov` | Coverage reporting                       |
-| `ruff`       | Linting and formatting (replaces black, isort, flake8, pyupgrade) |
-| `mypy`       | Static type checking                     |
+| Library | Purpose |
+|---------|---------|
+| `arc-agi>=0.9.0` | ARC-AGI visual reasoning dataset support |
+
+### Test Dependencies (Optional: `pip install -e ".[test]"`)
+
+| Library | Purpose |
+|---------|---------|
+| `pytest>=7.0.0` | Testing framework |
+| `pytest-cov>=4.0.0` | Coverage reporting |
+| `pytest-timeout>=2.2.0` | Test timeout enforcement (60s default) |
+| `pytest-asyncio>=0.21.0` | Async test support |
+| `pytest-benchmark>=4.0.0` | Performance benchmarking |
+| `httpx>=0.24.0` | HTTP test client for FastAPI |
+| `coverage[toml]>=7.0.0` | Coverage with pyproject.toml config |
+| `juniper-data-client>=0.3.0` | Client library for integration tests |
+
+### Observability Dependencies (Optional: `pip install -e ".[observability]"`)
+
+| Library | Purpose |
+|---------|---------|
+| `prometheus-client>=0.20.0` | Prometheus metrics exposition |
+| `sentry-sdk[fastapi]>=2.0.0` | Error tracking and monitoring |
+
+### Development Dependencies (Optional: `pip install -e ".[dev]"`)
+
+| Library | Purpose |
+|---------|---------|
+| `ruff>=0.9.0` | Linting and formatting (replaces black, isort, flake8, pyupgrade) |
+| `mypy>=1.0.0` | Static type checking |
+| `bandit[sarif]>=1.9.4` | Security static analysis (SAST) |
+| `pip-audit>=2.7.0` | Dependency vulnerability scanning |
+| `pre-commit>=3.0.0` | Git hook management |
 
 ---
 
@@ -183,14 +291,20 @@ Following JuniperCascor patterns:
 
 ### Test Organization
 
-- `tests/unit/` - Unit tests for individual components
-- `tests/integration/` - Integration tests for full workflows
+- `tests/unit/` -- Unit tests for individual components (30+ files)
+- `tests/integration/` -- Integration tests for full workflows (5 files)
+- `tests/performance/` -- Generator and storage benchmarks via pytest-benchmark (41 tests)
+- `tests/api/` -- API-specific tests (batch operations)
+- `tests/fixtures/` -- Golden dataset fixtures (NPZ archives + metadata JSON)
+- `conftest.py` -- Shared fixtures (default/custom SpiralParams, generated datasets, sample arrays)
 
 ### Test Markers
 
 ```python
 @pytest.mark.unit          # Unit tests
 @pytest.mark.integration   # Integration tests
+@pytest.mark.performance   # Performance and benchmarking tests
+@pytest.mark.slow          # Tests that take a long time to run
 @pytest.mark.spiral        # Spiral generator tests
 @pytest.mark.api           # API endpoint tests
 @pytest.mark.generators    # Generator tests
@@ -203,6 +317,31 @@ Following JuniperCascor patterns:
 - Classes: `Test<ComponentName>`
 - Methods: `test_<behavior_under_test>`
 
+### Performance Testing
+
+Performance benchmarks use pytest-benchmark and are disabled by default (`--benchmark-disable` in addopts).
+
+```bash
+# Default: benchmarks run as quick smoke tests (no timing)
+pytest juniper_data/tests/performance/
+
+# Enable timing
+pytest juniper_data/tests/performance/ --benchmark-enable -v
+
+# Save baseline for regression tracking
+pytest juniper_data/tests/performance/ --benchmark-enable --benchmark-autosave
+
+# Compare against saved baseline
+pytest juniper_data/tests/performance/ --benchmark-enable --benchmark-compare
+```
+
+### Coverage
+
+- Aggregate minimum: 80% (enforced in `pyproject.toml` and CI)
+- Per-module minimum: 85% (enforced by `scripts/check_module_coverage.py` in CI)
+- Source: `juniper_data` package (tests excluded from metrics)
+- Branch coverage enabled
+
 ---
 
 ## API Design
@@ -210,30 +349,285 @@ Following JuniperCascor patterns:
 ### REST Conventions
 
 - Use nouns for resources: `/datasets`, `/generators`
-- Use HTTP methods appropriately: GET, POST, PUT, DELETE
-- Return proper status codes
-- Include pagination for list endpoints
+- All endpoints prefixed with `/v1/`
+- Use HTTP methods appropriately: GET, POST, PATCH, DELETE
+- Return proper status codes (200, 201, 204, 400, 404, 413, 429, 500)
+- Include pagination for list endpoints (limit, offset)
 
-### Response Format
+### Endpoint Catalog
+
+**Health Endpoints**:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/health` | Health check (status + version) |
+| GET | `/v1/health/live` | Liveness probe |
+| GET | `/v1/health/ready` | Readiness probe with dependency status |
+
+**Generator Endpoints**:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/generators` | List all generators with info (name, version, description, schema) |
+| GET | `/v1/generators/{name}/schema` | Get JSON schema for generator parameters |
+
+**Dataset Endpoints**:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/v1/datasets` | Create dataset (returns 201) |
+| GET | `/v1/datasets` | List dataset IDs (paginated) |
+| GET | `/v1/datasets/{dataset_id}` | Get dataset metadata |
+| DELETE | `/v1/datasets/{dataset_id}` | Delete dataset (returns 204) |
+| GET | `/v1/datasets/{dataset_id}/artifact` | Download NPZ artifact |
+| GET | `/v1/datasets/{dataset_id}/preview` | Preview first N samples as JSON |
+| GET | `/v1/datasets/filter` | Advanced filtering (generator, tags, dates, sample count) |
+| GET | `/v1/datasets/stats` | Aggregate statistics |
+| GET | `/v1/datasets/versions` | List all versions of a named dataset |
+| GET | `/v1/datasets/latest` | Get latest version of a named dataset |
+| PATCH | `/v1/datasets/{dataset_id}/tags` | Update tags on a dataset |
+| POST | `/v1/datasets/cleanup-expired` | Delete all expired datasets |
+
+**Batch Endpoints**:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/v1/datasets/batch-create` | Create multiple datasets (max 50, returns 201) |
+| POST | `/v1/datasets/batch-delete` | Delete multiple datasets (max 100) |
+| POST | `/v1/datasets/batch-export` | Export multiple datasets as ZIP (max 50) |
+| PATCH | `/v1/datasets/batch-tags` | Add/remove tags from multiple datasets |
+
+### Middleware Stack
+
+Middleware executes in LIFO order (last added = first to execute):
+
+| Order | Middleware | Purpose |
+|-------|-----------|---------|
+| 1 | `RequestIdMiddleware` | Inject/propagate X-Request-ID header |
+| 2 | `PrometheusMiddleware` | HTTP request metrics (if enabled) |
+| 3 | `SecurityMiddleware` | API key auth + rate limiting |
+| 4 | `SecurityHeadersMiddleware` | Security response headers (CSP, HSTS, etc.) |
+| 5 | `RequestBodyLimitMiddleware` | Reject bodies > 10 MB |
+| 6 | `CORSMiddleware` | Cross-origin resource sharing (if configured) |
+
+### Response Models
+
+Responses use typed Pydantic models (defined in `core/models.py` and `api/models/`):
+
+- `CreateDatasetResponse` -- dataset_id, generator, meta, artifact_url
+- `DatasetListResponse` -- datasets (list of DatasetMeta), total, limit, offset
+- `DatasetVersionListResponse` -- dataset_name, versions, total, latest_version
+- `BatchCreateResponse` -- results, total_created, total_failed
+- `BatchDeleteResponse` -- deleted, not_found, total_deleted
+- `DatasetStats` -- total_datasets, total_samples, by_generator, by_tag
+- `ReadinessResponse` -- status, version, service, timestamp, dependencies
+
+---
+
+## Storage Backends
+
+JuniperData supports 7 storage backend implementations with a composable architecture.
+
+### Abstract Interface
+
+`DatasetStore` (in `storage/base.py`) defines the standard interface:
+
+- **Core**: `save()`, `get_meta()`, `get_artifact_bytes()`, `exists()`, `delete()`, `list_datasets()`
+- **Versioning**: `list_versions()`, `get_latest_version()`, `next_version_number()`, `save_versioned()`
+- **Lifecycle**: `record_access()`, `is_expired()`, `delete_expired()`, `filter_datasets()`
+- **Batch**: `batch_delete()`, `get_stats()`
+
+### Implementations
+
+| Backend | Module | Use Case | Dependencies |
+|---------|--------|----------|--------------|
+| **LocalFS** | `storage/local_fs.py` | Default production storage | None (stdlib) |
+| **InMemory** | `storage/memory.py` | Testing and development | None (stdlib) |
+| **Cached** | `storage/cached.py` | Composable cache wrapper | None (wraps another store) |
+| **Redis** | `storage/redis_store.py` | Distributed caching | `redis` |
+| **PostgreSQL** | `storage/postgres_store.py` | Persistent metadata with JSONB | `psycopg2` |
+| **HuggingFace** | `storage/hf_store.py` | Read-only HF Hub integration | `datasets` |
+| **Kaggle** | `storage/kaggle_store.py` | Kaggle dataset downloads | `kaggle` |
+
+### Composable Caching
+
+`CachedDatasetStore` wraps any primary store with a cache store:
 
 ```python
-{
-    "status": "success",
-    "data": { ... },
-    "meta": {
-        "timestamp": "...",
-        "version": "0.1.0"
-    }
-}
+primary = LocalFSDatasetStore(path="./data")
+cache = InMemoryDatasetStore()
+store = CachedDatasetStore(primary=primary, cache=cache)
 ```
 
 ---
 
-## Security Notes
+## Security
 
-- No secrets or API keys in codebase
-- Validate all input data with Pydantic
-- Sensitive files excluded via `.gitignore`
+### API Key Authentication
+
+- Enabled when `JUNIPER_DATA_API_KEYS` is set (comma-separated list)
+- Validated via `X-API-Key` request header
+- Docker secrets supported via `JUNIPER_DATA_API_KEYS_FILE`
+- Exempt paths: `/v1/health*`, `/docs`, `/openapi.json`, `/redoc`
+
+### Rate Limiting
+
+- Fixed-window per-minute rate limiting (thread-safe)
+- Key: API key (authenticated) or client IP (unauthenticated)
+- Configurable via `JUNIPER_DATA_RATE_LIMIT_REQUESTS_PER_MINUTE` (default: 60)
+- Response headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
+- Returns 429 Too Many Requests when exceeded
+
+### Security Headers
+
+`SecurityHeadersMiddleware` adds to all responses:
+
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Permissions-Policy: camera=(), microphone=(), geolocation=()`
+- `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`
+- `Strict-Transport-Security` (only when behind HTTPS proxy)
+
+### Request Body Limits
+
+`RequestBodyLimitMiddleware` rejects request bodies exceeding 10 MB (returns 413 Payload Too Large).
+
+### CORS
+
+- Disabled by default (empty `cors_origins`)
+- Configured via `JUNIPER_DATA_CORS_ORIGINS` (comma-separated)
+- Credentials support when origins are explicitly listed (not `*`)
+
+### API Documentation
+
+- `/docs` (Swagger) and `/redoc` endpoints available in development
+- Conditional: can be disabled via configuration for production deployments
+
+### Security Scanning (CI)
+
+- **Bandit**: SAST scanning with SARIF output
+- **pip-audit**: Dependency vulnerability checking
+- **gitleaks**: Secret detection in git history
+- **CodeQL**: GitHub code scanning
+
+### Best Practices
+
+- No secrets or API keys committed to codebase
+- All input validated via Pydantic models
+- Sensitive files excluded via `.gitignore` and `.gitleaks.toml`
+- Docker secrets preferred over environment variables for credentials
+
+---
+
+## Observability
+
+### Prometheus Metrics
+
+Enabled via `JUNIPER_DATA_METRICS_ENABLED=true`. Exposed at `/metrics`.
+
+| Metric | Type | Labels |
+|--------|------|--------|
+| `juniper_data_http_requests_total` | Counter | method, endpoint, status |
+| `juniper_data_http_request_duration_seconds` | Histogram | method, endpoint |
+| `juniper_data_dataset_generations_total` | Counter | generator, status |
+| `juniper_data_dataset_generation_duration_seconds` | Histogram | generator |
+| `juniper_data_datasets_cached` | Gauge | -- |
+| `juniper_data_build` | Info | version, python_version |
+
+### Structured Logging
+
+- `JuniperJsonFormatter` outputs structured JSON (timestamp, level, logger, message, service, request_id)
+- Configurable via `JUNIPER_DATA_LOG_FORMAT` (`text` or `json`)
+- Log levels: TRACE, VERBOSE, DEBUG, INFO, WARNING, ERROR, CRITICAL, FATAL
+
+### Sentry Integration
+
+- Optional via `JUNIPER_DATA_SENTRY_DSN`
+- Automatic release tagging, log capture, and trace collection
+
+### Request ID Propagation
+
+- `RequestIdMiddleware` injects `X-Request-ID` (UUID if not provided by caller)
+- Propagated via `ContextVar` for correlation across log entries
+
+---
+
+## Configuration
+
+All configuration uses the `JUNIPER_DATA_` environment variable prefix (via Pydantic BaseSettings).
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `JUNIPER_DATA_HOST` | str | `127.0.0.1` | API server bind host |
+| `JUNIPER_DATA_PORT` | int | `8100` | API server bind port |
+| `JUNIPER_DATA_STORAGE_PATH` | str | `./data/datasets` | Local storage directory |
+| `JUNIPER_DATA_LOG_LEVEL` | str | `INFO` | Logging level |
+| `JUNIPER_DATA_LOG_FORMAT` | str | `text` | Log format (`text` or `json`) |
+| `JUNIPER_DATA_CORS_ORIGINS` | list | `[]` | Allowed CORS origins |
+| `JUNIPER_DATA_API_KEYS` | str | `None` | Comma-separated API keys (disabled if unset) |
+| `JUNIPER_DATA_API_KEYS_FILE` | str | `None` | Docker secrets file path for API keys |
+| `JUNIPER_DATA_RATE_LIMIT_ENABLED` | bool | `true` | Enable rate limiting |
+| `JUNIPER_DATA_RATE_LIMIT_REQUESTS_PER_MINUTE` | int | `60` | Rate limit per client per minute |
+| `JUNIPER_DATA_SENTRY_DSN` | str | `None` | Sentry DSN for error tracking |
+| `JUNIPER_DATA_METRICS_ENABLED` | bool | `false` | Enable Prometheus metrics at `/metrics` |
+
+Reference: `.env.example` provides a template with all variables.
+
+---
+
+## CI/CD Pipeline
+
+### GitHub Actions Workflows
+
+| Workflow | File | Triggers | Purpose |
+|----------|------|----------|---------|
+| **CI** | `ci.yml` | Push, PR, daily schedule | Pre-commit, tests (3.12-3.14), coverage, security, type checking, docs |
+| **CodeQL** | `codeql.yml` | Push, PR, schedule | GitHub code scanning |
+| **Security Scan** | `security-scan.yml` | Push, PR | Gitleaks + Bandit SARIF |
+| **Publish** | `publish.yml` | GitHub release | TestPyPI -> PyPI (Trusted Publishing/OIDC) |
+| **Lockfile Update** | `lockfile-update.yml` | Schedule, manual | Update `requirements.lock` |
+
+### Pre-Commit Hooks
+
+Configured in `.pre-commit-config.yaml`:
+
+| Hook | Purpose |
+|------|---------|
+| Ruff (`ruff check --fix`) | Linting with auto-fix |
+| Ruff (`ruff format`) | Code formatting |
+| MyPy | Type checking |
+| Bandit | Security scanning |
+| yamllint | YAML validation |
+| shellcheck | Shell script analysis |
+| SOPS check | Block unencrypted `.env` files |
+| General checks | Trailing whitespace, merge conflicts, YAML/TOML/JSON syntax |
+
+### Coverage Gates
+
+- **Aggregate**: 80% minimum (pyproject.toml `fail_under`)
+- **Per-module**: 85% minimum (enforced by `scripts/check_module_coverage.py` in CI)
+- **Branch coverage**: Enabled
+
+---
+
+## Docker
+
+### Dockerfile
+
+- **Build**: Multi-stage (builder -> runtime) using `python:3.14-slim`
+- **User**: Non-root `juniper:juniper` (UID 1000, GID 1000)
+- **Port**: 8100 (exposed)
+- **Health Check**: `curl -f http://localhost:8100/v1/health` (30s interval, 10s timeout, 3 retries)
+- **Entry Point**: `python -m juniper_data`
+
+### Environment Variables
+
+All `JUNIPER_DATA_*` variables (see [Configuration](#configuration)) are supported in the container.
+
+### Docker Compose
+
+Full-stack orchestration is in the `juniper-deploy` repository. JuniperData runs as a service alongside JuniperCascor and JuniperCanopy.
 
 ---
 
@@ -244,21 +638,37 @@ Following JuniperCascor patterns:
 1. Create feature in appropriate module
 2. Add Pydantic models for validation
 3. Add tests in `tests/unit/` or `tests/integration/`
-4. Update documentation
-5. Run tests and type checking
+4. Run security scanning (`bandit -r juniper_data`)
+5. Run pre-commit hooks (`pre-commit run --all-files`)
+6. Update documentation
+7. Run full test suite with coverage
 
 ### Adding New Generators
 
-1. Create new subpackage under `generators/`
-2. Implement generator class following `SpiralGenerator` pattern
-3. Add API routes in `api/routes/`
-4. Add comprehensive tests
+1. Create new subpackage under `generators/` with `__init__.py`, `params.py`, and `generator.py`
+2. Implement `params.py` with a Pydantic `GeneratorParams` model
+3. Implement `generator.py` with a `@staticmethod generate(params)` method returning `dict[str, np.ndarray]`
+4. Register generator in `GENERATOR_REGISTRY` in `api/routes/generators.py`
+5. Add unit tests in `tests/unit/test_<generator>_generator.py`
+6. Add integration test coverage
+7. Run full test suite
 
 ---
 
 ## Integration Context
 
-JuniperData is part of the Juniper ecosystem alongside **JuniperCascor** (CasCor neural network backend) and **JuniperCanopy** (web frontend dashboard).
+JuniperData is part of the Juniper ecosystem alongside **JuniperCascor** (CasCor neural network backend) and **JuniperCanopy** (real-time monitoring dashboard).
+
+### Ecosystem Architecture
+
+All projects are standalone repositories with independent CI/CD. Inter-service communication uses REST via published PyPI client packages.
+
+```
+juniper-data-client (PyPI) --> juniper-data (REST API, port 8100)
+juniper-cascor-client (PyPI) --> juniper-cascor (REST/WS API, port 8201)
+juniper-canopy --> uses both clients
+juniper-deploy --> Docker Compose orchestration
+```
 
 ### Integration Points
 
@@ -266,13 +676,19 @@ JuniperData is part of the Juniper ecosystem alongside **JuniperCascor** (CasCor
 - **Feature Flag**: `JUNIPER_DATA_URL` environment variable enables JuniperData mode in consumers
 - **Data Contract**: NPZ artifacts with keys `X_train`, `y_train`, `X_test`, `y_test`, `X_full`, `y_full` (all `float32`)
 - **API Prefix**: `/v1/`
-- **Consumers**: JuniperCascor (`SpiralDataProvider`), JuniperCanopy (`DemoMode`, `CascorIntegration`)
+- **Client Library**: `juniper-data-client>=0.3.0` on PyPI
+- **Consumers**: JuniperCascor, JuniperCanopy (via `juniper-data-client`)
+- **Health Endpoint**: `/v1/health` (used by Docker Compose and consumer startup checks)
 
 ### Key Documentation
 
 | Document | Location | Purpose |
 |----------|----------|---------|
-| Integration Development Plan | `notes/INTEGRATION_DEVELOPMENT_PLAN.md` | Outstanding work items and priorities |
+| Development Roadmap | `notes/JUNIPER-DATA_POST-RELEASE_DEVELOPMENT-ROADMAP.md` | Outstanding work items, priorities, and status |
+| API Reference | `docs/api/JUNIPER_DATA_API.md` | Complete API documentation |
+| User Manual | `docs/USER_MANUAL.md` | Full user documentation |
+| Developer Cheatsheet | `docs/DEVELOPER_CHEATSHEET.md` | Quick reference for developers |
+| Documentation Overview | `docs/DOCUMENTATION_OVERVIEW.md` | Navigation guide for all docs |
 | Polyrepo Migration Plan | `notes/POLYREPO_MIGRATION_PLAN.md` | Redirect to canonical copy in `juniper-cascor` |
 | Monorepo Analysis | `notes/MONOREPO_ANALYSIS.md` | Redirect to canonical copy in `juniper-cascor` |
 
@@ -369,9 +785,9 @@ The full handoff protocol is defined in **`notes/THREAD_HANDOFF_PROCEDURE.md`**.
 
 Concretely:
 
-- If compaction would trigger at N% context utilization, begin handoff at (N − 5)% to (N − 1)%.
+- If compaction would trigger at N% context utilization, begin handoff at (N - 5)% to (N - 1)%.
 - **Self-assessment rule**: At each turn where you are performing multi-step work, assess whether you are approaching the compaction threshold. If you estimate you are within 5% of it, begin the handoff protocol immediately.
-- When the system compresses prior messages or you receive a context compression notification, treat this as a signal that handoff should have already occurred — immediately initiate one.
+- When the system compresses prior messages or you receive a context compression notification, treat this as a signal that handoff should have already occurred -- immediately initiate one.
 
 **Additional triggers** (from `notes/THREAD_HANDOFF_PROCEDURE.md`):
 
@@ -401,5 +817,5 @@ Concretely:
 
 - **This is not optional.** Every Claude Code instance on this project must follow these rules.
 - **Handoff early, not late.** A handoff at 70% context usage is better than compaction at 95%.
-- **Do not duplicate CLAUDE.md content** in the handoff goal — the new thread reads CLAUDE.md automatically.
+- **Do not duplicate CLAUDE.md content** in the handoff goal -- the new thread reads CLAUDE.md automatically.
 - **Be specific** in the handoff goal: include file paths, decisions made, and test status.
