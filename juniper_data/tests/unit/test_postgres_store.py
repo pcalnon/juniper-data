@@ -269,6 +269,10 @@ class TestPostgresDatasetStoreSave:
         mock_pg, mock_conn, mock_cursor = mock_psycopg2
         from juniper_data.storage.postgres_store import PostgresDatasetStore
 
+        # First fetchone: no existing row for this dataset_id.
+        # Second fetchone: next version allocation returns 3.
+        mock_cursor.fetchone.side_effect = [None, (3,)]
+
         store = PostgresDatasetStore(auto_create_schema=False, artifact_path=tmp_path / "data")
         store.save("test-dataset", sample_meta, sample_arrays)
 
@@ -322,6 +326,10 @@ class TestPostgresDatasetStoreSave:
         """save sends versioning metadata fields in DB write parameters."""
         _, _, mock_cursor = mock_psycopg2
         from juniper_data.storage.postgres_store import PostgresDatasetStore
+
+        # First fetchone: no existing row for this dataset_id.
+        # Second fetchone: next version allocation returns 4.
+        mock_cursor.fetchone.side_effect = [None, (4,)]
 
         versioned_meta = sample_meta.model_copy(
             update={
