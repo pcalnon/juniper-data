@@ -300,9 +300,7 @@ class TestPostgresDatasetStoreSave:
         store.save("test-dataset", sample_meta, sample_arrays)
 
         assert sample_meta.dataset_version == 3
-        assert any(
-            "MAX(dataset_version)" in call.args[0] for call in mock_cursor.execute.call_args_list if call.args
-        )
+        assert any("MAX(dataset_version)" in call.args[0] for call in mock_cursor.execute.call_args_list if call.args)
         assert mock_cursor.execute.call_args_list[-1].args[1]["dataset_version"] == 3
 
     def test_save_preserves_existing_dataset_version_on_upsert(self, mock_psycopg2, tmp_path, sample_meta, sample_arrays) -> None:
@@ -322,6 +320,7 @@ class TestPostgresDatasetStoreSave:
         assert sample_meta.dataset_name == "canonical-name"
         assert sample_meta.dataset_version == 2
         assert mock_cursor.execute.call_args_list[-1].args[1]["dataset_version"] == 2
+
     def test_save_persists_versioning_fields(self, mock_psycopg2, tmp_path, sample_meta, sample_arrays) -> None:
         """save sends versioning metadata fields in DB write parameters."""
         _, _, mock_cursor = mock_psycopg2
@@ -354,9 +353,7 @@ class TestPostgresDatasetStoreSave:
         assert params["description"] == "Versioned save"
         assert params["created_by"] == "integration-test"
 
-    def test_save_does_not_commit_metadata_when_artifact_replace_fails(
-        self, mock_psycopg2, tmp_path, sample_meta, sample_arrays
-    ) -> None:
+    def test_save_does_not_commit_metadata_when_artifact_replace_fails(self, mock_psycopg2, tmp_path, sample_meta, sample_arrays) -> None:
         """save rolls back DB transaction if artifact file cannot be finalized."""
         _, mock_conn, _ = mock_psycopg2
         from juniper_data.storage.postgres_store import PostgresDatasetStore
@@ -372,9 +369,7 @@ class TestPostgresDatasetStoreSave:
         assert mock_conn.commit.call_count == 0
         assert not tmp_artifact_path.exists()
 
-    def test_save_uses_distinct_temp_artifact_per_call(
-        self, mock_psycopg2, tmp_path, sample_meta, sample_arrays
-    ) -> None:
+    def test_save_uses_distinct_temp_artifact_per_call(self, mock_psycopg2, tmp_path, sample_meta, sample_arrays) -> None:
         """Each save call should stage artifact bytes in a unique temp file."""
         _, _, mock_cursor = mock_psycopg2
         from juniper_data.storage.postgres_store import PostgresDatasetStore
@@ -397,9 +392,8 @@ class TestPostgresDatasetStoreSave:
 
         assert len(replaced_sources) == 2
         assert replaced_sources[0] != replaced_sources[1]
-    def test_save_cleans_temp_artifact_when_db_write_fails(
-        self, mock_psycopg2, tmp_path, sample_meta, sample_arrays
-    ) -> None:
+
+    def test_save_cleans_temp_artifact_when_db_write_fails(self, mock_psycopg2, tmp_path, sample_meta, sample_arrays) -> None:
         """save removes temp artifact when DB write fails before finalize."""
         _, mock_conn, mock_cursor = mock_psycopg2
         from juniper_data.storage.postgres_store import PostgresDatasetStore
