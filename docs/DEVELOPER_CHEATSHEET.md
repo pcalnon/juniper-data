@@ -69,7 +69,7 @@
 
 Stack order in `create_app()`: CORS -> SecurityMiddleware -> PrometheusMiddleware -> RequestIdMiddleware. Add new class in `juniper_data/api/`, register in `app.py` (outermost runs first).
 
-> See: [JUNIPER_DATA_API.md](api/JUNIPER_DATA_API.md) | [API_SCHEMAS.md](api/API_SCHEMAS.md)
+> See: [JUNIPER_DATA_API.md](api/JUNIPER_DATA_API.md)
 
 ---
 
@@ -213,4 +213,4 @@ pre-commit install --hook-type pre-push  # coverage gate (one-time)
 
 ## Cross-References
 
-- [API Reference](api/JUNIPER_DATA_API.md) | [Full Reference](REFERENCE.md) | [Quick Start](QUICK_START.md) | [AGENTS.md](../AGENTS.md) | [Ecosystem Cheatsheet](../../juniper-ml/notes/DEVELOPER_CHEATSHEET.md) | [Juniper CLAUDE.md](../../CLAUDE.md)
+- [API Reference](api/JUNIPER_DATA_API.md) | [Full Reference](REFERENCE.md) | [Quick Start](QUICK_START.md) | [AGENTS.md](../AGENTS.md) | [Ecosystem Cheatsheet](../../juniper-ml/docs/DEVELOPER_CHEATSHEET_JUNIPER-ML.md) | [Juniper CLAUDE.md](../../CLAUDE.md)

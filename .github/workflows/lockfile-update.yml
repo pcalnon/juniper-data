@@ -64,7 +64,9 @@ jobs:
           uv pip compile pyproject.toml \
             --extra api \
             --extra observability \
-            -o requirements.lock
+            -o /tmp/requirements.lock.check
+
+          mv /tmp/requirements.lock.check requirements.lock
 
       - name: Commit updated lockfile
         run: |

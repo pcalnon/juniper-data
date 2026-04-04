@@ -10,6 +10,14 @@
 
 ## Quick Reference
 
+### Conda Environment
+
+> **Required:** Activate the `JuniperData` conda environment before running any commands.
+
+```bash
+conda activate JuniperData
+```
+
 ### Essential Commands
 
 ```bash

@@ -120,7 +120,7 @@ jobs:
           echo "╔════════════════════════════════════════════════════════════╗"
           echo "║       JuniperData - Documentation Link Validation         ║"
           echo "╚════════════════════════════════════════════════════════════╝"
-          python scripts/check_doc_links.py --exclude templates --exclude history
+          python scripts/check_doc_links.py --exclude templates --exclude history --cross-repo skip
 
   # ═══════════════════════════════════════════════════════════════════════════════════════════════
   # Unit Tests: Run unit tests with coverage enforcement
