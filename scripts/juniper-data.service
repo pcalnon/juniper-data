@@ -1,0 +1,49 @@
+# =============================================================================
+# juniper-data — systemd User Service Unit
+#
+# Installation:
+#   mkdir -p ~/.config/systemd/user
+#   cp scripts/juniper-data.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable juniper-data
+#   systemctl --user start juniper-data
+#
+# Logs:
+#   journalctl --user -u juniper-data -f
+#
+# Prerequisites:
+#   - conda environment "JuniperData" with all dependencies installed
+#   - .env file configured in the project root (see .env.example)
+# =============================================================================
+
+[Unit]
+Description=Juniper Data — Dataset Generation & Management Service
+Documentation=https://github.com/pcalnon/juniper-data
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Development/python/Juniper/juniper-data
+EnvironmentFile=-%h/Development/python/Juniper/juniper-data/.env
+ExecStart=/opt/miniforge3/envs/JuniperData/bin/python -m juniper_data --host 0.0.0.0 --port 8100
+Restart=on-failure
+RestartSec=5
+
+# Resource limits
+MemoryMax=2G
+CPUQuota=200%%
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/Development/python/Juniper/juniper-data/logs
+ReadWritePaths=%h/Development/python/Juniper/juniper-data/data
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+
+[Install]
+WantedBy=default.target
