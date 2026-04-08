@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-04-08
+
+**Summary**: Dataset versioning, batch operations, systemd integration, PostgreSQL reliability fixes, and security hardening for CSV imports.
+
+### Added: [0.6.0]
+
+- **Dataset versioning support (CAN-DEF-005 Phase 1)**: Logical dataset names with auto-incrementing version numbers, `GET /v1/datasets/versions`, `GET /v1/datasets/latest`
+- **Batch operations (CAN-DEF-006)**: `POST /v1/datasets/batch-create`, `PATCH /v1/datasets/batch-tags`, `POST /v1/datasets/batch-export`
+- **Docker secrets support** via `get_secret()` utility (`juniper_data/core/secrets.py`)
+- **Systemd service unit and management CLI** for juniper-data (`feature/systemd-phase2`)
+- **CSV import path traversal protection** (`JUNIPER_DATA_IMPORT_DIR` setting)
+- **Documentation link checker `--cross-repo skip` mode** for CI pipelines
+
+### Fixed: [0.6.0]
+
+- **Version synchronized** across `__init__.py`, `pyproject.toml`, and `Dockerfile` to 0.6.0
+- **PostgreSQL metadata/artifact split-brain** on save failure — transaction now rolls back both atomically
+- **PostgreSQL temp artifact race conditions** on concurrent saves — deterministic cleanup added
+- **Advisory lock namespace collision** between dataset ID and version allocation — namespaced locks
+- **PostgreSQL dataset versioning metadata persistence** — fields now correctly persisted across store operations
+- **Dataset version allocation atomicity** — prevents race condition on concurrent version creation
+- **Generic `n_classes` fallback** replacing spiral-specific `params.n_spirals` reference that would crash for non-spiral generators with empty training sets
+
+### Changed: [0.6.0]
+
+- **Updated GitHub Actions**: actions/checkout v4.2.2 -> v6.0.2, actions/setup-python v5.6.0 -> v6.2.0, actions/upload-artifact v4.6.0 -> v7.0.0, actions/cache v5.0.3 -> v5.0.4, codecov/codecov-action v5.5.2 -> v6.0.0, github/codeql-action v3.28.0 -> v4.35.1
+- **AGENTS.md comprehensive audit and update** to reflect v0.5.0 conventions, conda environment prerequisites
+- **Lockfile update workflow** improved for proper CI generation
+- **Documentation suite updates**: developer cheatsheet, documentation overview, broken link fixes, version compatibility in REFERENCE.md
+
+### Security: [0.6.0]
+
+- CSV import generator now validates file paths against configurable `JUNIPER_DATA_IMPORT_DIR` directory to prevent path traversal attacks
+
+### Technical Notes: [0.6.0]
+
+- **SemVer impact**: MINOR — New versioning and batch endpoints, systemd integration, security hardening; backward compatible
+- **PostgreSQL fixes**: 5 reliability improvements covering split-brain, race conditions, lock collisions, and metadata persistence
+
+---
+
 ## [0.5.0] - 2026-03-03
 
 **Summary**: Comprehensive security hardening — security headers middleware, request body limits, error response sanitization, restrictive CORS defaults, rate limiting enabled by default, /metrics authentication, conditional API docs, and scheduled security scanning.
@@ -619,6 +660,8 @@ params = SpiralParams(
 
 | Version | Date       | Description                                             |
 | ------- | ---------- | ------------------------------------------------------- |
+| 0.6.0   | 2026-04-08 | Versioning, batch ops, systemd, PostgreSQL fixes        |
+| 0.5.0   | 2026-03-03 | Security hardening                                      |
 | 0.4.2   | 2026-02-17 | CI branch triggers, gitignore cleanup                   |
 | 0.4.1   | 2026-02-17 | Bug fixes: MNIST tests, Bandit scan, arc-agi dependency |
 | 0.4.0   | 2026-02-17 | Integration infrastructure & extended data sources      |

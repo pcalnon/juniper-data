@@ -111,7 +111,7 @@ async def create_dataset(
     n_test = len(arrays["X_test"])
     n_samples = n_train + n_test
     n_features = arrays["X_train"].shape[1] if n_train > 0 else 2
-    n_classes = arrays["y_train"].shape[1] if n_train > 0 else params.n_spirals
+    n_classes = arrays["y_train"].shape[1] if n_train > 0 else (arrays["y_test"].shape[1] if n_test > 0 else 2)
 
     y_full = arrays.get("y_full", np.vstack([arrays["y_train"], arrays["y_test"]]))
     class_labels = np.argmax(y_full, axis=1)
