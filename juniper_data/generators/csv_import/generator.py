@@ -10,6 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
+from juniper_data.api.settings import get_settings
 from juniper_data.core.split import shuffle_and_split
 
 from .params import CsvImportParams
@@ -77,14 +78,15 @@ class CsvImportGenerator:
             Tuple of (X, y) arrays.
         """
 
-        ##########################################################################################################################################################################
-        # TODO:  restrict reads to an explicitly configured allowlisted base directory (e.g., JUNIPER_DATA_IMPORT_DIR) and reject absolute paths and path traversal (..) that escape that directory.
-        ##########################################################################################################################################################################
-        path = Path(params.file_path)
+        settings = get_settings()
+        import_base = Path(settings.import_dir).resolve()
+        resolved = (import_base / params.file_path).resolve()
+        if not resolved.is_relative_to(import_base):
+            raise ValueError(f"Path traversal detected: {params.file_path} resolves outside import directory")
+        path = resolved
 
         if not path.exists():
             raise FileNotFoundError(f"File not found: {params.file_path}")
-        ##########################################################################################################################################################################
 
         file_format = params.file_format
         if file_format == "auto":

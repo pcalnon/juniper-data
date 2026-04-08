@@ -74,6 +74,9 @@ _JUNIPER_DATA_API_SENTRY_DSN_DEFAULT: str | None = _JUNIPER_DATA_API_SENTRY_DSN_
 _JUNIPER_DATA_API_METRICS_ENABLED_DISABLED: bool = False
 _JUNIPER_DATA_API_METRICS_ENABLED_DEFAULT: bool = _JUNIPER_DATA_API_METRICS_ENABLED_DISABLED
 
+_JUNIPER_DATA_API_IMPORT_DIR: str = "/data/imports"
+_JUNIPER_DATA_API_IMPORT_DIR_DEFAULT: str = _JUNIPER_DATA_API_IMPORT_DIR
+
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables.
@@ -131,6 +134,8 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return [k.strip() for k in v.split(",") if k.strip()]
         return v  # type: ignore[return-value]
+
+    import_dir: str = _JUNIPER_DATA_API_IMPORT_DIR_DEFAULT
 
     rate_limit_enabled: bool = _JUNIPER_DATA_API_RATELIMIT_ACTIVE_DEFAULT
     rate_limit_requests_per_minute: int = _JUNIPER_DATA_API_RATELIMIT_DEFAULT
