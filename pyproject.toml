@@ -80,7 +80,9 @@ where = ["."]
 include = ["juniper_data*"]
 
 [tool.ruff]
-# line-length = 512
+# Ecosystem convention is 512, but ruff >=0.15 caps line-length at 320.
+# E501 is already ignored so the linter does not enforce line length;
+# this value only governs the formatter wrapping threshold.
 line-length = 320
 target-version = "py312"
 

@@ -135,6 +135,22 @@ class TestConfigureSentry:
             call_kwargs = mock_init.call_args[1]
             assert call_kwargs["dsn"] == "https://examplePublicKey@o0.ingest.sentry.io/0"
             assert call_kwargs["release"] == "test-service@1.0.0"
+            assert call_kwargs["send_default_pii"] is False
+            assert call_kwargs["traces_sample_rate"] == 0.1
+
+    def test_send_pii_enabled(self):
+        pytest.importorskip("sentry_sdk")
+        with patch("sentry_sdk.init") as mock_init:
+            configure_sentry("https://examplePublicKey@o0.ingest.sentry.io/0", "test-service", "1.0.0", send_pii=True)
+            call_kwargs = mock_init.call_args[1]
+            assert call_kwargs["send_default_pii"] is True
+
+    def test_custom_traces_sample_rate(self):
+        pytest.importorskip("sentry_sdk")
+        with patch("sentry_sdk.init") as mock_init:
+            configure_sentry("https://examplePublicKey@o0.ingest.sentry.io/0", "test-service", "1.0.0", traces_sample_rate=0.5)
+            call_kwargs = mock_init.call_args[1]
+            assert call_kwargs["traces_sample_rate"] == 0.5
 
 
 @pytest.mark.unit
