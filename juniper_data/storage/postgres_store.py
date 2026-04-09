@@ -10,6 +10,11 @@ from uuid import uuid4
 import numpy as np
 
 from juniper_data.core.models import DatasetMeta
+from juniper_data.storage.constants import (
+    NPZ_FILE_SUFFIX,
+    POSTGRES_DEFAULT_HOST,
+    POSTGRES_DEFAULT_PORT,
+)
 
 from .base import DatasetStore
 
@@ -73,8 +78,8 @@ class PostgresDatasetStore(DatasetStore):
 
     def __init__(
         self,
-        host: str = "localhost",
-        port: int = 5432,
+        host: str = POSTGRES_DEFAULT_HOST,
+        port: int = POSTGRES_DEFAULT_PORT,
         database: str = "juniper_data",
         user: str = "postgres",
         password: str | None = None,
@@ -130,7 +135,7 @@ class PostgresDatasetStore(DatasetStore):
 
     def _artifact_file(self, dataset_id: str) -> Path:
         """Get the artifact file path for a dataset."""
-        return self._artifact_path / f"{dataset_id}.npz"
+        return self._artifact_path / f"{dataset_id}{NPZ_FILE_SUFFIX}"
 
     def _meta_to_row(self, meta: DatasetMeta) -> dict:
         """Convert DatasetMeta to database row dict."""

@@ -5,6 +5,18 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from juniper_data.core.constants import (
+    BATCH_CREATE_MAX_ITEMS,
+    BATCH_DELETE_MAX_ITEMS,
+    BATCH_EXPORT_MAX_ITEMS,
+    BATCH_MIN_ITEMS,
+    BATCH_UPDATE_TAGS_MAX_ITEMS,
+    CREATED_BY_MAX_LENGTH,
+    DESCRIPTION_MAX_LENGTH,
+    TAGS_MATCH_DEFAULT,
+    TAGS_MATCH_PATTERN,
+)
+
 
 class DatasetMeta(BaseModel):
     """Dataset metadata (always small, JSON-safe)."""
@@ -60,8 +72,8 @@ class CreateDatasetRequest(BaseModel):
     tags: list[str] = Field(default_factory=list)
     ttl_seconds: int | None = Field(default=None, ge=1, description="Time-to-live in seconds")
     name: str | None = Field(default=None, description="Logical dataset name for version tracking")
-    description: str | None = Field(default=None, max_length=500)
-    created_by: str | None = Field(default=None, max_length=100)
+    description: str | None = Field(default=None, max_length=DESCRIPTION_MAX_LENGTH)
+    created_by: str | None = Field(default=None, max_length=CREATED_BY_MAX_LENGTH)
     parent_dataset_id: str | None = Field(default=None, description="ID of parent dataset for lineage")
 
 
@@ -96,7 +108,7 @@ class DatasetListFilter(BaseModel):
 
     generator: str | None = None
     tags: list[str] | None = None
-    tags_match: str = Field(default="any", pattern="^(any|all)$")
+    tags_match: str = Field(default=TAGS_MATCH_DEFAULT, pattern=TAGS_MATCH_PATTERN)
     created_after: datetime | None = None
     created_before: datetime | None = None
     min_samples: int | None = Field(default=None, ge=1)
@@ -127,7 +139,7 @@ class DatasetVersionListResponse(BaseModel):
 class BatchDeleteRequest(BaseModel):
     """Request model for batch delete operation."""
 
-    dataset_ids: list[str] = Field(min_length=1, max_length=100)
+    dataset_ids: list[str] = Field(min_length=BATCH_MIN_ITEMS, max_length=BATCH_DELETE_MAX_ITEMS)
 
 
 class BatchDeleteResponse(BaseModel):
@@ -154,15 +166,15 @@ class BatchCreateItem(BaseModel):
     tags: list[str] = Field(default_factory=list)
     ttl_seconds: int | None = Field(default=None, ge=1)
     name: str | None = Field(default=None, description="Logical dataset name for version tracking")
-    description: str | None = Field(default=None, max_length=500)
-    created_by: str | None = Field(default=None, max_length=100)
+    description: str | None = Field(default=None, max_length=DESCRIPTION_MAX_LENGTH)
+    created_by: str | None = Field(default=None, max_length=CREATED_BY_MAX_LENGTH)
     parent_dataset_id: str | None = Field(default=None, description="ID of parent dataset for lineage")
 
 
 class BatchCreateRequest(BaseModel):
     """Request model for batch create operation."""
 
-    datasets: list[BatchCreateItem] = Field(min_length=1, max_length=50)
+    datasets: list[BatchCreateItem] = Field(min_length=BATCH_MIN_ITEMS, max_length=BATCH_CREATE_MAX_ITEMS)
 
 
 class BatchCreateResultItem(BaseModel):
@@ -187,7 +199,7 @@ class BatchCreateResponse(BaseModel):
 class BatchUpdateTagsRequest(BaseModel):
     """Request model for batch tag update operation."""
 
-    dataset_ids: list[str] = Field(min_length=1, max_length=100)
+    dataset_ids: list[str] = Field(min_length=BATCH_MIN_ITEMS, max_length=BATCH_UPDATE_TAGS_MAX_ITEMS)
     add_tags: list[str] = Field(default_factory=list)
     remove_tags: list[str] = Field(default_factory=list)
 
@@ -203,7 +215,7 @@ class BatchUpdateTagsResponse(BaseModel):
 class BatchExportRequest(BaseModel):
     """Request model for batch export operation."""
 
-    dataset_ids: list[str] = Field(min_length=1, max_length=50)
+    dataset_ids: list[str] = Field(min_length=BATCH_MIN_ITEMS, max_length=BATCH_EXPORT_MAX_ITEMS)
 
 
 class DatasetStats(BaseModel):

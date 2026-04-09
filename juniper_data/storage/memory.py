@@ -6,6 +6,7 @@ import numpy as np
 
 from juniper_data.core.models import DatasetMeta
 from juniper_data.storage.base import DatasetStore
+from juniper_data.storage.constants import DEFAULT_LIST_LIMIT, DEFAULT_LIST_OFFSET
 
 
 class InMemoryDatasetStore(DatasetStore):
@@ -94,7 +95,7 @@ class InMemoryDatasetStore(DatasetStore):
         del self._arrays[dataset_id]
         return True
 
-    def list_datasets(self, limit: int = 100, offset: int = 0) -> list[str]:
+    def list_datasets(self, limit: int = DEFAULT_LIST_LIMIT, offset: int = DEFAULT_LIST_OFFSET) -> list[str]:
         """List dataset IDs from memory.
 
         Args:

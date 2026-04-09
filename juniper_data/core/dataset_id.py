@@ -8,6 +8,8 @@ import hashlib
 import json
 from typing import Any
 
+from juniper_data.core.constants import CHARSET_UTF8, DATASET_ID_HASH_PREFIX_LENGTH
+
 
 def generate_dataset_id(generator: str, version: str, params: dict[str, Any]) -> str:
     """Generate a deterministic hash-based ID from generator metadata and params.
@@ -33,6 +35,6 @@ def generate_dataset_id(generator: str, version: str, params: dict[str, Any]) ->
 
     canonical_json = json.dumps(canonical_data, sort_keys=True, separators=(",", ":"))
 
-    hash_digest = hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
+    hash_digest = hashlib.sha256(canonical_json.encode(CHARSET_UTF8)).hexdigest()
 
-    return f"{generator}-{version}-{hash_digest[:16]}"
+    return f"{generator}-{version}-{hash_digest[:DATASET_ID_HASH_PREFIX_LENGTH]}"

@@ -7,7 +7,18 @@ from typing import Any
 
 import numpy as np
 
+from juniper_data.core.constants import CHARSET_UTF8
 from juniper_data.core.models import DatasetMeta
+from juniper_data.storage.constants import (
+    DEFAULT_LIST_LIMIT,
+    DEFAULT_LIST_OFFSET,
+    REDIS_ARTIFACT_KEY_SUFFIX,
+    REDIS_DEFAULT_DB,
+    REDIS_DEFAULT_HOST,
+    REDIS_DEFAULT_KEY_PREFIX,
+    REDIS_DEFAULT_PORT,
+    REDIS_META_KEY_SUFFIX,
+)
 
 from .base import DatasetStore
 
@@ -31,11 +42,11 @@ class RedisDatasetStore(DatasetStore):
 
     def __init__(
         self,
-        host: str = "localhost",
-        port: int = 6379,
-        db: int = 0,
+        host: str = REDIS_DEFAULT_HOST,
+        port: int = REDIS_DEFAULT_PORT,
+        db: int = REDIS_DEFAULT_DB,
         password: str | None = None,
-        key_prefix: str = "juniper:dataset:",
+        key_prefix: str = REDIS_DEFAULT_KEY_PREFIX,
         default_ttl: int | None = None,
         connection_pool: Any | None = None,
     ) -> None:
@@ -72,20 +83,20 @@ class RedisDatasetStore(DatasetStore):
 
     def _meta_key(self, dataset_id: str) -> str:
         """Get Redis key for metadata."""
-        return f"{self._key_prefix}{dataset_id}:meta"
+        return f"{self._key_prefix}{dataset_id}{REDIS_META_KEY_SUFFIX}"
 
     def _artifact_key(self, dataset_id: str) -> str:
         """Get Redis key for artifact data."""
-        return f"{self._key_prefix}{dataset_id}:artifact"
+        return f"{self._key_prefix}{dataset_id}{REDIS_ARTIFACT_KEY_SUFFIX}"
 
     def _encode_meta(self, meta: DatasetMeta) -> bytes:
         """Encode metadata to JSON bytes."""
         data = meta.model_dump(mode="json")
-        return json.dumps(data).encode("utf-8")
+        return json.dumps(data).encode(CHARSET_UTF8)
 
     def _decode_meta(self, data: bytes) -> DatasetMeta:
         """Decode metadata from JSON bytes."""
-        parsed = json.loads(data.decode("utf-8"))
+        parsed = json.loads(data.decode(CHARSET_UTF8))
         return DatasetMeta(**parsed)
 
     def _encode_arrays(self, arrays: dict[str, np.ndarray]) -> bytes:
@@ -175,7 +186,7 @@ class RedisDatasetStore(DatasetStore):
         deleted = self._client.delete(meta_key, artifact_key)
         return deleted > 0
 
-    def list_datasets(self, limit: int = 100, offset: int = 0) -> list[str]:
+    def list_datasets(self, limit: int = DEFAULT_LIST_LIMIT, offset: int = DEFAULT_LIST_OFFSET) -> list[str]:
         """List dataset IDs from Redis.
 
         Args:
@@ -185,13 +196,13 @@ class RedisDatasetStore(DatasetStore):
         Returns:
             List of dataset IDs.
         """
-        pattern = f"{self._key_prefix}*:meta"
+        pattern = f"{self._key_prefix}*{REDIS_META_KEY_SUFFIX}"
         keys = list(self._client.scan_iter(match=pattern))
 
         dataset_ids = []
         for key in keys:
-            key_str = key.decode("utf-8") if isinstance(key, bytes) else key
-            dataset_id = key_str[len(self._key_prefix) : -5]
+            key_str = key.decode(CHARSET_UTF8) if isinstance(key, bytes) else key
+            dataset_id = key_str[len(self._key_prefix) : -len(REDIS_META_KEY_SUFFIX)]
             dataset_ids.append(dataset_id)
 
         dataset_ids.sort()
@@ -227,7 +238,7 @@ class RedisDatasetStore(DatasetStore):
         Returns:
             List of all DatasetMeta objects.
         """
-        pattern = f"{self._key_prefix}*:meta"
+        pattern = f"{self._key_prefix}*{REDIS_META_KEY_SUFFIX}"
         keys = list(self._client.scan_iter(match=pattern))
 
         metadata: list[DatasetMeta] = []

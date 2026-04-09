@@ -11,8 +11,17 @@ from typing import Any
 
 import numpy as np
 
+from juniper_data.core.constants import CHARSET_UTF8
 from juniper_data.core.models import DatasetMeta
 from juniper_data.storage.base import DatasetStore
+from juniper_data.storage.constants import (
+    DEFAULT_LIST_LIMIT,
+    DEFAULT_LIST_OFFSET,
+    JSON_INDENT_DEFAULT,
+    META_FILE_SUFFIX,
+    NPZ_FILE_SUFFIX,
+    TMP_FILE_SUFFIX,
+)
 
 
 def _json_serializer(obj: Any) -> str:
@@ -42,11 +51,11 @@ class LocalFSDatasetStore(DatasetStore):
 
     def _meta_path(self, dataset_id: str) -> Path:
         """Get path to metadata file."""
-        return self._base_path / f"{dataset_id}.meta.json"
+        return self._base_path / f"{dataset_id}{META_FILE_SUFFIX}"
 
     def _npz_path(self, dataset_id: str) -> Path:
         """Get path to NPZ file."""
-        return self._base_path / f"{dataset_id}.npz"
+        return self._base_path / f"{dataset_id}{NPZ_FILE_SUFFIX}"
 
     def save(
         self,
@@ -68,18 +77,18 @@ class LocalFSDatasetStore(DatasetStore):
         npz_path = self._npz_path(dataset_id)
 
         # Write to temporary files first, then atomically replace the final files
-        tmp_meta_path = meta_path.with_suffix(meta_path.suffix + ".tmp")
-        tmp_npz_path = npz_path.with_suffix(npz_path.suffix + ".tmp")
+        tmp_meta_path = meta_path.with_suffix(meta_path.suffix + TMP_FILE_SUFFIX)
+        tmp_npz_path = npz_path.with_suffix(npz_path.suffix + TMP_FILE_SUFFIX)
 
         meta_json = json.dumps(
             meta.model_dump(),
             default=_json_serializer,
-            indent=2,
+            indent=JSON_INDENT_DEFAULT,
         )
 
         try:
             # Write metadata JSON to temporary file
-            tmp_meta_path.write_text(meta_json, encoding="utf-8")
+            tmp_meta_path.write_text(meta_json, encoding=CHARSET_UTF8)
 
             # Write NPZ data to temporary file
             buffer = io.BytesIO()
@@ -124,7 +133,7 @@ class LocalFSDatasetStore(DatasetStore):
         if not meta_path.exists():
             return None
 
-        meta_json = meta_path.read_text(encoding="utf-8")
+        meta_json = meta_path.read_text(encoding=CHARSET_UTF8)
         meta_dict = json.loads(meta_json)
 
         return DatasetMeta(**meta_dict)
@@ -174,7 +183,7 @@ class LocalFSDatasetStore(DatasetStore):
 
         return True
 
-    def list_datasets(self, limit: int = 100, offset: int = 0) -> list[str]:
+    def list_datasets(self, limit: int = DEFAULT_LIST_LIMIT, offset: int = DEFAULT_LIST_OFFSET) -> list[str]:
         """List dataset IDs from filesystem.
 
         Finds datasets by globbing for .meta.json files.
@@ -212,9 +221,9 @@ class LocalFSDatasetStore(DatasetStore):
         meta_json = json.dumps(
             meta.model_dump(),
             default=_json_serializer,
-            indent=2,
+            indent=JSON_INDENT_DEFAULT,
         )
-        meta_path.write_text(meta_json, encoding="utf-8")
+        meta_path.write_text(meta_json, encoding=CHARSET_UTF8)
         return True
 
     def list_all_metadata(self) -> list[DatasetMeta]:

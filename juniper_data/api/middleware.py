@@ -1,23 +1,44 @@
 """FastAPI middleware for security and request processing."""
 
 from fastapi import HTTPException, Request, Response
+from starlette import status
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp
 
+from juniper_data.api.constants import (
+    DEFAULT_CONTENT_SECURITY_POLICY,
+    HEADER_CONTENT_SECURITY_POLICY,
+    HEADER_PERMISSIONS_POLICY,
+    HEADER_REFERRER_POLICY,
+    HEADER_STRICT_TRANSPORT_SECURITY,
+    HEADER_X_CONTENT_TYPE_OPTIONS,
+    HEADER_X_FORWARDED_PROTO,
+    HEADER_X_FRAME_OPTIONS,
+    HEADER_X_RATELIMIT_LIMIT,
+    HEADER_X_RATELIMIT_REMAINING,
+    HEADER_X_RATELIMIT_RESET,
+    HSTS_MAX_AGE_VALUE,
+    PERMISSIONS_POLICY_RESTRICTED,
+    PROXY_PROTOCOL_HTTPS,
+    REFERRER_POLICY_STRICT_ORIGIN,
+    X_CONTENT_TYPE_OPTIONS_NOSNIFF,
+    X_FRAME_OPTIONS_DENY,
+)
+from juniper_data.api.constants import (
+    EXEMPT_PATHS as _EXEMPT_PATHS_CONST,
+)
+from juniper_data.api.constants import (
+    MAX_REQUEST_BODY_BYTES as _MAX_REQUEST_BODY_BYTES_CONST,
+)
+
 from .security import APIKeyAuth, RateLimiter
 
-EXEMPT_PATHS = {
-    "/v1/health",
-    "/v1/health/live",
-    "/v1/health/ready",
-    "/docs",
-    "/openapi.json",
-    "/redoc",
-}
-
-# Default Content-Security-Policy for API-only services.
-_DEFAULT_CSP = "default-src 'none'; frame-ancestors 'none'"
+# Module-level aliases preserved for tests that may import these names directly.
+# The canonical source of truth is :mod:`juniper_data.api.constants`.
+EXEMPT_PATHS = _EXEMPT_PATHS_CONST
+_DEFAULT_CSP = DEFAULT_CONTENT_SECURITY_POLICY
+_MAX_REQUEST_BODY_BYTES = _MAX_REQUEST_BODY_BYTES_CONST
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -35,20 +56,17 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         response = await call_next(request)
 
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-        response.headers["Content-Security-Policy"] = self._csp
+        response.headers[HEADER_X_CONTENT_TYPE_OPTIONS] = X_CONTENT_TYPE_OPTIONS_NOSNIFF
+        response.headers[HEADER_X_FRAME_OPTIONS] = X_FRAME_OPTIONS_DENY
+        response.headers[HEADER_REFERRER_POLICY] = REFERRER_POLICY_STRICT_ORIGIN
+        response.headers[HEADER_PERMISSIONS_POLICY] = PERMISSIONS_POLICY_RESTRICTED
+        response.headers[HEADER_CONTENT_SECURITY_POLICY] = self._csp
 
         # Only add HSTS when the request arrived over TLS (via reverse proxy)
-        if request.headers.get("X-Forwarded-Proto") == "https":
-            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        if request.headers.get(HEADER_X_FORWARDED_PROTO) == PROXY_PROTOCOL_HTTPS:
+            response.headers[HEADER_STRICT_TRANSPORT_SECURITY] = HSTS_MAX_AGE_VALUE
 
         return response
-
-
-_MAX_REQUEST_BODY_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
 class RequestBodyLimitMiddleware(BaseHTTPMiddleware):
@@ -61,7 +79,7 @@ class RequestBodyLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         content_length = request.headers.get("content-length")
         if content_length is not None and int(content_length) > self._max_bytes:
-            return JSONResponse(status_code=413, content={"detail": "Request body too large"})
+            return JSONResponse(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, content={"detail": "Request body too large"})
         return await call_next(request)
 
 
@@ -125,9 +143,9 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
 
         if self._rate_limiter.enabled and hasattr(request.state, "rate_limit_remaining"):
-            response.headers["X-RateLimit-Limit"] = str(self._rate_limiter.limit)
-            response.headers["X-RateLimit-Remaining"] = str(request.state.rate_limit_remaining)
-            response.headers["X-RateLimit-Reset"] = str(request.state.rate_limit_reset)
+            response.headers[HEADER_X_RATELIMIT_LIMIT] = str(self._rate_limiter.limit)
+            response.headers[HEADER_X_RATELIMIT_REMAINING] = str(request.state.rate_limit_remaining)
+            response.headers[HEADER_X_RATELIMIT_RESET] = str(request.state.rate_limit_reset)
 
         return response
 
