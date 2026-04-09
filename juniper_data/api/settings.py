@@ -71,8 +71,14 @@ _JUNIPER_DATA_API_LOG_FORMAT_DEFAULT: str = _JUNIPER_DATA_API_LOG_FORMAT_TEXT
 _JUNIPER_DATA_API_SENTRY_DSN_NONE: str | None = None
 _JUNIPER_DATA_API_SENTRY_DSN_DEFAULT: str | None = _JUNIPER_DATA_API_SENTRY_DSN_NONE
 
+_JUNIPER_DATA_API_SENTRY_SEND_PII_DEFAULT: bool = False
+_JUNIPER_DATA_API_SENTRY_TRACES_SAMPLE_RATE_DEFAULT: float = 0.1
+
 _JUNIPER_DATA_API_METRICS_ENABLED_DISABLED: bool = False
 _JUNIPER_DATA_API_METRICS_ENABLED_DEFAULT: bool = _JUNIPER_DATA_API_METRICS_ENABLED_DISABLED
+
+_JUNIPER_DATA_API_IMPORT_DIR: str = "/data/imports"
+_JUNIPER_DATA_API_IMPORT_DIR_DEFAULT: str = _JUNIPER_DATA_API_IMPORT_DIR
 
 
 class Settings(BaseSettings):
@@ -132,11 +138,15 @@ class Settings(BaseSettings):
             return [k.strip() for k in v.split(",") if k.strip()]
         return v  # type: ignore[return-value]
 
+    import_dir: str = _JUNIPER_DATA_API_IMPORT_DIR_DEFAULT
+
     rate_limit_enabled: bool = _JUNIPER_DATA_API_RATELIMIT_ACTIVE_DEFAULT
     rate_limit_requests_per_minute: int = _JUNIPER_DATA_API_RATELIMIT_DEFAULT
 
     log_format: str = _JUNIPER_DATA_API_LOG_FORMAT_DEFAULT
     sentry_dsn: str | None = _JUNIPER_DATA_API_SENTRY_DSN_DEFAULT
+    sentry_send_pii: bool = _JUNIPER_DATA_API_SENTRY_SEND_PII_DEFAULT
+    sentry_traces_sample_rate: float = _JUNIPER_DATA_API_SENTRY_TRACES_SAMPLE_RATE_DEFAULT
     metrics_enabled: bool = _JUNIPER_DATA_API_METRICS_ENABLED_DEFAULT
 
 

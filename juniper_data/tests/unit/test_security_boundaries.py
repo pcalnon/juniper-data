@@ -163,21 +163,20 @@ class TestCsvImportPathSecurity:
     """Tests for path traversal risks in CSV import file_path parameter."""
 
     def test_absolute_path_outside_working_dir(self) -> None:
-        """CSV import with absolute path to sensitive file should fail."""
+        """CSV import with absolute path to sensitive file should be rejected by path traversal protection."""
         params = CsvImportParams(file_path="/etc/shadow")
         from juniper_data.generators.csv_import.generator import CsvImportGenerator
 
-        # May raise FileNotFoundError, PermissionError, or ValueError
-        # (ValueError if auto-detect can't determine format from extension)
-        with pytest.raises((FileNotFoundError, PermissionError, ValueError)):
+        # Path traversal protection raises ValueError before file access
+        with pytest.raises(ValueError, match="Path traversal detected"):
             CsvImportGenerator.generate(params)
 
     def test_relative_path_traversal(self) -> None:
-        """CSV import with relative traversal path documents the validation gap."""
+        """CSV import with relative traversal path should be rejected by path traversal protection."""
         params = CsvImportParams(file_path="../../../etc/passwd")
         from juniper_data.generators.csv_import.generator import CsvImportGenerator
 
-        with pytest.raises((FileNotFoundError, PermissionError, ValueError)):
+        with pytest.raises(ValueError, match="Path traversal detected"):
             CsvImportGenerator.generate(params)
 
     def test_file_path_with_null_bytes(self) -> None:
@@ -189,13 +188,11 @@ class TestCsvImportPathSecurity:
             CsvImportGenerator.generate(params)
 
     def test_csv_import_via_api_with_traversal_path(self) -> None:
-        """CSV import through the API with traversal path should fail, not expose files."""
+        """CSV import through the API with traversal path should be rejected by path traversal protection."""
         settings = Settings(storage_path="/tmp/juniper_test")
         app = create_app(settings=settings)
         datasets.set_store(InMemoryDatasetStore())
-        # raise_server_exceptions=False lets us inspect the 500 response
-        # instead of having the test client propagate the FileNotFoundError
-        test_client = TestClient(app, raise_server_exceptions=False)
+        test_client = TestClient(app)
 
         response = test_client.post(
             "/v1/datasets",
@@ -204,12 +201,12 @@ class TestCsvImportPathSecurity:
                 "params": {"file_path": "../../../etc/passwd"},
             },
         )
-        # FileNotFoundError from the generator propagates as 500 since
-        # create_dataset only catches parameter validation errors, not
-        # generator runtime errors — this documents the current behavior
-        assert response.status_code == 500
-        # Verify no file contents are leaked in the error response
+        # Path traversal protection raises ValueError, caught by the app's
+        # ValueError handler which returns 400 with a generic message
+        assert response.status_code == 400
+        # Verify no file contents or internal paths are leaked in the error response
         assert "root:" not in response.text
+        assert "etc/passwd" not in response.text
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

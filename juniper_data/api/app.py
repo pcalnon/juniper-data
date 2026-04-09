@@ -35,7 +35,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     datasets.set_store(store)
 
     configure_logging(settings.log_level, settings.log_format, "juniper-data")
-    configure_sentry(settings.sentry_dsn, "juniper-data", __version__)
+    configure_sentry(settings.sentry_dsn, "juniper-data", __version__, send_pii=settings.sentry_send_pii, traces_sample_rate=settings.sentry_traces_sample_rate)
     if settings.metrics_enabled:
         set_build_info("juniper_data", __version__)
 
