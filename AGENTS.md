@@ -85,6 +85,7 @@ juniper-data/
 │   ├── __init__.py                 # Package init, version, ARC-AGI env helpers
 │   ├── __main__.py                 # CLI entry point (python -m juniper_data)
 │   ├── core/                       # Core domain logic
+│   │   ├── constants.py            # Core-layer constants (encoding, magic numbers, fixed metadata keys)
 │   │   ├── models.py               # Pydantic models (DatasetMeta, request/response types)
 │   │   ├── dataset_id.py           # Deterministic SHA-256 dataset ID generation
 │   │   ├── split.py                # Train/test data splitting
@@ -100,6 +101,7 @@ juniper-data/
 │   │   ├── mnist/                  # MNIST / Fashion-MNIST (HuggingFace)
 │   │   └── arc_agi/                # ARC-AGI visual reasoning (optional)
 │   ├── storage/                    # Dataset persistence (7 backends)
+│   │   ├── constants.py            # Storage-layer constants (filenames, metadata keys, table/column names)
 │   │   ├── base.py                 # Abstract DatasetStore interface
 │   │   ├── local_fs.py             # Local filesystem (default)
 │   │   ├── memory.py               # In-memory (testing)
@@ -110,6 +112,7 @@ juniper-data/
 │   │   └── kaggle_store.py         # Kaggle dataset integration
 │   ├── api/                        # FastAPI application
 │   │   ├── app.py                  # Factory-pattern app creation with lifespan
+│   │   ├── constants.py            # API-layer constants (header names, status codes, defaults, error messages)
 │   │   ├── settings.py             # Pydantic BaseSettings (JUNIPER_DATA_ prefix)
 │   │   ├── middleware.py           # Security headers, body limits, rate limiting
 │   │   ├── security.py             # API key auth (APIKeyAuth) and RateLimiter
@@ -163,6 +166,7 @@ juniper-data/
 
 | Component | Purpose |
 |-----------|---------|
+| `core/constants.py` | Core-layer constants (encoding strings like `utf-8`, magic numbers, fixed metadata keys) |
 | `core/models.py` | Pydantic models: DatasetMeta, CreateDatasetRequest/Response, batch models, filters, stats |
 | `core/dataset_id.py` | Deterministic SHA-256 based dataset ID generation |
 | `core/split.py` | Shuffle and split data into train/test sets |
@@ -177,6 +181,7 @@ juniper-data/
 | `generators/csv_import/` | Import datasets from CSV/JSON files |
 | `generators/mnist/` | MNIST and Fashion-MNIST via HuggingFace Hub |
 | `generators/arc_agi/` | ARC-AGI visual reasoning tasks (optional dependency) |
+| `storage/constants.py` | Storage-layer constants (filenames, metadata keys, table/column names, default size limits) |
 | `storage/base.py` | Abstract `DatasetStore` interface with versioning and lifecycle |
 | `storage/local_fs.py` | Local filesystem storage (atomic writes, compressed NPZ) |
 | `storage/memory.py` | In-memory storage for testing |
@@ -186,6 +191,7 @@ juniper-data/
 | `storage/hf_store.py` | Hugging Face Hub read-only integration (optional) |
 | `storage/kaggle_store.py` | Kaggle dataset download integration (optional) |
 | `api/app.py` | FastAPI application factory with lifespan management |
+| `api/constants.py` | API-layer constants (HTTP header names, default body limits, rate-limit defaults, error message templates, exempt paths) |
 | `api/settings.py` | Pydantic BaseSettings with `JUNIPER_DATA_` prefix |
 | `api/middleware.py` | SecurityHeadersMiddleware, RequestBodyLimitMiddleware |
 | `api/security.py` | APIKeyAuth authentication, RateLimiter |
@@ -205,6 +211,13 @@ juniper-data/
 
 - Uppercase with underscores, prefixed by component: `_DATA_DEFAULT_NOISE`
 - Hierarchical naming: `_SPIRAL_GENERATOR_DEFAULT_POINTS`
+- Layer-scoped constants live in their layer's `constants.py`:
+  - `juniper_data/api/constants.py` — header names, status code defaults, body/rate-limit limits, error message templates
+  - `juniper_data/storage/constants.py` — filenames, metadata keys, table/column names, storage size limits
+  - `juniper_data/core/constants.py` — encoding strings (`utf-8`), magic numbers, fixed metadata keys
+  - `juniper_data/generators/<name>/params.py` — per-generator parameter defaults referenced by Pydantic `Field(default=...)`
+- Application code (middleware, security, observability, storage backends, generators, route handlers) imports from these modules; inline literals are reserved for genuinely local one-shot values
+- HTTP status codes use `starlette.status` constants instead of magic numbers (`HTTP_404_NOT_FOUND` rather than `404`)
 
 **Classes**:
 

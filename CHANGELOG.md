@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Hardcoded-values refactor (Wave 1): three new layer-scoped constants modules — `juniper_data/api/constants.py` (32 symbols: header names, status code defaults, body/rate-limit limits, error message templates, exempt paths), `juniper_data/storage/constants.py` (16 symbols: filenames, metadata keys, table/column names), `juniper_data/core/constants.py` (11 symbols: encoding strings, magic numbers, fixed metadata keys). Per-generator `Field(default=...)` defaults moved from inline literals into named module constants in each generator's `params.py`.
+
+### Changed
+
+- Hardcoded-values refactor (Wave 2 + Wave 3): replaced ~115 inline literals across 17 files in the api, storage, and core layers, plus all 7 generator parameter modules. Application code now imports from the new constants modules instead of embedding literals.
+- HTTP status codes now use `starlette.status` constants (e.g., `HTTP_404_NOT_FOUND`) instead of integer literals across `routes/`, `middleware.py`, and `security.py`.
+- Encoding literals (`'utf-8'`) consolidated into `core/constants.py` and reused across artifact, secrets, and storage modules.
+- AGENTS.md "Code Style Conventions → Constants" section updated to document the layer-scoped constants module pattern and the `starlette.status` rule.
+
+### Notes
+
+- Pydantic `Field` defaults remain literal-equivalent — Wave 5 verified that `SpiralParams`, `XorParams`, `CirclesParams`, `GaussianParams`, and `CheckerboardParams` produce SHA-256-identical `X_full` / `y_full` / split arrays at `seed=42` between this branch and `origin/main`.
+- All existing tests pass without modification; pre-commit (19 hooks: ruff lint+format, mypy, bandit, yamllint, shellcheck) is clean.
+- No public API changes; HTTP request/response shapes, settings prefix, and storage formats are unchanged.
+
 ## [0.6.0] - 2026-04-08
 
 **Summary**: Dataset versioning, batch operations, systemd integration, PostgreSQL reliability fixes, and security hardening for CSV imports.
