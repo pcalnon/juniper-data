@@ -9,6 +9,7 @@ from pathlib import Path
 
 import numpy as np
 
+from juniper_data.core.constants import CHARSET_UTF8
 from juniper_data.core.split import shuffle_and_split
 
 from .params import ArcAgiParams
@@ -152,7 +153,7 @@ class ArcAgiGenerator:
         """Load all JSON task files from a directory."""
         tasks = []
         for json_file in sorted(dir_path.glob("*.json")):
-            with open(json_file, encoding="utf-8") as f:
+            with open(json_file, encoding=CHARSET_UTF8) as f:
                 task_data = json.load(f)
                 task_data["task_id"] = json_file.stem
                 tasks.append(task_data)

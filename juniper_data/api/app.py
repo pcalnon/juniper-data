@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette import status
 
 from juniper_data import __version__
 from juniper_data.storage import LocalFSDatasetStore
@@ -123,7 +124,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
         logging.getLogger("juniper_data").debug("Validation error: %s", exc)
         return JSONResponse(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             content={"detail": "Invalid request parameters"},
         )
 
@@ -131,7 +132,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
         logging.getLogger("juniper_data").exception("Unhandled exception")
         return JSONResponse(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"detail": "Internal server error"},
         )
 

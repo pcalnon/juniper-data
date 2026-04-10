@@ -6,6 +6,7 @@ from typing import Any
 
 import numpy as np
 
+from juniper_data.core.constants import CHARSET_UTF8
 from juniper_data.core.models import DatasetMeta
 
 from .base import DatasetStore
@@ -145,7 +146,7 @@ class KaggleDatasetStore(DatasetStore):
         import csv
 
         data = []
-        with open(file_path, encoding="utf-8") as f:
+        with open(file_path, encoding=CHARSET_UTF8) as f:
             reader = csv.DictReader(f, delimiter=delimiter)
             for row in reader:
                 data.append(row)
