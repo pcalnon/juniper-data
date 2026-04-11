@@ -3,6 +3,7 @@
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
+from starlette import status
 
 from juniper_data.core.models import GeneratorInfo
 from juniper_data.generators.arc_agi import VERSION as ARC_AGI_VERSION
@@ -111,7 +112,7 @@ async def get_generator_schema(name: str) -> dict[str, Any]:
         HTTPException: 404 if generator not found.
     """
     if name not in GENERATOR_REGISTRY:
-        raise HTTPException(status_code=404, detail=f"Generator '{name}' not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Generator '{name}' not found")
 
     params_class = GENERATOR_REGISTRY[name]["params_class"]
     return params_class.model_json_schema()

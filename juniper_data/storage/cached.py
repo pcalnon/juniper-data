@@ -6,6 +6,7 @@ import logging
 import numpy as np
 
 from juniper_data.core.models import DatasetMeta
+from juniper_data.storage.constants import DEFAULT_LIST_LIMIT, DEFAULT_LIST_OFFSET
 
 logger = logging.getLogger(__name__)
 from .base import DatasetStore
@@ -128,7 +129,7 @@ class CachedDatasetStore(DatasetStore):
             self._cache.delete(dataset_id)
         return self._primary.delete(dataset_id)
 
-    def list_datasets(self, limit: int = 100, offset: int = 0) -> list[str]:
+    def list_datasets(self, limit: int = DEFAULT_LIST_LIMIT, offset: int = DEFAULT_LIST_OFFSET) -> list[str]:
         """List datasets from primary store.
 
         Args:

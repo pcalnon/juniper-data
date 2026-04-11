@@ -7,9 +7,19 @@ from threading import Lock
 from fastapi import HTTPException, Request, status
 from fastapi.security import APIKeyHeader
 
+from juniper_data.api.constants import (
+    DEFAULT_RATE_LIMIT_REQUESTS_PER_MINUTE,
+    DEFAULT_RATE_LIMIT_WINDOW_SECONDS,
+    HEADER_RETRY_AFTER,
+    HEADER_X_API_KEY,
+    HEADER_X_RATELIMIT_LIMIT,
+    HEADER_X_RATELIMIT_REMAINING,
+    HEADER_X_RATELIMIT_RESET,
+)
+
 from .settings import get_settings
 
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+api_key_header = APIKeyHeader(name=HEADER_X_API_KEY, auto_error=False)
 
 
 class APIKeyAuth:
@@ -60,7 +70,7 @@ class APIKeyAuth:
         Raises:
             HTTPException: 401 if auth is enabled and key is invalid/missing.
         """
-        api_key = request.headers.get("X-API-Key")
+        api_key = request.headers.get(HEADER_X_API_KEY)
 
         if not self._enabled:
             return None
@@ -89,8 +99,8 @@ class RateLimiter:
 
     def __init__(
         self,
-        requests_per_minute: int = 60,
-        window_seconds: int = 60,
+        requests_per_minute: int = DEFAULT_RATE_LIMIT_REQUESTS_PER_MINUTE,
+        window_seconds: int = DEFAULT_RATE_LIMIT_WINDOW_SECONDS,
         enabled: bool = True,
     ) -> None:
         """Initialize the rate limiter.
@@ -190,10 +200,10 @@ class RateLimiter:
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail=f"Rate limit exceeded. Try again in {reset_in} seconds.",
                 headers={
-                    "X-RateLimit-Limit": str(self._limit),
-                    "X-RateLimit-Remaining": "0",
-                    "X-RateLimit-Reset": str(reset_in),
-                    "Retry-After": str(reset_in),
+                    HEADER_X_RATELIMIT_LIMIT: str(self._limit),
+                    HEADER_X_RATELIMIT_REMAINING: "0",
+                    HEADER_X_RATELIMIT_RESET: str(reset_in),
+                    HEADER_RETRY_AFTER: str(reset_in),
                 },
             )
 
@@ -223,7 +233,7 @@ def get_rate_limiter() -> RateLimiter:
     if _rate_limiter is None:
         settings = get_settings()
         enabled = getattr(settings, "rate_limit_enabled", False)
-        requests_per_minute = getattr(settings, "rate_limit_requests_per_minute", 60)
+        requests_per_minute = getattr(settings, "rate_limit_requests_per_minute", DEFAULT_RATE_LIMIT_REQUESTS_PER_MINUTE)
         _rate_limiter = RateLimiter(
             requests_per_minute=requests_per_minute,
             enabled=enabled,

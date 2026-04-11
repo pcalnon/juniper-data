@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 
 from juniper_data.api.settings import get_settings
+from juniper_data.core.constants import CHARSET_UTF8
 from juniper_data.core.split import shuffle_and_split
 
 from .params import CsvImportParams
@@ -106,7 +107,7 @@ class CsvImportGenerator:
     def _load_csv(path: Path, params: CsvImportParams) -> list[dict]:
         """Load data from CSV file."""
         data: list[dict] = []
-        with open(path, newline="", encoding="utf-8") as f:
+        with open(path, newline="", encoding=CHARSET_UTF8) as f:
             if params.header:
                 reader = csv.DictReader(f, delimiter=params.delimiter)
             else:
@@ -125,7 +126,7 @@ class CsvImportGenerator:
     @staticmethod
     def _load_json(path: Path, params: CsvImportParams) -> list[dict]:
         """Load data from JSON file."""
-        with open(path, encoding="utf-8") as f:
+        with open(path, encoding=CHARSET_UTF8) as f:
             content = f.read().strip()
 
             data = json.loads(content) if content.startswith("[") else [json.loads(line) for line in content.split("\n") if line.strip()]

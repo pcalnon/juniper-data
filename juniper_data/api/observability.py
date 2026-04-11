@@ -11,10 +11,21 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 from starlette.responses import Response
 
+from juniper_data.api.constants import (
+    DATASET_GENERATION_DURATION_BUCKETS,
+    DEFAULT_LOG_FORMAT_PLAIN,
+    DEFAULT_NAMESPACE,
+    DEFAULT_SENTRY_TRACES_SAMPLE_RATE,
+    DEFAULT_SERVICE_NAME,
+    GENERATION_STATUS_SUCCESS,
+    HEADER_X_REQUEST_ID,
+    LOG_FORMAT_JSON,
+)
+
 request_id_var: ContextVar[str] = ContextVar("request_id", default="")
 
-_SERVICE_NAME_DEFAULT: str = "juniper-data"
-_NAMESPACE_DEFAULT: str = "juniper_data"
+_SERVICE_NAME_DEFAULT: str = DEFAULT_SERVICE_NAME
+_NAMESPACE_DEFAULT: str = DEFAULT_NAMESPACE
 
 
 class JuniperJsonFormatter(logging.Formatter):
@@ -46,11 +57,11 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: RequestResponseEndpoint,
     ) -> Response:
-        rid = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+        rid = request.headers.get(HEADER_X_REQUEST_ID, str(uuid.uuid4()))
         token = request_id_var.set(rid)
         try:
             response = await call_next(request)
-            response.headers["X-Request-ID"] = rid
+            response.headers[HEADER_X_REQUEST_ID] = rid
             return response
         finally:
             request_id_var.reset(token)
@@ -113,15 +124,15 @@ def configure_logging(log_level: str, log_format: str, service_name: str = _SERV
     handler = logging.StreamHandler()
     handler.setLevel(level)
 
-    if log_format == "json":
+    if log_format == LOG_FORMAT_JSON:
         handler.setFormatter(JuniperJsonFormatter(service=service_name))
     else:
-        handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
+        handler.setFormatter(logging.Formatter(DEFAULT_LOG_FORMAT_PLAIN))
 
     root.addHandler(handler)
 
 
-def configure_sentry(dsn: str | None, service_name: str, version: str, *, send_pii: bool = False, traces_sample_rate: float = 0.1) -> None:
+def configure_sentry(dsn: str | None, service_name: str, version: str, *, send_pii: bool = False, traces_sample_rate: float = DEFAULT_SENTRY_TRACES_SAMPLE_RATE) -> None:
     """Initialize Sentry with FastAPI integration. No-op when dsn is None or empty.
 
     Args:
@@ -194,7 +205,7 @@ def _ensure_dataset_metrics() -> dict:
                 "juniper_data_dataset_generation_duration_seconds",
                 "Dataset generation duration in seconds",
                 ["generator"],
-                buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, float("inf")),
+                buckets=DATASET_GENERATION_DURATION_BUCKETS,
             ),
             "datasets_cached": Gauge(
                 "juniper_data_datasets_cached",
@@ -214,7 +225,7 @@ def record_dataset_generation(generator: str, status: str, duration: float) -> N
     """
     m = _ensure_dataset_metrics()
     m["generations_total"].labels(generator=generator, status=status).inc()
-    if status == "success":
+    if status == GENERATION_STATUS_SUCCESS:
         m["generation_duration_seconds"].labels(generator=generator).observe(duration)
 
 

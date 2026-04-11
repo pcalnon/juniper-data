@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from starlette import status
 
 from juniper_data.core.artifacts import compute_checksum
 from juniper_data.core.dataset_id import generate_dataset_id
@@ -42,7 +43,7 @@ _store: DatasetStore | None = None
 def get_store() -> DatasetStore:
     """Dependency to get the dataset store."""
     if _store is None:
-        raise HTTPException(status_code=500, detail="Storage not initialized")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Storage not initialized")
     return _store
 
 
@@ -52,7 +53,7 @@ def set_store(store: DatasetStore) -> None:
     _store = store
 
 
-@router.post("", response_model=CreateDatasetResponse, status_code=201)
+@router.post("", response_model=CreateDatasetResponse, status_code=status.HTTP_201_CREATED)
 async def create_dataset(
     request: CreateDatasetRequest,
     store: DatasetStore = Depends(get_store),
@@ -74,7 +75,7 @@ async def create_dataset(
     """
     if request.generator not in GENERATOR_REGISTRY:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unknown generator '{request.generator}'. Available: {list(GENERATOR_REGISTRY.keys())}",
         )
 
@@ -86,7 +87,7 @@ async def create_dataset(
     try:
         params = params_class(**request.params)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid parameters: {e}")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid parameters: {e}")
 
     dataset_id = generate_dataset_id(
         generator=request.generator,
@@ -282,7 +283,7 @@ async def batch_delete_datasets(
     )
 
 
-@router.post("/batch-create", response_model=BatchCreateResponse, status_code=201)
+@router.post("/batch-create", response_model=BatchCreateResponse, status_code=status.HTTP_201_CREATED)
 async def batch_create_datasets(
     request: BatchCreateRequest,
     store: DatasetStore = Depends(get_store),
@@ -423,7 +424,7 @@ async def batch_export_datasets(
                 found_count += 1
 
     if found_count == 0:
-        raise HTTPException(status_code=404, detail="None of the requested datasets were found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="None of the requested datasets were found")
 
     buffer.seek(0)
     return StreamingResponse(
@@ -491,7 +492,7 @@ async def get_latest_version(
     """
     meta = store.get_latest_version(name)
     if meta is None:
-        raise HTTPException(status_code=404, detail=f"No versions found for dataset '{name}'")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No versions found for dataset '{name}'")
     return meta
 
 
@@ -514,7 +515,7 @@ async def get_dataset_metadata(
     """
     meta = store.get_meta(dataset_id)
     if meta is None:
-        raise HTTPException(status_code=404, detail=f"Dataset '{dataset_id}' not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dataset '{dataset_id}' not found")
     return meta
 
 
@@ -537,7 +538,7 @@ async def download_artifact(
     """
     artifact_bytes = store.get_artifact_bytes(dataset_id)
     if artifact_bytes is None:
-        raise HTTPException(status_code=404, detail=f"Dataset '{dataset_id}' not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dataset '{dataset_id}' not found")
 
     return StreamingResponse(
         io.BytesIO(artifact_bytes),
@@ -567,7 +568,7 @@ async def preview_dataset(
     """
     artifact_bytes = store.get_artifact_bytes(dataset_id)
     if artifact_bytes is None:
-        raise HTTPException(status_code=404, detail=f"Dataset '{dataset_id}' not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dataset '{dataset_id}' not found")
 
     with np.load(io.BytesIO(artifact_bytes)) as data:
         if "X_full" in data and "y_full" in data:
@@ -586,7 +587,7 @@ async def preview_dataset(
     )
 
 
-@router.delete("/{dataset_id}", status_code=204)
+@router.delete("/{dataset_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_dataset(
     dataset_id: str,
     store: DatasetStore = Depends(get_store),
@@ -602,7 +603,7 @@ async def delete_dataset(
     """
     deleted = store.delete(dataset_id)
     if not deleted:
-        raise HTTPException(status_code=404, detail=f"Dataset '{dataset_id}' not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dataset '{dataset_id}' not found")
 
 
 @router.patch("/{dataset_id}/tags", response_model=DatasetMeta)
@@ -626,7 +627,7 @@ async def update_dataset_tags(
     """
     meta = store.get_meta(dataset_id)
     if meta is None:
-        raise HTTPException(status_code=404, detail=f"Dataset '{dataset_id}' not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dataset '{dataset_id}' not found")
 
     current_tags = set(meta.tags)
     current_tags.update(request.add_tags)
