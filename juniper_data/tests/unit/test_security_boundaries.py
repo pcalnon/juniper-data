@@ -100,34 +100,33 @@ def client(memory_store: InMemoryDatasetStore) -> TestClient:
 class TestPathTraversalPrevention:
     """Tests that path traversal attacks via dataset_id are contained."""
 
-    def test_storage_path_with_dotdot_stays_in_base(self, fs_store: LocalFSDatasetStore, temp_dir: Path) -> None:
-        """Dataset ID with '..' should resolve to a path within the base directory."""
+    def test_storage_path_with_dotdot_rejected(self, fs_store: LocalFSDatasetStore, temp_dir: Path) -> None:
+        """JD-SEC-01: dataset_id with '..' must be rejected before touching the filesystem."""
         malicious_id = "../../../etc/passwd"
-        meta_path = fs_store._meta_path(malicious_id)
-        npz_path = fs_store._npz_path(malicious_id)
+        with pytest.raises(ValueError):
+            fs_store._meta_path(malicious_id)
+        with pytest.raises(ValueError):
+            fs_store._npz_path(malicious_id)
 
-        # Verify the constructed paths resolve outside base_path (demonstrating the risk)
-        assert not meta_path.resolve().is_relative_to(temp_dir)
-        assert not npz_path.resolve().is_relative_to(temp_dir)
+    def test_storage_absolute_path_in_dataset_id_rejected(self, fs_store: LocalFSDatasetStore, temp_dir: Path) -> None:
+        """JD-SEC-01: absolute-path IDs must be rejected (they would otherwise escape base via Path()/Path())."""
+        with pytest.raises(ValueError):
+            fs_store._meta_path("/etc/shadow")
 
-    def test_storage_absolute_path_in_dataset_id(self, fs_store: LocalFSDatasetStore, temp_dir: Path) -> None:
-        """Dataset ID with absolute path components should not escape base directory."""
-        malicious_id = "/etc/shadow"
-        meta_path = fs_store._meta_path(malicious_id)
-        # Path("/base" / "/etc/shadow") resolves to /etc/shadow on POSIX
-        # This demonstrates the path construction behavior
-        assert meta_path == temp_dir / "/etc/shadow.meta.json"
-
-    def test_dataset_id_with_null_bytes(self, fs_store: LocalFSDatasetStore, temp_dir: Path) -> None:
-        """Dataset ID with null bytes should not allow file creation."""
-        malicious_id = "dataset\x00.meta.json"
-        meta_path = fs_store._meta_path(malicious_id)
-        # Null bytes in filenames raise ValueError on write operations
-        with pytest.raises((ValueError, OSError)):
-            meta_path.write_text("test", encoding="utf-8")
+    def test_dataset_id_with_null_bytes_rejected(self, fs_store: LocalFSDatasetStore, temp_dir: Path) -> None:
+        """JD-SEC-01: null bytes are outside the allowlist and must be rejected up front."""
+        with pytest.raises(ValueError):
+            fs_store._meta_path("dataset\x00.meta.json")
 
     def test_api_dataset_id_with_path_traversal(self, client: TestClient) -> None:
-        """API endpoints should handle dataset IDs with path traversal characters."""
+        """API endpoints must reject traversal identifiers with a client error.
+
+        FastAPI's path parsing strips ``..`` segments before dispatch, so the
+        request typically resolves to a collection URL (404/405) rather than
+        reaching the handler. The storage-layer defense now also translates
+        any traversal that does reach the handler into an HTTP 400 via the
+        ValueError → 400 application exception handler.
+        """
         traversal_ids = [
             "../../../etc/passwd",
             "..%2F..%2F..%2Fetc%2Fpasswd",
@@ -135,22 +134,22 @@ class TestPathTraversalPrevention:
         ]
         for malicious_id in traversal_ids:
             response = client.get(f"/v1/datasets/{malicious_id}")
-            # Should return 404 (not found in store), not 500 or file contents
-            assert response.status_code in (404, 422), f"Unexpected status for ID '{malicious_id}': {response.status_code}"
+            assert response.status_code in (400, 404, 405, 422), f"Unexpected status for ID '{malicious_id}': {response.status_code}"
 
     def test_api_artifact_download_with_traversal(self, client: TestClient) -> None:
-        """Artifact download should not serve files outside storage via traversal."""
+        """Artifact download must not serve files outside storage via traversal."""
         response = client.get("/v1/datasets/../../etc/passwd/artifact")
-        assert response.status_code in (404, 422)
+        assert response.status_code in (400, 404, 422)
 
     def test_batch_delete_with_traversal_ids(self, client: TestClient) -> None:
-        """Batch delete should handle dataset IDs containing traversal sequences."""
+        """Batch delete must classify traversal IDs as not_found without failing the batch (JD-SEC-01)."""
         response = client.post(
             "/v1/datasets/batch-delete",
             json={"dataset_ids": ["../../../etc/passwd", "valid-id"]},
         )
-        # Should complete without file-system side effects outside storage
         assert response.status_code == 200
+        payload = response.json()
+        assert "../../../etc/passwd" in payload.get("not_found", [])
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

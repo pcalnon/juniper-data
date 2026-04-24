@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **SEC-01 / JD-SEC-02**: `APIKeyAuth.validate` now compares the presented API key against each configured key with `hmac.compare_digest`, eliminating the timing side-channel that Python's `in` set-membership comparison exposed. The loop deliberately does not short-circuit on first match.
+- **JD-SEC-01**: `LocalFSDatasetStore` validates every `dataset_id` through an allowlist regex (`[A-Za-z0-9][A-Za-z0-9._\-]{0,127}`) and then checks that the resolved path stays within the configured base directory before any filesystem access. `ValueError` is raised for any traversal attempt and mapped to HTTP 400 by the existing exception handler; `DatasetStore.batch_delete` catches it so a single bad ID does not abort the batch.
+- **JD-SEC-03 / SEC-02**: `RateLimiter._counters` replaced with `cachetools.TTLCache(maxsize=10_000, ttl=window_seconds)`, giving automatic entry eviction and a hard memory ceiling so rotating source IPs cannot exhaust memory. A one-shot warning is logged when the cache crosses 80% capacity. `cachetools>=5.3.0` added to base dependencies.
+
 ### Added
 
 - Hardcoded-values refactor (Wave 1): three new layer-scoped constants modules — `juniper_data/api/constants.py` (32 symbols: header names, status code defaults, body/rate-limit limits, error message templates, exempt paths), `juniper_data/storage/constants.py` (16 symbols: filenames, metadata keys, table/column names), `juniper_data/core/constants.py` (11 symbols: encoding strings, magic numbers, fixed metadata keys). Per-generator `Field(default=...)` defaults moved from inline literals into named module constants in each generator's `params.py`.
