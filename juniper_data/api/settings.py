@@ -77,6 +77,14 @@ _JUNIPER_DATA_API_SENTRY_TRACES_SAMPLE_RATE_DEFAULT: float = 0.1
 _JUNIPER_DATA_API_METRICS_ENABLED_DISABLED: bool = False
 _JUNIPER_DATA_API_METRICS_ENABLED_DEFAULT: bool = _JUNIPER_DATA_API_METRICS_ENABLED_DISABLED
 
+# SEC-16: default allowlist for the Prometheus /metrics endpoint. The
+# endpoint is mounted as an ASGI sub-app and therefore bypasses the
+# router-level SecurityMiddleware, so we gate it separately on client IP.
+# Defaults to loopback-only (IPv4 + IPv6); operators who scrape from a
+# dedicated Prometheus host must override via
+# JUNIPER_DATA_METRICS_TRUSTED_IPS.
+_JUNIPER_DATA_API_METRICS_TRUSTED_IPS_DEFAULT: list[str] = ["127.0.0.1", "::1"]
+
 _JUNIPER_DATA_API_IMPORT_DIR: str = "/data/imports"
 _JUNIPER_DATA_API_IMPORT_DIR_DEFAULT: str = _JUNIPER_DATA_API_IMPORT_DIR
 
@@ -148,6 +156,10 @@ class Settings(BaseSettings):
     sentry_send_pii: bool = _JUNIPER_DATA_API_SENTRY_SEND_PII_DEFAULT
     sentry_traces_sample_rate: float = _JUNIPER_DATA_API_SENTRY_TRACES_SAMPLE_RATE_DEFAULT
     metrics_enabled: bool = _JUNIPER_DATA_API_METRICS_ENABLED_DEFAULT
+    # SEC-16: loopback-only by default. Set
+    # ``JUNIPER_DATA_METRICS_TRUSTED_IPS='["10.0.0.5"]'`` (JSON list) or a
+    # comma-separated string to add Prometheus scraper IPs.
+    metrics_trusted_ips: list[str] = _JUNIPER_DATA_API_METRICS_TRUSTED_IPS_DEFAULT
 
 
 @lru_cache

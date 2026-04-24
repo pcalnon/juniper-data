@@ -1,5 +1,6 @@
 """Dataset endpoints for creating, listing, and retrieving datasets."""
 
+import asyncio
 import io
 from datetime import UTC, datetime, timedelta
 
@@ -104,7 +105,12 @@ async def create_dataset(
             artifact_url=f"/v1/datasets/{dataset_id}/artifact",
         )
 
-    arrays = generator_class.generate(params)
+    # SEC-04 / JD-PERF-01 / CONC-04: move the potentially CPU-bound
+    # generator call off the async event-loop thread so concurrent HTTP
+    # requests are not blocked while a dataset is being synthesized.
+    # Generator classes are stateless today (verified in Phase 1D survey),
+    # so running them in asyncio's default executor is safe.
+    arrays = await asyncio.to_thread(generator_class.generate, params)
 
     checksum = compute_checksum(arrays)
 

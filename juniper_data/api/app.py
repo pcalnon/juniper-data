@@ -15,6 +15,7 @@ from juniper_data.storage import LocalFSDatasetStore
 
 from .middleware import RequestBodyLimitMiddleware, SecurityHeadersMiddleware, SecurityMiddleware
 from .observability import (
+    MetricsAuthMiddleware,
     PrometheusMiddleware,
     RequestIdMiddleware,
     configure_logging,
@@ -116,9 +117,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(generators.router, prefix="/v1")
     app.include_router(datasets.router, prefix="/v1")
 
-    # Mount Prometheus metrics endpoint
+    # Mount Prometheus metrics endpoint (SEC-16: wrap with trusted-IP
+    # auth because ASGI sub-app mounts bypass SecurityMiddleware).
     if settings.metrics_enabled:
-        app.mount("/metrics", get_prometheus_app())
+        app.mount(
+            "/metrics",
+            MetricsAuthMiddleware(get_prometheus_app(), settings.metrics_trusted_ips),
+        )
 
     @app.exception_handler(ValueError)
     async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
