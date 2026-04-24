@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Hardcoded-values refactor (Wave 1): three new layer-scoped constants modules — `juniper_data/api/constants.py` (32 symbols: header names, status code defaults, body/rate-limit limits, error message templates, exempt paths), `juniper_data/storage/constants.py` (16 symbols: filenames, metadata keys, table/column names), `juniper_data/core/constants.py` (11 symbols: encoding strings, magic numbers, fixed metadata keys). Per-generator `Field(default=...)` defaults moved from inline literals into named module constants in each generator's `params.py`.
+- **XREPO-01b / DC-02**: new `MoonGenerator` (two interleaving half-moons) registered under the `"moon"` key in `GENERATOR_REGISTRY`, closing the client/server gap where `juniper_data_client.constants.GENERATOR_MOON` previously pointed at a generator that did not exist. Includes `MoonParams` (Pydantic), per-field defaults in `generators/moon/defaults.py`, and a full unit suite in `tests/unit/test_moon_generator.py` mirroring the circles generator's tests.
 
 ### Changed
 

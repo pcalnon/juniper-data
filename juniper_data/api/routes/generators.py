@@ -18,6 +18,8 @@ from juniper_data.generators.gaussian import VERSION as GAUSSIAN_VERSION
 from juniper_data.generators.gaussian import GaussianGenerator, GaussianParams
 from juniper_data.generators.mnist import VERSION as MNIST_VERSION
 from juniper_data.generators.mnist import MnistGenerator, MnistParams
+from juniper_data.generators.moon import VERSION as MOON_VERSION
+from juniper_data.generators.moon import MoonGenerator, MoonParams
 from juniper_data.generators.spiral import VERSION as SPIRAL_VERSION
 from juniper_data.generators.spiral import SpiralGenerator, SpiralParams
 from juniper_data.generators.xor import VERSION as XOR_VERSION
@@ -49,6 +51,15 @@ GENERATOR_REGISTRY: dict[str, dict[str, Any]] = {
         "params_class": CirclesParams,
         "version": CIRCLES_VERSION,
         "description": "Concentric circles classification dataset generator. Generates binary classification with inner and outer circle classes.",
+    },
+    # XREPO-01b / DC-02 (2026-04-24): added to align with the
+    # juniper-data-client ``GENERATOR_MOON`` constant, which previously
+    # referenced a server generator that did not exist.
+    "moon": {
+        "generator": MoonGenerator,
+        "params_class": MoonParams,
+        "version": MOON_VERSION,
+        "description": "Two interleaving half-moons classification dataset generator. Generates binary classification with upper and lower half-circle classes.",
     },
     "checkerboard": {
         "generator": CheckerboardGenerator,
