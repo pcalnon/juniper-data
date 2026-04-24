@@ -1,9 +1,11 @@
 """API security: authentication and rate limiting middleware."""
 
+import hmac
+import logging
 import time
-from collections import defaultdict
 from threading import Lock
 
+from cachetools import TTLCache
 from fastapi import HTTPException, Request, status
 from fastapi.security import APIKeyHeader
 
@@ -19,7 +21,17 @@ from juniper_data.api.constants import (
 
 from .settings import get_settings
 
+logger = logging.getLogger(__name__)
+
 api_key_header = APIKeyHeader(name=HEADER_X_API_KEY, auto_error=False)
+
+# Rate limiter memory cap. Each unique key consumes an entry until its TTL
+# expires; the cap prevents unbounded memory growth under IP-rotation attacks
+# (see JD-SEC-03/SEC-02).
+RATE_LIMITER_MAX_ENTRIES = 10_000
+# Emit a warning once the cache crosses this fraction of capacity so that an
+# operator can intervene before eviction starts dropping legitimate entries.
+RATE_LIMITER_CAPACITY_WARNING_THRESHOLD = 0.8
 
 
 class APIKeyAuth:
@@ -35,7 +47,11 @@ class APIKeyAuth:
         Args:
             api_keys: List of valid API keys. If None or empty, auth is disabled.
         """
-        self._api_keys: set[str] = set(api_keys) if api_keys else set()
+        # Keys are held in a list rather than a set because validate() compares
+        # against each key with hmac.compare_digest to eliminate the timing
+        # side-channel that a `value in set` membership test would leak
+        # (SEC-01/JD-SEC-02).
+        self._api_keys: list[str] = list(dict.fromkeys(api_keys)) if api_keys else []
         self._enabled = len(self._api_keys) > 0
 
     @property
@@ -56,7 +72,16 @@ class APIKeyAuth:
             return True
         if api_key is None:
             return False
-        return api_key in self._api_keys
+        # Constant-time comparison against every configured key. `any()` would
+        # short-circuit on the first match, but hmac.compare_digest itself runs
+        # in time proportional to the input length regardless of where a
+        # mismatching byte appears, so iterating the full key list preserves
+        # the constant-time property per key while still accepting on a match.
+        matched = False
+        for candidate in self._api_keys:
+            if hmac.compare_digest(api_key, candidate):
+                matched = True
+        return matched
 
     async def __call__(self, request: Request) -> str | None:
         """FastAPI dependency for API key validation.
@@ -113,7 +138,15 @@ class RateLimiter:
         self._limit = requests_per_minute
         self._window = window_seconds
         self._enabled = enabled
-        self._counters: dict[str, tuple[int, float]] = defaultdict(lambda: (0, 0.0))
+        # TTLCache provides automatic entry eviction on access once the
+        # per-entry TTL elapses, and a hard `maxsize` ceiling so that an
+        # attacker rotating source IPs cannot grow the counter dict without
+        # bound (JD-SEC-03/SEC-02).
+        self._counters: TTLCache[str, tuple[int, float]] = TTLCache(
+            maxsize=RATE_LIMITER_MAX_ENTRIES,
+            ttl=window_seconds,
+        )
+        self._capacity_warning_emitted = False
         self._lock = Lock()
 
     @property
@@ -163,8 +196,17 @@ class RateLimiter:
         now = time.time()
 
         with self._lock:
-            count, window_start = self._counters[key]
+            # TTLCache purges expired entries lazily on access; call expire()
+            # explicitly so capacity reporting reflects live entries.
+            self._counters.expire()
+            self._warn_on_capacity_locked()
 
+            entry = self._counters.get(key)
+            if entry is None:
+                self._counters[key] = (1, now)
+                return (True, self._limit - 1, self._window)
+
+            count, window_start = entry
             if now - window_start >= self._window:
                 self._counters[key] = (1, now)
                 return (True, self._limit - 1, self._window)
@@ -175,6 +217,26 @@ class RateLimiter:
 
             self._counters[key] = (count + 1, window_start)
             return (True, self._limit - count - 1, int(self._window - (now - window_start)))
+
+    def _warn_on_capacity_locked(self) -> None:
+        """Log a one-shot warning when the rate-limiter cache nears capacity.
+
+        Must be called with ``self._lock`` held. The warning is emitted once
+        per limiter instance per high-water crossing so logs are not flooded
+        while under sustained pressure.
+        """
+        threshold = int(RATE_LIMITER_MAX_ENTRIES * RATE_LIMITER_CAPACITY_WARNING_THRESHOLD)
+        if len(self._counters) >= threshold:
+            if not self._capacity_warning_emitted:
+                logger.warning(
+                    "Rate limiter cache at %.0f%% capacity (%d/%d); eviction may drop legitimate entries soon",
+                    len(self._counters) / RATE_LIMITER_MAX_ENTRIES * 100,
+                    len(self._counters),
+                    RATE_LIMITER_MAX_ENTRIES,
+                )
+                self._capacity_warning_emitted = True
+        else:
+            self._capacity_warning_emitted = False
 
     async def __call__(self, request: Request, api_key: str | None = None) -> None:
         """FastAPI dependency for rate limit checking.

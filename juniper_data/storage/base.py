@@ -302,7 +302,16 @@ class DatasetStore(ABC):
         deleted = []
         not_found = []
         for dataset_id in dataset_ids:
-            if self.delete(dataset_id):
+            try:
+                ok = self.delete(dataset_id)
+            except ValueError:
+                # JD-SEC-01: reject traversal attempts without failing the
+                # entire batch — classify as not_found so the response still
+                # returns cleanly and legitimate IDs in the same request are
+                # not penalised.
+                not_found.append(dataset_id)
+                continue
+            if ok:
                 deleted.append(dataset_id)
             else:
                 not_found.append(dataset_id)

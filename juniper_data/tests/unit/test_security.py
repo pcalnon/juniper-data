@@ -6,7 +6,11 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi import HTTPException
 
-from juniper_data.api.security import APIKeyAuth, RateLimiter
+from juniper_data.api.security import (
+    RATE_LIMITER_MAX_ENTRIES,
+    APIKeyAuth,
+    RateLimiter,
+)
 
 
 class TestAPIKeyAuth:
@@ -85,6 +89,46 @@ class TestAPIKeyAuth:
 
         result = await auth(request)
         assert result == "valid-key"
+
+    def test_validate_multiple_keys(self) -> None:
+        """SEC-01/JD-SEC-02: all configured keys should validate."""
+        auth = APIKeyAuth(["alpha-key", "beta-key", "gamma-key"])
+        assert auth.validate("alpha-key")
+        assert auth.validate("beta-key")
+        assert auth.validate("gamma-key")
+        assert not auth.validate("delta-key")
+
+    def test_validate_rejects_prefix_match(self) -> None:
+        """SEC-01/JD-SEC-02: prefix of a valid key must not validate."""
+        auth = APIKeyAuth(["valid-key-1234"])
+        assert not auth.validate("valid-key")
+        assert not auth.validate("valid-key-123")
+
+    def test_validate_uses_constant_time_comparison(self) -> None:
+        """SEC-01/JD-SEC-02: validate must delegate to hmac.compare_digest.
+
+        This confirms the implementation no longer relies on Python's
+        short-circuiting equality; breaking this assertion means a future
+        refactor has reintroduced the timing side-channel.
+        """
+        from juniper_data.api import security as security_module
+
+        auth = APIKeyAuth(["valid-key"])
+        calls: list[tuple[str, str]] = []
+        original = security_module.hmac.compare_digest
+
+        def spy(a: str, b: str) -> bool:
+            calls.append((a, b))
+            return original(a, b)
+
+        security_module.hmac.compare_digest = spy
+        try:
+            auth.validate("probe-key")
+        finally:
+            security_module.hmac.compare_digest = original
+
+        assert calls, "validate() must call hmac.compare_digest"
+        assert all(candidate == "valid-key" for _probe, candidate in calls)
 
 
 class TestRateLimiter:
@@ -228,6 +272,40 @@ class TestRateLimiter:
 
         for _ in range(100):
             await limiter(request, api_key=None)
+
+    def test_counter_evicts_after_ttl(self) -> None:
+        """JD-SEC-03: expired entries must be evicted by TTLCache."""
+        limiter = RateLimiter(requests_per_minute=5, window_seconds=1, enabled=True)
+        limiter.check("ephemeral-key")
+        assert len(limiter._counters) == 1
+        time.sleep(1.1)
+        # A second check on a different key forces TTLCache to expire the
+        # stale entry on access.
+        limiter.check("fresh-key")
+        assert "ephemeral-key" not in limiter._counters
+
+    def test_counter_bounded_by_max_entries(self) -> None:
+        """JD-SEC-03: counter dict must never exceed the configured ceiling."""
+        limiter = RateLimiter(requests_per_minute=5, window_seconds=60, enabled=True)
+        # Generate many more unique keys than the cache capacity allows.
+        for i in range(RATE_LIMITER_MAX_ENTRIES + 250):
+            limiter.check(f"ip:{i}")
+        assert len(limiter._counters) <= RATE_LIMITER_MAX_ENTRIES
+
+    def test_capacity_warning_emitted_once(self, caplog: pytest.LogCaptureFixture) -> None:
+        """JD-SEC-03: near-capacity should produce a single warning per crossing."""
+        import logging as _logging
+
+        limiter = RateLimiter(requests_per_minute=5, window_seconds=60, enabled=True)
+        threshold_count = int(RATE_LIMITER_MAX_ENTRIES * 0.82)
+        with caplog.at_level(_logging.WARNING, logger="juniper_data.api.security"):
+            for i in range(threshold_count):
+                limiter.check(f"ip:{i}")
+            # Trigger another check to give the warning a second opportunity to
+            # fire — it must not double-log.
+            limiter.check("extra-ip")
+        warnings = [rec for rec in caplog.records if "Rate limiter cache" in rec.message]
+        assert len(warnings) == 1
 
 
 class TestSecurityModuleFunctions:
