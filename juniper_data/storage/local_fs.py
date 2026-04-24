@@ -218,18 +218,20 @@ class LocalFSDatasetStore(DatasetStore):
         Returns:
             True if the dataset was deleted, False if it didn't exist.
         """
+        # BUG-JD-02: idempotent unlink avoids the TOCTOU race in the prior
+        # `if exists(): unlink()` pattern (another process could delete the
+        # file between the check and the call). Return True if we actually
+        # removed anything, False if both files were already gone.
         meta_path = self._meta_path(dataset_id)
         npz_path = self._npz_path(dataset_id)
-
-        if not meta_path.exists() and not npz_path.exists():
-            return False
-
-        if meta_path.exists():
-            meta_path.unlink()
-        if npz_path.exists():
-            npz_path.unlink()
-
-        return True
+        deleted = False
+        for path in (meta_path, npz_path):
+            try:
+                path.unlink()
+                deleted = True
+            except FileNotFoundError:
+                pass
+        return deleted
 
     def list_datasets(self, limit: int = DEFAULT_LIST_LIMIT, offset: int = DEFAULT_LIST_OFFSET) -> list[str]:
         """List dataset IDs from filesystem.
@@ -262,6 +264,9 @@ class LocalFSDatasetStore(DatasetStore):
         Returns:
             True if the dataset was updated, False if it didn't exist.
         """
+        # BUG-JD-03: Write to a sibling temp file and atomically replace the final
+        # path so a crash mid-write cannot leave partial JSON readable to concurrent
+        # readers. Matches the tmp+replace pattern already used by `save()`.
         meta_path = self._meta_path(dataset_id)
         if not meta_path.exists():
             return False
@@ -271,7 +276,20 @@ class LocalFSDatasetStore(DatasetStore):
             default=_json_serializer,
             indent=JSON_INDENT_DEFAULT,
         )
-        meta_path.write_text(meta_json, encoding=CHARSET_UTF8)
+        tmp_meta_path = meta_path.with_suffix(meta_path.suffix + TMP_FILE_SUFFIX)
+        try:
+            tmp_meta_path.write_text(meta_json, encoding=CHARSET_UTF8)
+            tmp_meta_path.replace(meta_path)
+        except BaseException:
+            try:
+                tmp_meta_path.unlink(missing_ok=True)
+            except OSError:
+                logging.debug(
+                    "Failed to remove temporary metadata file %s during update_meta cleanup",
+                    tmp_meta_path,
+                    exc_info=True,
+                )
+            raise
         return True
 
     def list_all_metadata(self) -> list[DatasetMeta]:
