@@ -227,7 +227,7 @@ The following sections are entirely absent from AGENTS.md but represent signific
 |----|------|-----------------|--------------|----------|
 | D-046 | Key Documentation table | References `INTEGRATION_DEVELOPMENT_PLAN.md` | File does not exist; replaced by `JUNIPER-DATA_POST-RELEASE_DEVELOPMENT-ROADMAP.md` | HIGH |
 | D-047 | Environment variables | Only `JUNIPER_DATA_URL` mentioned | 10+ env vars: HOST, PORT, STORAGE_PATH, LOG_LEVEL, CORS_ORIGINS, API_KEYS, RATE_LIMIT_*, LOG_FORMAT, SENTRY_DSN, METRICS_ENABLED | HIGH |
-| D-048 | Consumer list | JuniperCascor (SpiralDataProvider), JuniperCanopy (DemoMode, CascorIntegration) | Consumers now use `juniper-data-client` PyPI package; consumer class names may have changed | MEDIUM |
+| D-048 | Consumer list | juniper-cascor (SpiralDataProvider), JuniperCanopy (DemoMode, CascorIntegration) | Consumers now use `juniper-data-client` PyPI package; consumer class names may have changed | MEDIUM |
 | D-049 | Ecosystem context | Pre-polyrepo | Post-polyrepo: standalone repo, PyPI client package, independent CI | MEDIUM |
 
 ---

@@ -4,7 +4,7 @@ This module defines the Pydantic model for spiral dataset generation parameters
 with validation and computation methods.
 
 Parameter Aliases:
-    Some consumers (JuniperCascor, JuniperCanopy) use different parameter names.
+    Some consumers (juniper-cascor, JuniperCanopy) use different parameter names.
     This module supports the following aliases:
     - `n_points` -> `n_points_per_spiral`
     - `noise_level` -> `noise`
@@ -58,7 +58,7 @@ class SpiralParams(BaseModel):
         shuffle: Whether to shuffle the dataset before splitting.
 
     Parameter Aliases:
-        For compatibility with JuniperCascor and JuniperCanopy:
+        For compatibility with juniper-cascor and JuniperCanopy:
         - `n_points` is accepted as an alias for `n_points_per_spiral`
         - `noise_level` is accepted as an alias for `noise`
     """

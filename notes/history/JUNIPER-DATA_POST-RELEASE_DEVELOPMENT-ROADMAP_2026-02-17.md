@@ -276,7 +276,7 @@ This document consolidates all outstanding updates, changes, fixes, and enhancem
 **Priority**: MEDIUM | **Status**: NOT STARTED | **Effort**: Medium (2-4 hours)
 **Source**: RELEASE_NOTES_v0.4.2.md (What's Next), INTEGRATION_DEVELOPMENT_PLAN.md (DATA-012 Next Steps)
 
-**Problem**: `juniper-data-client` exists as a local package but is not published to PyPI. Both JuniperCascor and JuniperCanopy have been updated to use the shared package, but installation requires local path references.
+**Problem**: `juniper-data-client` exists as a local package but is not published to PyPI. Both juniper-cascor and JuniperCanopy have been updated to use the shared package, but installation requires local path references.
 
 **Required Actions**:
 
@@ -303,11 +303,11 @@ This document consolidates all outstanding updates, changes, fixes, and enhancem
 **Priority**: MEDIUM | **Status**: NOT STARTED | **Effort**: Small (1-2 hours)
 **Source**: INTEGRATION_DEVELOPMENT_PLAN.md (DATA-012-A)
 
-**Problem**: JuniperCascor and JuniperCanopy re-export from the shared package with local fallback. Once the package is published, they should reference the PyPI version.
+**Problem**: juniper-cascor and JuniperCanopy re-export from the shared package with local fallback. Once the package is published, they should reference the PyPI version.
 
 **Required Actions**:
 
-- [ ] Update JuniperCascor `pyproject.toml` to add `juniper-data-client` as dependency
+- [ ] Update juniper-cascor `pyproject.toml` to add `juniper-data-client` as dependency
 - [ ] Update JuniperCanopy `pyproject.toml` to add `juniper-data-client` as dependency
 - [ ] Remove local fallback code from both consumers
 - [ ] Test import chains in both consumers
@@ -604,9 +604,9 @@ Detailed in the Design Options sections of each item above.
 
 ## Cross-Project References
 
-### Items Identified for JuniperCascor
+### Items Identified for juniper-cascor
 
-See `JUNIPER-CASCOR_POST-RELEASE_DEVELOPMENT-ROADMAP.md` in JuniperCascor notes directory.
+See `JUNIPER-CASCOR_POST-RELEASE_DEVELOPMENT-ROADMAP.md` in juniper-cascor notes directory.
 
 | ID          | Item                                      | Status                        | Source |
 | ----------- | ----------------------------------------- | ----------------------------- | ------ |

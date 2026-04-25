@@ -648,7 +648,7 @@ All `JUNIPER_DATA_*` variables (see [Configuration](#configuration)) are support
 
 ### Docker Compose
 
-Full-stack orchestration is in the `juniper-deploy` repository. JuniperData runs as a service alongside JuniperCascor and JuniperCanopy.
+Full-stack orchestration is in the `juniper-deploy` repository. JuniperData runs as a service alongside juniper-cascor and JuniperCanopy.
 
 ---
 
@@ -678,7 +678,7 @@ Full-stack orchestration is in the `juniper-deploy` repository. JuniperData runs
 
 ## Integration Context
 
-JuniperData is part of the Juniper ecosystem alongside **JuniperCascor** (CasCor neural network backend) and **JuniperCanopy** (real-time monitoring dashboard).
+JuniperData is part of the Juniper ecosystem alongside **juniper-cascor** (CasCor neural network backend) and **JuniperCanopy** (real-time monitoring dashboard).
 
 ### Ecosystem Architecture
 
@@ -698,7 +698,7 @@ juniper-deploy --> Docker Compose orchestration
 - **Data Contract**: NPZ artifacts with keys `X_train`, `y_train`, `X_test`, `y_test`, `X_full`, `y_full` (all `float32`)
 - **API Prefix**: `/v1/`
 - **Client Library**: `juniper-data-client>=0.3.0` on PyPI
-- **Consumers**: JuniperCascor, JuniperCanopy (via `juniper-data-client`)
+- **Consumers**: juniper-cascor, JuniperCanopy (via `juniper-data-client`)
 - **Health Endpoint**: `/v1/health` (used by Docker Compose and consumer startup checks)
 
 ### Key Documentation

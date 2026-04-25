@@ -134,7 +134,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Bandit only honors `# nosec` directives on the same line as the flagged code
 
 - **DEP-001: arc-agi Optional Dependency**
-  - Made `arc-agi` an optional dependency to prevent `ImportError` when importing `juniper_data` in environments without `arc-agi>=0.9.0` installed (e.g., JuniperCascor)
+  - Made `arc-agi` an optional dependency to prevent `ImportError` when importing `juniper_data` in environments without `arc-agi>=0.9.0` installed (e.g., juniper-cascor)
 
 ### Technical Notes: [0.4.1]
 
@@ -151,7 +151,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added: [0.4.0]
 
 - **DATA-012: Shared JuniperData Client Package** (`juniper_data_client/`)
-  - Standalone pip-installable package consolidating client code from JuniperCascor and JuniperCanopy
+  - Standalone pip-installable package consolidating client code from juniper-cascor and JuniperCanopy
   - **Package files**: `client.py`, `exceptions.py`, `__init__.py`, `py.typed`, `pyproject.toml`, `README.md`
   - **JuniperDataClient class** with all API methods:
     - Health: `health_check()`, `is_ready()`, `wait_for_ready()`
@@ -259,7 +259,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 5 MEDIUM priority items remaining (API docs, parameter validation, client consolidation)
   - 6 LOW priority items (generators, storage, lifecycle, auth)
   - 3 DEFERRED items (IPC, GPU, profiling)
-  - 10 cross-project references (JuniperCascor: 5, JuniperCanopy: 5)
+  - 10 cross-project references (juniper-cascor: 5, JuniperCanopy: 5)
 
 - **DATA-006: Dockerfile for JuniperData Service**
   - Multi-stage build (builder + runtime) using `python:3.12-slim`
@@ -305,7 +305,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **.pre-commit-config.yaml** restructured with updated hook versions
 - **.gitignore** expanded and reorganized for JuniperData structure (added `.env`, extended exclusions)
 - **.flake8** extracted to standalone configuration file
-- **conf/ directory** cleaned up — removed ~20 obsolete JuniperCascor-era configuration files, reorganized remaining
+- **conf/ directory** cleaned up — removed ~20 obsolete juniper-cascor-era configuration files, reorganized remaining
 - **CLAUDE.md** updated with Integration Context section
   - Added integration points documentation (port, feature flag, data contract, consumers)
   - Added key documentation reference table
@@ -474,7 +474,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.1] - 2026-02-01
 
-**Summary**: CI/CD parity achieved across JuniperCascor, JuniperData, and JuniperCanopy with standardized settings.
+**Summary**: CI/CD parity achieved across juniper-cascor, JuniperData, and JuniperCanopy with standardized settings.
 
 ### Changed: [0.2.1]
 
@@ -500,7 +500,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.0] - 2026-01-31
 
-**Summary**: Added legacy parity mode for spiral generator to achieve statistical compatibility with JuniperCascor's SpiralProblem implementation.
+**Summary**: Added legacy parity mode for spiral generator to achieve statistical compatibility with juniper-cascor's SpiralProblem implementation.
 
 ### Added: [0.2.0]
 
@@ -513,7 +513,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Sqrt-uniform radial sampling: `sqrt(random) * radius`
   - Distance-as-angle formula: `angle = direction * (distance + offset)`
   - Uniform noise in `[0, noise)` (not zero-centered)
-  - Matches statistical properties of original JuniperCascor SpiralProblem
+  - Matches statistical properties of original juniper-cascor SpiralProblem
 
 - **New Unit Tests** (8 tests for legacy mode)
   - `test_legacy_mode_generates_correct_shapes`
@@ -537,7 +537,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 # Modern mode (default, same as before)
 params = SpiralParams(n_spirals=2, n_points_per_spiral=100)
 
-# Legacy Cascor mode (for parity with JuniperCascor)
+# Legacy Cascor mode (for parity with juniper-cascor)
 params = SpiralParams(
     n_spirals=2,
     n_points_per_spiral=100,
@@ -611,7 +611,7 @@ params = SpiralParams(
 
 ## [0.1.0] - 2026-01-29
 
-**Summary**: Initial release of JuniperData - a standalone dataset generation and management service extracted from JuniperCascor as part of the Juniper ecosystem refactoring initiative.
+**Summary**: Initial release of JuniperData - a standalone dataset generation and management service extracted from juniper-cascor as part of the Juniper ecosystem refactoring initiative.
 
 ### Added: [0.1.0]
 
@@ -676,8 +676,8 @@ params = SpiralParams(
 
 ### Migration Notes: [0.1.0]
 
-- This release corresponds to Phases 0-2 of the JuniperCascor refactoring plan
-- Cascor integration (Phase 3) completed in JuniperCascor 0.6.0
+- This release corresponds to Phases 0-2 of the juniper-cascor refactoring plan
+- Cascor integration (Phase 3) completed in juniper-cascor 0.6.0
 - Canopy integration (Phase 4) pending
 
 ---
@@ -703,7 +703,7 @@ params = SpiralParams(
 
 ## Related Changes
 
-### JuniperCascor 0.6.0 (2026-01-30)
+### juniper-cascor 0.6.0 (2026-01-30)
 
 Phase 3 Cascor integration completed:
 

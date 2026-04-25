@@ -11,7 +11,7 @@
 
 This is the first official release of JuniperData as a standalone dataset generation microservice. It addresses critical bug fixes discovered during CI/CD validation: 12 failing MNIST generator tests, a Bandit security scan suppression issue, an arc-agi import failure affecting downstream consumers, CI workflow branch coverage, and repository hygiene. All 658 service tests and 41 client tests now pass across Python 3.12-3.14.
 
-> **Status:** ALPHA -- Feature-complete. CI/CD pipeline fully green. Ready for integration testing with JuniperCascor and JuniperCanopy.
+> **Status:** ALPHA -- Feature-complete. CI/CD pipeline fully green. Ready for integration testing with juniper-cascor and JuniperCanopy.
 
 ---
 
@@ -81,7 +81,7 @@ Added missing `n_samples` parameter handling in the MNIST generator's `_load_and
 
 ### arc-agi Optional Dependency (DEP-001)
 
-**Problem:** Importing `juniper_data` in JuniperCascor failed because `arc-agi>=0.9.0` was a hard dependency that wasn't installed in Cascor's environment.
+**Problem:** Importing `juniper_data` in juniper-cascor failed because `arc-agi>=0.9.0` was a hard dependency that wasn't installed in Cascor's environment.
 
 **Root Cause:** The arc-agi package was listed as a required dependency in `pyproject.toml` rather than as an optional dependency, causing `ImportError` when the package wasn't available.
 
@@ -197,7 +197,7 @@ No outstanding known issues.
 ### Completed Since Release
 
 - ~~Publish juniper-data-client to PyPI~~ — Published as `juniper-data-client` v0.3.0
-- ~~Update JuniperCascor to use shared client package~~ — Done (`juniper-cascor-client` v0.1.0 on PyPI)
+- ~~Update juniper-cascor to use shared client package~~ — Done (`juniper-cascor-client` v0.1.0 on PyPI)
 - ~~Update JuniperCanopy to use shared client package~~ — Done (polyrepo migration Phase 4)
 - ~~Register remaining generators~~ — All 8 generators registered in GENERATOR_REGISTRY
 - ~~Coverage: add tests for 0% modules~~ — Coverage now at 99.40% (659 tests)

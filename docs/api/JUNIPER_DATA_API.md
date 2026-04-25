@@ -22,7 +22,7 @@
 
 ## Overview
 
-JuniperData is a dataset generation and management service for the Juniper ecosystem. It provides a REST API for generating, storing, and serving datasets used by JuniperCascor (neural network backend) and JuniperCanopy (web dashboard).
+JuniperData is a dataset generation and management service for the Juniper ecosystem. It provides a REST API for generating, storing, and serving datasets used by juniper-cascor (neural network backend) and JuniperCanopy (web dashboard).
 
 ### API Characteristics
 
@@ -853,7 +853,7 @@ Add/remove tags on a single dataset.
 
 ## NPZ Artifact Schema
 
-The NPZ artifact is the primary data contract between JuniperData and its consumers (JuniperCascor, JuniperCanopy).
+The NPZ artifact is the primary data contract between JuniperData and its consumers (juniper-cascor, JuniperCanopy).
 
 ### Keys and Shapes
 

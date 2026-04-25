@@ -1,10 +1,10 @@
 # Golden Reference Datasets
 
-This directory contains golden reference datasets generated from the JuniperCascor `SpiralProblem` implementation. These datasets are used for parity testing to ensure the new JuniperData spiral generator produces equivalent results.
+This directory contains golden reference datasets generated from the juniper-cascor `SpiralProblem` implementation. These datasets are used for parity testing to ensure the new JuniperData spiral generator produces equivalent results.
 
 ## Purpose
 
-- Validate that the JuniperData spiral generator produces identical or equivalent output to the original JuniperCascor implementation
+- Validate that the JuniperData spiral generator produces identical or equivalent output to the original juniper-cascor implementation
 - Provide regression testing for the data generation pipeline
 - Document the expected data format and characteristics
 
@@ -77,14 +77,14 @@ Note: Due to shuffling and train/test split, exact distributions may vary slight
 
 ## Regenerating Datasets
 
-To regenerate the golden datasets from JuniperCascor:
+To regenerate the golden datasets from juniper-cascor:
 
 ```bash
 # Set these to the appropriate locations on your system or in CI:
-export JUNIPER_CASCOR_SRC=/path/to/JuniperCascor/src
+export JUNIPER_CASCOR_SRC=/path/to/juniper-cascor/src
 export JUNIPER_DATA_ROOT=/path/to/JuniperData
 
-# From the JuniperCascor source directory, run the generator script from this repo:
+# From the juniper-cascor source directory, run the generator script from this repo:
 cd "$JUNIPER_CASCOR_SRC"
 python "$JUNIPER_DATA_ROOT/juniper_data/tests/fixtures/generate_golden_datasets.py"
 ```

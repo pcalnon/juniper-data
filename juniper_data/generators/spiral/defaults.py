@@ -1,7 +1,7 @@
 """Default constants for spiral dataset generation.
 
 This module defines all default constants and validation bounds for the spiral
-dataset generator, migrated from JuniperCascor constants_problem.py.
+dataset generator, migrated from juniper-cascor constants_problem.py.
 """
 
 # Spiral Geometry Defaults

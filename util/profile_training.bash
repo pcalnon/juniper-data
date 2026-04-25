@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #####################################################################################################################################################################################################
 # Project:       Juniper
-# Sub-Project:   JuniperCascor
+# Sub-Project:   juniper-data
 # Script:        profile_training.bash
 # Purpose:       Sampling profiler script using py-spy for training profiling
 #

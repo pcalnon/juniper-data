@@ -18,11 +18,11 @@ This PR extracts JuniperData as a standalone dataset generation microservice fro
 
 ## Context / Motivation
 
-JuniperData was designed as a standalone microservice to provide dataset generation capabilities to the Juniper ecosystem. Previously, dataset generation was embedded within JuniperCascor's `SpiralProblem` class. This extraction enables:
+JuniperData was designed as a standalone microservice to provide dataset generation capabilities to the Juniper ecosystem. Previously, dataset generation was embedded within juniper-cascor's `SpiralProblem` class. This extraction enables:
 
 - **Independent deployment** — JuniperData runs as a containerized service on port 8100
 - **Shared data contract** — NPZ artifacts with standardized keys (`X_train`, `y_train`, `X_test`, `y_test`, `X_full`, `y_full`)
-- **Multi-consumer architecture** — Both JuniperCascor and JuniperCanopy consume datasets via REST API
+- **Multi-consumer architecture** — Both juniper-cascor and JuniperCanopy consume datasets via REST API
 - **Feature flag integration** — `JUNIPER_DATA_URL` environment variable enables JuniperData mode in consumers
 - **Extensible generator framework** — Plugin architecture supports adding new dataset types
 
@@ -258,11 +258,11 @@ JuniperData was designed as a standalone microservice to provide dataset generat
 
 - [x] Main user flow(s) verified: Dataset create → download → verify cycle (E2E tests)
 - [x] Edge cases checked: Invalid generators, missing datasets, expired TTL, batch operations
-- [x] No regression in related areas: JuniperCascor/JuniperCanopy maintain independent codebases
+- [x] No regression in related areas: juniper-cascor/JuniperCanopy maintain independent codebases
 - [x] Feature defaults correct and documented: API defaults, generator defaults, storage defaults
 - [x] Logging/metrics updated: Structured logging via uvicorn, configurable log levels
 - [x] Documentation updated: AGENTS.md, API docs, CHANGELOG.md, INTEGRATION_DEVELOPMENT_PLAN.md
-- [x] Legacy parity verified: `algorithm="legacy_cascor"` matches JuniperCascor SpiralProblem statistics
+- [x] Legacy parity verified: `algorithm="legacy_cascor"` matches juniper-cascor SpiralProblem statistics
 - [x] Parameter aliases verified: `n_points`/`noise_level` accepted for consumer compatibility
 - [x] Docker configuration verified: Multi-stage build, health checks, non-root user
 - [x] CI/CD pipeline verified: All hooks pass, security scanning configured
@@ -431,7 +431,7 @@ JuniperData was designed as a standalone microservice to provide dataset generat
 
 - **Key risks:**
   - Repository transformation is non-reversible in the traditional sense (old JuniperCanopy code removed)
-  - Consumer integration requires updating JuniperCascor and JuniperCanopy to use the shared client package
+  - Consumer integration requires updating juniper-cascor and JuniperCanopy to use the shared client package
 - **Monitoring / alerts to watch:**
   - JuniperData service health endpoint: `GET /v1/health`
   - CI/CD pipeline status on main branch
@@ -459,7 +459,7 @@ JuniperData was designed as a standalone microservice to provide dataset generat
 | Feature | Status | Priority |
 | ------- | ------ | -------- |
 | Publish juniper-data-client to PyPI | Not Started | P1 |
-| Update JuniperCascor to use shared client package | Not Started | P1 |
+| Update juniper-cascor to use shared client package | Not Started | P1 |
 | Update JuniperCanopy to use shared client package | Not Started | P1 |
 | Additional generators (Gaussian mixture, circles, checkerboard) | ✅ Complete  | P3 |
 | Storage backend extensions (cached, HF, Kaggle, Postgres, Redis) | ✅ Complete  | P3 |
@@ -480,7 +480,7 @@ Key highlights:
 - FastAPI REST API with 16 endpoints on port 8100
 - Two generators: spiral (modern + legacy algorithms) and XOR classification
 - Dataset lifecycle management (TTL, tagging, filtering, batch operations)
-- Shared client library (juniper-data-client) for JuniperCascor/JuniperCanopy integration
+- Shared client library (juniper-data-client) for juniper-cascor/JuniperCanopy integration
 - Docker containerization with multi-stage build and health probes
 - 699 tests (658 service + 41 client)
 - CI/CD pipeline with Python 3.11-3.14, security scanning, pre-commit hooks
@@ -494,9 +494,9 @@ Key highlights:
 
 2. **Version History:** The CHANGELOG documents the complete development history from v0.1.0 (initial release) through v0.4.0 (this PR). Each version built incrementally on the previous one.
 
-3. **Client Library:** The `juniper_data_client/` package is designed to be published to PyPI and consumed by both JuniperCascor and JuniperCanopy, replacing their current duplicate client code.
+3. **Client Library:** The `juniper_data_client/` package is designed to be published to PyPI and consumed by both juniper-cascor and JuniperCanopy, replacing their current duplicate client code.
 
-4. **Legacy Parity:** The `algorithm="legacy_cascor"` mode in SpiralGenerator reproduces the statistical properties of JuniperCascor's original SpiralProblem implementation, ensuring backward compatibility.
+4. **Legacy Parity:** The `algorithm="legacy_cascor"` mode in SpiralGenerator reproduces the statistical properties of juniper-cascor's original SpiralProblem implementation, ensuring backward compatibility.
 
 5. **New Modules:** 6 new generators and 5 new storage backends added after the initial PR description was written.
 

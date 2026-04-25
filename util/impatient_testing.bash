@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #####################################################################################################################################################################################################
 # Project:       Juniper
-# Sub-Project:   JuniperCascor
+# Sub-Project:   juniper-cascor
 # Application:   juniper_cascor
 # Purpose:       Juniper Project Cascade Correlation Neural Network
 #
@@ -76,7 +76,7 @@ export ELAPSED_INFO=""
 #####################################################################################################################################################################################################
 # Define Script Environment Constants
 #####################################################################################################################################################################################################
-JUNIPER_CASCOR_PATH="${HOME}/Development/python/Juniper/JuniperCascor/juniper_cascor"
+JUNIPER_CASCOR_PATH="${HOME}/Development/python/Juniper/juniper-cascor/juniper_cascor"
 TESTS_REL_PATH="src/tests"
 TESTS_PATH="${JUNIPER_CASCOR_PATH}/${TESTS_REL_PATH}"
 
