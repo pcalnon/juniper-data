@@ -1,6 +1,6 @@
 """Health check response models for standardized readiness reporting."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -21,6 +21,7 @@ class ReadinessResponse(BaseModel):
     status: Literal["ready", "degraded", "not_ready"]
     version: str
     service: str
-    timestamp: float = Field(default_factory=lambda: datetime.now().timestamp())
+    # BUG-JD-06: timezone-aware UTC timestamp for consistency across services
+    timestamp: float = Field(default_factory=lambda: datetime.now(UTC).timestamp())
     dependencies: dict[str, DependencyStatus] = {}
     details: dict[str, object] = {}

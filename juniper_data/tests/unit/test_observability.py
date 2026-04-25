@@ -221,6 +221,8 @@ class TestPrometheusMiddleware:
             request = MagicMock()
             request.url.path = "/v1/test"
             request.method = "GET"
+            # BUG-JD-09: middleware now prefers scope["route"].path; fall back to url.path when absent.
+            request.scope = {}
 
             result = await middleware.dispatch(request, mock_call_next)
 
