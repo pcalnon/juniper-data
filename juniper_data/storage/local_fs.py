@@ -230,7 +230,12 @@ class LocalFSDatasetStore(DatasetStore):
                 path.unlink()
                 deleted = True
             except FileNotFoundError:
-                pass
+                # Intentional no-op: a concurrent unlink (or simply a stray
+                # missing sibling) is the exact race this idempotent loop is
+                # designed to absorb. Treating absence as "nothing to do"
+                # keeps ``delete`` safe to call repeatedly without surfacing
+                # transient races to callers.
+                continue
         return deleted
 
     def list_datasets(self, limit: int = DEFAULT_LIST_LIMIT, offset: int = DEFAULT_LIST_OFFSET) -> list[str]:

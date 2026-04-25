@@ -74,7 +74,11 @@ class TestBugJD02AtomicDelete:
         meta = _make_meta("del-present")
         tmp_store.save(meta.dataset_id, meta, _make_arrays())
 
-        assert tmp_store.delete(meta.dataset_id) is True
+        # Split the side-effecting ``delete`` call from the assertion so the
+        # filesystem mutation is not embedded in an ``assert`` expression
+        # (CodeQL py/side-effect-in-assert).
+        result = tmp_store.delete(meta.dataset_id)
+        assert result is True
         assert not tmp_store.exists(meta.dataset_id)
 
     def test_delete_returns_false_when_nothing_to_delete(self, tmp_store: LocalFSDatasetStore) -> None:
@@ -83,15 +87,18 @@ class TestBugJD02AtomicDelete:
         Post-fix, we rely on ``FileNotFoundError`` from ``unlink`` to discover
         absence, so the return value stays False but via a different path.
         """
-        assert tmp_store.delete("never-existed") is False
+        result = tmp_store.delete("never-existed")
+        assert result is False
 
     def test_delete_is_idempotent_second_call_returns_false(self, tmp_store: LocalFSDatasetStore) -> None:
         meta = _make_meta("del-idem")
         tmp_store.save(meta.dataset_id, meta, _make_arrays())
 
-        assert tmp_store.delete(meta.dataset_id) is True
+        first_result = tmp_store.delete(meta.dataset_id)
+        assert first_result is True
         # Second delete: files are already gone, but call must not raise.
-        assert tmp_store.delete(meta.dataset_id) is False
+        second_result = tmp_store.delete(meta.dataset_id)
+        assert second_result is False
 
     def test_delete_tolerates_race_with_concurrent_unlink(self, tmp_store: LocalFSDatasetStore) -> None:
         """Simulate the TOCTOU: another process unlinks between our check and unlink.
