@@ -29,8 +29,12 @@ class TestDatasetIdGeneration:
         assert id1 == id2
 
     def test_multiple_calls_identical(self) -> None:
-        """Verify multiple sequential calls produce identical IDs."""
-        params = {"n_spirals": 3, "n_points": 50}
+        """Verify multiple sequential calls with an explicit seed produce identical IDs.
+
+        BUG-JD-04: ``seed`` must be provided for deterministic IDs; seedless
+        requests now incorporate a per-call nonce to avoid stale-cache hits.
+        """
+        params = {"n_spirals": 3, "n_points": 50, "seed": 123}
 
         ids = [generate_dataset_id("spiral", "v1.0.0", params) for _ in range(5)]
 
@@ -129,9 +133,14 @@ class TestDatasetIdEdgeCases:
         assert dataset_id.startswith("spiral-v1.0.0-")
 
     def test_params_order_independent(self) -> None:
-        """Verify param order doesn't affect ID (sorted keys)."""
-        params1 = {"a": 1, "b": 2, "c": 3}
-        params2 = {"c": 3, "a": 1, "b": 2}
+        """Verify param order doesn't affect ID (sorted keys).
+
+        BUG-JD-04: include ``seed`` so the test exercises the deterministic
+        code path; without a seed the nonce would make each call unique by
+        design, masking whether key-sort independence actually holds.
+        """
+        params1 = {"a": 1, "b": 2, "c": 3, "seed": 7}
+        params2 = {"c": 3, "a": 1, "b": 2, "seed": 7}
 
         id1 = generate_dataset_id("spiral", "v1.0.0", params1)
         id2 = generate_dataset_id("spiral", "v1.0.0", params2)

@@ -95,7 +95,9 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         duration = time.perf_counter() - start
 
-        endpoint = request.url.path
+        # BUG-JD-09: use route template for fixed cardinality (avoid unbounded labels from path params)
+        route = request.scope.get("route")
+        endpoint = route.path if route is not None and hasattr(route, "path") else request.url.path
         method = request.method
         status = str(response.status_code)
 

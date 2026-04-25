@@ -2,6 +2,7 @@
 
 import asyncio
 import io
+import time
 from datetime import UTC, datetime, timedelta
 
 import numpy as np
@@ -9,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from starlette import status
 
+from juniper_data.api.observability import record_dataset_generation
 from juniper_data.core.artifacts import compute_checksum
 from juniper_data.core.dataset_id import generate_dataset_id
 from juniper_data.core.models import (
@@ -110,7 +112,15 @@ async def create_dataset(
     # requests are not blocked while a dataset is being synthesized.
     # Generator classes are stateless today (verified in Phase 1D survey),
     # so running them in asyncio's default executor is safe.
-    arrays = await asyncio.to_thread(generator_class.generate, params)
+    # BUG-JD-07: record dataset generation duration + count to Prometheus
+    gen_start = time.monotonic()
+    try:
+        # arrays = generator_class.generate(params)
+        arrays = await asyncio.to_thread(generator_class.generate, params)
+    except Exception:
+        record_dataset_generation(generator=request.generator, status="error", duration=time.monotonic() - gen_start)
+        raise
+    record_dataset_generation(generator=request.generator, status="success", duration=time.monotonic() - gen_start)
 
     checksum = compute_checksum(arrays)
 
@@ -419,22 +429,69 @@ async def batch_export_datasets(
     """
     import zipfile
 
-    buffer = io.BytesIO()
-    found_count = 0
-
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        for dataset_id in request.dataset_ids:
-            artifact_bytes = store.get_artifact_bytes(dataset_id)
-            if artifact_bytes is not None:
-                zf.writestr(f"{dataset_id}.npz", artifact_bytes)
-                found_count += 1
-
-    if found_count == 0:
+    # BUG-JD-01: Stream the ZIP instead of accumulating the entire archive in
+    # memory. Previously, `io.BytesIO()` held every selected NPZ + zip metadata
+    # until the response was ready, which is an OOM risk once callers batch many
+    # large datasets. We now drive `zipfile.ZipFile` through a chunk-buffer that
+    # the generator drains after each entry, so peak memory stays proportional
+    # to a single NPZ rather than the sum of the export.
+    #
+    # Pre-check existence up front so we can still return 404 when *none* of
+    # the requested datasets exist without first committing to a response body.
+    # `exists()` is a cheap metadata check on every backend.
+    present_ids = [dsid for dsid in request.dataset_ids if store.exists(dsid)]
+    if not present_ids:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="None of the requested datasets were found")
 
-    buffer.seek(0)
+    class _ChunkBuffer:
+        """File-like sink that accumulates bytes for the streaming generator to drain.
+
+        ``zipfile.ZipFile`` needs an object with ``write``/``flush``/``close``
+        methods. We record writes in a list and hand them off to the outer
+        generator between entries so the response body can be emitted without
+        buffering the whole archive.
+        """
+
+        def __init__(self) -> None:
+            self._chunks: list[bytes] = []
+
+        def write(self, data: bytes) -> int:
+            if data:
+                self._chunks.append(bytes(data))
+            return len(data)
+
+        def drain(self) -> bytes:
+            if not self._chunks:
+                return b""
+            joined = b"".join(self._chunks)
+            self._chunks.clear()
+            return joined
+
+        def flush(self) -> None:  # pragma: no cover - required by ZipFile protocol
+            return None
+
+    def _stream_zip():
+        buf = _ChunkBuffer()
+        # ZIP_STORED is required for streaming-friendly archives: with ZIP_DEFLATED
+        # the zipfile module would need to seek back to patch the local-file-header
+        # with the final size, which is not possible once chunks have been yielded.
+        with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_STORED, allowZip64=True) as zf:
+            for dataset_id in present_ids:
+                artifact_bytes = store.get_artifact_bytes(dataset_id)
+                if artifact_bytes is None:
+                    # Raced with a concurrent deletion; skip quietly.
+                    continue
+                zf.writestr(f"{dataset_id}.npz", artifact_bytes)
+                chunk = buf.drain()
+                if chunk:
+                    yield chunk
+        # ``with`` exit writes the central directory + EOCD to the buffer.
+        trailing = buf.drain()
+        if trailing:
+            yield trailing
+
     return StreamingResponse(
-        buffer,
+        _stream_zip(),
         media_type="application/zip",
         headers={"Content-Disposition": "attachment; filename=datasets.zip"},
     )
@@ -522,6 +579,8 @@ async def get_dataset_metadata(
     meta = store.get_meta(dataset_id)
     if meta is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dataset '{dataset_id}' not found")
+    # BUG-JD-08: record access asynchronously to avoid blocking I/O on read paths
+    asyncio.get_event_loop().call_soon(lambda: store.record_access(dataset_id))
     return meta
 
 
@@ -545,6 +604,9 @@ async def download_artifact(
     artifact_bytes = store.get_artifact_bytes(dataset_id)
     if artifact_bytes is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dataset '{dataset_id}' not found")
+
+    # BUG-JD-08: record access asynchronously to avoid blocking I/O on read paths
+    asyncio.get_event_loop().call_soon(lambda: store.record_access(dataset_id))
 
     return StreamingResponse(
         io.BytesIO(artifact_bytes),
