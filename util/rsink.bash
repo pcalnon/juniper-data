@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #####################################################################################################################################################################################################
 # Project:       Juniper
-# Sub-Project:   JuniperCascor
+# Sub-Project:   juniper-cascor
 # Application:   juniper_cascor
 # Purpose:       Juniper Project Cascade Correlation Neural Network
 #
@@ -17,7 +17,7 @@
 # Copyright:     Copyright (c) 2024,2025,2026 Paul Calnon
 #
 # Description:
-#     This script is used to sync data from the JuniperCascor application primary server to all secondary servers that perform candidate correlation calculations.
+#     This script is used to sync data from the juniper-cascor application primary server to all secondary servers that perform candidate correlation calculations.
 #
 #####################################################################################################################################################################################################
 # Notes:

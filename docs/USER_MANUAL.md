@@ -26,7 +26,7 @@
 
 ### What is Juniper Data?
 
-Juniper Data is the foundational data layer of the Juniper ecosystem. It generates, stores, and serves datasets used by JuniperCascor (neural network training backend) and JuniperCanopy (real-time monitoring dashboard).
+Juniper Data is the foundational data layer of the Juniper ecosystem. It generates, stores, and serves datasets used by juniper-cascor (neural network training backend) and JuniperCanopy (real-time monitoring dashboard).
 
 ### Key Features
 

@@ -2,18 +2,18 @@
 """
 Golden Dataset Generator for JuniperData Parity Testing
 
-This script generates golden reference datasets from the existing JuniperCascor
+This script generates golden reference datasets from the existing juniper-cascor
 SpiralProblem implementation for use in validating the new JuniperData implementation.
 
 Run this script from the JuniperCascor environment to generate the golden datasets.
 
 Usage:
     # Optionally set environment variables to configure paths:
-    #   JUNIPER_CASCOR_SRC   - path to the JuniperCascor 'src' directory
+    #   JUNIPER_CASCOR_SRC   - path to the juniper-cascor 'src' directory
     #   GOLDEN_DATASETS_DIR  - output directory for generated golden datasets
     #
     # Example:
-    #   export JUNIPER_CASCOR_SRC=/path/to/JuniperCascor/juniper_cascor/src
+    #   export JUNIPER_CASCOR_SRC=/path/to/juniper-cascor/juniper_cascor/src
     #   export GOLDEN_DATASETS_DIR=/path/to/JuniperData/tests/fixtures/golden_datasets
     #   python -m juniper_data.tests.fixtures.generate_golden_datasets
 """
@@ -25,10 +25,10 @@ from pathlib import Path
 
 import numpy as np
 
-# Append JuniperCascor source directory for local script execution.
+# Append juniper-cascor source directory for local script execution.
 # The path can be configured via the JUNIPER_CASCOR_SRC environment variable.
 # If not set, we fall back to a path derived relative to this file.
-_default_cascor_src = Path(__file__).resolve().parents[3] / "JuniperCascor" / "juniper_cascor" / "src"
+_default_cascor_src = Path(__file__).resolve().parents[3] / "juniper-cascor" / "juniper_cascor" / "src"
 JUNIPER_CASCOR_SRC = Path(os.environ.get("JUNIPER_CASCOR_SRC", str(_default_cascor_src)))
 sys.path.insert(0, str(JUNIPER_CASCOR_SRC))
 

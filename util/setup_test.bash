@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #####################################################################################################################################################################################################
 # Project:       Juniper
-# Sub-Project:   JuniperCascor
+# Sub-Project:   juniper-data
 # Application:   juniper_cascor
 # Purpose:       Juniper Project Cascade Correlation Neural Network
 #
@@ -17,7 +17,7 @@
 # Copyright:     Copyright (c) 2024,2025,2026 Paul Calnon
 #
 # Description:
-#     This script is used to setup the test environment for the JuniperCascor application.
+#     This script is used to setup the test environment for the juniper-data application.
 #
 #####################################################################################################################################################################################################
 # Notes:

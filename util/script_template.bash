@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #####################################################################################################################################################################################################
 # Project:       Juniper
-# Sub-Project:   JuniperCascor
+# Sub-Project:   juniper-data
 # Application:   juniper_cascor
 # Purpose:       Juniper Project Cascade Correlation Neural Network
 #
@@ -54,7 +54,7 @@ export FUNCTION_NAME="${0##*/}"
 # PROJ_NAME="dynamic_nn"
 # PROJ_NAME="juniper"
 export PROJ_NAME="Juniper"
-export SUB_PROJ_NAME="JuniperCascor"
+export SUB_PROJ_NAME="juniper-data"
 export APP_NAME="juniper_cascor"
 
 

@@ -113,7 +113,7 @@ All modules now have test coverage. Overall coverage: **95.18%** (passes 80% thr
 
 **Resolution Applied**:
 
-- Added `# noqa: E402` comments with explanations for late imports (required due to `sys.path` manipulation for JuniperCascor import)
+- Added `# noqa: E402` comments with explanations for late imports (required due to `sys.path` manipulation for juniper-cascor import)
 - Converted f-strings without placeholders to regular strings
 
 **Verification**: `flake8 --select=F541,E402` now reports no issues.
@@ -149,7 +149,7 @@ Multiple test files have SIM117 suggestions to combine nested `with` statements.
 ## Phase 2: Integration Infrastructure
 
 **Priority**: HIGH | **Risk**: MEDIUM | **Blocking**: Phase 3
-**Rationale**: JuniperData is consumed by both JuniperCascor and JuniperCanopy. Robust integration infrastructure is essential for the ecosystem to function as designed.
+**Rationale**: JuniperData is consumed by both juniper-cascor and JuniperCanopy. Robust integration infrastructure is essential for the ecosystem to function as designed.
 
 ### DATA-006: Create Dockerfile for JuniperData Service
 
@@ -179,7 +179,7 @@ JuniperData has no Dockerfile despite being designed as a microservice. The refa
 - Includes HEALTHCHECK instruction for container orchestration
 - Created `.dockerignore` to exclude tests, docs, notes, and other development files
 
-**Consumers**: Both JuniperCascor and JuniperCanopy docker-compose configurations reference a `juniper-data` service.
+**Consumers**: Both juniper-cascor and JuniperCanopy docker-compose configurations reference a `juniper-data` service.
 
 ---
 
@@ -268,10 +268,10 @@ The API uses `/v1/` prefix but there is no documented versioning strategy for:
 ### DATA-010: NPZ Artifact Schema Documentation
 
 **Priority**: MEDIUM | **Status**: COMPLETE | **Effort**: Small
-**Source**: JuniperCascor/JuniperCanopy integration analysis
+**Source**: juniper-cascor/JuniperCanopy integration analysis
 **Completed**: 2026-02-05
 
-The NPZ data contract is implicit. Both JuniperCascor and JuniperCanopy expect specific array keys and dtypes:
+The NPZ data contract is implicit. Both juniper-cascor and JuniperCanopy expect specific array keys and dtypes:
 
 ```bash
 X_train: np.ndarray (n_train, 2) float32
@@ -295,10 +295,10 @@ y_full:  np.ndarray (n_total, n_classes) float32 (one-hot)
 ### DATA-011: Parameter Validation Parity with Consumers
 
 **Priority**: MEDIUM | **Status**: COMPLETE | **Effort**: Small
-**Source**: JuniperCascor/JuniperCanopy integration analysis
+**Source**: juniper-cascor/JuniperCanopy integration analysis
 **Completed**: 2026-02-05
 
-JuniperCascor maps parameters with different names:
+juniper-cascor maps parameters with different names:
 
 - `n_points` -> `n_points_per_spiral`
 - `noise_level` -> `noise`
@@ -319,7 +319,7 @@ JuniperCanopy uses different default values between demo_mode (noise=0.1) and ca
 ## Phase 3: Client Package Consolidation
 
 **Priority**: MEDIUM | **Risk**: MEDIUM | **Blocking**: None
-**Rationale**: Both JuniperCascor and JuniperCanopy maintain their own copies of `juniper_data_client/`. This creates maintenance burden and divergence risk.
+**Rationale**: Both juniper-cascor and JuniperCanopy maintain their own copies of `juniper_data_client/`. This creates maintenance burden and divergence risk.
 
 ### DATA-012: Extract Shared JuniperData Client Package
 
@@ -329,7 +329,7 @@ JuniperCanopy uses different default values between demo_mode (noise=0.1) and ca
 
 Both consumers had near-identical client code:
 
-- `JuniperCascor/juniper_cascor/src/juniper_data_client/client.py`
+- `juniper-cascor/juniper_cascor/src/juniper_data_client/client.py`
 - `JuniperCanopy/juniper_canopy/src/juniper_data_client/client.py`
 
 **Resolution Applied** (Option 1 - PyPI package):
@@ -367,10 +367,10 @@ pip install -e juniper_data_client/[test]  # Development
 pip install juniper-data-client            # From PyPI (when published)
 ```
 
-**Next Steps**: DATA-012-A (update JuniperCascor and JuniperCanopy to use shared package)
+**Next Steps**: DATA-012-A (update juniper-cascor and JuniperCanopy to use shared package)
 
 - Publish to PyPI (or private index)
-- Update JuniperCascor and JuniperCanopy to use the shared package
+- Update juniper-cascor and JuniperCanopy to use the shared package
 - Remove duplicated client code from both projects
 
 ---
@@ -381,7 +381,7 @@ pip install juniper-data-client            # From PyPI (when published)
 **Source**: JuniperCanopy exploration (0% coverage on client module)
 **Completed**: 2026-02-06
 
-JuniperCanopy reported 0% coverage on its `juniper_data_client/` module. JuniperCascor had 17 tests for its copy.
+JuniperCanopy reported 0% coverage on its `juniper_data_client/` module. juniper-cascor had 17 tests for its copy.
 
 **Resolution Applied**:
 
@@ -631,9 +631,9 @@ These items are explicitly deferred and will be revisited based on project needs
 
 ## Cross-Project Reference
 
-### Items Owned by JuniperCascor (Not JuniperData Scope)
+### Items Owned by juniper-cascor (Not JuniperData Scope)
 
-These items appear in the reviewed documentation but are owned by JuniperCascor:
+These items appear in the reviewed documentation but are owned by juniper-cascor:
 
 | ID          | Item                              | Status      | Source                                   |
 | ----------- | --------------------------------- | ----------- | ---------------------------------------- |
@@ -743,10 +743,10 @@ All high-priority items have been completed. Coverage is at 95.18% (passes 80% t
 | 2026-02-12 | AI Agent    | Fixed failing test_delete_partial_files test (assertion logic error)                                  |
 | 2026-02-12 | AI Agent    | Fixed mypy error in test_hf_store.py                                                                  |
 | 2026-02-12 | AI Agent    | Updated juniper-data-client v0.2.0: Added JuniperDataConfigurationError, api_key parameter, 6 tests   |
-| 2026-02-12 | AI Agent    | Updated JuniperCascor/JuniperCanopy to re-export from shared package with local fallback              |
-| 2026-02-12 | AI Agent    | Added juniper-data optional dependency to JuniperCascor and JuniperCanopy pyproject.toml              |
+| 2026-02-12 | AI Agent    | Updated juniper-cascor/JuniperCanopy to re-export from shared package with local fallback              |
+| 2026-02-12 | AI Agent    | Added juniper-data optional dependency to juniper-cascor and JuniperCanopy pyproject.toml              |
 | 2026-02-12 | AI Agent    | Added juniper-data service to JuniperCanopy docker-compose.yaml (CAN-REF-003)                         |
-| 2026-02-12 | AI Agent    | Created docker-compose.yaml for JuniperCascor with juniper-data service                               |
+| 2026-02-12 | AI Agent    | Created docker-compose.yaml for juniper-cascor with juniper-data service                               |
 | 2026-02-12 | AI Agent    | Updated cross-project references: CAN-REF-001/002/003 COMPLETE, CAN-REF-004 N/A                       |
 | 2026-02-12 | AI Agent    | Updated coverage status section (all gaps resolved, 95.18% total)                                     |
 | 2026-02-12 | AI Agent    | Created .flake8 config file with per-file-ignores for FastAPI patterns (B008) and test files (F841)   |

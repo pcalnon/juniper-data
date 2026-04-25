@@ -180,7 +180,7 @@ On 2026-02-24, the JuniperData codebase was extracted from the monorepo (`pcalno
 **Priority**: MEDIUM | **Status**: COMPLETE (2026-02-24) | **Effort**: Small (30 min)
 **Source**: Polyrepo migration impact analysis (2026-02-24)
 
-**Problem**: The polyrepo migration left 4 broken symlinks in the `notes/` directory that point to the old monorepo location (`JuniperCascor/juniper_cascor/notes/`). Additionally, `notes/MONOREPO_ANALYSIS.md` was a symlink that resolved but pointed to the old `JuniperCascor` monorepo location, which would break when that directory is removed.
+**Problem**: The polyrepo migration left 4 broken symlinks in the `notes/` directory that point to the old monorepo location (`juniper-cascor/juniper_cascor/notes/`). Additionally, `notes/MONOREPO_ANALYSIS.md` was a symlink that resolved but pointed to the old `juniper-cascor` monorepo location, which would break when that directory is removed.
 
 **Resolution** (2026-02-24):
 
@@ -323,7 +323,7 @@ pytest juniper_data/tests/performance/ --benchmark-enable --benchmark-compare
 - PyPI: `juniper-data-client` v0.3.0 published via Trusted Publishing (OIDC, no API tokens)
 - CI/CD: `ci.yml` + `publish.yml` (two-stage: TestPyPI → PyPI)
 - Tests: 41 tests pass, 96% coverage
-- Consumers updated: JuniperCascor, JuniperCanopy, and JuniperData all reference `juniper-data-client>=0.3.0`
+- Consumers updated: juniper-cascor, JuniperCanopy, and JuniperData all reference `juniper-data-client>=0.3.0`
 - Vendored copy removed from JuniperData (commit `4bada2a`)
 
 **No further action required.**
@@ -339,11 +339,11 @@ pytest juniper_data/tests/performance/ --benchmark-enable --benchmark-compare
 
 | Consumer        | Reference Location                                   | Status                    |
 | --------------- | ---------------------------------------------------- | ------------------------- |
-| JuniperCascor   | `pyproject.toml [project.optional-dependencies].juniper-data` | `juniper-data-client>=0.3.0` |
+| juniper-cascor   | `pyproject.toml [project.optional-dependencies].juniper-data` | `juniper-data-client>=0.3.0` |
 | JuniperCanopy   | `pyproject.toml [project.optional-dependencies].juniper-data` | `juniper-data-client>=0.3.0` |
 | JuniperData     | `pyproject.toml [project.optional-dependencies].test`         | `juniper-data-client>=0.3.0` |
 
-All tests pass with the PyPI-installed package (JuniperData 659, JuniperCascor 226 — verified 2026-02-21).
+All tests pass with the PyPI-installed package (JuniperData 659, juniper-cascor 226 — verified 2026-02-21).
 
 **No further action required.**
 
@@ -632,11 +632,11 @@ Detailed in the Design Options sections of each item above, with post-migration 
 
 ## Cross-Project References
 
-### Items Identified for JuniperCascor
+### Items Identified for juniper-cascor
 
-See `JUNIPER-CASCOR_POST-RELEASE_DEVELOPMENT-ROADMAP.md` in JuniperCascor notes directory.
+See `JUNIPER-CASCOR_POST-RELEASE_DEVELOPMENT-ROADMAP.md` in juniper-cascor notes directory.
 
-**Post-Migration Note**: JuniperCascor is now a standalone repo at `pcalnon/juniper-cascor` (127 commits, CI green). The following status updates reflect migration outcomes:
+**Post-Migration Note**: juniper-cascor is now a standalone repo at `pcalnon/juniper-cascor` (127 commits, CI green). The following status updates reflect migration outcomes:
 
 | ID          | Item                                      | Status (2026-02-17)           | Status (2026-02-24)                                              |
 | ----------- | ----------------------------------------- | ----------------------------- | ---------------------------------------------------------------- |

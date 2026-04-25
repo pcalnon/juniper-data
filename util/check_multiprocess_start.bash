@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #####################################################################################################################################################################################################
 # Project:       Juniper
-# Sub-Project:   JuniperCascor
+# Sub-Project:   juniper-cascor
 # Application:   juniper_cascor
 # Purpose:       Juniper Project Cascade Correlation Neural Network
 #
@@ -53,7 +53,7 @@
 # Define Project Environment Constants
 #####################################################################################################################################################################################################
 export PROJECT_NAME="Juniper"
-export SUBPROJECT_NAME="JuniperCascor"
+export SUBPROJECT_NAME="juniper-cascor"
 export APPLICATION_NAME="juniper_cascor"
 
 

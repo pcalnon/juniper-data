@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #####################################################################################################################################################################################################
 # Project:       Juniper
-# Sub-Project:   JuniperCascor
+# Sub-Project:   juniper-cascor
 # Application:   juniper_cascor
 # Purpose:       Juniper Project Cascade Correlation Neural Network
 #
@@ -17,7 +17,7 @@
 # Copyright:     Copyright (c) 2024,2025,2026 Paul Calnon
 #
 # Description:
-#    This script performs initial environment setup and launches the JuniperCascor Application to train and evaluate the current Cascade Correlation Neural Network prototype
+#    This script performs initial environment setup and launches the juniper-cascor Application to train and evaluate the current Cascade Correlation Neural Network prototype
 #
 #####################################################################################################################################################################################################
 # Notes:

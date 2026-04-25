@@ -83,7 +83,7 @@ Following the completion of the Phase 0-3 refactoring (v0.24.0), this release fo
 ### Changed
 
 - **Backend Path Configuration** (`conf/app_config.yaml`)
-  - Changed to environment variable with default: `${CASCOR_BACKEND_PATH:../JuniperCascor/juniper_cascor}`
+  - Changed to environment variable with default: `${CASCOR_BACKEND_PATH:../juniper-cascor/juniper_cascor}`
   - Added `CASCOR_BACKEND_PATH` to environment_variables list
 
 ### Fixed
