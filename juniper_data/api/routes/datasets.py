@@ -1,6 +1,8 @@
 """Dataset endpoints for creating, listing, and retrieving datasets."""
 
+import asyncio
 import io
+import time
 from datetime import UTC, datetime, timedelta
 
 import numpy as np
@@ -8,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from starlette import status
 
+from juniper_data.api.observability import record_dataset_generation
 from juniper_data.core.artifacts import compute_checksum
 from juniper_data.core.dataset_id import generate_dataset_id
 from juniper_data.core.models import (
@@ -104,7 +107,14 @@ async def create_dataset(
             artifact_url=f"/v1/datasets/{dataset_id}/artifact",
         )
 
-    arrays = generator_class.generate(params)
+    # BUG-JD-07: record dataset generation duration + count to Prometheus
+    gen_start = time.monotonic()
+    try:
+        arrays = generator_class.generate(params)
+    except Exception:
+        record_dataset_generation(generator=request.generator, status="error", duration=time.monotonic() - gen_start)
+        raise
+    record_dataset_generation(generator=request.generator, status="success", duration=time.monotonic() - gen_start)
 
     checksum = compute_checksum(arrays)
 
@@ -563,6 +573,8 @@ async def get_dataset_metadata(
     meta = store.get_meta(dataset_id)
     if meta is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dataset '{dataset_id}' not found")
+    # BUG-JD-08: record access asynchronously to avoid blocking I/O on read paths
+    asyncio.get_event_loop().call_soon(lambda: store.record_access(dataset_id))
     return meta
 
 
@@ -586,6 +598,9 @@ async def download_artifact(
     artifact_bytes = store.get_artifact_bytes(dataset_id)
     if artifact_bytes is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dataset '{dataset_id}' not found")
+
+    # BUG-JD-08: record access asynchronously to avoid blocking I/O on read paths
+    asyncio.get_event_loop().call_soon(lambda: store.record_access(dataset_id))
 
     return StreamingResponse(
         io.BytesIO(artifact_bytes),
