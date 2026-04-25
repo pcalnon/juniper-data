@@ -121,11 +121,11 @@ class TestAPIKeyAuth:
             calls.append((a, b))
             return original(a, b)
 
-        security_module.hmac.compare_digest = spy
+        security_module.hmac.compare_digest = spy  # type: ignore[assignment]
         try:
             auth.validate("probe-key")
         finally:
-            security_module.hmac.compare_digest = original
+            security_module.hmac.compare_digest = original  # type: ignore[assignment]
 
         assert calls, "validate() must call hmac.compare_digest"
         assert all(candidate == "valid-key" for _probe, candidate in calls)

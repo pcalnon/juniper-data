@@ -9,7 +9,6 @@ Covers:
 """
 
 import io
-import json
 import tempfile
 import zipfile
 from datetime import UTC, datetime
@@ -201,9 +200,7 @@ class TestBugJD04SeedlessNonce:
         """``seed=0`` is a valid seed and must not trigger the nonce path."""
         params_a = {"seed": 0, "n_spirals": 2}
         params_b = {"seed": 0, "n_spirals": 2}
-        assert generate_dataset_id("spiral", "v1.0.0", params_a) == generate_dataset_id(
-            "spiral", "v1.0.0", params_b
-        )
+        assert generate_dataset_id("spiral", "v1.0.0", params_a) == generate_dataset_id("spiral", "v1.0.0", params_b)
 
     def test_id_format_preserved_with_nonce(self) -> None:
         """Nonce must not break the ``{generator}-{version}-{hash16}`` shape."""
