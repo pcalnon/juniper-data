@@ -8,11 +8,13 @@ anyio==4.13.0
     # via
     #   starlette
     #   watchfiles
-certifi==2026.2.25
+cachetools==7.0.6
+    # via juniper-data (pyproject.toml)
+certifi==2026.4.22
     # via sentry-sdk
-click==8.3.2
+click==8.3.3
     # via uvicorn
-fastapi==0.135.3
+fastapi==0.136.1
     # via
     #   juniper-data (pyproject.toml)
     #   sentry-sdk
@@ -20,20 +22,20 @@ h11==0.16.0
     # via uvicorn
 httptools==0.7.1
     # via uvicorn
-idna==3.11
+idna==3.13
     # via anyio
 numpy==2.4.4
     # via juniper-data (pyproject.toml)
-prometheus-client==0.24.1
+prometheus-client==0.25.0
     # via juniper-data (pyproject.toml)
-pydantic==2.12.5
+pydantic==2.13.3
     # via
     #   juniper-data (pyproject.toml)
     #   fastapi
     #   pydantic-settings
-pydantic-core==2.41.5
+pydantic-core==2.46.3
     # via pydantic
-pydantic-settings==2.13.1
+pydantic-settings==2.14.0
     # via juniper-data (pyproject.toml)
 python-dotenv==1.2.2
     # via
@@ -42,7 +44,7 @@ python-dotenv==1.2.2
     #   uvicorn
 pyyaml==6.0.3
     # via uvicorn
-sentry-sdk==2.57.0
+sentry-sdk==2.58.0
     # via juniper-data (pyproject.toml)
 starlette==1.0.0
     # via fastapi
@@ -59,7 +61,7 @@ typing-inspection==0.4.2
     #   pydantic-settings
 urllib3==2.6.3
     # via sentry-sdk
-uvicorn==0.44.0
+uvicorn==0.46.0
     # via juniper-data (pyproject.toml)
 uvloop==0.22.1
     # via uvicorn
