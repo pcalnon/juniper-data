@@ -134,7 +134,39 @@ def configure_logging(log_level: str, log_format: str, service_name: str = _SERV
     root.addHandler(handler)
 
 
-def configure_sentry(dsn: str | None, service_name: str, version: str, *, send_pii: bool = False, traces_sample_rate: float = DEFAULT_SENTRY_TRACES_SAMPLE_RATE) -> None:
+# SEC-10: header names that may carry API keys or session identifiers.
+# ``before_send`` scrubs these from every Sentry event regardless of the
+# ``send_default_pii`` flag, so a future integration that re-enables
+# per-event header capture (custom logging integration, replay, etc.)
+# cannot leak authentication material to Sentry.
+_SENTRY_SENSITIVE_HEADERS = frozenset({"x-api-key", "authorization", "cookie"})
+
+
+def _strip_sensitive_headers(event, hint):  # noqa: ARG001 — Sentry hook signature
+    """Redact sensitive request headers in a Sentry event with ``[Filtered]``.
+
+    Sentry calls this via ``before_send`` for every outbound event. The
+    filter only rewrites keys in ``_SENTRY_SENSITIVE_HEADERS`` so
+    non-sensitive diagnostic headers (user-agent, trace IDs, etc.) still
+    reach Sentry unchanged.
+    """
+    request_data = event.get("request", {}) if isinstance(event, dict) else {}
+    headers = request_data.get("headers", {}) if isinstance(request_data, dict) else {}
+    if isinstance(headers, dict):
+        for key in list(headers.keys()):
+            if key.lower() in _SENTRY_SENSITIVE_HEADERS:
+                headers[key] = "[Filtered]"
+    return event
+
+
+def configure_sentry(
+    dsn: str | None,
+    service_name: str,
+    version: str,
+    *,
+    send_pii: bool = False,
+    traces_sample_rate: float = DEFAULT_SENTRY_TRACES_SAMPLE_RATE,
+) -> None:
     """Initialize Sentry with FastAPI integration. No-op when dsn is None or empty.
 
     Args:
@@ -142,6 +174,8 @@ def configure_sentry(dsn: str | None, service_name: str, version: str, *, send_p
         service_name: Service name for Sentry environment tag.
         version: Application version string.
         send_pii: Whether to send default PII (IP addresses, etc.) to Sentry.
+            Defaults to False (SEC-10); operators can opt in explicitly via
+            ``JUNIPER_DATA_SENTRY_SEND_PII=true`` when they accept the risk.
         traces_sample_rate: Fraction of transactions to send to Sentry (0.0 to 1.0).
     """
     if not dsn:
@@ -151,10 +185,15 @@ def configure_sentry(dsn: str | None, service_name: str, version: str, *, send_p
 
     sentry_sdk.init(
         dsn=dsn,
+        # SEC-10: honor the operator choice but still run ``before_send``
+        # so that when ``send_pii=True`` is set intentionally, API keys
+        # never hit Sentry regardless. With the default ``send_pii=False``
+        # nothing is sent anyway; the filter acts as defense-in-depth.
         send_default_pii=send_pii,
         enable_logs=True,
         traces_sample_rate=traces_sample_rate,
         release=f"{service_name}@{version}",
+        before_send=_strip_sensitive_headers,
     )
 
 
@@ -167,6 +206,44 @@ def get_prometheus_app():
     from prometheus_client import make_asgi_app
 
     return make_asgi_app()
+
+
+# SEC-16: default allowlist matches ``Settings.metrics_trusted_ips``. We
+# duplicate it as a module-level default so ``MetricsAuthMiddleware`` can
+# be constructed without passing trusted IPs explicitly (useful in tests).
+METRICS_DEFAULT_TRUSTED_IPS = ("127.0.0.1", "::1")
+
+
+class MetricsAuthMiddleware:
+    """ASGI wrapper that restricts ``/metrics`` to a trusted IP allowlist.
+
+    The Prometheus ASGI app is mounted as a sub-app and therefore bypasses
+    ``SecurityMiddleware`` (which only runs on the router stack). This
+    wrapper inspects the raw ASGI scope so it can reject untrusted scrapers
+    without depending on FastAPI. An empty allowlist blocks everything —
+    operators who don't want ``/metrics`` exposed should simply flip
+    ``metrics_enabled=False`` instead.
+    """
+
+    def __init__(self, app, trusted_ips: list[str] | tuple[str, ...] | None = None) -> None:
+        self.app = app
+        self.trusted_ips: frozenset[str] = frozenset(trusted_ips if trusted_ips is not None else METRICS_DEFAULT_TRUSTED_IPS)
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            client = scope.get("client")
+            client_ip = client[0] if client else None
+            if not client_ip or client_ip not in self.trusted_ips:
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 403,
+                        "headers": [(b"content-type", b"text/plain; charset=utf-8")],
+                    }
+                )
+                await send({"type": "http.response.body", "body": b"Forbidden"})
+                return
+        await self.app(scope, receive, send)
 
 
 def set_build_info(namespace: str, version: str) -> None:

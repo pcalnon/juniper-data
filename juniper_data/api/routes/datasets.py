@@ -107,10 +107,16 @@ async def create_dataset(
             artifact_url=f"/v1/datasets/{dataset_id}/artifact",
         )
 
+    # SEC-04 / JD-PERF-01 / CONC-04: move the potentially CPU-bound
+    # generator call off the async event-loop thread so concurrent HTTP
+    # requests are not blocked while a dataset is being synthesized.
+    # Generator classes are stateless today (verified in Phase 1D survey),
+    # so running them in asyncio's default executor is safe.
     # BUG-JD-07: record dataset generation duration + count to Prometheus
     gen_start = time.monotonic()
     try:
-        arrays = generator_class.generate(params)
+        # arrays = generator_class.generate(params)
+        arrays = await asyncio.to_thread(generator_class.generate, params)
     except Exception:
         record_dataset_generation(generator=request.generator, status="error", duration=time.monotonic() - gen_start)
         raise
