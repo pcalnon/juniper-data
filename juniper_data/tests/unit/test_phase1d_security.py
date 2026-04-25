@@ -1,4 +1,4 @@
-"""Phase 1D Track 1 security remediation tests (SEC-04/10/16)."""
+"""Phase 1D Track 1 security remediation tests (SEC-02/04/10/16)."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from cachetools import TTLCache
 from fastapi.testclient import TestClient
 
 from juniper_data.api.observability import (
@@ -16,6 +17,49 @@ from juniper_data.api.observability import (
     _strip_sensitive_headers,
     configure_sentry,
 )
+from juniper_data.api.security import RateLimiter
+
+# =============================================================================
+# SEC-02: rate limiter must evict stale entries via TTLCache (DoS guard)
+# =============================================================================
+
+
+class TestSEC02RateLimiterTTL:
+    """The in-memory rate limiter must use a TTLCache so that stale per-IP
+    buckets are pruned automatically. Without eviction, an attacker rotating
+    source IPs can exhaust process memory.
+    """
+
+    def test_counters_use_ttl_cache(self) -> None:
+        """Internal counter store is a cachetools.TTLCache, not a defaultdict."""
+        # SEC-02: bucket store must be a TTL-bounded cache, not an unbounded dict.
+        limiter = RateLimiter(requests_per_minute=10, window_seconds=60, enabled=True)
+        assert isinstance(limiter._counters, TTLCache)
+        assert limiter._counters.maxsize >= 1
+        assert limiter._counters.ttl == 60
+
+    def test_entry_expires_after_ttl_window(self) -> None:
+        """An IP bucket must be evicted from the cache once the TTL elapses."""
+        # SEC-02: use a 1-second window so expiry happens within the test.
+        limiter = RateLimiter(requests_per_minute=10, window_seconds=1, enabled=True)
+        allowed, _, _ = limiter.check("ip:198.51.100.7")
+        assert allowed is True
+        assert "ip:198.51.100.7" in limiter._counters
+
+        # Sleep just past the TTL and force expiry; entry must be gone.
+        time.sleep(1.05)
+        limiter._counters.expire()
+        assert "ip:198.51.100.7" not in limiter._counters, "SEC-02 regression: rate limiter entry was not evicted after TTL"
+
+    def test_maxsize_caps_unique_keys(self) -> None:
+        """TTLCache hard-caps entry count, blunting an IP-rotation DoS."""
+        # SEC-02: many distinct keys must not grow the cache without bound.
+        limiter = RateLimiter(requests_per_minute=10, window_seconds=60, enabled=True)
+        cap = int(limiter._counters.maxsize)
+        for i in range(cap + 50):
+            limiter.check(f"ip:10.0.{(i // 256) % 256}.{i % 256}")
+        assert len(limiter._counters) <= cap
+
 
 # =============================================================================
 # SEC-04: dataset generation must run off the event-loop thread
@@ -51,9 +95,7 @@ class TestSEC04DatasetGenerateOffLoop:
         asyncio.run(_invoke())
 
         assert observed_threads, "generator.generate was not called"
-        assert observed_threads[0] != main_loop_thread, (
-            "generator.generate ran on the event-loop thread — SEC-04 regression"
-        )
+        assert observed_threads[0] != main_loop_thread, "generator.generate ran on the event-loop thread — SEC-04 regression"
 
     def test_datasets_route_imports_asyncio(self) -> None:
         """Guard against a future refactor that drops the asyncio.to_thread wrap."""
@@ -62,9 +104,7 @@ class TestSEC04DatasetGenerateOffLoop:
         from juniper_data.api.routes import datasets as datasets_module
 
         source = inspect.getsource(datasets_module)
-        assert "asyncio.to_thread(generator_class.generate" in source, (
-            "SEC-04 regression: generator_class.generate is no longer offloaded"
-        )
+        assert "asyncio.to_thread(generator_class.generate" in source, "SEC-04 regression: generator_class.generate is no longer offloaded"
 
 
 # =============================================================================
@@ -93,9 +133,7 @@ class TestSEC10SentryPII:
 
     def test_before_send_handles_missing_request(self) -> None:
         assert _strip_sensitive_headers({}, hint={}) == {}
-        assert _strip_sensitive_headers({"request": "not-a-dict"}, hint={}) == {
-            "request": "not-a-dict"
-        }
+        assert _strip_sensitive_headers({"request": "not-a-dict"}, hint={}) == {"request": "not-a-dict"}
 
     def test_configure_sentry_passes_send_pii_and_before_send(self, monkeypatch: pytest.MonkeyPatch) -> None:
         captured: dict = {}

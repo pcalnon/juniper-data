@@ -110,6 +110,7 @@ repos:
           - --no-strict-optional
         additional_dependencies:
           - types-redis
+          - types-cachetools
         files: ^juniper_data/(?!tests/).*\.py$
 
       # MyPy for tests with relaxed rules
@@ -121,6 +122,7 @@ repos:
           - --allow-untyped-defs
         additional_dependencies:
           - types-redis
+          - types-cachetools
         files: ^juniper_data/tests/.*\.py$
 
   # ═══════════════════════════════════════════════════════════════════════════
