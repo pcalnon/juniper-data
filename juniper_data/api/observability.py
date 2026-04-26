@@ -67,6 +67,16 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
             request_id_var.reset(token)
 
 
+# METRICS-MON seed-01 / R1.1: bound cardinality. The previous fallback to
+# ``request.url.path`` produced an unbounded label set under any route with
+# path parameters (or 404s with attacker-controlled paths), which can blow
+# up Prometheus storage. The label set is now restricted to the resolved
+# Starlette route template; all other requests collapse into a single
+# ``UNMATCHED_ENDPOINT_LABEL`` bucket and increment a separate counter so
+# the volume of unmatched traffic is still observable.
+UNMATCHED_ENDPOINT_LABEL = "_unmatched"
+
+
 class PrometheusMiddleware(BaseHTTPMiddleware):
     """Tracks http_requests_total and http_request_duration_seconds with namespace prefix."""
 
@@ -85,6 +95,11 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
             "HTTP request duration in seconds",
             ["method", "endpoint"],
         )
+        self._unmatched_count = Counter(
+            f"{prefix}http_unmatched_requests_total",
+            "HTTP requests not matching any registered route template",
+            ["method"],
+        )
 
     async def dispatch(
         self,
@@ -95,10 +110,15 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         duration = time.perf_counter() - start
 
-        # BUG-JD-09: use route template for fixed cardinality (avoid unbounded labels from path params)
         route = request.scope.get("route")
-        endpoint = route.path if route is not None and hasattr(route, "path") else request.url.path
+        template = getattr(route, "path", None) if route is not None else None
         method = request.method
+        if template:
+            endpoint = template
+        else:
+            endpoint = UNMATCHED_ENDPOINT_LABEL
+            self._unmatched_count.labels(method=method).inc()
+
         status = str(response.status_code)
 
         self._request_count.labels(method=method, endpoint=endpoint, status=status).inc()
