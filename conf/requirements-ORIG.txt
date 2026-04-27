@@ -47,7 +47,7 @@
 # Core dependencies - using flexible versions for Python 3.14 compatibility
 annotated-doc>=0.0.4
 annotated-types>=0.7.0
-anyio>=4.12.1
+anyio>=4.13.0
 # attrs>=25.4.0
 # bandit>=1.9.3
 # black>=26.1.0
