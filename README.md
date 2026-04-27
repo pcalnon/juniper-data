@@ -4,7 +4,7 @@ Dataset generation and management service for the Juniper ecosystem.
 
 ## Overview
 
-Juniper Data provides a centralized service for generating, storing, and serving datasets used by the Juniper neural network projects. It supports various dataset types including the classic two-spiral classification problem.
+Juniper Data provides a centralized service for generating, storing, and serving datasets used by the Juniper neural network projects. It supports various dataset types, including the classic two-spiral classification problem.
 
 ## Ecosystem Compatibility
 
@@ -19,19 +19,19 @@ For full-stack Docker deployment and integration tests, see `juniper-deploy`.
 
 ## Architecture
 
-JuniperData is the **foundational data layer** of the Juniper ecosystem. juniper-cascor and juniper-canopy both call JuniperData to generate and retrieve datasets.
+juniper-data is the **foundational data layer** of the Juniper Project ecosystem. juniper-cascor and juniper-canopy both call juniper-data to generate and retrieve datasets.
 
 ```
 ┌─────────────────────┐     REST+WS      ┌──────────────────────┐
-│   juniper-canopy     │ ◄──────────────► │    juniper-cascor     │
+│   juniper-canopy    │ ◄──────────────► │    juniper-cascor    │
 │   Dashboard         │                  │    Training Svc      │
 │   Port 8050         │                  │    Port 8200         │
 └──────────┬──────────┘                  └──────────┬───────────┘
-           │ REST                                    │ REST
-           ▼                                         ▼
+           │ REST                                   │ REST
+           ▼                                        ▼
 ┌──────────────────────────────────────────────────────────────┐
-│                      JuniperData  ◄── (this service)          │
-│                   Dataset Service  ·  Port 8100               │
+│                      JuniperData  ◄── (this service)         │
+│                   Dataset Service  ·  Port 8100              │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -125,29 +125,29 @@ uvicorn juniper_data.api.app:app --reload
 | `/v1/generators/{name}/schema`        | GET    | Get parameter schema for a generator                 |
 | `/v1/datasets`                        | POST   | Create dataset (or return cached dataset)            |
 | `/v1/datasets`                        | GET    | List dataset IDs                                     |
-| `/v1/datasets/filter`                 | GET    | Filter metadata by generator/tags/date/name/version |
+| `/v1/datasets/filter`                 | GET    | Filter metadata by generator/tags/date/name/version  |
 | `/v1/datasets/stats`                  | GET    | Aggregate dataset statistics                         |
 | `/v1/datasets/versions`               | GET    | List all versions for a logical dataset name         |
 | `/v1/datasets/latest`                 | GET    | Get latest version for a logical dataset name        |
 | `/v1/datasets/batch-create`           | POST   | Create multiple datasets                             |
 | `/v1/datasets/batch-delete`           | POST   | Delete multiple datasets                             |
-| `/v1/datasets/batch-tags`             | PATCH  | Update tags on multiple datasets                    |
-| `/v1/datasets/batch-export`           | POST   | Export multiple datasets as ZIP                     |
-| `/v1/datasets/cleanup-expired`        | POST   | Delete expired datasets                             |
+| `/v1/datasets/batch-tags`             | PATCH  | Update tags on multiple datasets                     |
+| `/v1/datasets/batch-export`           | POST   | Export multiple datasets as ZIP                      |
+| `/v1/datasets/cleanup-expired`        | POST   | Delete expired datasets                              |
 | `/v1/datasets/{id}`                   | GET    | Get dataset metadata                                 |
 | `/v1/datasets/{id}`                   | DELETE | Delete a dataset                                     |
 | `/v1/datasets/{id}/artifact`          | GET    | Download NPZ artifact                                |
 | `/v1/datasets/{id}/preview`           | GET    | Preview first N samples as JSON                      |
 | `/v1/datasets/{id}/tags`              | PATCH  | Add/remove tags on one dataset                       |
 
-See [docs/api/JUNIPER_DATA_API.md](docs/api/JUNIPER_DATA_API.md) for full endpoint documentation including filtering, batch operations, and tagging.
+See [docs/api/JUNIPER_DATA_API.md](docs/api/JUNIPER_DATA_API.md) for full endpoint documentation, including filtering, batch operations, and tagging.
 
 ### Named Dataset Versioning
 
 `POST /v1/datasets` supports logical names for versioned datasets:
 
 - Set `name` to group related datasets into a version series.
-- Persisted creates with the same `name` auto-increment `meta.dataset_version` (`1`, `2`, `3`, ...).
+- Persisted creates with the same `name`, auto-increment `meta.dataset_version` (`1`, `2`, `3`, ...).
 - Repeating an identical request returns the cached dataset and keeps its existing version.
 - Use `GET /v1/datasets/versions?name=<dataset_name>` to view history and `GET /v1/datasets/latest?name=<dataset_name>` to resolve the latest.
 
