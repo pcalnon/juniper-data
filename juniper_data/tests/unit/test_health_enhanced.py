@@ -83,12 +83,13 @@ class TestReadinessResponseModel:
 
 @pytest.mark.unit
 class TestEnhancedReadinessEndpoint:
-    """Test enhanced /v1/health/ready endpoint."""
+    """Test enhanced /v1/health/ready endpoint (R1.2 contract)."""
 
     def test_readiness_with_valid_storage(self, client, test_settings):
-        """Ready when storage directory exists."""
+        """Ready when storage directory exists; 200 + X-Juniper-Readiness=ready."""
         response = client.get("/v1/health/ready")
         assert response.status_code == 200
+        assert response.headers.get("X-Juniper-Readiness") == "ready"
         body = response.json()
         assert body["status"] == "ready"
         assert body["version"] == __version__
@@ -106,23 +107,71 @@ class TestEnhancedReadinessEndpoint:
         body = response.json()
         assert "2 datasets" in body["dependencies"]["storage"]["message"]
 
-    def test_readiness_with_missing_storage(self, monkeypatch):
-        """Degraded when storage directory is missing."""
+    def test_readiness_503_when_required_dep_unhealthy(self, monkeypatch):
+        """R1.2 / seed-02: missing storage → 503 + status="not_ready" so LBs shed traffic."""
         monkeypatch.setenv("JUNIPER_DATA_STORAGE_PATH", "/nonexistent/path/datasets")
         settings = Settings(storage_path="/nonexistent/path/datasets")
         app = create_app(settings=settings)
         c = TestClient(app)
         response = c.get("/v1/health/ready")
-        assert response.status_code == 200
+        assert response.status_code == 503
+        assert response.headers.get("X-Juniper-Readiness") == "not_ready"
         body = response.json()
-        assert body["status"] == "degraded"
+        assert body["status"] == "not_ready"
         assert body["dependencies"]["storage"]["status"] == "unhealthy"
         assert "not found" in body["dependencies"]["storage"]["message"]
 
 
 @pytest.mark.unit
+class TestLivenessProbe:
+    """Test /v1/health/live with R1.2 tick contract."""
+
+    def test_liveness_200_when_tick_succeeds(self, client):
+        """Healthy storage → 200 + tick/duration_ms in body."""
+        response = client.get("/v1/health/live")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "alive"
+        assert body["tick"] == "juniper-data"
+        assert isinstance(body["duration_ms"], int)
+        assert body["duration_ms"] >= 0
+
+    def test_liveness_503_when_tick_raises(self, monkeypatch):
+        """R1.2 / seed-03: storage gone → tick raises → 503."""
+        monkeypatch.setenv("JUNIPER_DATA_STORAGE_PATH", "/nonexistent/path/datasets")
+        settings = Settings(storage_path="/nonexistent/path/datasets")
+        app = create_app(settings=settings)
+        c = TestClient(app)
+        response = c.get("/v1/health/live")
+        assert response.status_code == 503
+        body = response.json()
+        assert body["status"] == "unresponsive"
+        assert body["tick"] == "juniper-data"
+        assert "storage path" in body["error"]
+        assert isinstance(body["duration_ms"], int)
+
+    def test_liveness_503_when_tick_exceeds_budget(self, client, monkeypatch):
+        """R1.2 / seed-03: tick exceeding LIVENESS_TICK_BUDGET_MS → 503."""
+        from juniper_data.api.routes import health as health_module
+
+        def slow_tick(_settings):
+            import time as _t
+
+            _t.sleep((health_module.LIVENESS_TICK_BUDGET_MS + 50) / 1000)
+
+        monkeypatch.setattr(health_module, "_liveness_tick", slow_tick)
+        response = client.get("/v1/health/live")
+        assert response.status_code == 503
+        body = response.json()
+        assert body["status"] == "unresponsive"
+        assert body["tick"] == "juniper-data"
+        assert "exceeded budget" in body["error"]
+        assert body["duration_ms"] > health_module.LIVENESS_TICK_BUDGET_MS
+
+
+@pytest.mark.unit
 class TestBackwardCompatibleEndpoints:
-    """Test that /v1/health and /v1/health/live are unchanged."""
+    """Test that /v1/health remains unchanged for legacy integrations."""
 
     def test_health_check_unchanged(self, client):
         response = client.get("/v1/health")
@@ -130,9 +179,3 @@ class TestBackwardCompatibleEndpoints:
         body = response.json()
         assert body["status"] == "ok"
         assert body["version"] == __version__
-
-    def test_liveness_unchanged(self, client):
-        response = client.get("/v1/health/live")
-        assert response.status_code == 200
-        body = response.json()
-        assert body["status"] == "alive"

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (potentially breaking)
+
+- **METRICS-MON R1.2 / seed-02 / seed-03**: `/v1/health/ready` now returns **HTTP 503** (not 200) when a required dependency is unhealthy, with body `status="not_ready"`. `/v1/health/live` runs an in-process liveness tick (storage directory check) within a 250 ms budget and returns **HTTP 503** on tick failure or budget exceedance. Both endpoints emit a new `X-Juniper-Readiness` / liveness body fields (`tick`, `duration_ms`) so probe diagnostics surface in orchestrator logs without body parsing. Operators relying on `kubectl` readiness probes pointing at `/v1/health/ready` will now see traffic withdrawn from pods whose storage path is unreachable. See [`notes/code-review/METRICS_MONITORING_R1.2_PROBE_DESIGN_2026-04-27.md`](https://github.com/pcalnon/juniper-ml/blob/main/notes/code-review/METRICS_MONITORING_R1.2_PROBE_DESIGN_2026-04-27.md) in juniper-ml for the cross-repo contract; companion PRs land in juniper-cascor, juniper-canopy, and juniper-deploy. `/v1/health` (the legacy combined endpoint) is unchanged.
+
 ### Security
 
 - **SEC-01 / JD-SEC-02**: `APIKeyAuth.validate` now compares the presented API key against each configured key with `hmac.compare_digest`, eliminating the timing side-channel that Python's `in` set-membership comparison exposed. The loop deliberately does not short-circuit on first match.
