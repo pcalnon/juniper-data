@@ -127,12 +127,26 @@ class DatasetStore(ABC):
 
         Args:
             dataset_id: Unique identifier for the dataset.
+
+        CONC-12 / BUG-JD-11 (Phase 3D): the read-modify-write on
+        ``access_count`` happens across three calls — ``get_meta``, the
+        in-memory increment, and ``update_meta``. Two concurrent requests
+        racing on the same dataset both used to read the same count, both
+        increment locally, and both write back the *same* new value, so
+        one access was silently lost from the counter on every collision.
+        Hold the existing ``_version_lock`` across the whole sequence so
+        the increment is atomic from the perspective of any other thread
+        in the same process. The plan's caveat applies: this is a
+        per-process lock, so multi-process deployments accept best-effort
+        counting (see BUG-JD-05). Access counting is informational so
+        this is an acceptable trade-off.
         """
-        meta = self.get_meta(dataset_id)
-        if meta is not None:
-            meta.last_accessed_at = datetime.now(UTC)
-            meta.access_count += 1
-            self.update_meta(dataset_id, meta)
+        with self._version_lock:
+            meta = self.get_meta(dataset_id)
+            if meta is not None:
+                meta.last_accessed_at = datetime.now(UTC)
+                meta.access_count += 1
+                self.update_meta(dataset_id, meta)
 
     def is_expired(self, meta: DatasetMeta) -> bool:
         """Check if a dataset has expired based on its TTL.

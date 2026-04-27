@@ -28,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Encoding literals (`'utf-8'`) consolidated into `core/constants.py` and reused across artifact, secrets, and storage modules.
 - AGENTS.md "Code Style Conventions → Constants" section updated to document the layer-scoped constants module pattern and the `starlette.status` rule.
 
+### Fixed
+
+- **CONC-12 / BUG-JD-11** (Track 3 Phase 3D, 2026-04-27): `DatasetStore.record_access` (`juniper_data/storage/base.py`) now wraps the entire `get_meta` → in-memory increment → `update_meta` sequence inside `with self._version_lock:`, so two concurrent requests racing on the same dataset can no longer both read the same count, both increment locally, and both write back the same new value. The class-level `_version_lock` already exists for `save_versioned`; this reuses it. Per-process locking only — multi-process deployments still accept best-effort counting per the BUG-JD-05 caveat. Verified by `juniper_data/tests/unit/test_record_access_concurrency.py::TestRecordAccessAtomicity` (4 tests, including a deepcopy + sleep-widened concurrency test that fails on the pre-fix code with `1 == 16` lost-updates and a tracing-lock test that asserts the lock is held across both `get_meta` and `update_meta` calls).
+
 ### Notes
 
 - Pydantic `Field` defaults remain literal-equivalent — Wave 5 verified that `SpiralParams`, `XorParams`, `CirclesParams`, `GaussianParams`, and `CheckerboardParams` produce SHA-256-identical `X_full` / `y_full` / split arrays at `seed=42` between this branch and `origin/main`.
