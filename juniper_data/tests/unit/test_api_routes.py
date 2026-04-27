@@ -11,9 +11,16 @@ from juniper_data.storage.memory import InMemoryDatasetStore
 
 
 @pytest.fixture
-def test_settings() -> Settings:
-    """Create test settings."""
-    return Settings(storage_path="/tmp/juniper_test")
+def test_settings(tmp_path) -> Settings:
+    """Create test settings backed by an existing tmp directory.
+
+    Using tmp_path ensures the storage directory actually exists so that
+    R1.2 readiness probe (503 when storage missing) does not fail the
+    legacy health-endpoint smoke tests.
+    """
+    storage = tmp_path / "juniper_data_storage"
+    storage.mkdir()
+    return Settings(storage_path=str(storage))
 
 
 @pytest.fixture

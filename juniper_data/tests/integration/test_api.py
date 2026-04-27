@@ -28,9 +28,15 @@ def memory_store() -> InMemoryDatasetStore:
 
 
 @pytest.fixture
-def test_settings() -> Settings:
-    """Create test settings."""
-    return Settings(storage_path="/tmp/juniper_data_test")
+def test_settings(tmp_path) -> Settings:
+    """Create test settings backed by an existing tmp directory.
+
+    Using tmp_path ensures storage exists so R1.2 readiness probe
+    (503 when storage missing) does not fail integration smoke tests.
+    """
+    storage = tmp_path / "juniper_data_test"
+    storage.mkdir()
+    return Settings(storage_path=str(storage))
 
 
 @pytest.fixture

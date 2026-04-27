@@ -10,10 +10,16 @@ from juniper_data.storage import InMemoryDatasetStore
 
 
 @pytest.fixture
-def auth_enabled_client() -> TestClient:
-    """Create a test client with API key authentication enabled."""
+def auth_enabled_client(tmp_path) -> TestClient:
+    """Create a test client with API key authentication enabled.
+
+    storage_path resolved from tmp_path so R1.2 readiness/liveness
+    probes succeed (the directory exists).
+    """
+    storage = tmp_path / "test_data"
+    storage.mkdir()
     settings = Settings(
-        storage_path="./test_data",
+        storage_path=str(storage),
         api_keys=["valid-key-1", "valid-key-2"],
         rate_limit_enabled=False,
     )
