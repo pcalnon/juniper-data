@@ -49,6 +49,14 @@ api = [
     "fastapi>=0.100.0",
     "uvicorn[standard]>=0.23.0",
     "pydantic-settings>=2.0.0",
+    # METRICS-MON R2.1.2 / seed-06: shared observability primitives
+    # (DependencyStatus, ReadinessResponse, JuniperJsonFormatter,
+    # RequestIdMiddleware, PrometheusMiddleware, configure_sentry,
+    # configure_logging, get_prometheus_app, set_build_info, and the
+    # R1.1/R1.2/R1.3 contract constants). Pinned at the alpha published
+    # by juniper-ml#155; promotion to >=0.1.0 follows the data-soak
+    # cycle per the R2.1 design §6.
+    "juniper-observability>=0.1.0a0",
 ]
 test = [
     "pytest>=7.0.0",
