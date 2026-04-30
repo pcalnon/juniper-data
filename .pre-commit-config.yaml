@@ -163,7 +163,11 @@ repos:
           - --config=./.markdownlint.yaml
           - --fix
         files: \.(md|markdown)$
-        exclude: ^(CHANGELOG\.md|notes/|docs/|history/)
+        # .serena/ holds Serena code-agent memory files that are
+        # tracked-but-stale (the directory was added to .gitignore
+        # *after* the files were committed, so they remain in git
+        # ls-files but should not be linted/auto-fixed).
+        exclude: ^(CHANGELOG\.md|notes/|docs/|history/|\.serena/)
 
   # ═══════════════════════════════════════════════════════════════════════════
   # Code Coverage Gate - Per-module (85%) and Aggregate (95%)
