@@ -432,7 +432,9 @@ jobs:
           pip install "juniper-data-client @ git+https://github.com/pcalnon/juniper-data-client.git@main"
           pip install ".[all]"
           pip freeze | grep -ivE "^juniper[-_]data" > reports/security/requirements.txt
-          pip-audit -r reports/security/requirements.txt --strict
+          # --ignore-vuln CVE-2026-3219: pip 26.0.1 on the runner image
+          # has no fix available as of 2026-04-29.
+          pip-audit -r reports/security/requirements.txt --strict --ignore-vuln CVE-2026-3219
 
       - name: Upload Security Reports
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
