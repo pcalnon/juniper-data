@@ -150,6 +150,22 @@ repos:
         types: [yaml]
 
   # ═══════════════════════════════════════════════════════════════════════════
+  # Markdown Linting - markdownlint
+  # Alignment plan Phase 3: brings juniper-data in line with the rest
+  # of the fleet's markdown linting. Config in .markdownlint.yaml.
+  # ═══════════════════════════════════════════════════════════════════════════
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.42.0
+    hooks:
+      - id: markdownlint
+        name: Lint Markdown files
+        args:
+          - --config=./.markdownlint.yaml
+          - --fix
+        files: \.(md|markdown)$
+        exclude: ^(CHANGELOG\.md|notes/|docs/|history/)
+
+  # ═══════════════════════════════════════════════════════════════════════════
   # Code Coverage Gate - Per-module (85%) and Aggregate (95%)
   # Runs on pre-push only (not pre-commit) to keep commits fast.
   # Install with: pre-commit install --hook-type pre-push

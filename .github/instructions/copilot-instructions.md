@@ -36,6 +36,7 @@ juniper_data/
 ### Generator Registration
 
 Each generator lives in its own subpackage under `generators/` with:
+
 - `generator.py` — Class with `generate(params) -> dict` class method returning float32 arrays
 - `params.py` — Pydantic model for parameter validation
 - `__init__.py` — Exports `VERSION`, generator class, and params class

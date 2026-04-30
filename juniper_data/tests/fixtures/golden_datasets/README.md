@@ -11,9 +11,11 @@ This directory contains golden reference datasets generated from the juniper-cas
 ## Dataset Files
 
 ### 2_spiral.npz
+
 A 2-spiral classification dataset.
 
 **Parameters:**
+
 | Parameter | Value |
 |-----------|-------|
 | n_spirals | 2 |
@@ -24,6 +26,7 @@ A 2-spiral classification dataset.
 | test_ratio | 0.2 |
 
 **Expected Shapes:**
+
 | Array | Shape |
 |-------|-------|
 | X_train | (160, 2) |
@@ -32,12 +35,15 @@ A 2-spiral classification dataset.
 | y_test | (40, 2) |
 
 **Expected Dtypes:**
+
 - All arrays: `float32`
 
 ### 3_spiral.npz
+
 A 3-spiral classification dataset.
 
 **Parameters:**
+
 | Parameter | Value |
 |-----------|-------|
 | n_spirals | 3 |
@@ -48,6 +54,7 @@ A 3-spiral classification dataset.
 | test_ratio | 0.2 |
 
 **Expected Shapes:**
+
 | Array | Shape |
 |-------|-------|
 | X_train | (120, 2) |
@@ -56,6 +63,7 @@ A 3-spiral classification dataset.
 | y_test | (30, 3) |
 
 **Expected Dtypes:**
+
 - All arrays: `float32`
 
 ## Array Descriptions
@@ -70,6 +78,7 @@ A 3-spiral classification dataset.
 ## Class Distribution
 
 For balanced datasets, each class should have approximately equal representation:
+
 - **2-spiral**: ~50% per class
 - **3-spiral**: ~33.3% per class
 
@@ -122,6 +131,7 @@ def test_spiral_parity():
 ## Metadata Files
 
 Each `.npz` file has a corresponding `_metadata.json` file containing:
+
 - Generation parameters
 - Array shapes and dtypes
 - Class distribution statistics

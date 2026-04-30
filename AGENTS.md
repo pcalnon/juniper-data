@@ -724,6 +724,7 @@ juniper-deploy --> Docker Compose orchestration
 Git worktrees allow multiple branches of a repository to be checked out simultaneously in separate directories. For the Juniper ecosystem, all worktrees are centralized in **`/home/pcalnon/Development/python/Juniper/worktrees/`** using a standardized naming convention.
 
 The full setup and cleanup procedures are defined in:
+
 - **`notes/WORKTREE_SETUP_PROCEDURE.md`** — Creating a worktree for a new task
 - **`notes/WORKTREE_CLEANUP_PROCEDURE_V2.md`** — Merging, removing, and pushing after task completion (V2 — fixes CWD-trap bug)
 
@@ -751,6 +752,7 @@ Example: `juniper-data--feature--add-generator--20260225-1430--973ae391`
 ### Quick Reference
 
 **Setup** (full procedure in `notes/WORKTREE_SETUP_PROCEDURE.md`):
+
 ```bash
 cd /home/pcalnon/Development/python/Juniper/juniper-data
 git fetch origin && git checkout main && git pull origin main
