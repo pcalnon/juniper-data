@@ -10,7 +10,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from starlette import status
 
-from juniper_data.api.observability import record_dataset_generation
+from juniper_data.api.constants import (
+    GENERATION_STATUS_ERROR,
+    GENERATION_STATUS_SUCCESS,
+    POST_CACHE_HIT,
+    POST_CACHE_MISS,
+)
+from juniper_data.api.observability import record_dataset_generation, record_dataset_post
 from juniper_data.core.artifacts import compute_checksum
 from juniper_data.core.dataset_id import generate_dataset_id
 from juniper_data.core.models import (
@@ -100,6 +106,18 @@ async def create_dataset(
 
     existing_meta = store.get_meta(dataset_id)
     if existing_meta is not None:
+        # METRICS-MON R4.5: cache hits short-circuit the generator path,
+        # so ``record_dataset_generation`` is not called — but the POST
+        # still happened and operators need to see the request volume
+        # (deterministic re-POSTs, cascor retraining, etc. would
+        # otherwise be invisible). ``status="success"`` because returning
+        # the cached meta is a successful POST outcome from the caller's
+        # perspective.
+        record_dataset_post(
+            generator=request.generator,
+            status=GENERATION_STATUS_SUCCESS,
+            cache=POST_CACHE_HIT,
+        )
         return CreateDatasetResponse(
             dataset_id=dataset_id,
             generator=request.generator,
@@ -118,9 +136,22 @@ async def create_dataset(
         # arrays = generator_class.generate(params)
         arrays = await asyncio.to_thread(generator_class.generate, params)
     except Exception:
-        record_dataset_generation(generator=request.generator, status="error", duration=time.monotonic() - gen_start)
+        record_dataset_generation(generator=request.generator, status=GENERATION_STATUS_ERROR, duration=time.monotonic() - gen_start)
+        # METRICS-MON R4.5: also bump the POST counter on the error
+        # branch so the post_total / generations_total ratio surfaces
+        # generator-error rate (vs cache-hit-rate).
+        record_dataset_post(
+            generator=request.generator,
+            status=GENERATION_STATUS_ERROR,
+            cache=POST_CACHE_MISS,
+        )
         raise
-    record_dataset_generation(generator=request.generator, status="success", duration=time.monotonic() - gen_start)
+    record_dataset_generation(generator=request.generator, status=GENERATION_STATUS_SUCCESS, duration=time.monotonic() - gen_start)
+    record_dataset_post(
+        generator=request.generator,
+        status=GENERATION_STATUS_SUCCESS,
+        cache=POST_CACHE_MISS,
+    )
 
     checksum = compute_checksum(arrays)
 

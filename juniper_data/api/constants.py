@@ -96,3 +96,10 @@ DATASET_GENERATION_DURATION_BUCKETS: tuple[float, ...] = (
 # Status outcome strings recorded by ``record_dataset_generation``.
 GENERATION_STATUS_SUCCESS: str = "success"
 GENERATION_STATUS_ERROR: str = "error"
+
+# METRICS-MON R4.5 / R3.1 follow-up: ``cache`` label values for
+# ``juniper_data_dataset_post_total``. Keep this a closed set (two values
+# only) so cardinality stays bounded — a typo like ``"miss "`` would
+# create a spurious bucket and undermine the R1.1 cardinality discipline.
+POST_CACHE_HIT: str = "hit"
+POST_CACHE_MISS: str = "miss"
