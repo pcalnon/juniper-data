@@ -124,6 +124,16 @@ def _ensure_dataset_metrics() -> dict:
                 "juniper_data_datasets_cached",
                 "Number of datasets currently cached in storage",
             ),
+            # METRICS-MON R4.5 / R3.1 follow-up: per-POST request volume,
+            # split by cache outcome. ``generations_total`` only counts
+            # actual generation work (cache misses); this counts every
+            # incoming POST so capacity-planning queries don't undercount
+            # deterministic re-POSTs (see roadmap §7 R4.5).
+            "post_total": Counter(
+                "juniper_data_dataset_post_total",
+                "Total POST /v1/datasets requests, split by cache outcome",
+                ["generator", "status", "cache"],
+            ),
         }
     return _dataset_metrics
 
@@ -140,6 +150,25 @@ def record_dataset_generation(generator: str, status: str, duration: float) -> N
     m["generations_total"].labels(generator=generator, status=status).inc()
     if status == GENERATION_STATUS_SUCCESS:
         m["generation_duration_seconds"].labels(generator=generator).observe(duration)
+
+
+def record_dataset_post(generator: str, status: str, cache: str) -> None:
+    """Record a POST /v1/datasets request, split by cache outcome.
+
+    Bumped on every POST regardless of whether the route short-circuited
+    on a cached ``dataset_id`` or executed the generator. ``cache`` must
+    be one of the closed-set values ``POST_CACHE_HIT`` / ``POST_CACHE_MISS``
+    in :mod:`juniper_data.api.constants` — typos would create spurious
+    label buckets and undermine the R1.1 cardinality discipline.
+
+    Args:
+        generator: Generator type name (e.g. ``"spiral"``).
+        status: Outcome — ``"success"`` or ``"error"``.
+        cache: Cache outcome — ``"hit"`` (route returned cached meta) or
+            ``"miss"`` (route ran the generator).
+    """
+    m = _ensure_dataset_metrics()
+    m["post_total"].labels(generator=generator, status=status, cache=cache).inc()
 
 
 def set_datasets_cached(count: int) -> None:
