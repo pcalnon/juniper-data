@@ -116,7 +116,13 @@ def _ensure_dataset_metrics() -> dict:
             ),
             "generation_duration_seconds": Histogram(
                 "juniper_data_dataset_generation_duration_seconds",
-                "Dataset generation duration in seconds",
+                # METRICS-MON R4.1: bucket layout is **tentative pending
+                # R5.1**. Per-boundary SLO rationale lives in
+                # ``notes/observability/HISTOGRAM_BUCKETS_RATIONALE_2026-05-02.md``.
+                # R5.1's SLO catalog will ratify or reshape; re-bucketing
+                # is a metric-version event but not a public-API break
+                # (Prometheus rediscovers buckets on every scrape).
+                "Dataset generation duration in seconds (R4.1 buckets tentative pending R5.1)",
                 ["generator"],
                 buckets=DATASET_GENERATION_DURATION_BUCKETS,
             ),
