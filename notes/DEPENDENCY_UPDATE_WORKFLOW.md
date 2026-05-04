@@ -1,14 +1,24 @@
 # Dependency Update Workflow — juniper-data
 
-**Last Updated:** 2026-03-02
-**Version:** 1.0.0
+**Last Updated:** 2026-05-04
+**Version:** 1.0.1
 **Status:** Current
 
 ---
 
 ## Overview
 
-This document describes how dependency updates flow through juniper-data, from Dependabot PR to merged lockfile. The lockfile (`requirements.lock`) pins exact versions for Docker builds while `pyproject.toml` uses `>=` ranges for library compatibility.
+This document describes how dependency updates flow through juniper-data, from Dependabot PR to merged dependency artifacts. The lockfile (`requirements.lock`) pins exact versions for Docker builds while `pyproject.toml` uses `>=` ranges for library compatibility. The `conf/requirements*.txt` files are pip environment snapshots; they are reviewed as dependency documentation, not as the runtime source of truth.
+
+## Dependency Artifact Map
+
+| File | Role | Regeneration Rule |
+|------|------|-------------------|
+| `pyproject.toml` | Authoritative package metadata, install requirements, and optional extras | Edit directly when the supported dependency range changes |
+| `requirements.lock` | Exact API/observability dependency pins for Docker builds | Regenerate with `uv pip compile ... --upgrade -o requirements.lock` after `pyproject.toml` dependency changes |
+| `conf/requirements.txt` | Committed pip snapshot for legacy setup and CI environment reference | Update with the captured pip environment when snapshot floors change |
+| `conf/requirements-ORIG.txt` | Baseline copy of the pip snapshot | Keep aligned with `conf/requirements.txt` for the same floor changes |
+| `conf/conda_environment.yaml` | Conda environment snapshot for local setup/reference | Regenerate from the active `JuniperData` environment when conda package pins change |
 
 Juniper Data also keeps legacy environment snapshots under `conf/`. These files are distinct from the Docker lockfile:
 
@@ -40,6 +50,7 @@ When Dependabot opens a PR to update a dependency:
 4. Review and merge the Dependabot PR
 ```
 
+Dependabot can also open PRs against committed `conf/requirements*.txt` snapshots. Those PRs do not imply application code imports the package directly; verify the package appears only in the snapshot files before treating the change as documentation/environment metadata.
 For Dependabot PRs that touch only `conf/requirements*.txt`, skip the lockfile-update expectation above. Those files are local environment snapshots, so CI should validate them through normal checks without a generated `requirements.lock` commit.
 
 ### First CI Run May Fail
@@ -61,14 +72,18 @@ When you manually edit dependency ranges in `pyproject.toml`:
 uv pip compile pyproject.toml \
   --extra api \
   --extra observability \
+  --upgrade \
   -o requirements.lock
 
 # 3. Verify the lockfile is fresh (same command CI uses)
 uv pip compile pyproject.toml \
   --extra api \
   --extra observability \
+  --constraint requirements.lock \
   -o /tmp/check.lock
-diff requirements.lock /tmp/check.lock
+grep '^[^[:space:]#]' requirements.lock | sort > /tmp/lock_pins
+grep '^[^[:space:]#]' /tmp/check.lock | sort > /tmp/check_pins
+diff /tmp/lock_pins /tmp/check_pins
 
 # 4. Commit both files together
 git add pyproject.toml requirements.lock
@@ -81,6 +96,7 @@ git commit -m "Update <package> to <version>"
 uv pip compile pyproject.toml \
   --extra api \
   --extra observability \
+  --upgrade \
   -o requirements.lock
 ```
 
@@ -88,6 +104,8 @@ uv pip compile pyproject.toml \
 |------|---------|
 | `--extra api` | Include FastAPI, uvicorn, and API dependencies |
 | `--extra observability` | Include Prometheus and structured logging dependencies |
+| `--upgrade` | Allow Dependabot or manual range bumps to move existing pins |
+| `--constraint requirements.lock` | Check whether committed pins still satisfy `pyproject.toml` without upgrading them |
 | `-o requirements.lock` | Output file |
 
 ## Troubleshooting
@@ -133,7 +151,7 @@ gh run list --workflow=lockfile-update.yml -R pcalnon/juniper-data
 **Fix:** Regenerate from scratch — lockfiles should never be manually merged:
 ```bash
 git checkout dependabot/pip/<branch>
-uv pip compile pyproject.toml --extra api --extra observability -o requirements.lock
+uv pip compile pyproject.toml --extra api --extra observability --upgrade -o requirements.lock
 git add requirements.lock
 git commit -m "[dependabot skip] Regenerate requirements.lock"
 git push

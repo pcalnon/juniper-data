@@ -114,6 +114,20 @@ Juniper Data uses optional dependency groups defined in `pyproject.toml`:
 | `dev` | ruff, mypy, bandit, pip-audit, pre-commit | `pip install -e ".[dev]"` |
 | `all` | Everything above | `pip install -e ".[all]"` |
 
+### Dependency Artifact Map
+
+Juniper Data keeps several dependency files for different workflows:
+
+| File | Source of Truth? | Purpose | Update Path |
+|------|------------------|---------|-------------|
+| `pyproject.toml` | Yes | Runtime, optional, test, and development dependency ranges | Edit directly for project dependency changes |
+| `requirements.lock` | Yes for Docker pins | Reproducible Docker/API build pins for `api` and `observability` extras | Regenerate with `uv pip compile` after `pyproject.toml` changes |
+| `conf/requirements.txt` | No | pip environment snapshot used for developer and CI diagnostics | Updated by dependency snapshot maintenance PRs |
+| `conf/requirements-ORIG.txt` | No | historical baseline snapshot kept beside `conf/requirements.txt` | Keep in sync with `conf/requirements.txt` when snapshot floors change |
+| `conf/conda_environment.yaml` | No | Conda environment snapshot for reconstructing the JuniperData environment | Regenerate from the active Conda environment when refreshing snapshots |
+
+Snapshot-only packages can appear in `conf/requirements*.txt` without being imported by `juniper_data` or listed in `pyproject.toml`. Treat those updates as environment hygiene unless they also change `pyproject.toml` or `requirements.lock`.
+
 ### Dependency Files
 
 Use the project dependency files for different workflows:
@@ -182,10 +196,10 @@ For reproducible Docker builds, the project maintains a `requirements.lock` file
 
 ```bash
 # Regenerate after changing dependencies in pyproject.toml
-uv pip compile pyproject.toml --extra api --extra observability -o requirements.lock
+uv pip compile pyproject.toml --extra api --extra observability --upgrade -o requirements.lock
 ```
 
-The `pyproject.toml` retains flexible `>=` ranges for local development, while the lockfile pins exact versions.
+The `pyproject.toml` retains flexible `>=` ranges for local development, while the lockfile pins exact versions. CI checks lockfile freshness by resolving `pyproject.toml` under the committed `requirements.lock` constraints, so routine `conf/requirements*.txt` snapshot updates do not require a lockfile change.
 
 ### Dependency File Roles
 
