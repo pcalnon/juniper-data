@@ -127,6 +127,8 @@ Generates dependency documentation snapshots.
 - Uses Conda (Miniforge) for environment capture
 - 90 day artifact retention
 
+These generated files describe the environment that ran in CI. They are diagnostic artifacts, not source inputs for local setup. The checked-in setup script installs supplemental packages from `conf/requirements.txt`, and `conf/requirements-ORIG.txt` is kept as the paired baseline copy for that setup snapshot.
+
 #### Job: `integration-tests`
 
 Full workflow integration tests.
@@ -211,6 +213,8 @@ Automatically regenerates `requirements.lock` when Dependabot updates dependenci
 - **Condition**: Only runs for `dependabot[bot]` actor
 - Uses `CROSS_REPO_DISPATCH_TOKEN` (not `GITHUB_TOKEN`) so the push re-triggers CI
 - Commits with `[dependabot skip]` prefix to prevent Dependabot re-processing
+
+The workflow only updates `requirements.lock`, which is generated from `pyproject.toml` for Docker and CI reproducibility. Dependabot PRs that target `conf/requirements.txt` or `conf/requirements-ORIG.txt` are changing the legacy/local setup snapshot used by `util/setup_environment.bash`; keep those two files in sync and do not expect the lockfile workflow to rewrite them.
 
 ---
 
