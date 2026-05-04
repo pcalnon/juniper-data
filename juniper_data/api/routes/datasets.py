@@ -96,6 +96,11 @@ async def create_dataset(
     try:
         params = params_class(**request.params)
     except Exception as e:
+        record_dataset_post(
+            generator=request.generator,
+            status=GENERATION_STATUS_ERROR,
+            cache=POST_CACHE_MISS,
+        )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid parameters: {e}")
 
     dataset_id = generate_dataset_id(
