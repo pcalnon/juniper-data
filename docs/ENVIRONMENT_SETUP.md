@@ -172,6 +172,8 @@ uv pip compile pyproject.toml --extra api --extra observability -o requirements.
 
 The `pyproject.toml` retains flexible `>=` ranges for local development, while the lockfile pins exact versions.
 
+The committed `conf/requirements.txt` and `conf/requirements-ORIG.txt` files are environment-oriented pip requirement snapshots used by legacy setup tooling. They are not the authoritative package dependency source; update `pyproject.toml` for project metadata and regenerate `requirements.lock` only when `pyproject.toml` dependency ranges change.
+
 ---
 
 ## Configuration

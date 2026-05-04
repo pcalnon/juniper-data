@@ -122,8 +122,10 @@ Package build and verification.
 Generates dependency documentation snapshots.
 
 - **Depends on**: `build`
+- Installs `.[all]` plus the `juniper-data-client` main branch before capture
 - Runs `scripts/generate_dep_docs.sh`
-- Outputs `conf/requirements_ci.txt` and `conf/conda_environment_ci.yaml` with timestamped backups
+- Outputs `conf/requirements_ci.txt` and `conf/conda_environment_ci.yaml` as workflow artifacts, with timestamped backups if prior files exist in the checkout
+- Does not update the committed `conf/requirements.txt` or `conf/requirements-ORIG.txt` environment snapshots
 - Uses Conda (Miniforge) for environment capture
 - 90 day artifact retention
 
@@ -209,8 +211,11 @@ Automatically regenerates `requirements.lock` when Dependabot updates dependenci
 
 - **Trigger**: Push to `dependabot/pip/**` branches
 - **Condition**: Only runs for `dependabot[bot]` actor
+- Runs `uv pip compile pyproject.toml --extra api --extra observability --upgrade -o requirements.lock`
 - Uses `CROSS_REPO_DISPATCH_TOKEN` (not `GITHUB_TOKEN`) so the push re-triggers CI
 - Commits with `[dependabot skip]` prefix to prevent Dependabot re-processing
+
+This workflow only changes `requirements.lock`. Dependabot PRs that touch `conf/requirements.txt` or `conf/requirements-ORIG.txt` are updating environment snapshots, not package metadata; those PRs do not require a lockfile commit unless `pyproject.toml` also changes or `lockfile-check` reports drift.
 
 ---
 
@@ -261,7 +266,7 @@ Ruff replaces black, isort, flake8, and related tools. Runs on `juniper_data/**/
 
 - **Linting**: Auto-fixes violations with `--fix`
 - **Formatting**: Enforces consistent style
-- **Config**: `[tool.ruff]` in pyproject.toml (line-length=120, target-version=py311)
+- **Config**: `[tool.ruff]` in pyproject.toml (line-length=320, target-version=py312)
 
 ### MyPy (Type Checking)
 
@@ -352,7 +357,7 @@ See [PyPI Publishing Procedure](../../../juniper-ml/notes/PYPI-PUBLISH-PROCEDURE
 uv pip compile pyproject.toml --extra api --extra observability -o requirements.lock
 ```
 
-**Dependabot PR missing lockfile update**: The `lockfile-update.yml` workflow handles this automatically. If it didn't trigger, check that the branch matches `dependabot/pip/**` and the actor is `dependabot[bot]`.
+**Dependabot PR missing lockfile update**: The `lockfile-update.yml` workflow handles `requirements.lock` automatically when the branch matches `dependabot/pip/**` and the actor is `dependabot[bot]`. If the PR only changes `conf/requirements.txt` and `conf/requirements-ORIG.txt`, a lockfile update may not be needed.
 
 **CodeQL findings**: Review in GitHub Security tab. These are informational and don't block the merge quality gate.
 
