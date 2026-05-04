@@ -172,6 +172,20 @@ uv pip compile pyproject.toml --extra api --extra observability -o requirements.
 
 The `pyproject.toml` retains flexible `>=` ranges for local development, while the lockfile pins exact versions.
 
+### Dependency File Roles
+
+Use the right dependency file for the job:
+
+| File | Role | Update When |
+|------|------|-------------|
+| `pyproject.toml` | Authoritative package metadata, install extras, and direct runtime/test/dev dependency ranges | Code starts requiring a new package or a higher minimum version |
+| `requirements.lock` | Pinned Docker-build input resolved from `pyproject.toml` | `pyproject.toml` dependency ranges change |
+| `conf/requirements.txt` | Committed pip environment snapshot for lightweight/no-CUDA environment replication and dependency review | Dependabot or manual environment snapshot maintenance updates a listed package floor |
+| `conf/requirements-ORIG.txt` | Baseline copy of the pip environment snapshot kept alongside `conf/requirements.txt` | Keep in sync with `conf/requirements.txt` for the same package-floor update |
+| `conf/requirements_ci.txt` | Generated CI dependency artifact from `scripts/generate_dep_docs.sh` | Do not edit by hand; CI regenerates it as an artifact |
+
+If a Dependabot PR changes only `conf/requirements.txt` and `conf/requirements-ORIG.txt`, review it as a pip snapshot maintenance change. Do not mirror that package into `pyproject.toml` unless the source code or tests import it directly or the package is part of an install extra contract.
+
 ---
 
 ## Configuration
