@@ -183,6 +183,26 @@ class TestDatasetPostTotalMetric:
         assert gen_count == 2.0
         assert hit_count == 0.0, "No POST should have hit the cache when params differ"
 
+    def test_invalid_params_count_as_error_post_without_generation(self, client: TestClient) -> None:
+        """A valid generator with invalid parameters is still a POST outcome.
+
+        It must increment ``post_total{status="error", cache="miss"}`` so
+        client rollout or validation regressions are visible, but it must not
+        increment ``generations_total`` because the generator never ran.
+        """
+        response = client.post(
+            "/v1/datasets",
+            json={
+                "generator": "spiral",
+                "params": {"n_spirals": 1, "n_points_per_spiral": 50},
+                "persist": True,
+            },
+        )
+
+        assert response.status_code == 400
+        assert _scrape_post_total(client, generator="spiral", status="error", cache="miss") == 1.0
+        assert _scrape_generations_total(client, generator="spiral", status="error") == 0.0
+
     def test_metrics_body_exposes_help_and_type_for_post_total(self, client: TestClient) -> None:
         """Sanity guard: HELP + TYPE lines pin the metric name."""
         _post_spiral(client, noise=0.3)
