@@ -33,6 +33,7 @@ from juniper_data.api.observability import (
     configure_sentry,
     get_prometheus_app,
     record_dataset_generation,
+    record_dataset_post,
     request_id_var,
     set_build_info,
     set_datasets_cached,
@@ -112,6 +113,24 @@ class TestDatasetMetrics:
 
             mock_counter.labels.assert_called_with(generator="spiral", status="error")
             mock_histogram.labels.assert_not_called()
+
+        obs._dataset_metrics = None
+
+    def test_record_dataset_post_labels_by_generator_status_and_cache(self):
+        pytest.importorskip("prometheus_client")
+        import juniper_data.api.observability as obs
+
+        obs._dataset_metrics = None
+        with patch("prometheus_client.Counter") as MockCounter, patch("prometheus_client.Histogram"), patch("prometheus_client.Gauge"):
+            mock_generation_counter = MagicMock()
+            mock_post_counter = MagicMock()
+            MockCounter.side_effect = [mock_generation_counter, mock_post_counter]
+
+            record_dataset_post("spiral", "error", "miss")
+
+            mock_post_counter.labels.assert_called_once_with(generator="spiral", status="error", cache="miss")
+            mock_post_counter.labels().inc.assert_called_once()
+            mock_generation_counter.labels.assert_not_called()
 
         obs._dataset_metrics = None
 

@@ -73,6 +73,20 @@ def client(memory_store: InMemoryDatasetStore, tmp_path) -> TestClient:
     return TestClient(app)
 
 
+@pytest.fixture
+def client_allowing_server_errors(memory_store: InMemoryDatasetStore, tmp_path) -> TestClient:
+    storage = tmp_path / "juniper_data_r4_5_errors"
+    storage.mkdir()
+    settings = Settings(
+        storage_path=str(storage),
+        metrics_enabled=True,
+        metrics_trusted_ips=["testclient", "127.0.0.1", "::1"],
+    )
+    app = create_app(settings=settings)
+    datasets.set_store(memory_store)
+    return TestClient(app, raise_server_exceptions=False)
+
+
 _POST_TOTAL_RE = re.compile(
     r"^juniper_data_dataset_post_total\{([^}]*)\}\s+([0-9.eE+\-]+)\s*$",
     re.MULTILINE,
@@ -180,3 +194,28 @@ class TestDatasetPostTotalMetric:
         body = response.text
         assert "# HELP juniper_data_dataset_post_total" in body
         assert "# TYPE juniper_data_dataset_post_total counter" in body
+
+    def test_generator_error_records_post_total_error_miss(self, client_allowing_server_errors: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A generator exception is still a POST cache miss and must be visible
+        in ``post_total`` with ``status="error"``.
+        """
+
+        class FailingGenerator:
+            @staticmethod
+            def generate(_params):
+                raise RuntimeError("synthetic generator failure")
+
+        monkeypatch.setitem(datasets.GENERATOR_REGISTRY["spiral"], "generator", FailingGenerator)
+
+        response = client_allowing_server_errors.post(
+            "/v1/datasets",
+            json={
+                "generator": "spiral",
+                "params": {"n_spirals": 2, "n_points_per_spiral": 50, "noise": 0.4},
+                "persist": True,
+            },
+        )
+
+        assert response.status_code == 500
+        assert _scrape_post_total(client_allowing_server_errors, generator="spiral", status="error", cache="miss") == 1.0
+        assert _scrape_generations_total(client_allowing_server_errors, generator="spiral", status="error") == 1.0
