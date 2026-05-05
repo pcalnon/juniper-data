@@ -53,10 +53,11 @@ api = [
     # (DependencyStatus, ReadinessResponse, JuniperJsonFormatter,
     # RequestIdMiddleware, PrometheusMiddleware, configure_sentry,
     # configure_logging, get_prometheus_app, set_build_info, and the
-    # R1.1/R1.2/R1.3 contract constants). Pinned at the alpha published
-    # by juniper-ml#155; promotion to >=0.1.0 follows the data-soak
-    # cycle per the R2.1 design §6.
-    "juniper-observability>=0.1.0a0",
+    # R1.1/R1.2/R1.3 contract constants). Bumped from >=0.1.0a0 to
+    # >=0.1.1 to match the cascor / canopy floor (audit-doc C.2 fix);
+    # juniper-ml#155 published 0.1.0a0, juniper-ml has since shipped
+    # 0.1.1.
+    "juniper-observability>=0.1.1",
 ]
 test = [
     "pytest>=7.0.0",
