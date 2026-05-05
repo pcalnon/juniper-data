@@ -228,6 +228,8 @@ Use the right dependency file for the job:
 
 If a Dependabot PR changes only `conf/requirements.txt` and `conf/requirements-ORIG.txt`, review it as a pip snapshot maintenance change. Do not mirror that package into `pyproject.toml` unless the source code or tests import it directly or the package is part of an install extra contract.
 
+The committed `conf/requirements.txt` and `conf/requirements-ORIG.txt` files are environment-oriented pip requirement snapshots used by legacy setup tooling. They are not the authoritative package dependency source; update `pyproject.toml` for project metadata and regenerate `requirements.lock` only when `pyproject.toml` dependency ranges change.
+
 ---
 
 ## Configuration
