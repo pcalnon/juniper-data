@@ -25,11 +25,11 @@ import re
 
 import pytest
 from fastapi.testclient import TestClient
-
 from juniper_data.api.app import create_app
 from juniper_data.api.routes import datasets
 from juniper_data.api.settings import Settings
 from juniper_data.storage.memory import InMemoryDatasetStore
+from pydantic import BaseModel
 
 
 @pytest.fixture(autouse=True)
@@ -70,7 +70,17 @@ def client(memory_store: InMemoryDatasetStore, tmp_path) -> TestClient:
     )
     app = create_app(settings=settings)
     datasets.set_store(memory_store)
-    return TestClient(app)
+    return TestClient(app, raise_server_exceptions=False)
+
+
+class _FailingParams(BaseModel):
+    """Minimal params model for a generator that fails after validation."""
+
+
+class _FailingGenerator:
+    @staticmethod
+    def generate(params: _FailingParams) -> dict:
+        raise RuntimeError("synthetic generator failure")
 
 
 @pytest.fixture
@@ -93,6 +103,10 @@ _POST_TOTAL_RE = re.compile(
 )
 _COUNTER_RE = re.compile(
     r"^juniper_data_dataset_generations_total\{([^}]*)\}\s+([0-9.eE+\-]+)\s*$",
+    re.MULTILINE,
+)
+_HIST_COUNT_RE = re.compile(
+    r"^juniper_data_dataset_generation_duration_seconds_count\{([^}]*)\}\s+([0-9.eE+\-]+)\s*$",
     re.MULTILINE,
 )
 
@@ -122,6 +136,17 @@ def _scrape_generations_total(client: TestClient, *, generator: str, status: str
     for label_str, value_str in _COUNTER_RE.findall(body):
         labels = _parse_label_set(label_str)
         if labels.get("generator") == generator and labels.get("status") == status:
+            return float(value_str)
+    return 0.0
+
+
+def _scrape_generation_duration_count(client: TestClient, *, generator: str) -> float:
+    response = client.get("/metrics")
+    assert response.status_code == 200, response.text
+    body = response.text
+    for label_str, value_str in _HIST_COUNT_RE.findall(body):
+        labels = _parse_label_set(label_str)
+        if labels.get("generator") == generator:
             return float(value_str)
     return 0.0
 
@@ -186,28 +211,27 @@ class TestDatasetPostTotalMetric:
         assert gen_count == 2.0
         assert hit_count == 0.0, "No POST should have hit the cache when params differ"
 
-    def test_metrics_body_exposes_help_and_type_for_post_total(self, client: TestClient) -> None:
-        """Sanity guard: HELP + TYPE lines pin the metric name."""
-        _post_spiral(client, noise=0.3)
-        response = client.get("/metrics")
-        assert response.status_code == 200
-        body = response.text
-        assert "# HELP juniper_data_dataset_post_total" in body
-        assert "# TYPE juniper_data_dataset_post_total counter" in body
-
-    def test_generator_error_records_post_total_error_miss(self, client_allowing_server_errors: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-        """A generator exception is still a POST cache miss and must be visible
-        in ``post_total`` with ``status="error"``.
+    def test_generator_error_records_post_total_error_miss_without_duration_observation(self, client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A generator exception is still a POST cache miss, but must not add
+        a success-duration histogram observation.
         """
 
-        class FailingGenerator:
+        class FailingSpiralGenerator:
             @staticmethod
-            def generate(_params):
+            def generate(params: object) -> None:  # noqa: ARG004
                 raise RuntimeError("synthetic generator failure")
 
-        monkeypatch.setitem(datasets.GENERATOR_REGISTRY["spiral"], "generator", FailingGenerator)
+        monkeypatch.setitem(
+            datasets.GENERATOR_REGISTRY,
+            "spiral",
+            {
+                **datasets.GENERATOR_REGISTRY["spiral"],
+                "generator": FailingSpiralGenerator,
+            },
+        )
 
-        response = client_allowing_server_errors.post(
+        error_client = TestClient(client.app, raise_server_exceptions=False)
+        response = error_client.post(
             "/v1/datasets",
             json={
                 "generator": "spiral",
@@ -217,5 +241,47 @@ class TestDatasetPostTotalMetric:
         )
 
         assert response.status_code == 500
-        assert _scrape_post_total(client_allowing_server_errors, generator="spiral", status="error", cache="miss") == 1.0
-        assert _scrape_generations_total(client_allowing_server_errors, generator="spiral", status="error") == 1.0
+        assert _scrape_post_total(error_client, generator="spiral", status="error", cache="miss") == 1.0
+        assert _scrape_generations_total(error_client, generator="spiral", status="error") == 1.0
+        assert _scrape_generation_duration_count(error_client, generator="spiral") == 0.0
+
+    def test_metrics_body_exposes_help_and_type_for_post_total(self, client: TestClient) -> None:
+        """Sanity guard: HELP + TYPE lines pin the metric name."""
+        _post_spiral(client, noise=0.3)
+        response = client.get("/metrics")
+        assert response.status_code == 200
+        body = response.text
+        assert "# HELP juniper_data_dataset_post_total" in body
+        assert "# TYPE juniper_data_dataset_post_total counter" in body
+
+    def test_generator_error_records_post_total_error_miss(self, client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Generator exceptions must still count the failed POST as a cache miss.
+
+        Without this, generator failure rate would appear in
+        ``generations_total`` but disappear from the request-volume counter,
+        skewing cache-hit-rate and error-rate dashboards.
+        """
+        failing_generator = "__failing_metrics__"
+        patched_registry = {
+            **datasets.GENERATOR_REGISTRY,
+            failing_generator: {
+                "generator": _FailingGenerator,
+                "params_class": _FailingParams,
+                "version": "test",
+                "description": "Synthetic failing generator for metrics regression coverage.",
+            },
+        }
+        monkeypatch.setattr(datasets, "GENERATOR_REGISTRY", patched_registry)
+
+        response = client.post(
+            "/v1/datasets",
+            json={
+                "generator": failing_generator,
+                "params": {},
+                "persist": True,
+            },
+        )
+
+        assert response.status_code == 500
+        assert _scrape_post_total(client, generator=failing_generator, status="error", cache="miss") == 1.0
+        assert _scrape_generations_total(client, generator=failing_generator, status="error") == 1.0
