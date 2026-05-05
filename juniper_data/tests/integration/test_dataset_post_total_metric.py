@@ -84,6 +84,20 @@ class _FailingGenerator:
         raise RuntimeError("synthetic generator failure")
 
 
+@pytest.fixture
+def client_allowing_server_errors(memory_store: InMemoryDatasetStore, tmp_path) -> TestClient:
+    storage = tmp_path / "juniper_data_r4_5_errors"
+    storage.mkdir()
+    settings = Settings(
+        storage_path=str(storage),
+        metrics_enabled=True,
+        metrics_trusted_ips=["testclient", "127.0.0.1", "::1"],
+    )
+    app = create_app(settings=settings)
+    datasets.set_store(memory_store)
+    return TestClient(app, raise_server_exceptions=False)
+
+
 _POST_TOTAL_RE = re.compile(
     r"^juniper_data_dataset_post_total\{([^}]*)\}\s+([0-9.eE+\-]+)\s*$",
     re.MULTILINE,
