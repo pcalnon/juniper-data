@@ -16,10 +16,10 @@ by that package's own test suite. This module retains:
 
 from unittest.mock import MagicMock, patch
 
-import juniper_data.api.observability as obs
 import juniper_observability as jobs
 import pytest
 
+import juniper_data.api.observability as obs
 from juniper_data.api.observability import (
     DEFAULT_LOG_FORMAT_PLAIN,
     DEFAULT_SENTRY_TRACES_SAMPLE_RATE,
