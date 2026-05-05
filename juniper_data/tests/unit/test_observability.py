@@ -16,6 +16,7 @@ by that package's own test suite. This module retains:
 
 from unittest.mock import MagicMock, patch
 
+import juniper_data.api.observability as obs
 import juniper_observability as jobs
 import pytest
 
@@ -80,7 +81,6 @@ class TestDatasetMetrics:
 
     def test_record_dataset_generation_success(self):
         pytest.importorskip("prometheus_client")
-        import juniper_data.api.observability as obs
 
         obs._dataset_metrics = None  # Reset lazy cache
         with patch("prometheus_client.Counter") as MockCounter, patch("prometheus_client.Histogram") as MockHistogram, patch("prometheus_client.Gauge"):
@@ -100,7 +100,6 @@ class TestDatasetMetrics:
 
     def test_record_dataset_generation_error_skips_histogram(self):
         pytest.importorskip("prometheus_client")
-        import juniper_data.api.observability as obs
 
         obs._dataset_metrics = None
         with patch("prometheus_client.Counter") as MockCounter, patch("prometheus_client.Histogram") as MockHistogram, patch("prometheus_client.Gauge"):
@@ -118,7 +117,6 @@ class TestDatasetMetrics:
 
     def test_record_dataset_post_labels_by_generator_status_and_cache(self):
         pytest.importorskip("prometheus_client")
-        import juniper_data.api.observability as obs
 
         obs._dataset_metrics = None
         with patch("prometheus_client.Counter") as MockCounter, patch("prometheus_client.Histogram"), patch("prometheus_client.Gauge"):
@@ -136,7 +134,6 @@ class TestDatasetMetrics:
 
     def test_set_datasets_cached(self):
         pytest.importorskip("prometheus_client")
-        import juniper_data.api.observability as obs
 
         obs._dataset_metrics = None
         with patch("prometheus_client.Counter"), patch("prometheus_client.Histogram"), patch("prometheus_client.Gauge") as MockGauge:
