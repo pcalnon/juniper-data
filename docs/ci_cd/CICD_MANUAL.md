@@ -51,26 +51,26 @@ juniper-data uses a multi-layer CI/CD strategy:
 
 ### Job Dependency Graph
 
-```
+```bash
 pre-commit ──┬─→ unit-tests ──┬─→ build ──→ dependency-docs ──┐
-             │                │                                │
+             │                │                               │
              │                └─→ integration-tests ──────────┤
-             │                                                 │
+             │                                                │
              ├─→ security ────────────────────────────────────┤
              ├─→ docs ────────────────────────────────────────┤
              └─→ lockfile-check ──────────────────────────────┘
-                                                               │
-                                                               └─→ required-checks ──→ notify
+                                                              │
+                                                              └─→ required-checks ──→ notify
 ```
 
 ### Trigger Matrix
 
-| Workflow | Push to main/develop | Push to feature/fix | Pull Requests | Schedule | Release | Manual |
-|----------|---------------------|--------------------|--------------|---------|---------|---------|
-| `ci.yml` | Yes | Yes | Yes | Daily 6 AM UTC | No | Yes |
-| `publish.yml` | No | No | No | No | Yes | No |
-| `lockfile-update.yml` | No | dependabot branches | No | No | No | No |
-| `codeql.yml` | Yes | No | Yes (to main) | Weekly Mon 6 AM UTC | No | No |
+| Workflow              | Push to main/develop | Push to feature/fix | Pull Requests | Schedule            | Release | Manual |
+|-----------------------|----------------------|---------------------|---------------|---------------------|---------|--------|
+| `ci.yml`              | Yes                  | Yes                 | Yes           | Daily 6 AM UTC      | No      | Yes    |
+| `publish.yml`         | No                   | No                  | No            | No                  | Yes     | No     |
+| `lockfile-update.yml` | No                   | dependabot branches | No            | No                  | No      | No     |
+| `codeql.yml`          | Yes                  | No                  | Yes (to main) | Weekly Mon 6 AM UTC | No      | No     |
 
 ---
 
@@ -128,6 +128,8 @@ Generates dependency documentation snapshots.
 - Does not update the committed `conf/requirements.txt` or `conf/requirements-ORIG.txt` environment snapshots
 - Uses Conda (Miniforge) for environment capture
 - 90 day artifact retention
+
+These generated files describe the environment that ran in CI. They are diagnostic artifacts, not source inputs for local setup. The checked-in setup script installs supplemental packages from `conf/requirements.txt`, and `conf/requirements-ORIG.txt` is kept as the paired baseline copy for that setup snapshot.
 
 #### Job: `integration-tests`
 
@@ -215,7 +217,7 @@ Automatically regenerates `requirements.lock` when Dependabot updates dependenci
 - Uses `CROSS_REPO_DISPATCH_TOKEN` (not `GITHUB_TOKEN`) so the push re-triggers CI
 - Commits with `[dependabot skip]` prefix to prevent Dependabot re-processing
 
-This workflow only changes `requirements.lock`. Dependabot PRs that touch `conf/requirements.txt` or `conf/requirements-ORIG.txt` are updating environment snapshots, not package metadata; those PRs do not require a lockfile commit unless `pyproject.toml` also changes or `lockfile-check` reports drift.
+The workflow only updates `requirements.lock`, which is generated from `pyproject.toml` for Docker and CI reproducibility. Dependabot PRs that target `conf/requirements.txt` or `conf/requirements-ORIG.txt` are changing the legacy/local setup snapshot used by `util/setup_environment.bash`; keep those two files in sync and do not expect the lockfile workflow to rewrite them.
 
 ---
 
@@ -233,28 +235,28 @@ GitHub CodeQL semantic analysis for Python.
 
 ### Hook Overview
 
-| Hook | Stage | Tool | Files | Auto-fix? |
-|------|-------|------|-------|-----------|
-| check-yaml | commit | pre-commit-hooks | `*.yaml`, `*.yml` | No |
-| check-toml | commit | pre-commit-hooks | `*.toml` | No |
-| check-json | commit | pre-commit-hooks | `*.json` | No |
-| end-of-file-fixer | commit | pre-commit-hooks | All | Yes |
-| trailing-whitespace | commit | pre-commit-hooks | All (md linebreaks preserved) | Yes |
-| check-merge-conflict | commit | pre-commit-hooks | All | No |
-| check-added-large-files | commit | pre-commit-hooks | All (max 1000 KB) | No |
-| check-case-conflict | commit | pre-commit-hooks | All | No |
-| check-ast | commit | pre-commit-hooks | `*.py` | No |
-| debug-statements | commit | pre-commit-hooks | `*.py` | No |
-| detect-private-key | commit | pre-commit-hooks | All | No |
-| ruff | commit | Ruff v0.15.2 | `juniper_data/**/*.py` | Yes (`--fix`) |
-| ruff-format | commit | Ruff v0.15.2 | `juniper_data/**/*.py` | Yes |
-| mypy (prod) | commit | MyPy v1.13.0 | `juniper_data/(?!tests/).*\.py` | No |
-| mypy (test) | commit | MyPy v1.13.0 | `juniper_data/tests/.*\.py` | No |
-| bandit | commit | Bandit v1.7.9 | `juniper_data/(?!tests).*\.py` | No |
-| yamllint | commit | yamllint v1.35.1 | `*.yaml`, `*.yml` | No |
-| shellcheck | commit | ShellCheck v0.10.0.1 | Shell scripts | No |
-| no-unencrypted-env | commit | Local | `.env`, `.env.secrets` | No (blocks) |
-| coverage-check | **pre-push** | Local | All (always_run) | No |
+| Hook                    | Stage        | Tool                 | Files                           | Auto-fix?     |
+|-------------------------|--------------|----------------------|---------------------------------|---------------|
+| check-yaml              | commit       | pre-commit-hooks     | `*.yaml`, `*.yml`               | No            |
+| check-toml              | commit       | pre-commit-hooks     | `*.toml`                        | No            |
+| check-json              | commit       | pre-commit-hooks     | `*.json`                        | No            |
+| end-of-file-fixer       | commit       | pre-commit-hooks     | All                             | Yes           |
+| trailing-whitespace     | commit       | pre-commit-hooks     | All (md linebreaks preserved)   | Yes           |
+| check-merge-conflict    | commit       | pre-commit-hooks     | All                             | No            |
+| check-added-large-files | commit       | pre-commit-hooks     | All (max 1000 KB)               | No            |
+| check-case-conflict     | commit       | pre-commit-hooks     | All                             | No            |
+| check-ast               | commit       | pre-commit-hooks     | `*.py`                          | No            |
+| debug-statements        | commit       | pre-commit-hooks     | `*.py`                          | No            |
+| detect-private-key      | commit       | pre-commit-hooks     | All                             | No            |
+| ruff                    | commit       | Ruff v0.15.2         | `juniper_data/**/*.py`          | Yes (`--fix`) |
+| ruff-format             | commit       | Ruff v0.15.2         | `juniper_data/**/*.py`          | Yes           |
+| mypy (prod)             | commit       | MyPy v1.13.0         | `juniper_data/(?!tests/).*\.py` | No            |
+| mypy (test)             | commit       | MyPy v1.13.0         | `juniper_data/tests/.*\.py`     | No            |
+| bandit                  | commit       | Bandit v1.7.9        | `juniper_data/(?!tests).*\.py`  | No            |
+| yamllint                | commit       | yamllint v1.35.1     | `*.yaml`, `*.yml`               | No            |
+| shellcheck              | commit       | ShellCheck v0.10.0.1 | Shell scripts                   | No            |
+| no-unencrypted-env      | commit       | Local                | `.env`, `.env.secrets`          | No (blocks)   |
+| coverage-check          | **pre-push** | Local                | All (always_run)                | No            |
 
 ### File Checks
 
@@ -319,16 +321,16 @@ When Dependabot pushes to `dependabot/pip/**`, the `lockfile-update.yml` workflo
 
 The `required-checks` job in ci.yml acts as the merge quality gate. All of these must pass:
 
-| Check | Required | Failure Impact |
-|-------|----------|---------------|
-| pre-commit (code quality) | Yes | Blocks merge |
-| unit-tests (all Python versions) | Yes | Blocks merge |
-| build (package verification) | Yes | Blocks merge |
-| dependency-docs | Soft | Failure blocks, skip OK |
-| security (gitleaks + bandit + pip-audit) | Soft | Failure blocks, skip OK |
-| docs (link validation) | Yes | Blocks merge |
-| lockfile-check | Yes | Blocks merge |
-| integration-tests | Conditional | Failure blocks, skip OK (feature branches) |
+| Check                                    | Required    | Failure Impact                             |
+|------------------------------------------|-------------|--------------------------------------------|
+| pre-commit (code quality)                | Yes         | Blocks merge                               |
+| unit-tests (all Python versions)         | Yes         | Blocks merge                               |
+| build (package verification)             | Yes         | Blocks merge                               |
+| dependency-docs                          | Soft        | Failure blocks, skip OK                    |
+| security (gitleaks + bandit + pip-audit) | Soft        | Failure blocks, skip OK                    |
+| docs (link validation)                   | Yes         | Blocks merge                               |
+| lockfile-check                           | Yes         | Blocks merge                               |
+| integration-tests                        | Conditional | Failure blocks, skip OK (feature branches) |
 
 ---
 
@@ -353,6 +355,7 @@ See [PyPI Publishing Procedure](../../../juniper-ml/notes/PYPI-PUBLISH-PROCEDURE
 **CI fails but local passes**: Check Python version matrix. CI tests on 3.12, 3.13, and 3.14. Ensure your local environment matches.
 
 **Lockfile check fails**: Regenerate with:
+
 ```bash
 uv pip compile pyproject.toml --extra api --extra observability -o requirements.lock
 ```
