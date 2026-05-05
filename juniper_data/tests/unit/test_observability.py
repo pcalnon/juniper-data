@@ -144,3 +144,23 @@ class TestDatasetMetrics:
             mock_gauge.set.assert_called_once_with(42)
 
         obs._dataset_metrics = None
+
+    def test_dataset_generation_duration_histogram_bucket_pin(self):
+        # Audit-doc D.3: pin the histogram's _upper_bounds against
+        # DATASET_GENERATION_DURATION_BUCKETS so future bucket-layout
+        # changes produce a deterministic test failure rather than
+        # silently re-bucketing the SLO-relevant series.  Mirrors the
+        # cascor R5.4-pre + R5.1b bucket-pin assertion pattern.
+        pytest.importorskip("prometheus_client")
+
+        from juniper_data.api.constants import DATASET_GENERATION_DURATION_BUCKETS
+
+        obs._dataset_metrics = None
+        try:
+            metrics = obs._ensure_dataset_metrics()
+            histogram = metrics["generation_duration_seconds"]
+            # ``_upper_bounds`` is the public-by-convention attribute
+            # ``prometheus_client.Histogram`` exposes for bucket layout.
+            assert tuple(histogram._upper_bounds) == DATASET_GENERATION_DURATION_BUCKETS
+        finally:
+            obs._dataset_metrics = None
