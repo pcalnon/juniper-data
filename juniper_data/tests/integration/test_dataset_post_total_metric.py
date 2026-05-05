@@ -25,11 +25,12 @@ import re
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import BaseModel
+
 from juniper_data.api.app import create_app
 from juniper_data.api.routes import datasets
 from juniper_data.api.settings import Settings
 from juniper_data.storage.memory import InMemoryDatasetStore
-from pydantic import BaseModel
 
 
 @pytest.fixture(autouse=True)
