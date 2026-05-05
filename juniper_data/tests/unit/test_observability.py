@@ -41,6 +41,29 @@ from juniper_data.api.observability import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _reset_prometheus_registry():
+    # The bucket-pin test below calls _ensure_dataset_metrics(), which
+    # registers real Counter/Histogram/Gauge collectors against the
+    # global prometheus_client REGISTRY. Without this teardown,
+    # subsequent test runs (or other tests in the same process) trip
+    # ValueError: Duplicated timeseries in CollectorRegistry. Mirrors
+    # the autouse fixture in test_phase_2d_metrics.py.
+    from prometheus_client import REGISTRY
+
+    obs._dataset_metrics = None
+    yield
+    collectors = list(getattr(REGISTRY, "_collector_to_names", {}).keys())
+    for collector in collectors:
+        try:
+            REGISTRY.unregister(collector)
+        except KeyError:
+            # Collector may already be absent due to prior teardown/order effects.
+            # Ignore to keep fixture cleanup idempotent.
+            pass
+    obs._dataset_metrics = None
+
+
 @pytest.mark.unit
 class TestObservabilityShim:
     """METRICS-MON R2.1.2: re-export shim points at juniper_observability."""
