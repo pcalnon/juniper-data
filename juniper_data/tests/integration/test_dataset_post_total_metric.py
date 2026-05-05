@@ -92,6 +92,10 @@ _COUNTER_RE = re.compile(
     r"^juniper_data_dataset_generations_total\{([^}]*)\}\s+([0-9.eE+\-]+)\s*$",
     re.MULTILINE,
 )
+_HIST_COUNT_RE = re.compile(
+    r"^juniper_data_dataset_generation_duration_seconds_count\{([^}]*)\}\s+([0-9.eE+\-]+)\s*$",
+    re.MULTILINE,
+)
 
 
 def _parse_label_set(labels: str) -> dict[str, str]:
@@ -119,6 +123,17 @@ def _scrape_generations_total(client: TestClient, *, generator: str, status: str
     for label_str, value_str in _COUNTER_RE.findall(body):
         labels = _parse_label_set(label_str)
         if labels.get("generator") == generator and labels.get("status") == status:
+            return float(value_str)
+    return 0.0
+
+
+def _scrape_generation_duration_count(client: TestClient, *, generator: str) -> float:
+    response = client.get("/metrics")
+    assert response.status_code == 200, response.text
+    body = response.text
+    for label_str, value_str in _HIST_COUNT_RE.findall(body):
+        labels = _parse_label_set(label_str)
+        if labels.get("generator") == generator:
             return float(value_str)
     return 0.0
 
@@ -183,25 +198,39 @@ class TestDatasetPostTotalMetric:
         assert gen_count == 2.0
         assert hit_count == 0.0, "No POST should have hit the cache when params differ"
 
-    def test_invalid_params_count_as_error_post_without_generation(self, client: TestClient) -> None:
-        """A valid generator with invalid parameters is still a POST outcome.
-
-        It must increment ``post_total{status="error", cache="miss"}`` so
-        client rollout or validation regressions are visible, but it must not
-        increment ``generations_total`` because the generator never ran.
+    def test_generator_error_records_post_total_error_miss_without_duration_observation(self, client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A generator exception is still a POST cache miss, but must not add
+        a success-duration histogram observation.
         """
-        response = client.post(
+
+        class FailingSpiralGenerator:
+            @staticmethod
+            def generate(params: object) -> None:  # noqa: ARG004
+                raise RuntimeError("synthetic generator failure")
+
+        monkeypatch.setitem(
+            datasets.GENERATOR_REGISTRY,
+            "spiral",
+            {
+                **datasets.GENERATOR_REGISTRY["spiral"],
+                "generator": FailingSpiralGenerator,
+            },
+        )
+
+        error_client = TestClient(client.app, raise_server_exceptions=False)
+        response = error_client.post(
             "/v1/datasets",
             json={
                 "generator": "spiral",
-                "params": {"n_spirals": 1, "n_points_per_spiral": 50},
+                "params": {"n_spirals": 2, "n_points_per_spiral": 50, "noise": 0.4},
                 "persist": True,
             },
         )
 
-        assert response.status_code == 400
-        assert _scrape_post_total(client, generator="spiral", status="error", cache="miss") == 1.0
-        assert _scrape_generations_total(client, generator="spiral", status="error") == 0.0
+        assert response.status_code == 500
+        assert _scrape_post_total(error_client, generator="spiral", status="error", cache="miss") == 1.0
+        assert _scrape_generations_total(error_client, generator="spiral", status="error") == 1.0
+        assert _scrape_generation_duration_count(error_client, generator="spiral") == 0.0
 
     def test_metrics_body_exposes_help_and_type_for_post_total(self, client: TestClient) -> None:
         """Sanity guard: HELP + TYPE lines pin the metric name."""
