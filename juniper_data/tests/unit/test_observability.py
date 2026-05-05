@@ -58,6 +58,8 @@ def _reset_prometheus_registry():
         try:
             REGISTRY.unregister(collector)
         except KeyError:
+            # Collector may already be absent due to prior teardown/order effects.
+            # Ignore to keep fixture cleanup idempotent.
             pass
     obs._dataset_metrics = None
 
