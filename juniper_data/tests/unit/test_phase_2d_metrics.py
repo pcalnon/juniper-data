@@ -18,6 +18,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from juniper_data.api.app import create_app
+from juniper_data.api.constants import GENERATION_STATUS_ERROR, POST_CACHE_MISS
 from juniper_data.api.models.health import ReadinessResponse
 from juniper_data.api.routes import datasets
 from juniper_data.api.settings import Settings
@@ -111,6 +112,42 @@ class TestRecordDatasetGenerationWiring:
             assert call_kwargs["status"] == "success"
             assert isinstance(call_kwargs["duration"], float)
             assert call_kwargs["duration"] >= 0.0
+
+    def test_create_dataset_records_post_metric_when_generation_fails(self, memory_store: InMemoryDatasetStore) -> None:
+        """A generator failure must still count the POST as an error cache miss."""
+        settings = Settings(
+            storage_path="/tmp/juniper_test_phase2d_error",
+            metrics_enabled=True,
+            metrics_trusted_ips=["testclient", "127.0.0.1", "::1"],
+        )
+        app = create_app(settings=settings)
+        datasets.set_store(memory_store)
+        request_body = {
+            "generator": "spiral",
+            "params": {"n_spirals": 2, "n_points_per_spiral": 50, "noise": 0.1},
+            "persist": True,
+        }
+
+        with (
+            TestClient(app, raise_server_exceptions=False) as error_client,
+            patch("juniper_data.api.routes.datasets.record_dataset_generation") as mock_record_generation,
+            patch("juniper_data.api.routes.datasets.record_dataset_post") as mock_record_post,
+            patch("juniper_data.generators.spiral.generator.SpiralGenerator.generate", side_effect=RuntimeError("synthetic generator failure")),
+        ):
+            response = error_client.post("/v1/datasets", json=request_body)
+
+        assert response.status_code == 500
+        assert mock_record_generation.called
+        generation_kwargs = mock_record_generation.call_args.kwargs
+        assert generation_kwargs["generator"] == "spiral"
+        assert generation_kwargs["status"] == GENERATION_STATUS_ERROR
+        assert isinstance(generation_kwargs["duration"], float)
+        assert generation_kwargs["duration"] >= 0.0
+        mock_record_post.assert_called_once_with(
+            generator="spiral",
+            status=GENERATION_STATUS_ERROR,
+            cache=POST_CACHE_MISS,
+        )
 
 
 # ---------------------------------------------------------------------------

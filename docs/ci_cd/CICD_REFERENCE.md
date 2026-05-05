@@ -290,7 +290,7 @@ From `.github/dependabot.yml`:
 |--------|---------|-------|
 | `scripts/check_module_coverage.py` | Per-module coverage enforcement (85% module, 80% aggregate) | `python scripts/check_module_coverage.py [--run-tests]` |
 | `scripts/check_doc_links.py` | Markdown link validation | `python scripts/check_doc_links.py [--verbose] [--exclude DIR]` |
-| `scripts/generate_dep_docs.sh` | Dependency documentation generation | `bash scripts/generate_dep_docs.sh` |
+| `scripts/generate_dep_docs.sh` | Dependency documentation artifact generation (`conf/requirements_ci.txt`, `conf/conda_environment_ci.yaml`) | `bash scripts/generate_dep_docs.sh` |
 
 ---
 
@@ -300,7 +300,7 @@ From `.github/dependabot.yml`:
 |----------|-----------|-----|
 | Coverage reports (`coverage-report-py*`) | 30 days | unit-tests |
 | Build artifacts (`dist/`) | 30 days | build |
-| Dependency docs (`conf/`) | 90 days | dependency-docs |
+| Dependency docs (`conf/requirements_ci*`, `conf/conda_environment_ci*`) | 90 days | dependency-docs |
 | Security reports (`reports/security/`) | 30 days | security |
 | Integration test reports | 30 days | integration-tests |
 

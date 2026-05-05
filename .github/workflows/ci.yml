@@ -417,6 +417,15 @@ jobs:
         run: mkdir -p reports/security
 
       - name: Run Gitleaks (Secrets Detection)
+        # gitleaks-action v2.3.9 explicitly rejects ``repository_dispatch``
+        # ("ERROR: The [repository_dispatch] event is not yet supported"),
+        # which kills the entire Security Scans job whenever the workflow
+        # is triggered by an upstream-published-event from juniper-ml.
+        # The push/PR triggers cover the human-driven entry points that
+        # actually need secret scanning; the dispatch trigger is for
+        # ecosystem-fanout test runs and doesn't introduce new commits to
+        # scan.
+        if: github.event_name != 'repository_dispatch'
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7  # v2.3.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -432,8 +441,12 @@ jobs:
           bandit -r juniper_data -x juniper_data/tests --confidence-level medium --severity-level medium
 
       - name: Upload Bandit SARIF to GitHub Security
+        # ``hashFiles`` returns empty when the file is absent; only attempt
+        # the upload when the SARIF actually exists. Combined with
+        # ``continue-on-error`` this keeps the job green even if a
+        # security-tools regression prevents bandit from emitting the file.
+        if: always() && hashFiles('reports/security/bandit.sarif') != ''
         uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225  # v4.35.2
-        if: always()
         with:
           sarif_file: reports/security/bandit.sarif
         continue-on-error: true
