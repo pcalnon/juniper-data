@@ -105,45 +105,27 @@ _dataset_metrics: dict | None = None
 def _ensure_dataset_metrics() -> dict:
     """Create dataset-related Prometheus metrics on first access.
 
-    Idempotent against the global ``prometheus_client.REGISTRY``: if the
-    module-level cache has been cleared (e.g. by a test fixture
-    resetting ``_dataset_metrics = None``) but the underlying
-    counters / histogram / gauge are still registered, this re-fetches
-    the existing collectors instead of raising
-    ``ValueError: Duplicated timeseries``. Same shape as
-    ``juniper_observability.middleware.prometheus.PrometheusMiddleware``
-    (juniper-ml PR #211) and ``juniper-canopy/src/observability.py
-    :_ensure_canopy_metrics`` (canopy V34a). Production behaviour
-    unchanged on the happy path.
+    Idempotent against the global ``prometheus_client.REGISTRY`` via
+    :func:`juniper_observability.register_or_reuse`: if the module-level
+    cache has been cleared (e.g. by a test fixture resetting
+    ``_dataset_metrics = None``) but the underlying counters / histogram
+    / gauge are still registered, the helper re-fetches the existing
+    collectors instead of raising ``ValueError: Duplicated timeseries``.
+    Production behaviour unchanged on the happy path.
     """
     global _dataset_metrics
     if _dataset_metrics is None:
-        from prometheus_client import REGISTRY, Counter, Gauge, Histogram
-
-        def _get_or_create(factory, name, *args, **kwargs):
-            try:
-                return factory(name, *args, **kwargs)
-            except ValueError:
-                # Already registered — typically test pollution or an
-                # in-process re-init. Re-fetch the existing collector so
-                # callers always get a working metric. ``prometheus_client``
-                # registers each collector under both the bare name and
-                # the suffixed sample names (``_total`` / ``_created`` /
-                # ``_bucket`` / ``_sum`` / ``_count``), all pointing at
-                # the same collector object.
-                existing = REGISTRY._names_to_collectors.get(name)
-                if existing is None:
-                    raise
-                return existing
+        from juniper_observability import register_or_reuse
+        from prometheus_client import Counter, Gauge, Histogram
 
         _dataset_metrics = {
-            "generations_total": _get_or_create(
+            "generations_total": register_or_reuse(
                 Counter,
                 "juniper_data_dataset_generations_total",
                 "Total dataset generation requests",
                 ["generator", "status"],
             ),
-            "generation_duration_seconds": _get_or_create(
+            "generation_duration_seconds": register_or_reuse(
                 Histogram,
                 "juniper_data_dataset_generation_duration_seconds",
                 # METRICS-MON R4.1: bucket layout is **tentative pending
@@ -156,7 +138,7 @@ def _ensure_dataset_metrics() -> dict:
                 ["generator"],
                 buckets=DATASET_GENERATION_DURATION_BUCKETS,
             ),
-            "datasets_cached": _get_or_create(
+            "datasets_cached": register_or_reuse(
                 Gauge,
                 "juniper_data_datasets_cached",
                 "Number of datasets currently cached in storage",
@@ -166,7 +148,7 @@ def _ensure_dataset_metrics() -> dict:
             # actual generation work (cache misses); this counts every
             # incoming POST so capacity-planning queries don't undercount
             # deterministic re-POSTs (see roadmap §7 R4.5).
-            "post_total": _get_or_create(
+            "post_total": register_or_reuse(
                 Counter,
                 "juniper_data_dataset_post_total",
                 "Total POST /v1/datasets requests, split by cache outcome",

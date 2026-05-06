@@ -57,7 +57,7 @@ api = [
     # >=0.1.1 to match the cascor / canopy floor (audit-doc C.2 fix);
     # juniper-ml#155 published 0.1.0a0, juniper-ml has since shipped
     # 0.1.1.
-    "juniper-observability>=0.1.1",
+    "juniper-observability>=0.2.0",
 ]
 test = [
     "pytest>=7.0.0",

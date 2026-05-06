@@ -5,7 +5,11 @@ import logging
 
 import numpy as np
 
-from juniper_data.api.observability import set_datasets_cached
+# ``set_datasets_cached`` is imported lazily inside ``_emit_cached_count``
+# below — top-level import here triggers a circular import via
+# ``juniper_data.api.__init__`` → ``api.app`` → ``juniper_data.storage``
+# (introduced by PR #92). Lazy import breaks the cycle without changing
+# any production behaviour.
 from juniper_data.core.models import DatasetMeta
 from juniper_data.storage.constants import DEFAULT_LIST_LIMIT, DEFAULT_LIST_OFFSET
 
@@ -62,6 +66,10 @@ class CachedDatasetStore(DatasetStore):
         discipline used everywhere else in this class.
         """
         try:
+            # Lazy import — see top-of-file comment for the cycle
+            # avoidance rationale.
+            from juniper_data.api.observability import set_datasets_cached
+
             count = len(self._cache.list_datasets(limit=_CACHE_COUNT_PROBE_LIMIT))
             set_datasets_cached(count)
         except Exception:
