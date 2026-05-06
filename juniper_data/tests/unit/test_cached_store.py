@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
+import juniper_data.api.observability as obs
 from juniper_data.core.models import DatasetMeta
 from juniper_data.storage import CachedDatasetStore, InMemoryDatasetStore
 
@@ -421,3 +422,159 @@ class TestCachedDatasetStore:
 
         assert cached.exists("test-1") is True
         assert cached.exists("nonexistent") is False
+
+
+@pytest.fixture
+def _reset_dataset_metrics():
+    """Reset the lazy-init dataset metrics + REGISTRY between tests.
+
+    Mirrors the autouse fixture in ``test_observability.py``: re-using
+    ``CachedDatasetStore`` across tests would otherwise trip
+    ``ValueError: Duplicated timeseries in CollectorRegistry`` when the
+    gauge is re-registered against the global ``prometheus_client``
+    REGISTRY.
+    """
+    pytest.importorskip("prometheus_client")
+    from prometheus_client import REGISTRY
+
+    obs._dataset_metrics = None
+    yield
+    collectors = list(getattr(REGISTRY, "_collector_to_names", {}).keys())
+    for collector in collectors:
+        try:
+            REGISTRY.unregister(collector)
+        except KeyError:
+            pass
+    obs._dataset_metrics = None
+
+
+def _read_datasets_cached_gauge() -> float:
+    """Return the current value of the ``juniper_data_datasets_cached`` gauge."""
+    return obs._ensure_dataset_metrics()["datasets_cached"]._value.get()
+
+
+@pytest.mark.unit
+class TestDatasetsCachedGauge:
+    """Wire-up tests for the ``juniper_data_datasets_cached`` Prometheus gauge.
+
+    Closes the production-caller gap surfaced by juniper-ml#223
+    (post-METRICS-MON state report §15): the gauge was defined and
+    helper-tested but had no production updater. ``CachedDatasetStore``
+    is the canonical cache layer, so its mutation paths now publish the
+    cache cardinality after every change.
+    """
+
+    def test_save_emits_cache_count(
+        self,
+        _reset_dataset_metrics,
+        primary_store: InMemoryDatasetStore,
+        cache_store: InMemoryDatasetStore,
+        sample_meta: DatasetMeta,
+        sample_arrays: dict[str, np.ndarray],
+    ) -> None:
+        """save() with write_through should publish the cache cardinality."""
+        cached = CachedDatasetStore(primary_store, cache_store, write_through=True)
+
+        cached.save("test-1", sample_meta, sample_arrays)
+        assert _read_datasets_cached_gauge() == 1
+
+        cached.save("test-2", sample_meta, sample_arrays)
+        assert _read_datasets_cached_gauge() == 2
+
+        cached.save("test-3", sample_meta, sample_arrays)
+        assert _read_datasets_cached_gauge() == 3
+
+    def test_delete_emits_decremented_cache_count(
+        self,
+        _reset_dataset_metrics,
+        primary_store: InMemoryDatasetStore,
+        cache_store: InMemoryDatasetStore,
+        sample_meta: DatasetMeta,
+        sample_arrays: dict[str, np.ndarray],
+    ) -> None:
+        """delete() should publish the post-eviction cache cardinality."""
+        cached = CachedDatasetStore(primary_store, cache_store, write_through=True)
+
+        cached.save("test-1", sample_meta, sample_arrays)
+        cached.save("test-2", sample_meta, sample_arrays)
+        cached.save("test-3", sample_meta, sample_arrays)
+        assert _read_datasets_cached_gauge() == 3
+
+        cached.delete("test-2")
+        assert _read_datasets_cached_gauge() == 2
+
+        cached.delete("test-1")
+        assert _read_datasets_cached_gauge() == 1
+
+    def test_invalidate_cache_emits_decremented_cache_count(
+        self,
+        _reset_dataset_metrics,
+        primary_store: InMemoryDatasetStore,
+        cache_store: InMemoryDatasetStore,
+        sample_meta: DatasetMeta,
+        sample_arrays: dict[str, np.ndarray],
+    ) -> None:
+        """invalidate_cache() should publish the post-eviction cache cardinality."""
+        cached = CachedDatasetStore(primary_store, cache_store, write_through=True)
+        cached.save("test-1", sample_meta, sample_arrays)
+        cached.save("test-2", sample_meta, sample_arrays)
+        assert _read_datasets_cached_gauge() == 2
+
+        cached.invalidate_cache("test-1")
+
+        assert _read_datasets_cached_gauge() == 1
+        assert primary_store.exists("test-1")  # primary untouched
+
+    def test_warm_cache_emits_populated_count(
+        self,
+        _reset_dataset_metrics,
+        primary_store: InMemoryDatasetStore,
+        cache_store: InMemoryDatasetStore,
+        sample_meta: DatasetMeta,
+        sample_arrays: dict[str, np.ndarray],
+    ) -> None:
+        """warm_cache() should publish the post-warm cache cardinality."""
+        cached = CachedDatasetStore(primary_store, cache_store, write_through=False)
+        primary_store.save("test-1", sample_meta, sample_arrays)
+        primary_store.save("test-2", sample_meta, sample_arrays)
+        # No write-through, so the cache is empty before warming.
+        assert _read_datasets_cached_gauge() == 0
+
+        count = cached.warm_cache()
+
+        assert count == 2
+        assert _read_datasets_cached_gauge() == 2
+
+    def test_get_artifact_bytes_read_through_emits_cache_count(
+        self,
+        _reset_dataset_metrics,
+        primary_store: InMemoryDatasetStore,
+        cache_store: InMemoryDatasetStore,
+        sample_meta: DatasetMeta,
+        sample_arrays: dict[str, np.ndarray],
+    ) -> None:
+        """Read-through cache population in get_artifact_bytes should publish."""
+        cached = CachedDatasetStore(primary_store, cache_store, write_through=False)
+        primary_store.save("test-1", sample_meta, sample_arrays)
+        assert _read_datasets_cached_gauge() == 0
+
+        artifact = cached.get_artifact_bytes("test-1")
+
+        assert artifact is not None
+        assert _read_datasets_cached_gauge() == 1
+
+    def test_save_without_write_through_does_not_emit(
+        self,
+        _reset_dataset_metrics,
+        primary_store: InMemoryDatasetStore,
+        cache_store: InMemoryDatasetStore,
+        sample_meta: DatasetMeta,
+        sample_arrays: dict[str, np.ndarray],
+    ) -> None:
+        """save() with write_through=False does not touch the cache, so no emit."""
+        cached = CachedDatasetStore(primary_store, cache_store, write_through=False)
+
+        cached.save("test-1", sample_meta, sample_arrays)
+
+        # Cache is empty; gauge stays at 0 (default for a fresh Gauge).
+        assert _read_datasets_cached_gauge() == 0

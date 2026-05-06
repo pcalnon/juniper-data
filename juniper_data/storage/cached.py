@@ -5,11 +5,20 @@ import logging
 
 import numpy as np
 
+from juniper_data.api.observability import set_datasets_cached
 from juniper_data.core.models import DatasetMeta
 from juniper_data.storage.constants import DEFAULT_LIST_LIMIT, DEFAULT_LIST_OFFSET
 
 logger = logging.getLogger(__name__)
 from .base import DatasetStore
+
+# Probe limit used when sampling the cache backend for the
+# ``juniper_data_datasets_cached`` gauge. Mirrors the limit used by
+# :meth:`CachedDatasetStore.warm_cache` so the gauge reflects the same
+# population that warm_cache would touch. Cache backends are expected
+# to be in-memory (Redis / InMemoryDatasetStore) so a SCAN over 10k
+# keys is cheap relative to a dataset save/load.
+_CACHE_COUNT_PROBE_LIMIT: int = 10_000
 
 
 class CachedDatasetStore(DatasetStore):
@@ -42,6 +51,22 @@ class CachedDatasetStore(DatasetStore):
         self._cache = cache
         self._write_through = write_through
 
+    def _emit_cached_count(self) -> None:
+        """Update the ``juniper_data_datasets_cached`` Prometheus gauge.
+
+        Probes the cache backend for its current dataset population and
+        publishes the count via :func:`juniper_data.api.observability.set_datasets_cached`.
+        Failures (cache backend unavailable, metric registry not yet
+        initialised, etc.) are swallowed so observability never breaks
+        the storage path -- mirrors the ``contextlib.suppress(Exception)``
+        discipline used everywhere else in this class.
+        """
+        try:
+            count = len(self._cache.list_datasets(limit=_CACHE_COUNT_PROBE_LIMIT))
+            set_datasets_cached(count)
+        except Exception:
+            logger.debug("Failed to update juniper_data_datasets_cached gauge", exc_info=True)
+
     def save(
         self,
         dataset_id: str,
@@ -60,6 +85,7 @@ class CachedDatasetStore(DatasetStore):
         if self._write_through:
             with contextlib.suppress(Exception):
                 self._cache.save(dataset_id, meta, arrays)
+            self._emit_cached_count()
 
     def get_meta(self, dataset_id: str) -> DatasetMeta | None:
         """Get metadata, checking cache first.
@@ -92,6 +118,7 @@ class CachedDatasetStore(DatasetStore):
         artifact = self._primary.get_artifact_bytes(dataset_id)
 
         if artifact is not None:
+            populated = False
             with contextlib.suppress(Exception):
                 meta = self._primary.get_meta(dataset_id)
                 if meta is not None:
@@ -100,6 +127,9 @@ class CachedDatasetStore(DatasetStore):
                     with np.load(io.BytesIO(artifact)) as npz:
                         arrays = {k: npz[k] for k in npz.files}
                     self._cache.save(dataset_id, meta, arrays)
+                    populated = True
+            if populated:
+                self._emit_cached_count()
         return artifact
 
     def exists(self, dataset_id: str) -> bool:
@@ -125,8 +155,12 @@ class CachedDatasetStore(DatasetStore):
         Returns:
             True if the dataset was deleted from primary, False otherwise.
         """
+        cache_touched = False
         with contextlib.suppress(Exception):
             self._cache.delete(dataset_id)
+            cache_touched = True
+        if cache_touched:
+            self._emit_cached_count()
         return self._primary.delete(dataset_id)
 
     def list_datasets(self, limit: int = DEFAULT_LIST_LIMIT, offset: int = DEFAULT_LIST_OFFSET) -> list[str]:
@@ -176,9 +210,11 @@ class CachedDatasetStore(DatasetStore):
             True if entry was removed from cache, False otherwise.
         """
         try:
-            return self._cache.delete(dataset_id)
+            result = self._cache.delete(dataset_id)
         except Exception:
             return False
+        self._emit_cached_count()
+        return result
 
     def warm_cache(self, dataset_ids: list[str] | None = None) -> int:
         """Populate cache from primary store.
@@ -209,4 +245,6 @@ class CachedDatasetStore(DatasetStore):
                 logger.warning("Failed to cache dataset %s", dataset_id, exc_info=True)
                 continue
 
+        if cached_count > 0:
+            self._emit_cached_count()
         return cached_count
