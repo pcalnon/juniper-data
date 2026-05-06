@@ -203,6 +203,19 @@ juniper-data/
 
 ---
 
+## Observability — Prometheus Collectors
+
+For any new `prometheus_client` `Counter` / `Gauge` / `Histogram` / `Summary` / `Info` / `Enum` registration, use the canonical helpers from `juniper-observability` (`>=0.2.0`):
+
+- `register_or_reuse(factory, name, *args, **kwargs)` — adopt-existing on duplicate (the default for almost every call site; preserves accumulated samples across in-process re-init).
+- `register_fresh(...)` — drop-and-recreate on duplicate (only when args genuinely differ).
+- `register_info_or_update(name, description, **labels)` — sugar for the `Info` two-step register-then-`.info({...})` pattern.
+- `lazy_register_or_reuse(...)` — for the lazy-init-with-`None`-sentinel pattern.
+
+Tests touching these collectors should use `juniper_observability.testing.reset_prometheus_registry`. Existing examples in this repo: `juniper_data/api/observability.py:_ensure_dataset_metrics`. See [the design doc in juniper-ml](https://github.com/pcalnon/juniper-ml/blob/main/notes/observability/REGISTER_OR_REUSE_HELPER_DESIGN_2026-05-05.md) for the rationale.
+
+---
+
 ## Code Style Conventions
 
 ### Naming Conventions
