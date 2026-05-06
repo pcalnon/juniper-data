@@ -150,7 +150,12 @@ jobs:
           echo "╔════════════════════════════════════════════════════════════╗"
           echo "║       JuniperData - Async-route audit (BUG-JD-10)         ║"
           echo "╚════════════════════════════════════════════════════════════╝"
-          ruff check --select ASYNC --output-format=github juniper_data/
+          # --exit-zero: same soft-fail contract as the pre-commit hook
+          # (Phase 2 "violations as warnings, not blockers"). Annotations
+          # still render via --output-format=github so reviewers see them
+          # in the PR; the step itself doesn't fail. Phase 4 will drop
+          # this flag along with `continue-on-error: true` on the job.
+          ruff check --select ASYNC --exit-zero --output-format=github juniper_data/
 
   # ═══════════════════════════════════════════════════════════════════════════════════════════════
   # Unit Tests: Run unit tests with coverage enforcement
