@@ -426,8 +426,13 @@ async def batch_update_tags(
     updated: list[str] = []
     not_found: list[str] = []
 
+    # BUG-JD-10 (2026-05-05 audit): ``store.get_meta`` and
+    # ``store.update_meta`` are synchronous filesystem I/O. Offload
+    # each call to a thread so the FastAPI event loop stays
+    # responsive during large batches — same pattern as
+    # ``generator_class.generate`` above.
     for dataset_id in request.dataset_ids:
-        meta = store.get_meta(dataset_id)
+        meta = await asyncio.to_thread(store.get_meta, dataset_id)
         if meta is None:
             not_found.append(dataset_id)
             continue
@@ -436,7 +441,7 @@ async def batch_update_tags(
         current_tags.update(request.add_tags)
         current_tags -= set(request.remove_tags)
         meta.tags = sorted(current_tags)
-        store.update_meta(dataset_id, meta)
+        await asyncio.to_thread(store.update_meta, dataset_id, meta)
         updated.append(dataset_id)
 
     return BatchUpdateTagsResponse(
