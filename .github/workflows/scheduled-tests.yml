@@ -55,7 +55,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
+          python -m pip install --upgrade "pip>=26.1.1"
           # juniper-data's tests under juniper_data/tests/{api,integration,unit}
           # all import ``fastapi.testclient.TestClient``. The ``test`` extra
           # alone doesn't carry fastapi/uvicorn (those live in ``api``);
