@@ -96,6 +96,20 @@ repos:
       - id: ruff-format
         name: Format with Ruff
         files: ^juniper_data/.*\.py$
+      # ─────────────────────────────────────────────────────────────────────
+      # Async-route audit (Phase 1 wiring — disabled state).
+      # See juniper-ml notes/ASYNC_ROUTE_AUDIT_HOOK_MIGRATION_PLAN.md.
+      # `stages: [manual]` keeps this from firing on regular commits.
+      # Run on demand via:  pre-commit run --hook-stage manual ruff-async-audit
+      # Phase 2 flips this to `stages: [pre-commit, manual]` and adds a
+      # CI lane (continue-on-error: true) so PRs see violations as
+      # annotations without blocking merge. Phase 4 is hard-fail.
+      - id: ruff
+        alias: ruff-async-audit
+        name: Async-route audit (BUG-JD-10 class)
+        args: [--select, ASYNC, --exit-zero]
+        files: ^juniper_data/.*\.py$
+        stages: [manual]
 
   # ═══════════════════════════════════════════════════════════════════════════
   # Python Type Checking - MyPy
