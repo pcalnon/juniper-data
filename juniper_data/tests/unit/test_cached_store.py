@@ -444,7 +444,8 @@ def _reset_dataset_metrics():
         try:
             REGISTRY.unregister(collector)
         except KeyError:
-            pass
+            # Collector may already be absent; teardown is best-effort.
+            continue
     obs._dataset_metrics = None
 
 
