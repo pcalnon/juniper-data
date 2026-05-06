@@ -97,16 +97,15 @@ repos:
         name: Format with Ruff
         files: ^juniper_data/.*\.py$
       # ─────────────────────────────────────────────────────────────────────
-      # Async-route audit (Phase 2 — soft-fail visibility).
+      # Async-route audit (Phase 4 — enforced).
       # See juniper-ml notes/ASYNC_ROUTE_AUDIT_HOOK_MIGRATION_PLAN.md.
-      # `--exit-zero` keeps violations as warnings (won't block commits).
-      # CI lane in .github/workflows/ci.yml runs the same check with
-      # `continue-on-error: true` so PRs see annotations without blocking
-      # merge. Phase 4 will drop both `--exit-zero` and `continue-on-error`.
+      # Hard-fails on any new ASYNC* violation. The repo reached zero
+      # violations at end of Phase 3 (PR #96); per-file-ignores live in
+      # pyproject.toml [tool.ruff.lint.per-file-ignores].
       - id: ruff
         alias: ruff-async-audit
         name: Async-route audit (BUG-JD-10 class)
-        args: [--select, ASYNC, --exit-zero]
+        args: [--select, ASYNC]
         files: ^juniper_data/.*\.py$
         stages: [pre-commit, manual]
 
