@@ -115,9 +115,8 @@ def _ensure_dataset_metrics() -> dict:
     """
     global _dataset_metrics
     if _dataset_metrics is None:
-        from prometheus_client import Counter, Gauge, Histogram
-
         from juniper_observability import register_or_reuse
+        from prometheus_client import Counter, Gauge, Histogram
 
         _dataset_metrics = {
             "generations_total": register_or_reuse(
