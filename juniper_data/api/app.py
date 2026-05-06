@@ -43,7 +43,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     logger = logging.getLogger("juniper_data")
     logger.info(f"JuniperData API v{__version__} starting")
-    logger.info(f"Storage path: {storage_path.absolute()}")
+    # ``Path.absolute()`` is pure path manipulation (no I/O); the
+    # ASYNC240 rule is over-conservative here and flags every
+    # ``pathlib.Path`` method without distinguishing stat-bound ones
+    # from text-only ones. Lifespan startup is also a one-shot
+    # event, not a request handler — even if there were I/O it
+    # wouldn't block per-request latency.
+    logger.info(f"Storage path: {storage_path.absolute()}")  # noqa: ASYNC240
 
     yield
 

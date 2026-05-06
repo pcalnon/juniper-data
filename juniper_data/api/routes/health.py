@@ -15,6 +15,7 @@ in juniper-ml for the cross-repo contract this implements (R1.2 / seed-02
 and seed-03).
 """
 
+import asyncio
 import time
 from pathlib import Path
 
@@ -57,6 +58,19 @@ def _liveness_tick(settings: Settings) -> None:
     """
     if not Path(settings.storage_path).is_dir():
         raise RuntimeError(f"storage path not a directory: {settings.storage_path}")
+
+
+def _probe_storage(storage_path: Path) -> tuple[bool, int]:
+    """Filesystem probe for the readiness route.
+
+    Bundles the ``is_dir()`` stat and the ``*.npz`` glob into a single
+    helper so the readiness route takes one ``asyncio.to_thread``
+    hop instead of two. Returns ``(is_dir, dataset_count)``;
+    ``dataset_count`` is 0 when the path isn't a directory.
+    """
+    if not storage_path.is_dir():
+        return False, 0
+    return True, len(list(storage_path.glob("*.npz")))
 
 
 @router.get("/health")
@@ -128,8 +142,13 @@ async def readiness_probe(request: Request, response: Response) -> ReadinessResp
     settings = _settings_from_request(request)
     storage_path = Path(settings.storage_path)
 
-    if storage_path.is_dir():
-        dataset_count = len(list(storage_path.glob("*.npz")))
+    # Probe filesystem off the event loop. ``is_dir()`` is a stat
+    # syscall and ``glob()`` walks the directory; both block on slow
+    # disks. Bundled into a single ``to_thread`` call so the readiness
+    # probe takes one thread-hop, not two.
+    is_dir, dataset_count = await asyncio.to_thread(_probe_storage, storage_path)
+
+    if is_dir:
         storage_dep = DependencyStatus(
             name="Dataset Storage",
             status="healthy",
