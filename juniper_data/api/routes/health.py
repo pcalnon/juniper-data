@@ -148,18 +148,19 @@ async def readiness_probe(request: Request, response: Response) -> ReadinessResp
     # probe takes one thread-hop, not two.
     is_dir, dataset_count = await asyncio.to_thread(_probe_storage, storage_path)
 
-    if is_dir:
-        storage_dep = DependencyStatus(
+    storage_dep = (
+        DependencyStatus(
             name="Dataset Storage",
             status="healthy",
             message=f"{storage_path} ({dataset_count} datasets)",
         )
-    else:
-        storage_dep = DependencyStatus(
+        if is_dir
+        else DependencyStatus(
             name="Dataset Storage",
             status="unhealthy",
             message=f"{storage_path} not found or not a directory",
         )
+    )
 
     # Storage is the sole REQUIRED dep for juniper-data; degraded is unreachable.
     if storage_dep.status == "healthy":
