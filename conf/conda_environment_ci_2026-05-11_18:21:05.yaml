@@ -53,12 +53,12 @@ channels:
   - jasonb857
   - ehmoussi
   - konstantin-orangeqs
-dependencies:
 # This file may be used to create an environment using:
 # $ conda create --name <env> --file <this file>
 # platform: linux-64
 # created-by: conda 25.11.1
-@EXPLICIT
+# @EXPLICIT
+dependencies:
 https://conda.anaconda.org/conda-forge/linux-64/shellcheck-0.10.0-ha770c72_0.conda
 https://conda.anaconda.org/conda-forge/linux-64/_libgcc_mutex-0.1-conda_forge.tar.bz2
 https://conda.anaconda.org/conda-forge/noarch/ca-certificates-2026.1.4-hbd8a1cb_0.conda
