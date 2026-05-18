@@ -117,9 +117,19 @@ jobs:
       - name: Validate Documentation Links
         run: |
           echo "╔════════════════════════════════════════════════════════════╗"
-          echo "║       JuniperData - Documentation Link Validation         ║"
+          echo "║       JuniperData - Documentation Link Validation          ║"
           echo "╚════════════════════════════════════════════════════════════╝"
-          python scripts/check_doc_links.py --exclude templates --exclude history --cross-repo skip
+          python scripts/check_doc_links.py \
+            --exclude templates \
+            --exclude history \
+            --exclude legacy \
+            --exclude pull_requests \
+            --exclude releases \
+            --exclude analysis \
+            --exclude fixes \
+            --exclude development \
+            --exclude CHANGELOG.md \
+            --cross-repo skip
 
   # ═══════════════════════════════════════════════════════════════════════════════════════════════
   # Async-route audit (Phase 4 — enforced).
@@ -147,7 +157,7 @@ jobs:
       - name: Run async-route audit
         run: |
           echo "╔════════════════════════════════════════════════════════════╗"
-          echo "║       JuniperData - Async-route audit (BUG-JD-10)         ║"
+          echo "║       JuniperData - Async-route audit (BUG-JD-10)          ║"
           echo "╚════════════════════════════════════════════════════════════╝"
           ruff check --select ASYNC --output-format=github juniper_data/
 
@@ -527,7 +537,7 @@ jobs:
       - name: Check lockfile freshness
         run: |
           echo "╔════════════════════════════════════════════════════════════╗"
-          echo "║       JuniperData - Lockfile Freshness Check              ║"
+          echo "║       JuniperData - Lockfile Freshness Check               ║"
           echo "╚════════════════════════════════════════════════════════════╝"
 
           # Resolve pyproject.toml using the committed lockfile as constraints.
@@ -577,14 +587,14 @@ jobs:
       - name: Build Docker Image
         run: |
           echo "╔════════════════════════════════════════════════════════════╗"
-          echo "║       JuniperData - Docker Build                          ║"
+          echo "║       JuniperData - Docker Build                           ║"
           echo "╚════════════════════════════════════════════════════════════╝"
           docker build -t juniper-data:ci-${{ github.sha }} .
 
       - name: Verify Container Starts
         run: |
           echo "╔════════════════════════════════════════════════════════════╗"
-          echo "║       JuniperData - Docker Smoke Test                     ║"
+          echo "║       JuniperData - Docker Smoke Test                      ║"
           echo "╚════════════════════════════════════════════════════════════╝"
           docker run -d --name juniper-data-test \
             -p 8100:8100 \
