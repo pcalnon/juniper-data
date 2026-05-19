@@ -233,6 +233,27 @@ repos:
         files: ^\.env(\.secrets)?$
         types: [file]
 
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Lockfile presence guard
+  # Prevents accidental deletion of requirements.lock, which would silently
+  # break Dockerfile builds and the Lockfile Freshness CI gate.
+  # Motivating incident: Dependabot PR #99 (2026-05-11) replaced the
+  # canonical lockfile with timestamped backups; juniper-ml PR #117
+  # (2026-05-19) then deleted those backups, leaving juniper-data with
+  # no requirements.lock at all.
+  # ═══════════════════════════════════════════════════════════════════════════
+  - repo: local
+    hooks:
+      - id: require-requirements-lock
+        name: Ensure requirements.lock exists
+        # Quote the whole command in YAML double-quotes; escape inner double
+        # quotes. Avoid unquoted ":" inside the literal so YAML doesn't
+        # mis-parse it as a mapping.
+        entry: "bash -c '[ -f requirements.lock ] || { echo ERROR requirements.lock is missing. Regenerate via uv pip compile per workflow. ; exit 1 ; }'"
+        language: system
+        pass_filenames: false
+        always_run: true
+
 # CI configuration (for pre-commit.ci service, if used)
 ci:
   autofix_prs: false
