@@ -19,6 +19,18 @@ def _clear_settings_cache():
     get_settings.cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def _clear_probe_cache():
+    """PERF-JD-01: reset the readiness probe's dataset-count cache between
+    tests so a file added in one test isn't masked by a count cached in
+    an earlier test."""
+    from juniper_data.api.routes.health import _reset_probe_cache
+
+    _reset_probe_cache()
+    yield
+    _reset_probe_cache()
+
+
 @pytest.fixture
 def test_settings(tmp_path, monkeypatch) -> Settings:
     """Create test settings with a real storage directory."""
@@ -120,6 +132,58 @@ class TestEnhancedReadinessEndpoint:
         assert body["status"] == "not_ready"
         assert body["dependencies"]["storage"]["status"] == "unhealthy"
         assert "not found" in body["dependencies"]["storage"]["message"]
+
+    def test_readiness_probe_cache_reuses_count_within_ttl(self, client, test_settings, tmp_path):
+        """PERF-JD-01: a second readiness probe within the cache window must
+        not re-glob the storage directory. The endpoint should reuse the
+        cached (is_dir, count) tuple even if files are added after the
+        first probe — proving the cache holds — until ``_reset_probe_cache``
+        or the TTL clears it. This pins the steady-state O(1) hot-path."""
+        storage = tmp_path / "datasets"
+        # First probe: 1 dataset
+        (storage / "alpha.npz").touch()
+        first = client.get("/v1/health/ready").json()
+        assert "1 dataset" in first["dependencies"]["storage"]["message"]
+
+        # Add a second file. Within TTL the cache should still report 1.
+        (storage / "beta.npz").touch()
+        second = client.get("/v1/health/ready").json()
+        assert "1 dataset" in second["dependencies"]["storage"]["message"], "expected probe cache to return stale count within TTL"
+
+        # Manual invalidation surfaces the fresh count.
+        from juniper_data.api.routes.health import _reset_probe_cache
+
+        _reset_probe_cache()
+        third = client.get("/v1/health/ready").json()
+        assert "2 datasets" in third["dependencies"]["storage"]["message"]
+
+    def test_readiness_probe_cache_invalidates_on_path_change(self, monkeypatch, tmp_path):
+        """PERF-JD-01: switching ``storage_path`` between requests must NOT
+        return the cached count from the previous path. Without the
+        path-equality check in ``_probe_storage`` the cache would alias
+        tests that share a test_settings fixture but install different
+        storage dirs at the request level."""
+        from juniper_data.api.routes.health import _reset_probe_cache
+
+        # First app: 1 file at path A
+        path_a = tmp_path / "a"
+        path_a.mkdir()
+        (path_a / "1.npz").touch()
+        _reset_probe_cache()
+        settings_a = Settings(storage_path=str(path_a))
+        client_a = TestClient(create_app(settings=settings_a))
+        body_a = client_a.get("/v1/health/ready").json()
+        assert "1 dataset" in body_a["dependencies"]["storage"]["message"]
+
+        # Second app: 3 files at path B. Cache from path A must not bleed.
+        path_b = tmp_path / "b"
+        path_b.mkdir()
+        for n in ("1.npz", "2.npz", "3.npz"):
+            (path_b / n).touch()
+        settings_b = Settings(storage_path=str(path_b))
+        client_b = TestClient(create_app(settings=settings_b))
+        body_b = client_b.get("/v1/health/ready").json()
+        assert "3 datasets" in body_b["dependencies"]["storage"]["message"]
 
 
 @pytest.mark.unit
