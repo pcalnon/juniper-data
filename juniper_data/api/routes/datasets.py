@@ -109,7 +109,7 @@ async def create_dataset(
         params=params.model_dump(),
     )
 
-    existing_meta = store.get_meta(dataset_id)
+    existing_meta = await asyncio.to_thread(store.get_meta, dataset_id)
     if existing_meta is not None:
         # METRICS-MON R4.5: cache hits short-circuit the generator path,
         # so ``record_dataset_generation`` is not called — but the POST
@@ -203,10 +203,10 @@ async def create_dataset(
     if request.persist:
         # save_versioned() atomically allocates the version number under a lock
         # to prevent concurrent requests from receiving the same version.
-        store.save_versioned(dataset_id, meta, arrays)
+        await asyncio.to_thread(store.save_versioned, dataset_id, meta, arrays)
     elif request.name is not None:
         # Non-persisted: preview the next version (no race since no write)
-        meta.dataset_version = store.next_version_number(request.name)
+        meta.dataset_version = await asyncio.to_thread(store.next_version_number, request.name)
 
     return CreateDatasetResponse(
         dataset_id=dataset_id,
@@ -232,7 +232,7 @@ async def list_datasets(
     Returns:
         List of dataset IDs.
     """
-    return store.list_datasets(limit=limit, offset=offset)
+    return await asyncio.to_thread(store.list_datasets, limit=limit, offset=offset)
 
 
 @router.get("/filter", response_model=DatasetListResponse)
@@ -273,7 +273,8 @@ async def filter_datasets(
     """
     tag_list = [t.strip() for t in tags.split(",")] if tags else None
 
-    datasets, total = store.filter_datasets(
+    datasets, total = await asyncio.to_thread(
+        store.filter_datasets,
         generator=generator,
         tags=tag_list,
         tags_match=tags_match,
@@ -308,7 +309,7 @@ async def get_dataset_stats(
     Returns:
         Dataset statistics.
     """
-    stats = store.get_stats()
+    stats = await asyncio.to_thread(store.get_stats)
     return DatasetStats(**stats)  # type: ignore[arg-type]
 
 
@@ -326,7 +327,7 @@ async def batch_delete_datasets(
     Returns:
         Batch delete response with deleted and not found IDs.
     """
-    deleted, not_found = store.batch_delete(request.dataset_ids)
+    deleted, not_found = await asyncio.to_thread(store.batch_delete, request.dataset_ids)
 
     return BatchDeleteResponse(
         deleted=deleted,
@@ -479,8 +480,11 @@ async def batch_export_datasets(
     #
     # Pre-check existence up front so we can still return 404 when *none* of
     # the requested datasets exist without first committing to a response body.
-    # `exists()` is a cheap metadata check on every backend.
-    present_ids = [dsid for dsid in request.dataset_ids if store.exists(dsid)]
+    # `exists()` is a cheap metadata check on every backend, but it is still
+    # filesystem (or network) I/O — gather() each call off the event loop so a
+    # large batch doesn't stall concurrent requests.
+    exists_flags = await asyncio.gather(*(asyncio.to_thread(store.exists, dsid) for dsid in request.dataset_ids))
+    present_ids = [dsid for dsid, exists in zip(request.dataset_ids, exists_flags) if exists]
     if not present_ids:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="None of the requested datasets were found")
 
@@ -550,7 +554,7 @@ async def cleanup_expired_datasets(
     Returns:
         List of deleted dataset IDs.
     """
-    return store.delete_expired()
+    return await asyncio.to_thread(store.delete_expired)
 
 
 @router.get("/versions", response_model=DatasetVersionListResponse)
@@ -567,7 +571,7 @@ async def list_dataset_versions(
     Returns:
         Version list response with all versions sorted by version number.
     """
-    versions = store.list_versions(name)
+    versions = await asyncio.to_thread(store.list_versions, name)
     latest = versions[-1].dataset_version if versions else None
     return DatasetVersionListResponse(
         dataset_name=name,
@@ -594,7 +598,7 @@ async def get_latest_version(
     Raises:
         HTTPException: 404 if no versions found for the given name.
     """
-    meta = store.get_latest_version(name)
+    meta = await asyncio.to_thread(store.get_latest_version, name)
     if meta is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No versions found for dataset '{name}'")
     return meta
@@ -617,7 +621,7 @@ async def get_dataset_metadata(
     Raises:
         HTTPException: 404 if dataset not found.
     """
-    meta = store.get_meta(dataset_id)
+    meta = await asyncio.to_thread(store.get_meta, dataset_id)
     if meta is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dataset '{dataset_id}' not found")
     # BUG-JD-08: record access asynchronously to avoid blocking I/O on read paths
@@ -642,7 +646,7 @@ async def download_artifact(
     Raises:
         HTTPException: 404 if dataset not found.
     """
-    artifact_bytes = store.get_artifact_bytes(dataset_id)
+    artifact_bytes = await asyncio.to_thread(store.get_artifact_bytes, dataset_id)
     if artifact_bytes is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dataset '{dataset_id}' not found")
 
@@ -675,7 +679,7 @@ async def preview_dataset(
     Raises:
         HTTPException: 404 if dataset not found.
     """
-    artifact_bytes = store.get_artifact_bytes(dataset_id)
+    artifact_bytes = await asyncio.to_thread(store.get_artifact_bytes, dataset_id)
     if artifact_bytes is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dataset '{dataset_id}' not found")
 
@@ -710,7 +714,7 @@ async def delete_dataset(
     Raises:
         HTTPException: 404 if dataset not found.
     """
-    deleted = store.delete(dataset_id)
+    deleted = await asyncio.to_thread(store.delete, dataset_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dataset '{dataset_id}' not found")
 
@@ -734,7 +738,7 @@ async def update_dataset_tags(
     Raises:
         HTTPException: 404 if dataset not found.
     """
-    meta = store.get_meta(dataset_id)
+    meta = await asyncio.to_thread(store.get_meta, dataset_id)
     if meta is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dataset '{dataset_id}' not found")
 
@@ -743,5 +747,5 @@ async def update_dataset_tags(
     current_tags -= set(request.remove_tags)
     meta.tags = sorted(current_tags)
 
-    store.update_meta(dataset_id, meta)
+    await asyncio.to_thread(store.update_meta, dataset_id, meta)
     return meta
