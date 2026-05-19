@@ -60,6 +60,23 @@ def _liveness_tick(settings: Settings) -> None:
         raise RuntimeError(f"storage path not a directory: {settings.storage_path}")
 
 
+# PERF-JD-01: short-lived cache for the readiness probe's dataset count.
+# Plain ``len(list(storage_path.glob("*.npz")))`` is O(n) per probe and
+# orchestrators poll readiness every few seconds — a stale-tolerant 5s
+# cache cuts the steady-state cost to one glob per cache window without
+# instrumenting every dataset save / delete path (which would couple the
+# write hot path to readiness bookkeeping and miss out-of-band changes
+# like manual filesystem edits or test fixtures).
+#
+# Stored as ``(cached_at_perf_counter, is_dir, dataset_count, storage_path_str)``
+# so a change to the configured storage path (test fixtures install
+# ``create_app(settings=...)`` with a tmpdir) invalidates the cache.
+# Concurrent probes that race the cache miss are benign: at most a few
+# extra globs in a narrow window; the last writer wins.
+_PROBE_CACHE_TTL_SECONDS = 5.0
+_probe_cache: tuple[float, bool, int, str] | None = None
+
+
 def _probe_storage(storage_path: Path) -> tuple[bool, int]:
     """Filesystem probe for the readiness route.
 
@@ -67,10 +84,34 @@ def _probe_storage(storage_path: Path) -> tuple[bool, int]:
     helper so the readiness route takes one ``asyncio.to_thread``
     hop instead of two. Returns ``(is_dir, dataset_count)``;
     ``dataset_count`` is 0 when the path isn't a directory.
+
+    PERF-JD-01: results are cached for ``_PROBE_CACHE_TTL_SECONDS`` to
+    keep steady-state readiness probes O(1) on the hot path. Per-test
+    invalidation uses :func:`_reset_probe_cache`.
     """
+    global _probe_cache
+    now = time.perf_counter()
+    path_str = str(storage_path)
+    cached = _probe_cache
+    if cached is not None and now - cached[0] < _PROBE_CACHE_TTL_SECONDS and cached[3] == path_str:
+        return cached[1], cached[2]
+
     if not storage_path.is_dir():
+        _probe_cache = (now, False, 0, path_str)
         return False, 0
-    return True, len(list(storage_path.glob("*.npz")))
+    count = len(list(storage_path.glob("*.npz")))
+    _probe_cache = (now, True, count, path_str)
+    return True, count
+
+
+def _reset_probe_cache() -> None:
+    """Drop the readiness probe's cached dataset count.
+
+    Exposed for tests that need to observe fresh filesystem state
+    without waiting out the TTL.
+    """
+    global _probe_cache
+    _probe_cache = None
 
 
 @router.get("/health")
