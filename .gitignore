@@ -34,6 +34,7 @@ data/**
 images/**
 # **/images/*
 **/images/**
+!images/Juniper_Logo_150px.png
 
 # logs/*
 logs/**
