@@ -18,6 +18,7 @@ class InMemoryDatasetStore(DatasetStore):
 
     def __init__(self) -> None:
         """Initialize the in-memory store."""
+        super().__init__()
         self._metadata: dict[str, DatasetMeta] = {}
         self._arrays: dict[str, dict[str, np.ndarray]] = {}
 
@@ -36,6 +37,9 @@ class InMemoryDatasetStore(DatasetStore):
         """
         self._metadata[dataset_id] = meta
         self._arrays[dataset_id] = {k: v.copy() for k, v in arrays.items()}
+        # JD-PERF-02: drop the cached list_all_metadata snapshot so subsequent
+        # filter_datasets / get_stats calls see the new dataset immediately.
+        self._invalidate_metadata_cache()
 
     def get_meta(self, dataset_id: str) -> DatasetMeta | None:
         """Get dataset metadata from memory.
@@ -93,6 +97,7 @@ class InMemoryDatasetStore(DatasetStore):
 
         del self._metadata[dataset_id]
         del self._arrays[dataset_id]
+        self._invalidate_metadata_cache()
         return True
 
     def list_datasets(self, limit: int = DEFAULT_LIST_LIMIT, offset: int = DEFAULT_LIST_OFFSET) -> list[str]:
@@ -112,6 +117,7 @@ class InMemoryDatasetStore(DatasetStore):
         """Clear all stored datasets. Useful for test cleanup."""
         self._metadata.clear()
         self._arrays.clear()
+        self._invalidate_metadata_cache()
 
     def update_meta(self, dataset_id: str, meta: DatasetMeta) -> bool:
         """Update dataset metadata in memory.
@@ -126,6 +132,7 @@ class InMemoryDatasetStore(DatasetStore):
         if dataset_id not in self._metadata:
             return False
         self._metadata[dataset_id] = meta
+        self._invalidate_metadata_cache()
         return True
 
     def list_all_metadata(self) -> list[DatasetMeta]:

@@ -1,6 +1,7 @@
 """Abstract base class for dataset storage."""
 
 import threading
+import time
 from abc import ABC, abstractmethod
 
 # from collections.abc import Callable
@@ -13,6 +14,18 @@ from juniper_data.core.models import DatasetMeta
 # from typing import Dict, List, Optional
 
 
+# JD-PERF-02: short-lived cache for ``list_all_metadata()`` results. Backs
+# ``filter_datasets`` / ``get_stats`` / ``delete_expired`` / ``list_versions``
+# / ``next_version_number`` — all of which previously called
+# ``list_all_metadata()`` and paid the full disk-walk on every invocation.
+# A 5 s TTL is short enough that interactive create-then-list flows feel
+# fresh; a longer TTL would risk surprising callers who just saved a
+# dataset. Subclasses can opt in to immediate freshness by calling
+# ``_invalidate_metadata_cache()`` from their concrete ``save`` / ``delete``
+# / ``update_meta`` implementations.
+_METADATA_CACHE_TTL_SECONDS = 5.0
+
+
 class DatasetStore(ABC):
     """Abstract dataset storage interface.
 
@@ -21,6 +34,66 @@ class DatasetStore(ABC):
     """
 
     _version_lock = threading.Lock()
+
+    def __init__(self) -> None:
+        # JD-PERF-02: cache state initialised here so subclasses that don't
+        # call ``super().__init__()`` lazily lose the cache (graceful
+        # degrade) but everything else keeps working — the cache lookup
+        # tolerates absent attrs via ``getattr(..., None)``.
+        self._metadata_cache_lock = threading.Lock()
+        self._metadata_cache: list[DatasetMeta] | None = None
+        self._metadata_cache_at: float = 0.0
+
+    def _list_all_metadata_cached(self) -> list[DatasetMeta]:
+        """Return cached metadata if fresh, otherwise re-fetch.
+
+        Stale-tolerant TTL cache: bounds the steady-state cost of
+        ``filter_datasets`` / ``get_stats`` / etc. to one disk walk per
+        ``_METADATA_CACHE_TTL_SECONDS`` window instead of O(n) per call.
+        Subclasses that need immediate freshness on writes should call
+        :meth:`_invalidate_metadata_cache` from their ``save`` /
+        ``delete`` / ``update_meta`` overrides.
+
+        Concurrent callers that race the cache miss both do the disk walk
+        and the last writer wins — benign because both walks produce
+        equivalent state.
+        """
+        lock = getattr(self, "_metadata_cache_lock", None)
+        if lock is None:
+            # Subclass skipped ``super().__init__``. Degrade to uncached
+            # behaviour so we keep the old contract rather than crash.
+            return self.list_all_metadata()
+
+        now = time.monotonic()
+        cached = self._metadata_cache
+        if cached is not None and (now - self._metadata_cache_at) < _METADATA_CACHE_TTL_SECONDS:
+            # Return a snapshot copy so a caller mutating the list (e.g.
+            # ``filter_datasets`` appends to its local ``filtered`` list,
+            # but a buggy caller could ``.remove(...)``) cannot corrupt
+            # the cache.
+            return list(cached)
+
+        fresh = self.list_all_metadata()
+        with lock:
+            self._metadata_cache = list(fresh)
+            self._metadata_cache_at = now
+        return fresh
+
+    def _invalidate_metadata_cache(self) -> None:
+        """Drop the cached ``list_all_metadata`` result.
+
+        Subclasses should call this from their concrete ``save`` /
+        ``delete`` / ``update_meta`` implementations so a write is
+        immediately visible to subsequent ``filter_datasets`` /
+        ``get_stats`` calls instead of having to wait out the TTL.
+        Safe to call when the cache is empty (no-op).
+        """
+        lock = getattr(self, "_metadata_cache_lock", None)
+        if lock is None:
+            return
+        with lock:
+            self._metadata_cache = None
+            self._metadata_cache_at = 0.0
 
     @abstractmethod
     def save(
@@ -168,7 +241,7 @@ class DatasetStore(ABC):
             List of dataset IDs that were deleted.
         """
         deleted: list[str] = []
-        deleted.extend(meta.dataset_id for meta in self.list_all_metadata() if self.is_expired(meta) and self.delete(meta.dataset_id))
+        deleted.extend(meta.dataset_id for meta in self._list_all_metadata_cached() if self.is_expired(meta) and self.delete(meta.dataset_id))
         return deleted
 
     def list_versions(self, dataset_name: str) -> list[DatasetMeta]:
@@ -180,7 +253,7 @@ class DatasetStore(ABC):
         Returns:
             List of DatasetMeta objects sorted by version number ascending.
         """
-        all_meta = self.list_all_metadata()
+        all_meta = self._list_all_metadata_cached()
         versions = [m for m in all_meta if m.dataset_name == dataset_name]
         versions.sort(key=lambda m: m.dataset_version or 0)
         return versions
@@ -272,7 +345,7 @@ class DatasetStore(ABC):
         Returns:
             Tuple of (filtered metadata list, total count before pagination).
         """
-        all_meta = self.list_all_metadata()
+        all_meta = self._list_all_metadata_cached()
         filtered = []
 
         for meta in all_meta:
@@ -337,7 +410,7 @@ class DatasetStore(ABC):
         Returns:
             Dictionary with statistics.
         """
-        all_meta = self.list_all_metadata()
+        all_meta = self._list_all_metadata_cached()
 
         if not all_meta:
             return {
