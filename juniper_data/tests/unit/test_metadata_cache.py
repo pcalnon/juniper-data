@@ -129,7 +129,8 @@ class TestMetadataCache:
     def test_delete_invalidates_cache_in_subclass_opt_in(self):
         store = _CountingStore([_make_meta("a"), _make_meta("b")])
         store.filter_datasets()  # warm
-        assert store.delete("a") is True
+        deleted = store.delete("a")
+        assert deleted is True
         filtered, total = store.filter_datasets()
         assert total == 1
         assert filtered[0].dataset_id == "b"
