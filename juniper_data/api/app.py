@@ -1,5 +1,6 @@
 """FastAPI application factory and configuration."""
 
+import functools
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -150,4 +151,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     return app
 
 
-app = create_app()
+@functools.lru_cache(maxsize=1)
+def get_app() -> FastAPI:
+    """Return the singleton FastAPI app instance (lazy factory).
+
+    Use with uvicorn's factory mode::
+
+        uvicorn --factory juniper_data.api.app:get_app
+
+    or programmatically::
+
+        uvicorn.run("juniper_data.api.app:get_app", factory=True)
+
+    The first call builds the app via :func:`create_app` with default
+    settings; subsequent calls return the same instance from
+    ``functools.lru_cache``. Replaces the previous module-level
+    ``app = create_app()`` (CLN-JD-03), which read environment variables
+    and registered middleware at import time. Tests that need a fresh
+    instance with overridden settings should continue to call
+    :func:`create_app` directly with explicit ``Settings``.
+    """
+    return create_app()

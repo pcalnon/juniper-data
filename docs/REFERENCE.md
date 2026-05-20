@@ -220,7 +220,7 @@ If artifact finalization fails, the transaction is rolled back and the temp file
 python -m juniper_data --reload
 
 # Start production server
-uvicorn juniper_data.api.app:app --host 0.0.0.0 --port 8100
+uvicorn --factory juniper_data.api.app:get_app --host 0.0.0.0 --port 8100
 
 # Start with custom options
 python -m juniper_data --host 0.0.0.0 --port 8101 --log-level DEBUG --storage-path /tmp/datasets

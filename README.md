@@ -143,7 +143,7 @@ The PyPI release is installable via `pip install juniper-data`; the editable-clo
 Start the service:
 
 ```bash
-uvicorn juniper_data.api.app:app --reload
+uvicorn --factory juniper_data.api.app:get_app --reload
 ```
 
 Confirm the service responds:
