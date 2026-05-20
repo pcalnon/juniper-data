@@ -2,13 +2,18 @@
 
 import asyncio
 import io
+import logging
 import time
+import uuid
 from datetime import UTC, datetime, timedelta
 
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from pydantic import ValidationError
 from starlette import status
+
+logger = logging.getLogger(__name__)
 
 from juniper_data.api.constants import (
     GENERATION_STATUS_ERROR,
@@ -95,13 +100,13 @@ async def create_dataset(
 
     try:
         params = params_class(**request.params)
-    except Exception as e:
+    except (ValueError, ValidationError) as e:
         record_dataset_post(
             generator=request.generator,
             status=GENERATION_STATUS_ERROR,
             cache=POST_CACHE_MISS,
         )
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid parameters: {e}")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid parameters: {e}") from e
 
     dataset_id = generate_dataset_id(
         generator=request.generator,
@@ -392,13 +397,19 @@ async def batch_create_datasets(
                 )
             )
             total_failed += 1
-        except Exception as e:
+        except Exception:
+            # ERR-08: do not surface raw exception strings — they can leak
+            # filesystem paths or internal type details. Log the full
+            # traceback server-side with a short correlation ID and return
+            # the ID so support can look up the incident.
+            error_id = uuid.uuid4().hex[:12]
+            logger.exception("Batch create item %d failed [error_id=%s]", idx, error_id)
             results.append(
                 BatchCreateResultItem(
                     index=idx,
                     generator=item.generator,
                     success=False,
-                    error=str(e),
+                    error=f"Dataset creation failed (ref: {error_id})",
                 )
             )
             total_failed += 1
