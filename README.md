@@ -1,3 +1,11 @@
+<!-- markdownlint-disable MD013 MD033 MD041 -->
+<!--
+  MD013 (line-length): README contains prose paragraphs that intentionally
+                       exceed the 512-char ecosystem limit. Disabled file-wide
+                       since wrapping mid-sentence harms PyPI rendering.
+  MD033 (no-inline-html): The right-aligned logo + spacing rely on HTML.
+  MD041 (first-line-heading): The HTML logo is the first line by design.
+-->
 <div align="right" width="150px" height="150px" align="right" valign="top"> <img src="images/Juniper_Logo_150px.png" alt="Juniper" align="right" valign="top" width="150px" /></div>
 <br /> <br /> <br /> <br />
 
@@ -135,7 +143,7 @@ The PyPI release is installable via `pip install juniper-data`; the editable-clo
 Start the service:
 
 ```bash
-uvicorn juniper_data.api.app:app --reload
+uvicorn --factory juniper_data.api.app:get_app --reload
 ```
 
 Confirm the service responds:

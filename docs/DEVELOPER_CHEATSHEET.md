@@ -8,7 +8,7 @@
 
 **The following commands launch a full set of Juniper Project services: start services in the order listed below:**
 
-- juniper-data: cd /home/pcalnon/Development/python/Juniper/juniper-data && conda activate JuniperData && pip install -e ".[all]" && PYTHON_GIL=0 uvicorn juniper_data.api.app:app --host 0.0.0.0 --port 8100
+- juniper-data: cd /home/pcalnon/Development/python/Juniper/juniper-data && conda activate JuniperData && pip install -e ".[all]" && PYTHON_GIL=0 uvicorn --factory juniper_data.api.app:get_app --host 0.0.0.0 --port 8100
 - juniper-cascor: cd /home/pcalnon/Development/python/Juniper/juniper-cascor/src && conda activate JuniperCascor && JUNIPER_CASCOR_PORT=8201 python server.py
 - juniper-canopy: cd /home/pcalnon/Development/python/Juniper/juniper-canopy/src && conda activate JuniperCanopy && CASCOR_SERVICE_URL="<http://localhost:8201>" uvicorn main:app --host 0.0.0.0 --port 8050
 
@@ -19,9 +19,9 @@
 | `conda activate JuniperData`                                                           | Activate conda environment (Python 3.14)                                        |
 | `pip install -e ".[all]"`                                                              | Install all extras (api, dev, test, observability, arc-agi)                     |
 | `python -m juniper_data`                                                               | Start dev server on port 8100                                                   |
-| `uvicorn juniper_data.api.app:app --host 0.0.0.0 --port 8100`                          | Production server                                                               |
-| `PYTHON_GIL=0 uvicorn juniper_data.api.app:app --host 0.0.0.0 --port 8100`             | Production server, GIL disabled (httptools.parser.parser compatability unknown) |
-| `uvicorn -Xgil=0 juniper_data.api.app:app --host 0.0.0.0 --port 8100`                  | Production server, GIL disabled (httptools.parser.parser compatability unknown) |
+| `uvicorn --factory juniper_data.api.app:get_app --host 0.0.0.0 --port 8100`            | Production server                                                               |
+| `PYTHON_GIL=0 uvicorn --factory juniper_data.api.app:get_app --host 0.0.0.0 --port 8100` | Production server, GIL disabled (httptools.parser.parser compatability unknown) |
+| `uvicorn -Xgil=0 --factory juniper_data.api.app:get_app --host 0.0.0.0 --port 8100`    | Production server, GIL disabled (httptools.parser.parser compatability unknown) |
 | `pytest`                                                                               | Run all tests                                                                   |
 | `pytest -m unit` / `integration` / `generators` / `storage` / `api`                    | Run by marker                                                                   |
 | `pytest --cov=juniper_data --cov-report=term-missing --cov-fail-under=80`              | Coverage                                                                        |

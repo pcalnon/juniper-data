@@ -104,11 +104,12 @@ class TestMain:
                 assert result == 0
 
     def test_main_app_string(self) -> None:
-        """Test main passes correct app string to uvicorn."""
+        """Test main passes the factory entry point + factory=True to uvicorn (CLN-JD-03)."""
         with patch("uvicorn.run") as mock_run:
             with patch.object(sys, "argv", ["juniper_data"]):
                 call_args = self._get_call_args_from_mocked_main_run(mock_run)
-                assert call_args[0][0] == "juniper_data.api.app:app"
+                assert call_args[0][0] == "juniper_data.api.app:get_app"
+                assert call_args[1]["factory"] is True
 
     def test_main_combines_custom_and_default_args(self) -> None:
         """Test main combines custom args with settings defaults."""

@@ -88,5 +88,5 @@ pytest --cov=juniper_data       # With coverage
 
 ```bash
 python -m juniper_data                                          # Development
-uvicorn juniper_data.api.app:app --host 0.0.0.0 --port 8100    # Production
+uvicorn --factory juniper_data.api.app:get_app --host 0.0.0.0 --port 8100    # Production
 ```

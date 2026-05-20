@@ -191,17 +191,23 @@ class TestLifespan:
 
 
 @pytest.mark.unit
-class TestGlobalApp:
-    """Tests for the global app instance."""
+class TestGetAppFactory:
+    """Tests for the cached get_app() factory (CLN-JD-03)."""
 
-    def test_global_app_exists(self) -> None:
-        """Test global app is created at module level."""
-        from juniper_data.api.app import app
+    def test_get_app_returns_fastapi(self) -> None:
+        """get_app() returns a FastAPI instance."""
+        from juniper_data.api.app import get_app
 
-        assert isinstance(app, FastAPI)
+        assert isinstance(get_app(), FastAPI)
 
-    def test_global_app_has_correct_title(self) -> None:
-        """Test global app has correct title."""
-        from juniper_data.api.app import app
+    def test_get_app_has_correct_title(self) -> None:
+        """get_app() returns an app with the expected title."""
+        from juniper_data.api.app import get_app
 
-        assert app.title == "Juniper Data API"
+        assert get_app().title == "Juniper Data API"
+
+    def test_get_app_is_cached(self) -> None:
+        """get_app() returns the same singleton instance across calls."""
+        from juniper_data.api.app import get_app
+
+        assert get_app() is get_app()

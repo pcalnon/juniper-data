@@ -64,7 +64,8 @@ def main() -> int:
         os.environ["JUNIPER_DATA_STORAGE_PATH"] = args.storage_path
 
     uvicorn.run(
-        "juniper_data.api.app:app",
+        "juniper_data.api.app:get_app",
+        factory=True,
         host=host,
         port=port,
         log_level=log_level,
