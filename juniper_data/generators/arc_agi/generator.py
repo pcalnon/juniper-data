@@ -5,6 +5,7 @@ This module provides the ArcAgiGenerator class for loading ARC-AGI
 """
 
 import json
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -15,6 +16,8 @@ from juniper_data.core.split import shuffle_and_split
 from .params import ArcAgiParams
 
 VERSION = "1.0.0"
+
+logger = logging.getLogger(__name__)
 
 try:
     from datasets import load_dataset as hf_load_dataset
@@ -92,10 +95,26 @@ class ArcAgiGenerator:
 
         # assert hf_load_dataset is not None
 
+        # ERR-13: narrow except to expected network/auth failures so genuine
+        # programming errors (TypeError, ValueError, AttributeError, ...) from
+        # the ``datasets`` library propagate instead of being silently swapped
+        # out for the fallback dataset. ``requests.exceptions.ConnectionError``
+        # already inherits from the builtin ``ConnectionError`` and
+        # ``requests.exceptions.HTTPError`` from ``OSError`` (via ``IOError``),
+        # which transitively covers ``huggingface_hub.errors.HfHubHTTPError``
+        # and friends (gated/private/missing repo errors, rate-limits, etc.).
         try:
             ds = hf_load_dataset("fchollet/arc-agi", split="train")  # nosec B615
-        except Exception:
-            ds = hf_load_dataset("multimodal-reasoning-lab/ARC-AGI", split="train")  # nosec B615
+        except (ConnectionError, TimeoutError, OSError) as exc:
+            logger.warning(
+                "ARC-AGI primary HF dataset load failed (%s: %s); trying fallback 'multimodal-reasoning-lab/ARC-AGI'",
+                type(exc).__name__,
+                exc,
+            )
+            try:
+                ds = hf_load_dataset("multimodal-reasoning-lab/ARC-AGI", split="train")  # nosec B615
+            except (ConnectionError, TimeoutError, OSError) as exc2:
+                raise RuntimeError(f"Both ARC-AGI dataset sources (fchollet/arc-agi, multimodal-reasoning-lab/ARC-AGI) unavailable: {type(exc2).__name__}: {exc2}") from exc2
 
         tasks: list[dict] = []
         for item in ds:
