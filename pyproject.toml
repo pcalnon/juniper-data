@@ -68,7 +68,7 @@ test = [
     "httpx>=0.24.0",
     "coverage[toml]>=7.0.0",
     "juniper-data-client>=0.3.0",
-    # PyYAML is required by scripts/generate_dep_docs.sh to parse
+    # PyYAML is required by juniper-generate-dep-docs (juniper-ci-tools) to parse
     # `conda env export --no-builds` output and validate the resulting
     # conf/conda_environment_ci.yaml. The CI workflow installs it
     # explicitly in the dep-docs job as well; this declaration keeps
