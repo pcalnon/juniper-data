@@ -200,7 +200,13 @@ class TestArcAgiGeneratorHuggingFace:
         assert result["X_full"].shape[0] == 3
 
     def test_generate_hf_fallback_dataset(self, mock_hf_load) -> None:
-        """HuggingFace loading tries fallback dataset on failure."""
+        """HuggingFace loading tries fallback dataset on a network/HTTP failure (ERR-13).
+
+        Uses ``ConnectionError`` to simulate an expected network failure that
+        should trigger the fallback. After ERR-13, only ``(ConnectionError,
+        TimeoutError, OSError)`` trigger the fallback path; arbitrary
+        ``Exception`` subclasses propagate as programming errors.
+        """
         tasks = _make_sample_tasks(n_tasks=2, train_pairs=1, test_pairs=0)
         mock_ds = _make_mock_hf_dataset(tasks)
 
@@ -209,7 +215,7 @@ class TestArcAgiGeneratorHuggingFace:
         def side_effect(name, split=None):
             call_count[0] += 1
             if call_count[0] == 1:
-                raise Exception("Dataset not found")
+                raise ConnectionError("primary dataset unreachable")
             return mock_ds
 
         mock_hf_load.side_effect = side_effect
@@ -221,6 +227,57 @@ class TestArcAgiGeneratorHuggingFace:
 
         assert mock_hf_load.call_count == 2
         assert result["X_full"].shape[0] == 2
+
+    def test_generate_hf_programming_error_propagates(self, mock_hf_load) -> None:
+        """ERR-13: programming errors (TypeError, ValueError) propagate; no fallback."""
+        mock_hf_load.side_effect = TypeError("simulated programming error in datasets")
+
+        from juniper_data.generators.arc_agi.generator import ArcAgiGenerator
+
+        params = ArcAgiParams(include_test=False, pad_to=5, seed=42)
+        with pytest.raises(TypeError, match="simulated programming error"):
+            ArcAgiGenerator.generate(params)
+
+        # Fallback must NOT be attempted — programming errors are not network failures.
+        assert mock_hf_load.call_count == 1
+
+    def test_generate_hf_both_sources_fail_raises_runtime_error(self, mock_hf_load) -> None:
+        """ERR-13: when both primary and fallback HF sources fail, raise RuntimeError chained on the second failure."""
+        mock_hf_load.side_effect = ConnectionError("offline")
+
+        from juniper_data.generators.arc_agi.generator import ArcAgiGenerator
+
+        params = ArcAgiParams(include_test=False, pad_to=5, seed=42)
+        with pytest.raises(RuntimeError, match="Both ARC-AGI dataset sources") as excinfo:
+            ArcAgiGenerator.generate(params)
+
+        # Both endpoints were attempted.
+        assert mock_hf_load.call_count == 2
+        # The RuntimeError chains on the second ConnectionError.
+        assert isinstance(excinfo.value.__cause__, ConnectionError)
+
+    def test_generate_hf_fallback_on_oserror(self, mock_hf_load) -> None:
+        """ERR-13: ``OSError`` (covers requests.HTTPError / huggingface_hub HTTP errors) triggers the fallback."""
+        tasks = _make_sample_tasks(n_tasks=1, train_pairs=1, test_pairs=0)
+        mock_ds = _make_mock_hf_dataset(tasks)
+
+        call_count = [0]
+
+        def side_effect(name, split=None):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise OSError("HTTP 503 from primary")
+            return mock_ds
+
+        mock_hf_load.side_effect = side_effect
+
+        from juniper_data.generators.arc_agi.generator import ArcAgiGenerator
+
+        params = ArcAgiParams(include_test=False, pad_to=5, seed=42)
+        result = ArcAgiGenerator.generate(params)
+
+        assert mock_hf_load.call_count == 2
+        assert result["X_full"].shape[0] == 1
 
     def test_generate_raises_without_datasets(self) -> None:
         """Raises ImportError when datasets not installed."""
