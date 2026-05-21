@@ -397,6 +397,20 @@ class TestHealthEndpoint:
         data = response.json()
         assert data["version"] == __version__
 
+    def test_health_includes_service_identifier(self, client: TestClient) -> None:
+        """API-02: health endpoint includes the ``service`` field naming this service.
+
+        Part of the shared ``{status, version, service}`` base schema across
+        juniper-data, juniper-cascor, and juniper-canopy so cross-service
+        monitoring tools can tell health responses apart without parsing
+        the URL.
+        """
+        response = client.get("/v1/health")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["service"] == "juniper-data"
+
     def test_liveness_probe(self, client: TestClient) -> None:
         """Test liveness probe returns alive status."""
         response = client.get("/v1/health/live")

@@ -121,8 +121,17 @@ async def health_check() -> dict:
     Always returns 200 while the process can respond. Reserved for legacy
     integrations; new probes should use ``/health/live`` or
     ``/health/ready``.
+
+    Response schema (API-02 shared base):
+
+    - ``status``  — always ``"ok"`` on success.
+    - ``version`` — the package version of this service.
+    - ``service`` — canonical service identifier (``"juniper-data"``);
+      matches the cross-service ``{status, version, service}`` base
+      shared by juniper-cascor and juniper-canopy so monitoring tools
+      can tell health responses apart without inspecting the URL.
     """
-    return {"status": "ok", "version": __version__}
+    return {"status": "ok", "version": __version__, "service": "juniper-data"}
 
 
 @router.get("/health/live")
