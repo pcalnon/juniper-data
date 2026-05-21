@@ -219,14 +219,17 @@ repos:
         files: \.md$
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # Code Coverage Gate - Per-module (85%) and Aggregate (95%)
+  # Code Coverage Gate - Per-module (85%) and Aggregate (80%, env-configurable)
+  # Per-module floor is hard-coded at 85% in scripts/check_module_coverage.py;
+  # aggregate floor is the value of ``COVERAGE_FAIL_UNDER`` (default 80%, set
+  # in ``.github/workflows/ci.yml`` and ``pyproject.toml [tool.coverage.report]``).
   # Runs on pre-push only (not pre-commit) to keep commits fast.
   # Install with: pre-commit install --hook-type pre-push
   # ═══════════════════════════════════════════════════════════════════════════
   - repo: local
     hooks:
       - id: coverage-check
-        name: Check code coverage (95% aggregate, 85% per-module)
+        name: Check code coverage (80% aggregate default, 85% per-module)
         entry: python scripts/check_module_coverage.py --run-tests
         language: system
         pass_filenames: false
