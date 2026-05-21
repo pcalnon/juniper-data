@@ -254,10 +254,10 @@ jobs:
             --cov-report=html:reports/htmlcov \
             --cov-report=json:reports/coverage.json
 
-      - name: Enforce Aggregate Coverage Gate (95%)
+      - name: Enforce Aggregate Coverage Gate (${{ env.COVERAGE_FAIL_UNDER }}%)
         run: |
           echo "╔════════════════════════════════════════════════════════════╗"
-          echo "║       JuniperData - Aggregate Coverage Gate (95%)          ║"
+          echo "║   JuniperData - Aggregate Coverage Gate (${{ env.COVERAGE_FAIL_UNDER }}%)              ║"
           echo "╚════════════════════════════════════════════════════════════╝"
 
           python -m coverage report --fail-under=${{ env.COVERAGE_FAIL_UNDER }}

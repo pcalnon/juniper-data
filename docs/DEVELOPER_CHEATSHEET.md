@@ -152,7 +152,7 @@ All arrays `float32`. Keys: `X_train`, `y_train`, `X_test`, `y_test`, `X_full`, 
 | `slow`                                      | Tests > 1 second                  |
 | `spiral` / `api` / `generators` / `storage` | Component-specific                |
 
-Coverage thresholds: 80% fail-under (`pyproject.toml`), 95% aggregate + 85% per-module (pre-push hook).
+Coverage thresholds: **80% aggregate** (default; set in `pyproject.toml` `[tool.coverage.report] fail_under` and CI `COVERAGE_FAIL_UNDER`) + **85% per-module** (pre-push hook, `scripts/check_module_coverage.py`).
 
 > See: [REFERENCE.md -- Test Reference](REFERENCE.md#test-reference)
 
@@ -186,7 +186,7 @@ Metrics use `juniper_data_` namespace. Pattern: `juniper_data_<subsystem>_<name>
 | YAML/TOML validation | pre-commit   | `pre-commit-hooks` (check-yaml, check-toml, end-of-file-fixer, etc.) |
 | YAML lint            | pre-commit   | `yamllint`                                                           |
 | Shell lint           | pre-commit   | `shellcheck`                                                         |
-| Coverage gate        | **pre-push** | 95% aggregate, 85% per-module                                        |
+| Coverage gate        | **pre-push** | 80% aggregate (env `COVERAGE_FAIL_UNDER`), 85% per-module             |
 | SOPS guard           | pre-commit   | Block unencrypted `.env` files                                       |
 
 GitHub Actions: `ci.yml`, `publish.yml`, `security-scan.yml`, `codeql.yml`, `lockfile-update.yml`.

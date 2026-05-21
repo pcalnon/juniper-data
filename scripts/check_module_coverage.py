@@ -16,8 +16,12 @@
 # Description:
 #    Enforces per-module and aggregate code coverage thresholds.
 #    Reads coverage.py JSON output and verifies that:
-#      - Each source module individually meets the per-module threshold (85%)
-#      - Aggregate coverage meets the application threshold (95%)
+#      - Each source module individually meets the per-module threshold (85%,
+#        hard-coded as MODULE_FAIL_UNDER below)
+#      - Aggregate coverage meets the application threshold (80% by default,
+#        read from the COVERAGE_FAIL_UNDER environment variable; see also
+#        pyproject.toml ``[tool.coverage.report] fail_under = 80`` and the
+#        ``COVERAGE_FAIL_UNDER`` env in ``.github/workflows/ci.yml``)
 #      - No test files are included in coverage metrics
 #
 # Usage:
