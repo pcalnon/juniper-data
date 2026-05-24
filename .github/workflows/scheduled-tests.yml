@@ -56,11 +56,16 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade "pip>=26.1.1"
-          # juniper-data's tests under juniper_data/tests/{api,integration,unit}
-          # all import ``fastapi.testclient.TestClient``. The ``test`` extra
-          # alone doesn't carry fastapi/uvicorn (those live in ``api``);
-          # install both so the scheduled run can collect every test module.
-          pip install -e ".[api,test]" || pip install -e ".[dev]" || pip install -e ".[all]" || pip install -e .
+          # Match the main ci.yml unit-tests job: install the full extras
+          # surface via ``.[all]``. The earlier ``.[api,test]`` shape missed
+          # ``[observability]`` (which carries ``prometheus-client``); the
+          # app's PrometheusMiddleware then crashed on every TestClient
+          # request with ``ModuleNotFoundError: No module named
+          # 'prometheus_client'``, failing the integration tests since the
+          # workflow was added (2026-05-04 onward). ``[all]`` resolves to
+          # ``juniper-data[api,arc-agi,observability,dev,test]`` and is the
+          # established canonical install path for full-test runs.
+          pip install -e ".[all]"
 
       - name: Run slow / integration tests
         run: |
