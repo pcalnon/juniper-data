@@ -152,7 +152,7 @@ requests==2.34.2
 requests-toolbelt==1.0.0
 responses==0.26.1
 rfc3986==2.0.0
-rich==14.3.1
+rich==15.0.0
 ruff==0.15.14
 sarif-om==1.0.4
 SecretStorage==3.5.0
