@@ -5,6 +5,49 @@ import pytest
 
 from juniper_data.generators.spiral import SpiralGenerator, SpiralParams
 
+# ===================================================================
+# SETTINGS .env FILE ISOLATION
+# ===================================================================
+# pydantic-settings' ``Settings`` class is declared with
+# ``env_file=".env"``, which makes every ``Settings()`` constructor
+# call read the developer's local ``.env`` (gitignored, present only
+# on dev machines that have run ``cp .env.example .env``). Tests that
+# patch ``os.environ`` and then assert "field default applies when no
+# env var is set" silently fail when a developer's local ``.env``
+# defines the same variable: pydantic-settings layers .env *under*
+# ``os.environ``, so a per-test ``monkeypatch.delenv(...)`` removes
+# the OS-level value but leaves the .env value in effect.
+#
+# CI never sees this because runner checkouts have no ``.env``. The
+# failure mode is local-only. Sibling cascor fix landed in cascor PR
+# #309 (2026-05-26); canopy port in canopy PR #325. This is the
+# juniper-data port.
+#
+# Counterpart regression test:
+# ``juniper_data/tests/unit/test_env_file_isolation.py``.
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _disable_settings_env_file_for_tests():
+    """Stop pydantic-settings from reading a developer's local .env in tests."""
+    # Import lazily so this doesn't influence pytest's plugin autoload.
+    from juniper_data.api.settings import Settings, get_settings
+
+    original_env_file = Settings.model_config.get("env_file")
+    Settings.model_config["env_file"] = None
+    # Drop any cached Settings instance that may have been built from .env
+    # before this fixture fired (e.g. via an early import side-effect).
+    try:
+        get_settings.cache_clear()
+    except AttributeError:  # nosec B110 - cache attribute is the documented lru_cache API; absence is unexpected but recoverable
+        pass
+    yield
+    Settings.model_config["env_file"] = original_env_file
+    try:
+        get_settings.cache_clear()
+    except AttributeError:  # nosec B110
+        pass
+
 
 @pytest.fixture
 def default_spiral_params() -> SpiralParams:
