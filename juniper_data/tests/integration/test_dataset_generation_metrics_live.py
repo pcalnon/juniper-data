@@ -86,7 +86,7 @@ def client(memory_store: InMemoryDatasetStore, tmp_path) -> TestClient:
     )
     app = create_app(settings=settings)
     datasets.set_store(memory_store)
-    return TestClient(app, client=("127.0.0.1", 50001))
+    return TestClient(app, client=("127.0.0.1", 12345))
 
 
 _COUNTER_RE = re.compile(

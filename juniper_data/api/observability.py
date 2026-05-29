@@ -25,7 +25,7 @@ re-exported symbols to make the dependency on the shared lib explicit.
 """
 
 import ipaddress
-from collections.abc import Sequence
+from collections.abc import Iterable
 
 # Cross-service primitives — re-exported from juniper-observability.
 from juniper_observability import (  # noqa: F401 — re-exported for backwards compat
@@ -69,38 +69,38 @@ from juniper_data.api.constants import (
 # Default allowlist matches ``Settings.metrics_trusted_ips``. Duplicated
 # at module level so ``MetricsAuthMiddleware`` can be constructed without
 # passing trusted IPs explicitly (useful in tests).
-METRICS_DEFAULT_TRUSTED_IPS = ("127.0.0.1", "::1")
+METRICS_DEFAULT_TRUSTED_IPS: tuple[str, ...] = ("127.0.0.1", "::1")
+
+# Type alias for the compiled-network tuple — ``ip_network`` returns
+# either an IPv4 or IPv6 network object depending on the input.
+# _NetworkT = Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
+# _NetworkT = Union[ipaddress.IPv4Network | ipaddress.IPv6Network]
+_NetworkT = ipaddress.IPv4Network | ipaddress.IPv6Network
 
 
-def _parse_trusted_networks(
-    raw: Sequence[str],
-) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
-    """Compile bare IPs / CIDR strings to ``ipaddress`` network objects.
+def _parse_trusted_networks(raw: Iterable[str]) -> tuple[_NetworkT, ...]:
+    """Compile a list of CIDR strings / bare IPs into ``ip_network`` objects.
 
-    Bare-IP entries are widened to host networks (``/32`` for IPv4,
-    ``/128`` for IPv6) by ``ip_network(entry, strict=False)``. Unparseable
-    entries fail loud at init time so operator typos surface as a clear
-    ``ValueError`` instead of a silently-empty allowlist that 403s
-    everything.
+    Bare-IP entries are widened to host networks (``/32`` or ``/128``) by
+    ``ip_network(..., strict=False)``. Unparseable entries fail loud at
+    init time — operator typos must not silently 403 every scrape. Mirror
+    the rationale documented in POC_REMEDIATION_PLAN_2026-05-27 §2.2.
     """
-    nets: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
+    nets: list[_NetworkT] = []
     for entry in raw:
         try:
             nets.append(ipaddress.ip_network(entry, strict=False))
         except ValueError as exc:
-            raise ValueError(f"metrics_trusted_ips entry {entry!r} is not a valid IP or CIDR: {exc}") from exc
+            raise ValueError(f"JUNIPER_DATA_METRICS_TRUSTED_IPS entry {entry!r} is not a valid IP or CIDR: {exc}") from exc
     return tuple(nets)
 
 
 def _normalize_client_ip(client_ip: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
-    """Strip IPv6 zone id and unwrap IPv4-mapped IPv6 to its IPv4 form.
+    """Strip IPv6 zone-id and unwrap IPv4-mapped IPv6 to its IPv4 form.
 
-    Uvicorn can surface zone-scoped link-local addresses like
-    ``fe80::1%eth0`` which ``ip_address`` rejects. Docker on some kernels
-    surfaces ``::ffff:172.18.0.5`` for IPv4 clients; without unwrapping,
-    membership in an IPv4 network like ``172.18.0.0/16`` returns
-    ``False`` — silent rejection in the exact docker scenario the
-    allowlist exists to support.
+    - ``fe80::1%eth0`` → ``fe80::1`` (zone-id rejected by ``ip_address``).
+    - ``::ffff:172.18.0.5`` → ``172.18.0.5`` (membership in an IPv4 CIDR
+      otherwise returns ``False`` despite the underlying address being IPv4).
     """
     if "%" in client_ip:
         client_ip = client_ip.split("%", 1)[0]
@@ -112,20 +112,21 @@ def _normalize_client_ip(client_ip: str) -> ipaddress.IPv4Address | ipaddress.IP
 
 class MetricsAuthMiddleware:
     """ASGI wrapper that restricts ``/metrics`` to a trusted IP allowlist.
-
-    Accepts bare IPs (``"127.0.0.1"``, ``"::1"``) and CIDR ranges
-    (``"172.18.0.0/16"``, ``"fd00::/8"``). Bad entries raise ``ValueError``
-    at construction time, not silently at scrape time.
+    Accepts bare IP literals, CIDR ranges, and a mix of both. IPv6 zone
+    identifiers are stripped from the client address; IPv4-mapped IPv6
+    addresses are unwrapped before membership check so a Docker container
+    appearing as ``::ffff:172.18.0.5`` matches an IPv4 ``172.18.0.0/16``
+    range. Unparseable allowlist entries raise at init time (fail-loud).
     """
 
     def __init__(
         self,
         app,
-        trusted_ips: Sequence[str] | None = None,
+        trusted_ips: Iterable[str] | None = None,
     ) -> None:
         self.app = app
         raw = trusted_ips if trusted_ips is not None else METRICS_DEFAULT_TRUSTED_IPS
-        self.networks = _parse_trusted_networks(raw)
+        self.networks: tuple[_NetworkT, ...] = _parse_trusted_networks(raw)
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
@@ -137,7 +138,8 @@ class MetricsAuthMiddleware:
                     addr = _normalize_client_ip(client_ip)
                     allowed = any(addr in net for net in self.networks)
                 except ValueError:
-                    pass  # Unparseable client IP — treat as untrusted.
+                    # Malformed client address — never match.
+                    pass
             if not allowed:
                 await send(
                     {

@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **SEC-16 / POC remediation §2.2**: `MetricsAuthMiddleware.trusted_ips`
+  now accepts CIDR ranges (`"172.18.0.0/16"`) in addition to bare IP
+  literals. IPv6 zone-ids are stripped (`fe80::1%eth0` → `fe80::1`) and
+  IPv4-mapped IPv6 client addresses (`::ffff:172.18.0.5`) are unwrapped to
+  IPv4 before the membership check, so a Docker container appearing as
+  the v6-mapped form matches an IPv4 CIDR allowlist entry. Implementation
+  switches from `frozenset[str]` literal-equality to
+  `ipaddress.ip_network` membership; `Settings.metrics_trusted_ips` gains
+  a fail-loud `field_validator` so unparseable entries (typos like
+  `"172.18.0.0/164"`) raise at app startup instead of silently producing
+  an empty allowlist that 403s every scrape. New regression class
+  `TestMetricsAuthMiddlewareCIDR` in `test_phase1d_security.py` (8 tests)
+  pins: CIDR v4 allow + miss, mixed CIDR + literal, CIDR v6 allow,
+  IPv4-mapped IPv6 vs IPv4 CIDR (the docker-bridge regression), IPv6
+  zone-id strip, invalid-CIDR raises at `Settings()`, and the default
+  `["127.0.0.1", "::1"]` still works. Existing tests that spoofed the
+  TestClient hostname `"testclient"` were updated to
+  `client=("127.0.0.1", 12345)` so they pass under fail-loud validation.
+  Closes the second half of
+  [`notes/poc/POC_REMEDIATION_PLAN_2026-05-27.md`](https://github.com/pcalnon/juniper-deploy/blob/main/notes/poc/POC_REMEDIATION_PLAN_2026-05-27.md)
+  Wave-1 (§2.1 shipped via #155).
+
 ### Added
 
 - **`util/test_agents_md_version_drift.py`** -- portable port of juniper-ml's lint test pinning `AGENTS.md`'s `**Version**:` header to `pyproject.toml`'s `[project].version`. Catches the failure class where a `pyproject.toml` bump leaves the agent-facing contract stale. Bundled with a one-line `AGENTS.md` bump 0.5.0 → 0.6.0 to clear the pre-existing drift this lint surfaces. Wired into the CI tests job next to the existing `test_workflow_script_paths.py` lint.
