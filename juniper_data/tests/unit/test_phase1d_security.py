@@ -271,10 +271,6 @@ class TestSEC16MetricsAppIntegration:
             response = client.get("/metrics")
         assert response.status_code == 403
 
-    # def test_metrics_allowed_when_testclient_in_allowlist(self) -> None:
-    #     """TestClient now must spoof a real IP (the literal ``"testclient"``
-    #     is rejected by the fail-loud Settings validator after the
-    #     CIDR-aware MetricsAuthMiddleware refactor)."""
     def test_metrics_allowed_when_client_ip_in_allowlist(self) -> None:
         pytest.importorskip("prometheus_client")
         from juniper_data.api.app import create_app
