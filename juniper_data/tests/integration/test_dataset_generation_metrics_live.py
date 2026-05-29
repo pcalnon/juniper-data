@@ -86,15 +86,7 @@ def client(memory_store: InMemoryDatasetStore, tmp_path) -> TestClient:
     )
     app = create_app(settings=settings)
     datasets.set_store(memory_store)
-<<<<<<< HEAD
-<<<<<<< HEAD
     return TestClient(app, client=("127.0.0.1", 12345))
-=======
-    return TestClient(app, client=("127.0.0.1", 50001))
->>>>>>> main
-=======
-    return TestClient(app, client=("127.0.0.1", 12345))
->>>>>>> refs/remotes/origin/feat/metrics-cidr-and-exempt-path
 
 
 _COUNTER_RE = re.compile(

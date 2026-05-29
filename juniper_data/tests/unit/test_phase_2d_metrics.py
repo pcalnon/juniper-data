@@ -63,15 +63,7 @@ def client(memory_store: InMemoryDatasetStore) -> TestClient:
     )
     app = create_app(settings=settings)
     datasets.set_store(memory_store)
-<<<<<<< HEAD
-<<<<<<< HEAD
     return TestClient(app, client=("127.0.0.1", 12345))
-=======
-    return TestClient(app, client=("127.0.0.1", 50001))
->>>>>>> main
-=======
-    return TestClient(app, client=("127.0.0.1", 12345))
->>>>>>> refs/remotes/origin/feat/metrics-cidr-and-exempt-path
 
 
 # ---------------------------------------------------------------------------
@@ -139,15 +131,7 @@ class TestRecordDatasetGenerationWiring:
         }
 
         with (
-<<<<<<< HEAD
-<<<<<<< HEAD
             TestClient(app, client=("127.0.0.1", 12345), raise_server_exceptions=False) as error_client,
-=======
-            TestClient(app, raise_server_exceptions=False, client=("127.0.0.1", 50001)) as error_client,
->>>>>>> main
-=======
-            TestClient(app, client=("127.0.0.1", 12345), raise_server_exceptions=False) as error_client,
->>>>>>> refs/remotes/origin/feat/metrics-cidr-and-exempt-path
             patch("juniper_data.api.routes.datasets.record_dataset_generation") as mock_record_generation,
             patch("juniper_data.api.routes.datasets.record_dataset_post") as mock_record_post,
             patch("juniper_data.generators.spiral.generator.SpiralGenerator.generate", side_effect=RuntimeError("synthetic generator failure")),

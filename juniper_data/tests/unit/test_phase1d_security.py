@@ -271,20 +271,11 @@ class TestSEC16MetricsAppIntegration:
             response = client.get("/metrics")
         assert response.status_code == 403
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> refs/remotes/origin/feat/metrics-cidr-and-exempt-path
-    def test_metrics_allowed_when_testclient_in_allowlist(self) -> None:
-        """TestClient now must spoof a real IP (the literal ``"testclient"``
-        is rejected by the fail-loud Settings validator after the
-        CIDR-aware MetricsAuthMiddleware refactor)."""
-<<<<<<< HEAD
-=======
+    # def test_metrics_allowed_when_testclient_in_allowlist(self) -> None:
+    #     """TestClient now must spoof a real IP (the literal ``"testclient"``
+    #     is rejected by the fail-loud Settings validator after the
+    #     CIDR-aware MetricsAuthMiddleware refactor)."""
     def test_metrics_allowed_when_client_ip_in_allowlist(self) -> None:
->>>>>>> main
-=======
->>>>>>> refs/remotes/origin/feat/metrics-cidr-and-exempt-path
         pytest.importorskip("prometheus_client")
         from juniper_data.api.app import create_app
         from juniper_data.api.settings import Settings
@@ -294,19 +285,7 @@ class TestSEC16MetricsAppIntegration:
             metrics_trusted_ips=["127.0.0.1"],
         )
         app = create_app(settings)
-<<<<<<< HEAD
-<<<<<<< HEAD
         with TestClient(app, client=("127.0.0.1", 12345)) as client:
-=======
-        # Override the default ('testclient', 50000) spoofed client so the
-        # ASGI scope's `client` matches a valid allowlist entry. Required
-        # since fail-loud validation now rejects non-IP literals like
-        # "testclient" at Settings construction.
-        with TestClient(app, client=("127.0.0.1", 50001)) as client:
->>>>>>> main
-=======
-        with TestClient(app, client=("127.0.0.1", 12345)) as client:
->>>>>>> refs/remotes/origin/feat/metrics-cidr-and-exempt-path
             response = client.get("/metrics")
         assert response.status_code == 200
         assert "python_info" in response.text or "# HELP" in response.text
@@ -330,15 +309,7 @@ class TestSEC16MetricsAppIntegration:
             metrics_trusted_ips=["127.0.0.1"],
         )
         app = create_app(settings)
-<<<<<<< HEAD
-<<<<<<< HEAD
         with TestClient(app, client=("127.0.0.1", 12345)) as client:
-=======
-        with TestClient(app, client=("127.0.0.1", 50001)) as client:
->>>>>>> main
-=======
-        with TestClient(app, client=("127.0.0.1", 12345)) as client:
->>>>>>> refs/remotes/origin/feat/metrics-cidr-and-exempt-path
             # No X-API-Key header — the exempt should let it through.
             response = client.get("/metrics")
         assert response.status_code == 200
@@ -362,28 +333,12 @@ class TestSEC16MetricsAppIntegration:
             metrics_trusted_ips=["127.0.0.1", "::1"],
         )
         app = create_app(settings)
-<<<<<<< HEAD
-<<<<<<< HEAD
-        # TestClient defaults to ``("testclient", 50000)`` — not in the
-        # allowlist, so MetricsAuthMiddleware still rejects.
         with TestClient(app) as client:
-=======
         # Spoof a non-allowlisted IP — even a valid API key must still get 403.
-        with TestClient(app, client=("10.0.0.99", 50001)) as client:
->>>>>>> main
-=======
-        # TestClient defaults to ``("testclient", 50000)`` — not in the
-        # allowlist, so MetricsAuthMiddleware still rejects.
-        with TestClient(app) as client:
->>>>>>> refs/remotes/origin/feat/metrics-cidr-and-exempt-path
             response = client.get("/metrics", headers={"X-API-Key": "secret"})
         assert response.status_code == 403
 
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> refs/remotes/origin/feat/metrics-cidr-and-exempt-path
 # ---------------------------------------------------------------------------
 # CIDR + IPv6 normalization for MetricsAuthMiddleware (POC remediation §2.2)
 # ---------------------------------------------------------------------------
@@ -512,8 +467,6 @@ class TestMetricsAuthMiddlewareCIDR:
         with TestClient(app, client=("127.0.0.1", 12345)) as client:
             response = client.get("/metrics")
         assert response.status_code == 200
-<<<<<<< HEAD
-=======
 # =============================================================================
 # SEC-16 (Issue 4): CIDR support + IPv6 normalization + fail-loud config
 # =============================================================================
