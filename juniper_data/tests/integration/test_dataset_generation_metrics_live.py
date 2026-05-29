@@ -76,18 +76,17 @@ def memory_store() -> InMemoryDatasetStore:
 def client(memory_store: InMemoryDatasetStore, tmp_path) -> TestClient:
     storage = tmp_path / "juniper_data_r3_1"
     storage.mkdir()
-    # SEC-16: ``starlette.TestClient`` connects with host ``testclient`` —
-    # add it to the metrics-endpoint allowlist so the GET ``/metrics``
-    # scrape doesn't 403. Mirrors the fix landed in juniper-data#62
-    # (Wave 0) for ``test_phase_2d_metrics``.
+    # SEC-16: fail-loud validation now rejects non-IP literals in
+    # ``metrics_trusted_ips``, so override the TestClient's spoofed client
+    # to a real loopback IP that is in the allowlist.
     settings = Settings(
         storage_path=str(storage),
         metrics_enabled=True,
-        metrics_trusted_ips=["testclient", "127.0.0.1", "::1"],
+        metrics_trusted_ips=["127.0.0.1", "::1"],
     )
     app = create_app(settings=settings)
     datasets.set_store(memory_store)
-    return TestClient(app)
+    return TestClient(app, client=("127.0.0.1", 50001))
 
 
 _COUNTER_RE = re.compile(
