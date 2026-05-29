@@ -330,7 +330,7 @@ class TestSEC16MetricsAppIntegration:
         )
         app = create_app(settings)
         with TestClient(app) as client:
-        # Spoof a non-allowlisted IP — even a valid API key must still get 403.
+            # Spoof a non-allowlisted IP — even a valid API key must still get 403.
             response = client.get("/metrics", headers={"X-API-Key": "secret"})
         assert response.status_code == 403
 
@@ -463,6 +463,8 @@ class TestMetricsAuthMiddlewareCIDR:
         with TestClient(app, client=("127.0.0.1", 12345)) as client:
             response = client.get("/metrics")
         assert response.status_code == 200
+
+
 # =============================================================================
 # SEC-16 (Issue 4): CIDR support + IPv6 normalization + fail-loud config
 # =============================================================================

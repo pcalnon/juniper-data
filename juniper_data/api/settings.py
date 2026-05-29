@@ -179,6 +179,7 @@ class Settings(BaseSettings):
         """
         # Lazy import to avoid `settings → observability → settings` cycles.
         from juniper_data.api.observability import _parse_trusted_networks
+
         _parse_trusted_networks(v)
         return v
 
