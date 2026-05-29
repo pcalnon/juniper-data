@@ -584,6 +584,3 @@ class TestSEC16SettingsFailLoud:
 
         settings = Settings(metrics_trusted_ips=["172.18.0.0/16", "127.0.0.1"])
         assert settings.metrics_trusted_ips == ["172.18.0.0/16", "127.0.0.1"]
->>>>>>> main
-=======
->>>>>>> refs/remotes/origin/feat/metrics-cidr-and-exempt-path
