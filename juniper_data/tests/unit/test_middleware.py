@@ -76,4 +76,12 @@ class TestSecurityMiddleware:
     def test_is_exempt_checks_known_paths(self):
         assert "/v1/health" in EXEMPT_PATHS
         assert "/docs" in EXEMPT_PATHS
+        # Prometheus scrape endpoint must be exempt from API-key auth;
+        # SEC-16 MetricsAuthMiddleware (IP allowlist) still gates it.
+        # Both the bare path and the trailing-slash form are listed because
+        # the prometheus_client ASGI sub-app mount triggers a 307 redirect
+        # from /metrics to /metrics/ — without the trailing-slash entry,
+        # the redirect target re-enters SecurityMiddleware and returns 401.
+        assert "/metrics" in EXEMPT_PATHS
+        assert "/metrics/" in EXEMPT_PATHS
         assert "/v1/datasets" not in EXEMPT_PATHS

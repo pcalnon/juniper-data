@@ -285,3 +285,50 @@ class TestSEC16MetricsAppIntegration:
             response = client.get("/metrics")
         assert response.status_code == 200
         assert "python_info" in response.text or "# HELP" in response.text
+
+    def test_metrics_allowed_when_api_keys_configured_and_in_allowlist(self) -> None:
+        """/metrics must bypass SecurityMiddleware (API-key) but still respect SEC-16 IP allowlist.
+
+        Pins the exempt + allowlist composition: with both API auth configured
+        AND the trusted-IP allowlist allowing the scraper, /metrics returns 200
+        and exposes the prometheus_client output. Without the exempt (the
+        pre-fix state), this returns 401 from SecurityMiddleware before
+        MetricsAuthMiddleware ever sees the request.
+        """
+        pytest.importorskip("prometheus_client")
+        from juniper_data.api.app import create_app
+        from juniper_data.api.settings import Settings
+
+        settings = Settings(
+            metrics_enabled=True,
+            api_keys=["secret"],
+            metrics_trusted_ips=["testclient"],
+        )
+        app = create_app(settings)
+        with TestClient(app) as client:
+            # No X-API-Key header — the exempt should let it through.
+            response = client.get("/metrics")
+        assert response.status_code == 200
+        assert "python_info" in response.text or "# HELP" in response.text
+
+    def test_metrics_still_blocked_by_ip_allowlist_when_api_keys_configured(self) -> None:
+        """The exempt does not weaken SEC-16: a non-allowlisted scraper still gets 403.
+
+        The /metrics exempt removes the SecurityMiddleware 401 gate but
+        MetricsAuthMiddleware's IP allowlist must remain in force. Together
+        they guarantee that the only way to reach /metrics is from a trusted
+        IP, regardless of whether API-key auth is configured.
+        """
+        pytest.importorskip("prometheus_client")
+        from juniper_data.api.app import create_app
+        from juniper_data.api.settings import Settings
+
+        settings = Settings(
+            metrics_enabled=True,
+            api_keys=["secret"],
+            metrics_trusted_ips=["127.0.0.1", "::1"],  # TestClient is 'testclient', not in list
+        )
+        app = create_app(settings)
+        with TestClient(app) as client:
+            response = client.get("/metrics", headers={"X-API-Key": "secret"})
+        assert response.status_code == 403
