@@ -26,11 +26,16 @@ re-exported symbols to make the dependency on the shared lib explicit.
 
 import ipaddress
 <<<<<<< HEAD
+<<<<<<< HEAD
 from collections.abc import Iterable
 from typing import Union
 =======
 from collections.abc import Sequence
 >>>>>>> main
+=======
+from collections.abc import Iterable
+from typing import Union
+>>>>>>> refs/remotes/origin/feat/metrics-cidr-and-exempt-path
 
 # Cross-service primitives — re-exported from juniper-observability.
 from juniper_observability import (  # noqa: F401 — re-exported for backwards compat
@@ -114,6 +119,7 @@ def _normalize_client_ip(client_ip: str) -> ipaddress.IPv4Address | ipaddress.IP
 
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 class MetricsAuthMiddleware:
     """ASGI wrapper that restricts ``/metrics`` to a trusted IP allowlist.
 
@@ -123,6 +129,8 @@ class MetricsAuthMiddleware:
     appearing as ``::ffff:172.18.0.5`` matches an IPv4 ``172.18.0.0/16``
     range. Unparseable allowlist entries raise at init time (fail-loud).
 =======
+=======
+>>>>>>> refs/remotes/origin/feat/metrics-cidr-and-exempt-path
 def _parse_trusted_networks(
     raw: Sequence[str],
 ) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
@@ -164,21 +172,33 @@ def _normalize_client_ip(client_ip: str) -> ipaddress.IPv4Address | ipaddress.IP
 class MetricsAuthMiddleware:
     """ASGI wrapper that restricts ``/metrics`` to a trusted IP allowlist.
 
+<<<<<<< HEAD
     Accepts bare IPs (``"127.0.0.1"``, ``"::1"``) and CIDR ranges
     (``"172.18.0.0/16"``, ``"fd00::/8"``). Bad entries raise ``ValueError``
     at construction time, not silently at scrape time.
 >>>>>>> main
+=======
+    Accepts bare IP literals, CIDR ranges, and a mix of both. IPv6 zone
+    identifiers are stripped from the client address; IPv4-mapped IPv6
+    addresses are unwrapped before membership check so a Docker container
+    appearing as ``::ffff:172.18.0.5`` matches an IPv4 ``172.18.0.0/16``
+    range. Unparseable allowlist entries raise at init time (fail-loud).
+>>>>>>> refs/remotes/origin/feat/metrics-cidr-and-exempt-path
     """
 
     def __init__(
         self,
         app,
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> refs/remotes/origin/feat/metrics-cidr-and-exempt-path
         trusted_ips: Iterable[str] | None = None,
     ) -> None:
         self.app = app
         raw = trusted_ips if trusted_ips is not None else METRICS_DEFAULT_TRUSTED_IPS
         self.networks: tuple[_NetworkT, ...] = _parse_trusted_networks(raw)
+<<<<<<< HEAD
 =======
         trusted_ips: Sequence[str] | None = None,
     ) -> None:
@@ -186,6 +206,8 @@ class MetricsAuthMiddleware:
         raw = trusted_ips if trusted_ips is not None else METRICS_DEFAULT_TRUSTED_IPS
         self.networks = _parse_trusted_networks(raw)
 >>>>>>> main
+=======
+>>>>>>> refs/remotes/origin/feat/metrics-cidr-and-exempt-path
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
@@ -198,11 +220,16 @@ class MetricsAuthMiddleware:
                     allowed = any(addr in net for net in self.networks)
                 except ValueError:
 <<<<<<< HEAD
+<<<<<<< HEAD
                     # Malformed client address — never match.
                     pass
 =======
                     pass  # Unparseable client IP — treat as untrusted.
 >>>>>>> main
+=======
+                    # Malformed client address — never match.
+                    pass
+>>>>>>> refs/remotes/origin/feat/metrics-cidr-and-exempt-path
             if not allowed:
                 await send(
                     {
