@@ -88,10 +88,7 @@ def _parse_trusted_networks(
         try:
             nets.append(ipaddress.ip_network(entry, strict=False))
         except ValueError as exc:
-            raise ValueError(
-                f"metrics_trusted_ips entry {entry!r} is not a valid IP or "
-                f"CIDR: {exc}"
-            ) from exc
+            raise ValueError(f"metrics_trusted_ips entry {entry!r} is not a valid IP or CIDR: {exc}") from exc
     return tuple(nets)
 
 
