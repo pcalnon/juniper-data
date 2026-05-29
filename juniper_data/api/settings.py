@@ -82,7 +82,8 @@ _JUNIPER_DATA_API_METRICS_ENABLED_DEFAULT: bool = _JUNIPER_DATA_API_METRICS_ENAB
 # router-level SecurityMiddleware, so we gate it separately on client IP.
 # Defaults to loopback-only (IPv4 + IPv6); operators who scrape from a
 # dedicated Prometheus host must override via
-# JUNIPER_DATA_METRICS_TRUSTED_IPS.
+# JUNIPER_DATA_METRICS_TRUSTED_IPS. Accepts bare IPs and CIDR ranges
+# (e.g. "172.18.0.0/16", "fd00::/8") — see MetricsAuthMiddleware.
 _JUNIPER_DATA_API_METRICS_TRUSTED_IPS_DEFAULT: list[str] = ["127.0.0.1", "::1"]
 
 _JUNIPER_DATA_API_IMPORT_DIR: str = "/data/imports"
@@ -157,9 +158,29 @@ class Settings(BaseSettings):
     sentry_traces_sample_rate: float = _JUNIPER_DATA_API_SENTRY_TRACES_SAMPLE_RATE_DEFAULT
     metrics_enabled: bool = _JUNIPER_DATA_API_METRICS_ENABLED_DEFAULT
     # SEC-16: loopback-only by default. Set
-    # ``JUNIPER_DATA_METRICS_TRUSTED_IPS='["10.0.0.5"]'`` (JSON list) or a
-    # comma-separated string to add Prometheus scraper IPs.
+    # ``JUNIPER_DATA_METRICS_TRUSTED_IPS='["10.0.0.5","172.18.0.0/16"]'``
+    # (JSON list of IPs and/or CIDR ranges) to add Prometheus scraper IPs.
+    # Invalid entries raise at Settings construction (fail-loud — see
+    # ``_validate_metrics_trusted_ips`` below).
     metrics_trusted_ips: list[str] = _JUNIPER_DATA_API_METRICS_TRUSTED_IPS_DEFAULT
+
+    @field_validator("metrics_trusted_ips")
+    @classmethod
+    def _validate_metrics_trusted_ips(cls, v: list[str]) -> list[str]:
+        """Reject malformed IP/CIDR entries at config-load time.
+
+        Without this, a typo in ``JUNIPER_DATA_METRICS_TRUSTED_IPS`` would
+        produce a working-but-empty allowlist that 403s every scrape.
+        Surfacing the error at Settings construction makes the failure
+        mode obvious (operator sees a clear ValueError on startup) instead
+        of mysterious (Prometheus target stays down, no app-side log).
+        """
+        # Local import — observability imports settings indirectly via
+        # the dataset metrics, so we keep the dependency edge late.
+        from juniper_data.api.observability import _parse_trusted_networks
+
+        _parse_trusted_networks(v)  # raises ValueError on bad entries
+        return v
 
 
 @lru_cache

@@ -24,6 +24,9 @@ New code should prefer ``from juniper_observability import …`` for the
 re-exported symbols to make the dependency on the shared lib explicit.
 """
 
+import ipaddress
+from collections.abc import Sequence
+
 # Cross-service primitives — re-exported from juniper-observability.
 from juniper_observability import (  # noqa: F401 — re-exported for backwards compat
     DEFAULT_LOG_FORMAT_PLAIN,
@@ -69,18 +72,73 @@ from juniper_data.api.constants import (
 METRICS_DEFAULT_TRUSTED_IPS = ("127.0.0.1", "::1")
 
 
-class MetricsAuthMiddleware:
-    """ASGI wrapper that restricts ``/metrics`` to a trusted IP allowlist."""
+def _parse_trusted_networks(
+    raw: Sequence[str],
+) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+    """Compile bare IPs / CIDR strings to ``ipaddress`` network objects.
 
-    def __init__(self, app, trusted_ips: list[str] | tuple[str, ...] | None = None) -> None:
+    Bare-IP entries are widened to host networks (``/32`` for IPv4,
+    ``/128`` for IPv6) by ``ip_network(entry, strict=False)``. Unparseable
+    entries fail loud at init time so operator typos surface as a clear
+    ``ValueError`` instead of a silently-empty allowlist that 403s
+    everything.
+    """
+    nets: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
+    for entry in raw:
+        try:
+            nets.append(ipaddress.ip_network(entry, strict=False))
+        except ValueError as exc:
+            raise ValueError(f"metrics_trusted_ips entry {entry!r} is not a valid IP or CIDR: {exc}") from exc
+    return tuple(nets)
+
+
+def _normalize_client_ip(client_ip: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
+    """Strip IPv6 zone id and unwrap IPv4-mapped IPv6 to its IPv4 form.
+
+    Uvicorn can surface zone-scoped link-local addresses like
+    ``fe80::1%eth0`` which ``ip_address`` rejects. Docker on some kernels
+    surfaces ``::ffff:172.18.0.5`` for IPv4 clients; without unwrapping,
+    membership in an IPv4 network like ``172.18.0.0/16`` returns
+    ``False`` — silent rejection in the exact docker scenario the
+    allowlist exists to support.
+    """
+    if "%" in client_ip:
+        client_ip = client_ip.split("%", 1)[0]
+    addr = ipaddress.ip_address(client_ip)
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
+        addr = addr.ipv4_mapped
+    return addr
+
+
+class MetricsAuthMiddleware:
+    """ASGI wrapper that restricts ``/metrics`` to a trusted IP allowlist.
+
+    Accepts bare IPs (``"127.0.0.1"``, ``"::1"``) and CIDR ranges
+    (``"172.18.0.0/16"``, ``"fd00::/8"``). Bad entries raise ``ValueError``
+    at construction time, not silently at scrape time.
+    """
+
+    def __init__(
+        self,
+        app,
+        trusted_ips: Sequence[str] | None = None,
+    ) -> None:
         self.app = app
-        self.trusted_ips: frozenset[str] = frozenset(trusted_ips if trusted_ips is not None else METRICS_DEFAULT_TRUSTED_IPS)
+        raw = trusted_ips if trusted_ips is not None else METRICS_DEFAULT_TRUSTED_IPS
+        self.networks = _parse_trusted_networks(raw)
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
+            allowed = False
             client = scope.get("client")
             client_ip = client[0] if client else None
-            if not client_ip or client_ip not in self.trusted_ips:
+            if client_ip:
+                try:
+                    addr = _normalize_client_ip(client_ip)
+                    allowed = any(addr in net for net in self.networks)
+                except ValueError:
+                    pass  # Unparseable client IP — treat as untrusted.
+            if not allowed:
                 await send(
                     {
                         "type": "http.response.start",
