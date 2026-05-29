@@ -271,10 +271,14 @@ class TestSEC16MetricsAppIntegration:
             response = client.get("/metrics")
         assert response.status_code == 403
 
+<<<<<<< HEAD
     def test_metrics_allowed_when_testclient_in_allowlist(self) -> None:
         """TestClient now must spoof a real IP (the literal ``"testclient"``
         is rejected by the fail-loud Settings validator after the
         CIDR-aware MetricsAuthMiddleware refactor)."""
+=======
+    def test_metrics_allowed_when_client_ip_in_allowlist(self) -> None:
+>>>>>>> main
         pytest.importorskip("prometheus_client")
         from juniper_data.api.app import create_app
         from juniper_data.api.settings import Settings
@@ -284,7 +288,15 @@ class TestSEC16MetricsAppIntegration:
             metrics_trusted_ips=["127.0.0.1"],
         )
         app = create_app(settings)
+<<<<<<< HEAD
         with TestClient(app, client=("127.0.0.1", 12345)) as client:
+=======
+        # Override the default ('testclient', 50000) spoofed client so the
+        # ASGI scope's `client` matches a valid allowlist entry. Required
+        # since fail-loud validation now rejects non-IP literals like
+        # "testclient" at Settings construction.
+        with TestClient(app, client=("127.0.0.1", 50001)) as client:
+>>>>>>> main
             response = client.get("/metrics")
         assert response.status_code == 200
         assert "python_info" in response.text or "# HELP" in response.text
@@ -308,7 +320,11 @@ class TestSEC16MetricsAppIntegration:
             metrics_trusted_ips=["127.0.0.1"],
         )
         app = create_app(settings)
+<<<<<<< HEAD
         with TestClient(app, client=("127.0.0.1", 12345)) as client:
+=======
+        with TestClient(app, client=("127.0.0.1", 50001)) as client:
+>>>>>>> main
             # No X-API-Key header — the exempt should let it through.
             response = client.get("/metrics")
         assert response.status_code == 200
@@ -332,13 +348,19 @@ class TestSEC16MetricsAppIntegration:
             metrics_trusted_ips=["127.0.0.1", "::1"],
         )
         app = create_app(settings)
+<<<<<<< HEAD
         # TestClient defaults to ``("testclient", 50000)`` — not in the
         # allowlist, so MetricsAuthMiddleware still rejects.
         with TestClient(app) as client:
+=======
+        # Spoof a non-allowlisted IP — even a valid API key must still get 403.
+        with TestClient(app, client=("10.0.0.99", 50001)) as client:
+>>>>>>> main
             response = client.get("/metrics", headers={"X-API-Key": "secret"})
         assert response.status_code == 403
 
 
+<<<<<<< HEAD
 # ---------------------------------------------------------------------------
 # CIDR + IPv6 normalization for MetricsAuthMiddleware (POC remediation §2.2)
 # ---------------------------------------------------------------------------
@@ -467,3 +489,122 @@ class TestMetricsAuthMiddlewareCIDR:
         with TestClient(app, client=("127.0.0.1", 12345)) as client:
             response = client.get("/metrics")
         assert response.status_code == 200
+=======
+# =============================================================================
+# SEC-16 (Issue 4): CIDR support + IPv6 normalization + fail-loud config
+# =============================================================================
+
+
+class TestSEC16MetricsAuthMiddlewareCIDR:
+    """CIDR ranges and IPv6 edge cases in MetricsAuthMiddleware.
+
+    Added with the CIDR/IPv6-normalization refactor (juniper-deploy
+    notes/poc/POC_REMEDIATION_PLAN_2026-05-27.md §2.2). Covers the
+    correctness fixes raised by the plan's validator B: IPv6 zone-id
+    stripping, IPv4-mapped IPv6 unwrap, fail-loud on bad config.
+    """
+
+    @staticmethod
+    def _drive(wrapper, scope: dict) -> list[dict]:
+        events: list[dict] = []
+
+        async def _send(msg):
+            events.append(msg)
+
+        async def _receive():  # pragma: no cover — never called when blocked
+            return {"type": "http.request"}
+
+        asyncio.run(wrapper(scope, _receive, _send))
+        return events
+
+    @staticmethod
+    def _passthrough_app():
+        async def _inner(scope, receive, send):  # noqa: ARG001
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            await send({"type": "http.response.body", "body": b"ok"})
+
+        return _inner
+
+    def test_cidr_allows_ip_in_range(self) -> None:
+        wrapper = MetricsAuthMiddleware(self._passthrough_app(), ["172.18.0.0/16"])
+        events = self._drive(wrapper, {"type": "http", "client": ("172.18.0.5", 0)})
+        statuses = [e["status"] for e in events if e.get("type") == "http.response.start"]
+        assert statuses == [200]
+
+    def test_cidr_rejects_ip_outside_range(self) -> None:
+        wrapper = MetricsAuthMiddleware(self._passthrough_app(), ["172.18.0.0/16"])
+        events = self._drive(wrapper, {"type": "http", "client": ("10.0.0.5", 0)})
+        assert events[0]["status"] == 403
+        assert events[-1]["body"] == b"Forbidden"
+
+    def test_mixed_list_with_cidr_and_literal_ip(self) -> None:
+        wrapper = MetricsAuthMiddleware(
+            self._passthrough_app(),
+            ["127.0.0.1", "172.18.0.0/16"],
+        )
+        # Literal IP allowed
+        events = self._drive(wrapper, {"type": "http", "client": ("127.0.0.1", 0)})
+        assert events[0]["status"] == 200
+        # CIDR-covered IP allowed
+        events = self._drive(wrapper, {"type": "http", "client": ("172.18.99.1", 0)})
+        assert events[0]["status"] == 200
+
+    def test_ipv6_cidr(self) -> None:
+        wrapper = MetricsAuthMiddleware(self._passthrough_app(), ["fd00::/8"])
+        events = self._drive(wrapper, {"type": "http", "client": ("fd00::1", 0)})
+        assert events[0]["status"] == 200
+
+    def test_ipv4_mapped_ipv6_client_against_ipv4_cidr(self) -> None:
+        """Docker can surface IPv4 clients as ``::ffff:172.18.0.5``.
+
+        Membership in the IPv4 network ``172.18.0.0/16`` only works if we
+        unwrap the IPv4-mapped form before testing. Without unwrap, this
+        client would be silently rejected in the exact docker scenario the
+        allowlist exists to support.
+        """
+        wrapper = MetricsAuthMiddleware(self._passthrough_app(), ["172.18.0.0/16"])
+        events = self._drive(wrapper, {"type": "http", "client": ("::ffff:172.18.0.5", 0)})
+        assert events[0]["status"] == 200
+
+    def test_ipv6_zone_id_stripped(self) -> None:
+        """``fe80::1%eth0`` is rejected by ``ip_address`` unless the zone id is stripped.
+
+        Uvicorn can surface zone-scoped link-local addresses; without the
+        strip the middleware would 403 trusted-but-zoned clients.
+        """
+        wrapper = MetricsAuthMiddleware(self._passthrough_app(), ["fe80::/10"])
+        events = self._drive(wrapper, {"type": "http", "client": ("fe80::1%eth0", 0)})
+        assert events[0]["status"] == 200
+
+    def test_invalid_cidr_entry_raises_at_construction(self) -> None:
+        with pytest.raises(ValueError, match="not a valid IP or CIDR"):
+            MetricsAuthMiddleware(lambda *a, **k: None, ["172.18.0.0/55"])
+
+    def test_invalid_literal_entry_raises_at_construction(self) -> None:
+        with pytest.raises(ValueError, match="not a valid IP or CIDR"):
+            MetricsAuthMiddleware(lambda *a, **k: None, ["not-an-ip"])
+
+    def test_unparseable_client_ip_treated_as_untrusted(self) -> None:
+        """Garbage in ``scope['client'][0]`` must 403, not crash."""
+        wrapper = MetricsAuthMiddleware(self._passthrough_app(), ["127.0.0.1"])
+        events = self._drive(wrapper, {"type": "http", "client": ("not-an-ip", 0)})
+        assert events[0]["status"] == 403
+
+
+class TestSEC16SettingsFailLoud:
+    """Settings.metrics_trusted_ips must fail loudly on bad entries."""
+
+    def test_settings_rejects_invalid_entry(self) -> None:
+        from pydantic import ValidationError
+
+        from juniper_data.api.settings import Settings
+
+        with pytest.raises(ValidationError):
+            Settings(metrics_trusted_ips=["not-an-ip"])
+
+    def test_settings_accepts_cidr(self) -> None:
+        from juniper_data.api.settings import Settings
+
+        settings = Settings(metrics_trusted_ips=["172.18.0.0/16", "127.0.0.1"])
+        assert settings.metrics_trusted_ips == ["172.18.0.0/16", "127.0.0.1"]
+>>>>>>> main

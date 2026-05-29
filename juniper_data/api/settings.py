@@ -82,7 +82,8 @@ _JUNIPER_DATA_API_METRICS_ENABLED_DEFAULT: bool = _JUNIPER_DATA_API_METRICS_ENAB
 # router-level SecurityMiddleware, so we gate it separately on client IP.
 # Defaults to loopback-only (IPv4 + IPv6); operators who scrape from a
 # dedicated Prometheus host must override via
-# JUNIPER_DATA_METRICS_TRUSTED_IPS.
+# JUNIPER_DATA_METRICS_TRUSTED_IPS. Accepts bare IPs and CIDR ranges
+# (e.g. "172.18.0.0/16", "fd00::/8") — see MetricsAuthMiddleware.
 _JUNIPER_DATA_API_METRICS_TRUSTED_IPS_DEFAULT: list[str] = ["127.0.0.1", "::1"]
 
 _JUNIPER_DATA_API_IMPORT_DIR: str = "/data/imports"
@@ -158,16 +159,23 @@ class Settings(BaseSettings):
     metrics_enabled: bool = _JUNIPER_DATA_API_METRICS_ENABLED_DEFAULT
     # SEC-16: loopback-only by default. Set
     # ``JUNIPER_DATA_METRICS_TRUSTED_IPS='["10.0.0.5","172.18.0.0/16"]'``
+<<<<<<< HEAD
     # (JSON list) or a comma-separated string. Accepts bare IP literals and
     # CIDR ranges; ``MetricsAuthMiddleware`` normalises IPv6 zone-ids and
     # IPv4-mapped IPv6 client addresses before membership check, so a
     # Docker container appearing as ``::ffff:172.18.0.5`` matches an IPv4
     # ``172.18.0.0/16`` allowlist entry.
+=======
+    # (JSON list of IPs and/or CIDR ranges) to add Prometheus scraper IPs.
+    # Invalid entries raise at Settings construction (fail-loud — see
+    # ``_validate_metrics_trusted_ips`` below).
+>>>>>>> main
     metrics_trusted_ips: list[str] = _JUNIPER_DATA_API_METRICS_TRUSTED_IPS_DEFAULT
 
     @field_validator("metrics_trusted_ips")
     @classmethod
     def _validate_metrics_trusted_ips(cls, v: list[str]) -> list[str]:
+<<<<<<< HEAD
         """Fail loud at startup if any allowlist entry is unparseable.
 
         Without this guard a typo like ``172.18.0.0/164`` would silently
@@ -180,6 +188,21 @@ class Settings(BaseSettings):
         from juniper_data.api.observability import _parse_trusted_networks
 
         _parse_trusted_networks(v)
+=======
+        """Reject malformed IP/CIDR entries at config-load time.
+
+        Without this, a typo in ``JUNIPER_DATA_METRICS_TRUSTED_IPS`` would
+        produce a working-but-empty allowlist that 403s every scrape.
+        Surfacing the error at Settings construction makes the failure
+        mode obvious (operator sees a clear ValueError on startup) instead
+        of mysterious (Prometheus target stays down, no app-side log).
+        """
+        # Local import — observability imports settings indirectly via
+        # the dataset metrics, so we keep the dependency edge late.
+        from juniper_data.api.observability import _parse_trusted_networks
+
+        _parse_trusted_networks(v)  # raises ValueError on bad entries
+>>>>>>> main
         return v
 
 

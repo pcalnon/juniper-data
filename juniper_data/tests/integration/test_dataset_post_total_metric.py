@@ -71,7 +71,11 @@ def client(memory_store: InMemoryDatasetStore, tmp_path) -> TestClient:
     )
     app = create_app(settings=settings)
     datasets.set_store(memory_store)
+<<<<<<< HEAD
     return TestClient(app, client=("127.0.0.1", 12345), raise_server_exceptions=False)
+=======
+    return TestClient(app, raise_server_exceptions=False, client=("127.0.0.1", 50001))
+>>>>>>> main
 
 
 class _FailingParams(BaseModel):
@@ -95,7 +99,11 @@ def client_allowing_server_errors(memory_store: InMemoryDatasetStore, tmp_path) 
     )
     app = create_app(settings=settings)
     datasets.set_store(memory_store)
+<<<<<<< HEAD
     return TestClient(app, client=("127.0.0.1", 12345), raise_server_exceptions=False)
+=======
+    return TestClient(app, raise_server_exceptions=False, client=("127.0.0.1", 50001))
+>>>>>>> main
 
 
 _POST_TOTAL_RE = re.compile(
@@ -231,7 +239,7 @@ class TestDatasetPostTotalMetric:
             },
         )
 
-        error_client = TestClient(client.app, raise_server_exceptions=False)
+        error_client = TestClient(client.app, raise_server_exceptions=False, client=("127.0.0.1", 50001))
         response = error_client.post(
             "/v1/datasets",
             json={
