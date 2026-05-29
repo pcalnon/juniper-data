@@ -19,7 +19,17 @@ License: MIT License
 
 # ─── Security: Exempt Paths ──────────────────────────────────────────────────
 
-# Paths exempt from API key auth and rate limiting (health checks + docs).
+# Paths exempt from API key auth and rate limiting (health checks + docs +
+# the Prometheus /metrics scrape endpoint). The /metrics surface remains
+# gated by SEC-16's MetricsAuthMiddleware (IP allowlist) — see
+# juniper_data.api.observability.MetricsAuthMiddleware. The two layers
+# compose: SecurityMiddleware skips /metrics, MetricsAuthMiddleware then
+# enforces the trusted-IP gate at the ASGI mount.
+#
+# Both `/metrics` and `/metrics/` are listed because FastAPI's mount of the
+# Prometheus ASGI sub-app redirects 307 from the bare path to the trailing-
+# slash form; without the trailing-slash entry the redirect target trips
+# SecurityMiddleware again and returns 401.
 EXEMPT_PATHS: frozenset[str] = frozenset(
     {
         "/v1/health",
@@ -28,6 +38,8 @@ EXEMPT_PATHS: frozenset[str] = frozenset(
         "/docs",
         "/openapi.json",
         "/redoc",
+        "/metrics",
+        "/metrics/",
     }
 )
 
