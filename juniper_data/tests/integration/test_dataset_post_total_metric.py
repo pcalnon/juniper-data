@@ -231,7 +231,7 @@ class TestDatasetPostTotalMetric:
             },
         )
 
-        error_client = TestClient(client.app, raise_server_exceptions=False)
+        error_client = TestClient(client.app, raise_server_exceptions=False, client=("127.0.0.1", 50001))
         response = error_client.post(
             "/v1/datasets",
             json={

@@ -82,7 +82,8 @@ _JUNIPER_DATA_API_METRICS_ENABLED_DEFAULT: bool = _JUNIPER_DATA_API_METRICS_ENAB
 # router-level SecurityMiddleware, so we gate it separately on client IP.
 # Defaults to loopback-only (IPv4 + IPv6); operators who scrape from a
 # dedicated Prometheus host must override via
-# JUNIPER_DATA_METRICS_TRUSTED_IPS.
+# JUNIPER_DATA_METRICS_TRUSTED_IPS. Accepts bare IPs and CIDR ranges
+# (e.g. "172.18.0.0/16", "fd00::/8") — see MetricsAuthMiddleware.
 _JUNIPER_DATA_API_METRICS_TRUSTED_IPS_DEFAULT: list[str] = ["127.0.0.1", "::1"]
 
 _JUNIPER_DATA_API_IMPORT_DIR: str = "/data/imports"

@@ -50,9 +50,11 @@ def memory_store() -> InMemoryDatasetStore:
 
 @pytest.fixture
 def client(memory_store: InMemoryDatasetStore) -> TestClient:
-    # SEC-16: ``starlette.TestClient`` connects with host ``testclient`` rather
-    # than ``127.0.0.1``, so it must be added to the metrics-endpoint allowlist
-    # for tests that actually hit ``/metrics``. See
+    # SEC-16: ``starlette.TestClient`` defaults to client ``("testclient", 50000)``
+    # but ``"testclient"`` is no longer accepted in the allowlist (fail-loud
+    # rejects non-IP literals — see ``MetricsAuthMiddleware`` and
+    # ``Settings._validate_metrics_trusted_ips``). Override the spoofed client
+    # to a real IP that's in the allowlist. See
     # ``test_phase1d_security.TestSEC16MetricsAppIntegration``.
     settings = Settings(
         storage_path="/tmp/juniper_test_phase2d",
