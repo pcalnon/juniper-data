@@ -272,16 +272,19 @@ class TestSEC16MetricsAppIntegration:
         assert response.status_code == 403
 
     def test_metrics_allowed_when_testclient_in_allowlist(self) -> None:
+        """TestClient now must spoof a real IP (the literal ``"testclient"``
+        is rejected by the fail-loud Settings validator after the
+        CIDR-aware MetricsAuthMiddleware refactor)."""
         pytest.importorskip("prometheus_client")
         from juniper_data.api.app import create_app
         from juniper_data.api.settings import Settings
 
         settings = Settings(
             metrics_enabled=True,
-            metrics_trusted_ips=["testclient"],  # TestClient spoofs this host
+            metrics_trusted_ips=["127.0.0.1"],
         )
         app = create_app(settings)
-        with TestClient(app) as client:
+        with TestClient(app, client=("127.0.0.1", 12345)) as client:
             response = client.get("/metrics")
         assert response.status_code == 200
         assert "python_info" in response.text or "# HELP" in response.text
@@ -302,10 +305,10 @@ class TestSEC16MetricsAppIntegration:
         settings = Settings(
             metrics_enabled=True,
             api_keys=["secret"],
-            metrics_trusted_ips=["testclient"],
+            metrics_trusted_ips=["127.0.0.1"],
         )
         app = create_app(settings)
-        with TestClient(app) as client:
+        with TestClient(app, client=("127.0.0.1", 12345)) as client:
             # No X-API-Key header — the exempt should let it through.
             response = client.get("/metrics")
         assert response.status_code == 200
@@ -326,9 +329,141 @@ class TestSEC16MetricsAppIntegration:
         settings = Settings(
             metrics_enabled=True,
             api_keys=["secret"],
-            metrics_trusted_ips=["127.0.0.1", "::1"],  # TestClient is 'testclient', not in list
+            metrics_trusted_ips=["127.0.0.1", "::1"],
         )
         app = create_app(settings)
+        # TestClient defaults to ``("testclient", 50000)`` — not in the
+        # allowlist, so MetricsAuthMiddleware still rejects.
         with TestClient(app) as client:
             response = client.get("/metrics", headers={"X-API-Key": "secret"})
         assert response.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# CIDR + IPv6 normalization for MetricsAuthMiddleware (POC remediation §2.2)
+# ---------------------------------------------------------------------------
+
+
+class TestMetricsAuthMiddlewareCIDR:
+    """``MetricsAuthMiddleware`` accepts CIDR ranges, IPv6 zone-ids, and
+    IPv4-mapped IPv6. Pins the contract documented in
+    ``notes/poc/POC_REMEDIATION_PLAN_2026-05-27.md`` §2.2.
+    """
+
+    def test_cidr_v4_match_allows_request(self) -> None:
+        pytest.importorskip("prometheus_client")
+        from juniper_data.api.app import create_app
+        from juniper_data.api.settings import Settings
+
+        settings = Settings(
+            metrics_enabled=True,
+            metrics_trusted_ips=["172.18.0.0/16"],
+        )
+        app = create_app(settings)
+        with TestClient(app, client=("172.18.0.5", 12345)) as client:
+            response = client.get("/metrics")
+        assert response.status_code == 200
+
+    def test_cidr_v4_miss_rejects_request(self) -> None:
+        pytest.importorskip("prometheus_client")
+        from juniper_data.api.app import create_app
+        from juniper_data.api.settings import Settings
+
+        settings = Settings(
+            metrics_enabled=True,
+            metrics_trusted_ips=["172.18.0.0/16"],
+        )
+        app = create_app(settings)
+        with TestClient(app, client=("10.0.0.5", 12345)) as client:
+            response = client.get("/metrics")
+        assert response.status_code == 403
+
+    def test_mixed_cidr_and_literal_entries_allowed(self) -> None:
+        pytest.importorskip("prometheus_client")
+        from juniper_data.api.app import create_app
+        from juniper_data.api.settings import Settings
+
+        settings = Settings(
+            metrics_enabled=True,
+            metrics_trusted_ips=["172.18.0.0/16", "10.0.0.99"],
+        )
+        app = create_app(settings)
+        # Literal address (no CIDR suffix) widens to /32; exact match wins.
+        with TestClient(app, client=("10.0.0.99", 12345)) as client:
+            response = client.get("/metrics")
+        assert response.status_code == 200
+
+    def test_cidr_v6_match_allows_request(self) -> None:
+        pytest.importorskip("prometheus_client")
+        from juniper_data.api.app import create_app
+        from juniper_data.api.settings import Settings
+
+        settings = Settings(
+            metrics_enabled=True,
+            metrics_trusted_ips=["fd00::/8"],
+        )
+        app = create_app(settings)
+        with TestClient(app, client=("fd12::1", 12345)) as client:
+            response = client.get("/metrics")
+        assert response.status_code == 200
+
+    def test_ipv4_mapped_ipv6_against_ipv4_cidr(self) -> None:
+        """Regression for the docker-bridge IPv4-mapped IPv6 case: ``::ffff:172.18.0.5``
+        must be unwrapped to ``172.18.0.5`` before CIDR membership."""
+        pytest.importorskip("prometheus_client")
+        from juniper_data.api.app import create_app
+        from juniper_data.api.settings import Settings
+
+        settings = Settings(
+            metrics_enabled=True,
+            metrics_trusted_ips=["172.18.0.0/16"],
+        )
+        app = create_app(settings)
+        with TestClient(app, client=("::ffff:172.18.0.5", 12345)) as client:
+            response = client.get("/metrics")
+        assert response.status_code == 200
+
+    def test_ipv6_zone_id_is_stripped(self) -> None:
+        """``fe80::1%eth0`` would be rejected by ``ip_address`` without the
+        zone-id strip; with it, the address parses and membership works."""
+        pytest.importorskip("prometheus_client")
+        from juniper_data.api.app import create_app
+        from juniper_data.api.settings import Settings
+
+        settings = Settings(
+            metrics_enabled=True,
+            metrics_trusted_ips=["fe80::/10"],
+        )
+        app = create_app(settings)
+        with TestClient(app, client=("fe80::1%eth0", 12345)) as client:
+            response = client.get("/metrics")
+        assert response.status_code == 200
+
+    def test_invalid_cidr_raises_at_settings_construction(self) -> None:
+        """Fail-loud: a typo like ``172.18.0.0/164`` must surface at app
+        startup, not at the first scrape (when it would silently 403)."""
+        import pydantic_core
+
+        from juniper_data.api.settings import Settings
+
+        with pytest.raises((ValueError, pydantic_core.ValidationError)):
+            Settings(
+                metrics_enabled=True,
+                metrics_trusted_ips=["172.18.0.0/164"],
+            )
+
+    def test_default_loopback_allowlist_still_works(self) -> None:
+        """Backward-compat: the bare ``["127.0.0.1", "::1"]`` default
+        compiles and the 127.0.0.1 case still resolves."""
+        pytest.importorskip("prometheus_client")
+        from juniper_data.api.app import create_app
+        from juniper_data.api.settings import Settings
+
+        settings = Settings(
+            metrics_enabled=True,
+            metrics_trusted_ips=["127.0.0.1", "::1"],
+        )
+        app = create_app(settings)
+        with TestClient(app, client=("127.0.0.1", 12345)) as client:
+            response = client.get("/metrics")
+        assert response.status_code == 200

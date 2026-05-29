@@ -67,11 +67,11 @@ def client(memory_store: InMemoryDatasetStore, tmp_path) -> TestClient:
     settings = Settings(
         storage_path=str(storage),
         metrics_enabled=True,
-        metrics_trusted_ips=["testclient", "127.0.0.1", "::1"],
+        metrics_trusted_ips=["127.0.0.1", "::1"],
     )
     app = create_app(settings=settings)
     datasets.set_store(memory_store)
-    return TestClient(app, raise_server_exceptions=False)
+    return TestClient(app, client=("127.0.0.1", 12345), raise_server_exceptions=False)
 
 
 class _FailingParams(BaseModel):
@@ -91,11 +91,11 @@ def client_allowing_server_errors(memory_store: InMemoryDatasetStore, tmp_path) 
     settings = Settings(
         storage_path=str(storage),
         metrics_enabled=True,
-        metrics_trusted_ips=["testclient", "127.0.0.1", "::1"],
+        metrics_trusted_ips=["127.0.0.1", "::1"],
     )
     app = create_app(settings=settings)
     datasets.set_store(memory_store)
-    return TestClient(app, raise_server_exceptions=False)
+    return TestClient(app, client=("127.0.0.1", 12345), raise_server_exceptions=False)
 
 
 _POST_TOTAL_RE = re.compile(

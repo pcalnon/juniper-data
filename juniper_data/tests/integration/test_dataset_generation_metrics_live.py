@@ -83,11 +83,11 @@ def client(memory_store: InMemoryDatasetStore, tmp_path) -> TestClient:
     settings = Settings(
         storage_path=str(storage),
         metrics_enabled=True,
-        metrics_trusted_ips=["testclient", "127.0.0.1", "::1"],
+        metrics_trusted_ips=["127.0.0.1", "::1"],
     )
     app = create_app(settings=settings)
     datasets.set_store(memory_store)
-    return TestClient(app)
+    return TestClient(app, client=("127.0.0.1", 12345))
 
 
 _COUNTER_RE = re.compile(

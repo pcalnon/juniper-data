@@ -24,6 +24,10 @@ New code should prefer ``from juniper_observability import …`` for the
 re-exported symbols to make the dependency on the shared lib explicit.
 """
 
+import ipaddress
+from collections.abc import Iterable
+from typing import Union
+
 # Cross-service primitives — re-exported from juniper-observability.
 from juniper_observability import (  # noqa: F401 — re-exported for backwards compat
     DEFAULT_LOG_FORMAT_PLAIN,
@@ -66,21 +70,77 @@ from juniper_data.api.constants import (
 # Default allowlist matches ``Settings.metrics_trusted_ips``. Duplicated
 # at module level so ``MetricsAuthMiddleware`` can be constructed without
 # passing trusted IPs explicitly (useful in tests).
-METRICS_DEFAULT_TRUSTED_IPS = ("127.0.0.1", "::1")
+METRICS_DEFAULT_TRUSTED_IPS: tuple[str, ...] = ("127.0.0.1", "::1")
+
+# Type alias for the compiled-network tuple — ``ip_network`` returns
+# either an IPv4 or IPv6 network object depending on the input.
+_NetworkT = Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
+
+
+def _parse_trusted_networks(raw: Iterable[str]) -> tuple[_NetworkT, ...]:
+    """Compile a list of CIDR strings / bare IPs into ``ip_network`` objects.
+
+    Bare-IP entries are widened to host networks (``/32`` or ``/128``) by
+    ``ip_network(..., strict=False)``. Unparseable entries fail loud at
+    init time — operator typos must not silently 403 every scrape. Mirror
+    the rationale documented in POC_REMEDIATION_PLAN_2026-05-27 §2.2.
+    """
+    nets: list[_NetworkT] = []
+    for entry in raw:
+        try:
+            nets.append(ipaddress.ip_network(entry, strict=False))
+        except ValueError as exc:
+            raise ValueError(f"JUNIPER_DATA_METRICS_TRUSTED_IPS entry {entry!r} is not a valid IP or CIDR: {exc}") from exc
+    return tuple(nets)
+
+
+def _normalize_client_ip(client_ip: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
+    """Strip IPv6 zone-id and unwrap IPv4-mapped IPv6 to its IPv4 form.
+
+    - ``fe80::1%eth0`` → ``fe80::1`` (zone-id rejected by ``ip_address``).
+    - ``::ffff:172.18.0.5`` → ``172.18.0.5`` (membership in an IPv4 CIDR
+      otherwise returns ``False`` despite the underlying address being IPv4).
+    """
+    if "%" in client_ip:
+        client_ip = client_ip.split("%", 1)[0]
+    addr = ipaddress.ip_address(client_ip)
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
+        addr = addr.ipv4_mapped
+    return addr
 
 
 class MetricsAuthMiddleware:
-    """ASGI wrapper that restricts ``/metrics`` to a trusted IP allowlist."""
+    """ASGI wrapper that restricts ``/metrics`` to a trusted IP allowlist.
 
-    def __init__(self, app, trusted_ips: list[str] | tuple[str, ...] | None = None) -> None:
+    Accepts bare IP literals, CIDR ranges, and a mix of both. IPv6 zone
+    identifiers are stripped from the client address; IPv4-mapped IPv6
+    addresses are unwrapped before membership check so a Docker container
+    appearing as ``::ffff:172.18.0.5`` matches an IPv4 ``172.18.0.0/16``
+    range. Unparseable allowlist entries raise at init time (fail-loud).
+    """
+
+    def __init__(
+        self,
+        app,
+        trusted_ips: Iterable[str] | None = None,
+    ) -> None:
         self.app = app
-        self.trusted_ips: frozenset[str] = frozenset(trusted_ips if trusted_ips is not None else METRICS_DEFAULT_TRUSTED_IPS)
+        raw = trusted_ips if trusted_ips is not None else METRICS_DEFAULT_TRUSTED_IPS
+        self.networks: tuple[_NetworkT, ...] = _parse_trusted_networks(raw)
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
+            allowed = False
             client = scope.get("client")
             client_ip = client[0] if client else None
-            if not client_ip or client_ip not in self.trusted_ips:
+            if client_ip:
+                try:
+                    addr = _normalize_client_ip(client_ip)
+                    allowed = any(addr in net for net in self.networks)
+                except ValueError:
+                    # Malformed client address — never match.
+                    pass
+            if not allowed:
                 await send(
                     {
                         "type": "http.response.start",

@@ -157,9 +157,30 @@ class Settings(BaseSettings):
     sentry_traces_sample_rate: float = _JUNIPER_DATA_API_SENTRY_TRACES_SAMPLE_RATE_DEFAULT
     metrics_enabled: bool = _JUNIPER_DATA_API_METRICS_ENABLED_DEFAULT
     # SEC-16: loopback-only by default. Set
-    # ``JUNIPER_DATA_METRICS_TRUSTED_IPS='["10.0.0.5"]'`` (JSON list) or a
-    # comma-separated string to add Prometheus scraper IPs.
+    # ``JUNIPER_DATA_METRICS_TRUSTED_IPS='["10.0.0.5","172.18.0.0/16"]'``
+    # (JSON list) or a comma-separated string. Accepts bare IP literals and
+    # CIDR ranges; ``MetricsAuthMiddleware`` normalises IPv6 zone-ids and
+    # IPv4-mapped IPv6 client addresses before membership check, so a
+    # Docker container appearing as ``::ffff:172.18.0.5`` matches an IPv4
+    # ``172.18.0.0/16`` allowlist entry.
     metrics_trusted_ips: list[str] = _JUNIPER_DATA_API_METRICS_TRUSTED_IPS_DEFAULT
+
+    @field_validator("metrics_trusted_ips")
+    @classmethod
+    def _validate_metrics_trusted_ips(cls, v: list[str]) -> list[str]:
+        """Fail loud at startup if any allowlist entry is unparseable.
+
+        Without this guard a typo like ``172.18.0.0/164`` would silently
+        compile to a working-but-empty allowlist that 403s every scrape.
+        ``MetricsAuthMiddleware`` raises the same ``ValueError`` at
+        construction time, but Settings validation surfaces it before
+        the FastAPI app gets created.
+        """
+        # Lazy import to avoid `settings → observability → settings` cycles.
+        from juniper_data.api.observability import _parse_trusted_networks
+
+        _parse_trusted_networks(v)
+        return v
 
 
 @lru_cache
