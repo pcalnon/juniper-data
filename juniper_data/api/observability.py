@@ -26,7 +26,6 @@ re-exported symbols to make the dependency on the shared lib explicit.
 
 import ipaddress
 from collections.abc import Iterable
-from typing import Union
 
 # Cross-service primitives — re-exported from juniper-observability.
 from juniper_observability import (  # noqa: F401 — re-exported for backwards compat
@@ -74,7 +73,9 @@ METRICS_DEFAULT_TRUSTED_IPS: tuple[str, ...] = ("127.0.0.1", "::1")
 
 # Type alias for the compiled-network tuple — ``ip_network`` returns
 # either an IPv4 or IPv6 network object depending on the input.
-_NetworkT = Union[ipaddress.IPv4Network | ipaddress.IPv6Network]
+# _NetworkT = Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
+# _NetworkT = Union[ipaddress.IPv4Network | ipaddress.IPv6Network]
+_NetworkT = ipaddress.IPv4Network | ipaddress.IPv6Network
 
 
 def _parse_trusted_networks(raw: Iterable[str]) -> tuple[_NetworkT, ...]:
