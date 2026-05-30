@@ -13,32 +13,42 @@ from this module unchanged.
 
 What stays in this module:
 
-- :class:`MetricsAuthMiddleware` — juniper-data-specific SEC-16 IP
-  allowlist for the ``/metrics`` mount. Promotion to the shared lib
-  is a roadmap §R5 gating issue.
 - Dataset-generation Prometheus metrics
   (:func:`record_dataset_generation`, :func:`set_datasets_cached`,
   and the lazy-init helper :func:`_ensure_dataset_metrics`).
 
+What moved out:
+
+- :class:`MetricsAuthMiddleware`, :data:`METRICS_DEFAULT_TRUSTED_IPS`,
+  :func:`parse_trusted_networks`, :func:`normalize_client_ip`, and
+  :class:`TrustedNetwork` — promoted to ``juniper-observability``
+  0.3.0 (the §6 promotion in POC_REMEDIATION_PLAN_2026-05-27;
+  ``juniper-observability`` 0.3.1 then aligned the logging behaviour
+  cascor had carried inline since #313). Re-exported here so the
+  historical ``from juniper_data.api.observability import …`` import
+  shape stays valid.
+
 New code should prefer ``from juniper_observability import …`` for the
 re-exported symbols to make the dependency on the shared lib explicit.
 """
-
-import ipaddress
-from collections.abc import Iterable
 
 # Cross-service primitives — re-exported from juniper-observability.
 from juniper_observability import (  # noqa: F401 — re-exported for backwards compat
     DEFAULT_LOG_FORMAT_PLAIN,
     DEFAULT_SENTRY_TRACES_SAMPLE_RATE,
     LOG_FORMAT_JSON,
+    METRICS_DEFAULT_TRUSTED_IPS,
     UNMATCHED_ENDPOINT_LABEL,
     JuniperJsonFormatter,
+    MetricsAuthMiddleware,
     PrometheusMiddleware,
     RequestIdMiddleware,
+    TrustedNetwork,
     configure_logging,
     configure_sentry,
     get_prometheus_app,
+    normalize_client_ip,
+    parse_trusted_networks,
     request_id_var,
     set_build_info,
 )
@@ -55,102 +65,19 @@ from juniper_data.api.constants import (
 )
 
 # ---------------------------------------------------------------------------
-# SEC-16: MetricsAuthMiddleware — juniper-data-specific IP allowlist for the
+# SEC-16: ``MetricsAuthMiddleware`` — juniper-data-side IP allowlist for the
 # ``/metrics`` mount. The Prometheus ASGI app is mounted as a sub-app and
-# therefore bypasses ``SecurityMiddleware``; this wrapper inspects the raw
+# therefore bypasses ``SecurityMiddleware``; the wrapper inspects the raw
 # ASGI scope so it can reject untrusted scrapers without depending on
 # FastAPI. An empty allowlist blocks everything — operators who don't want
 # ``/metrics`` exposed should flip ``metrics_enabled=False`` instead.
 #
-# Promotion to juniper-observability is tracked as a roadmap §R5 gating
-# issue (see notes/code-review/METRICS_MONITORING_ROADMAP_2026-04-25.md).
+# Implementation lives in ``juniper-observability`` (promoted in 0.3.0;
+# 0.3.1 aligned the deny-reason logging cascor had inline since #313).
+# Re-exported above for backwards compatibility with existing
+# ``from juniper_data.api.observability import MetricsAuthMiddleware``
+# call sites in ``juniper_data.api.app`` and the test suite.
 # ---------------------------------------------------------------------------
-
-# Default allowlist matches ``Settings.metrics_trusted_ips``. Duplicated
-# at module level so ``MetricsAuthMiddleware`` can be constructed without
-# passing trusted IPs explicitly (useful in tests).
-METRICS_DEFAULT_TRUSTED_IPS: tuple[str, ...] = ("127.0.0.1", "::1")
-
-# Type alias for the compiled-network tuple — ``ip_network`` returns
-# either an IPv4 or IPv6 network object depending on the input.
-# _NetworkT = Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
-# _NetworkT = Union[ipaddress.IPv4Network | ipaddress.IPv6Network]
-_NetworkT = ipaddress.IPv4Network | ipaddress.IPv6Network
-
-
-def _parse_trusted_networks(raw: Iterable[str]) -> tuple[_NetworkT, ...]:
-    """Compile a list of CIDR strings / bare IPs into ``ip_network`` objects.
-
-    Bare-IP entries are widened to host networks (``/32`` or ``/128``) by
-    ``ip_network(..., strict=False)``. Unparseable entries fail loud at
-    init time — operator typos must not silently 403 every scrape. Mirror
-    the rationale documented in POC_REMEDIATION_PLAN_2026-05-27 §2.2.
-    """
-    nets: list[_NetworkT] = []
-    for entry in raw:
-        try:
-            nets.append(ipaddress.ip_network(entry, strict=False))
-        except ValueError as exc:
-            raise ValueError(f"JUNIPER_DATA_METRICS_TRUSTED_IPS entry {entry!r} is not a valid IP or CIDR: {exc}") from exc
-    return tuple(nets)
-
-
-def _normalize_client_ip(client_ip: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
-    """Strip IPv6 zone-id and unwrap IPv4-mapped IPv6 to its IPv4 form.
-
-    - ``fe80::1%eth0`` → ``fe80::1`` (zone-id rejected by ``ip_address``).
-    - ``::ffff:172.18.0.5`` → ``172.18.0.5`` (membership in an IPv4 CIDR
-      otherwise returns ``False`` despite the underlying address being IPv4).
-    """
-    if "%" in client_ip:
-        client_ip = client_ip.split("%", 1)[0]
-    addr = ipaddress.ip_address(client_ip)
-    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
-        addr = addr.ipv4_mapped
-    return addr
-
-
-class MetricsAuthMiddleware:
-    """ASGI wrapper that restricts ``/metrics`` to a trusted IP allowlist.
-    Accepts bare IP literals, CIDR ranges, and a mix of both. IPv6 zone
-    identifiers are stripped from the client address; IPv4-mapped IPv6
-    addresses are unwrapped before membership check so a Docker container
-    appearing as ``::ffff:172.18.0.5`` matches an IPv4 ``172.18.0.0/16``
-    range. Unparseable allowlist entries raise at init time (fail-loud).
-    """
-
-    def __init__(
-        self,
-        app,
-        trusted_ips: Iterable[str] | None = None,
-    ) -> None:
-        self.app = app
-        raw = trusted_ips if trusted_ips is not None else METRICS_DEFAULT_TRUSTED_IPS
-        self.networks: tuple[_NetworkT, ...] = _parse_trusted_networks(raw)
-
-    async def __call__(self, scope, receive, send):
-        if scope["type"] == "http":
-            allowed = False
-            client = scope.get("client")
-            client_ip = client[0] if client else None
-            if client_ip:
-                try:
-                    addr = _normalize_client_ip(client_ip)
-                    allowed = any(addr in net for net in self.networks)
-                except ValueError:
-                    # Malformed client address — never match.
-                    pass
-            if not allowed:
-                await send(
-                    {
-                        "type": "http.response.start",
-                        "status": 403,
-                        "headers": [(b"content-type", b"text/plain; charset=utf-8")],
-                    }
-                )
-                await send({"type": "http.response.body", "body": b"Forbidden"})
-                return
-        await self.app(scope, receive, send)
 
 
 # ---------------------------------------------------------------------------

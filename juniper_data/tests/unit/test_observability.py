@@ -89,13 +89,24 @@ class TestObservabilityShim:
 
         assert _strip_sensitive_headers is upstream
 
-    def test_metrics_auth_middleware_stays_juniper_data_specific(self):
-        """``MetricsAuthMiddleware`` (SEC-16 IP allowlist) is intentionally NOT in the shared lib.
+    def test_metrics_auth_middleware_promoted_to_shared_lib(self):
+        """``MetricsAuthMiddleware`` (SEC-16 IP allowlist) now lives in
+        ``juniper-observability``.
 
-        Promotion to juniper-observability is tracked as a roadmap §R5
-        gating issue. Until then, juniper-data is the sole owner.
+        Promotion happened in juniper-observability 0.3.0 (the §6
+        promotion in POC_REMEDIATION_PLAN_2026-05-27) — juniper-data was
+        the original source of the inline copy (PR #157), and that
+        copy has been replaced with a re-export from the shared lib so
+        ``from juniper_data.api.observability import …`` still resolves
+        for backwards compatibility. The class object itself, however,
+        is the one from the shared package — this test pins that
+        identity so a future "re-implement inline" regression can't
+        slip back in.
         """
-        assert MetricsAuthMiddleware.__module__ == "juniper_data.api.observability"
+        from juniper_observability import MetricsAuthMiddleware as upstream
+
+        assert MetricsAuthMiddleware is upstream
+        assert MetricsAuthMiddleware.__module__ == "juniper_observability.middleware.metrics_auth"
 
 
 @pytest.mark.unit
