@@ -175,12 +175,14 @@ class Settings(BaseSettings):
         compile to a working-but-empty allowlist that 403s every scrape.
         ``MetricsAuthMiddleware`` raises the same ``ValueError`` at
         construction time, but Settings validation surfaces it before
-        the FastAPI app gets created.
+        the FastAPI app gets created. Uses the shared
+        ``parse_trusted_networks`` from ``juniper-observability`` so
+        juniper-data's fail-loud message stays in lockstep with cascor
+        and any future consumer.
         """
-        # Lazy import to avoid `settings → observability → settings` cycles.
-        from juniper_data.api.observability import _parse_trusted_networks
+        from juniper_observability import parse_trusted_networks
 
-        _parse_trusted_networks(v)
+        parse_trusted_networks(v)
         return v
 
 
