@@ -14,6 +14,8 @@ from juniper_data.generators.circles import VERSION as CIRCLES_VERSION
 from juniper_data.generators.circles import CirclesGenerator, CirclesParams
 from juniper_data.generators.csv_import import VERSION as CSV_IMPORT_VERSION
 from juniper_data.generators.csv_import import CsvImportGenerator, CsvImportParams
+from juniper_data.generators.equities import VERSION as EQUITIES_VERSION
+from juniper_data.generators.equities import EquitiesGenerator, EquitiesParams
 from juniper_data.generators.gaussian import VERSION as GAUSSIAN_VERSION
 from juniper_data.generators.gaussian import GaussianGenerator, GaussianParams
 from juniper_data.generators.mnist import VERSION as MNIST_VERSION
@@ -72,6 +74,12 @@ GENERATOR_REGISTRY: dict[str, dict[str, Any]] = {
         "params_class": CsvImportParams,
         "version": CSV_IMPORT_VERSION,
         "description": "CSV/JSON import generator for custom datasets. Import data from CSV or JSON files with configurable feature and label columns.",
+    },
+    "equities": {
+        "generator": EquitiesGenerator,
+        "params_class": EquitiesParams,
+        "version": EQUITIES_VERSION,
+        "description": "S&P 500 equities time-series generator. Daily OHLCV (2000->present) from Yahoo Finance plus SEC EDGAR shares/market-cap, with 52-week high/low, configurable-purchase-date cost basis, and dual targets: next-day direction (one-hot y_*) and next-day close (y_reg_*).",
     },
     "mnist": {
         "generator": MnistGenerator,

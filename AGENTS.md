@@ -5,7 +5,7 @@
 **Author**: Paul Calnon
 **License**: MIT License
 **Version**: 0.6.0
-**Last Updated**: 2026-05-22
+**Last Updated**: 2026-06-03
 
 ---
 
@@ -92,13 +92,15 @@ juniper-data/
 │   │   ├── split.py                # Train/test data splitting
 │   │   ├── artifacts.py            # NPZ artifact handling and checksums
 │   │   └── secrets.py              # Docker secrets management
-│   ├── generators/                 # Dataset generators (8 types)
+│   ├── generators/                 # Dataset generators (10 types)
 │   │   ├── spiral/                 # Multi-spiral classification (configurable arms)
 │   │   ├── xor/                    # XOR classification
 │   │   ├── gaussian/               # Mixture of Gaussians
 │   │   ├── circles/                # Concentric circles
+│   │   ├── moon/                   # Two interleaving half-moons
 │   │   ├── checkerboard/           # 2D checkerboard pattern
 │   │   ├── csv_import/             # CSV/JSON file import
+│   │   ├── equities/               # S&P 500 equities time-series (Yahoo Finance + SEC EDGAR)
 │   │   ├── mnist/                  # MNIST / Fashion-MNIST (HuggingFace)
 │   │   └── arc_agi/                # ARC-AGI visual reasoning (optional)
 │   ├── storage/                    # Dataset persistence (7 backends)
@@ -173,13 +175,15 @@ juniper-data/
 | `core/split.py` | Shuffle and split data into train/test sets |
 | `core/artifacts.py` | NPZ save/load, array-to-bytes conversion, SHA-256 checksums |
 | `core/secrets.py` | Docker secrets and environment variable secret loading |
-| `generators/` | 8 dataset generator implementations (each with `generator.py` + `params.py`) |
+| `generators/` | 10 dataset generator implementations (each with `generator.py` + `params.py`) |
 | `generators/spiral/` | Multi-spiral classification dataset (configurable arms, noise, rotation) |
 | `generators/xor/` | XOR 4-quadrant binary classification |
 | `generators/gaussian/` | Mixture-of-Gaussians multivariate classification |
 | `generators/circles/` | Concentric circles binary classification |
+| `generators/moon/` | Two interleaving half-moons binary classification |
 | `generators/checkerboard/` | 2D grid pattern with alternating classes |
 | `generators/csv_import/` | Import datasets from CSV/JSON files |
+| `generators/equities/` | S&P 500 equities daily time-series (OHLCV + SEC fundamentals; dual next-day targets) |
 | `generators/mnist/` | MNIST and Fashion-MNIST via HuggingFace Hub |
 | `generators/arc_agi/` | ARC-AGI visual reasoning tasks (optional dependency) |
 | `storage/constants.py` | Storage-layer constants (filenames, metadata keys, table/column names, default size limits) |
