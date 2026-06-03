@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Equities S&P 500 time-series generator** (`equities`): new dataset
+  generator producing daily per-(ticker, day) records for S&P 500
+  constituents from 2000 to the present. Sources daily OHLCV from Yahoo
+  Finance (`yfinance`) and shares-outstanding history from SEC EDGAR XBRL
+  (`dei:EntityCommonStockSharesOutstanding`, ~2009→present, forward-filled
+  to daily); derives 52-week high/low (rolling 252-session), market
+  capitalization (`close × shares`), and a configurable-purchase-date cost
+  basis. Emits the canonical NPZ contract with **dual targets**: a one-hot
+  next-day direction label (`y_*`, keeps `n_classes == 2`) plus an
+  auxiliary next-day-close regression target carried in extra `y_reg_*`
+  arrays, with compact row-aligned identifier arrays (`ticker_code_*` +
+  `ticker_vocab`, `date_*` as YYYYMMDD ints) and a temporal (date-ordered)
+  per-ticker train/test split. The universe and ticker → (name, CIK) map
+  ship as a bundled `sp500_constituents.csv` snapshot (503 names). New
+  optional extra `juniper-data[equities]` (`yfinance` + `pandas`); SEC
+  access uses stdlib `urllib` with retry/backoff. 21 unit tests in
+  `test_equities_generator.py` (network mocked). Pre-2009 fundamentals are
+  unavailable and represented per a `fundamentals_fill` strategy
+  (`zero` / `nan` / `drop`); the dataset is survivorship-biased by current
+  constituents and non-deterministic for live ranges (documented).
+
 ### Changed
 
 - **SEC-16 / POC remediation §2.2**: `MetricsAuthMiddleware.trusted_ips`
