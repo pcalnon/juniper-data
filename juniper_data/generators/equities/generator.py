@@ -69,6 +69,10 @@ _SEC_UA = {"User-Agent": "juniper-data (Juniper ML research; overtoad.research@g
 _SEC_CONCEPT_URL = "https://data.sec.gov/api/xbrl/companyconcept/CIK{cik:010d}/{taxonomy}/{tag}.json"
 _SEC_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 _SEC_MIN_INTERVAL = 0.12  # seconds between SEC calls
+# Reject SEC share-count points deviating from the series median by more than
+# this factor: such jumps are XBRL filer scale typos (e.g. a cover-page value
+# entered 1e6x too large), not real splits/buybacks/issuance.
+_SHARES_OUTLIER_FACTOR = 100.0
 
 # XBRL shares-outstanding concepts, tried in order (dei cover-page first).
 _SHARES_CONCEPTS = (("dei", "EntityCommonStockSharesOutstanding"), ("us-gaap", "CommonStockSharesOutstanding"))
@@ -381,7 +385,14 @@ class EquitiesGenerator:
             return None
         series = pd.Series(best)
         series.index = pd.to_datetime(series.index)
-        return series.sort_index()
+        series = series.sort_index()
+        # Drop XBRL filer scale errors (isolated points ~1e6x off): forward-fill
+        # then carries the last good value across the dropped point. Median is
+        # robust to the minority of bad points.
+        median = float(series.median())
+        if median > 0:
+            series = series[(series >= median / _SHARES_OUTLIER_FACTOR) & (series <= median * _SHARES_OUTLIER_FACTOR)]
+        return series if len(series) else None
 
     # ------------------------------------------------------------------ #
     # Array assembly                                                     #

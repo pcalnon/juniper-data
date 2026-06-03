@@ -176,6 +176,25 @@ class TestEquitiesGenerator:
         assert arrays["X_full"].shape[0] > 0
         assert np.all(arrays["X_full"][:, _FEATURES.index("total_shares")] == 0)
 
+    def test_fetch_shares_filters_filer_scale_error(self) -> None:
+        # A SEC XBRL cover-page typo (1e6x too large, like ORCL 2012-09-17)
+        # must be rejected so market cap stays plausible.
+        payload = {
+            "units": {
+                "shares": [
+                    {"end": "2009-06-30", "val": 1.0e9, "filed": "2009-07-01"},
+                    {"end": "2009-09-30", "val": 1.0e15, "filed": "2009-10-01"},
+                    {"end": "2010-06-30", "val": 1.1e9, "filed": "2010-07-01"},
+                    {"end": "2011-06-30", "val": 1.2e9, "filed": "2011-07-01"},
+                ]
+            }
+        }
+        with patch.object(eq_gen, "_sec_get", return_value=payload):
+            series = EquitiesGenerator._fetch_shares(320193, use_cache=False)
+        assert series is not None
+        assert len(series) == 3, "the 1e15 outlier should be dropped"
+        assert series.max() < 1e13
+
     def test_normalize_features_bounds(self) -> None:
         arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=13), "MSFT": _ohlcv(seed=14)}, _shares(), normalize_features=True)
         matrix = arrays["X_full"]
