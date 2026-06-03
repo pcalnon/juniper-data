@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 # Date range: daily OHLCV from Yahoo Finance reaches back to 2000 for most
 # US-listed names (verified). ``None`` end date resolves to "today" (UTC).
 EQUITIES_DEFAULT_START_DATE = "2000-01-01"
@@ -19,7 +21,7 @@ EQUITIES_DEFAULT_END_DATE: str | None = None
 # ticker, clamped forward to the first available trading day if the requested
 # date precedes the listing.
 EQUITIES_DEFAULT_PURCHASE_DATE = "2000-01-03"
-EQUITIES_DEFAULT_BASIS_PRICE_FIELD = "close"
+EQUITIES_DEFAULT_BASIS_PRICE_FIELD: Literal["close", "adj_close"] = "close"
 
 # Shares outstanding / market cap are sourced from SEC EDGAR XBRL filings,
 # which reach back to ~2009. Rows before the first filing have no value; the
@@ -27,7 +29,7 @@ EQUITIES_DEFAULT_BASIS_PRICE_FIELD = "close"
 #   "zero" -> fill missing total_shares / market_cap with 0.0 (X stays trainable)
 #   "nan"  -> leave NaN (honest; caller must handle)
 #   "drop" -> drop rows lacking shares (restricts the series to ~2009+)
-EQUITIES_DEFAULT_FUNDAMENTALS_FILL = "zero"
+EQUITIES_DEFAULT_FUNDAMENTALS_FILL: Literal["zero", "nan", "drop"] = "zero"
 
 # 52-week high/low rolling window, in trading sessions (~252 per year).
 EQUITIES_DEFAULT_WEEK52_WINDOW = 252

@@ -33,7 +33,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.generators]
 _FEATURES = ["open", "high", "low", "close", "volume", "week52_high", "week52_low", "total_shares", "market_cap", "cost_basis"]
 
 
-def _ohlcv(start: str = "2008-01-01", periods: int = 600, seed: int = 0) -> pd.DataFrame:
+def _ohlcv(start: str = "2008-01-01", periods: int = 600, seed: int = 0):
     """Synthetic daily OHLCV frame with yfinance-style capitalized columns."""
     index = pd.bdate_range(start=start, periods=periods)
     rng = np.random.default_rng(seed)
@@ -46,7 +46,7 @@ def _ohlcv(start: str = "2008-01-01", periods: int = 600, seed: int = 0) -> pd.D
     return pd.DataFrame({"Open": open_, "High": high, "Low": low, "Close": close, "Adj Close": close, "Volume": volume}, index=index)
 
 
-def _shares(start: str = "2009-06-30") -> pd.Series:
+def _shares(start: str = "2009-06-30"):
     """Synthetic shares-outstanding step series (first filing ~mid-2009)."""
     series = pd.Series({pd.Timestamp(start): 1_000_000_000.0, pd.Timestamp("2010-06-30"): 1_100_000_000.0})
     series.index = pd.to_datetime(series.index)
