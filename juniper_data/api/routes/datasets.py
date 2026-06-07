@@ -24,6 +24,7 @@ from juniper_data.api.constants import (
 from juniper_data.api.observability import record_dataset_generation, record_dataset_post
 from juniper_data.core.artifacts import compute_checksum
 from juniper_data.core.dataset_id import generate_dataset_id
+from juniper_data.core.meta import compute_shape_meta
 from juniper_data.core.models import (
     BatchCreateRequest,
     BatchCreateResponse,
@@ -165,16 +166,12 @@ async def create_dataset(
 
     checksum = compute_checksum(arrays)
 
-    n_train = len(arrays["X_train"])
-    n_test = len(arrays["X_test"])
-    n_samples = n_train + n_test
-    n_features = arrays["X_train"].shape[1] if n_train > 0 else 2
-    n_classes = arrays["y_train"].shape[1] if n_train > 0 else (arrays["y_test"].shape[1] if n_test > 0 else 2)
-
-    y_full = arrays.get("y_full", np.vstack([arrays["y_train"], arrays["y_test"]]))
-    class_labels = np.argmax(y_full, axis=1)
-    unique, counts = np.unique(class_labels, return_counts=True)
-    class_distribution = {str(int(k)): int(v) for k, v in zip(unique, counts)}
+    # WS-1 (#168): dispatch shape/class metadata on the generator's declared
+    # task_type so regression / 3-D sequence artifacts traverse the route
+    # without a forced one-hot/argmax. n_features is the trailing axis, so 2-D
+    # tabular and 3-D sequence X are both handled.
+    task_type = generator_info.get("task_type", "classification")
+    shape_meta = compute_shape_meta(arrays, task_type)
 
     now = datetime.now(UTC)
     expires_at = None
@@ -186,12 +183,13 @@ async def create_dataset(
         generator=request.generator,
         generator_version=version,
         params=params.model_dump(),
-        n_samples=n_samples,
-        n_features=n_features,
-        n_classes=n_classes,
-        n_train=n_train,
-        n_test=n_test,
-        class_distribution=class_distribution,
+        n_samples=shape_meta["n_samples"],
+        n_features=shape_meta["n_features"],
+        task_type=task_type,
+        n_classes=shape_meta["n_classes"],
+        n_train=shape_meta["n_train"],
+        n_test=shape_meta["n_test"],
+        class_distribution=shape_meta["class_distribution"],
         artifact_formats=["npz"],
         created_at=now,
         checksum=checksum,

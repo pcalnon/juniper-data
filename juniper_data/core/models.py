@@ -32,12 +32,16 @@ class DatasetMeta(BaseModel):
     # Shape Information
     n_samples: int
     n_features: int
-    n_classes: int
+    # Task type: "classification" | "regression". The classification-only fields
+    # (n_classes, class_distribution) are optional so regression / 3-D time-series
+    # artifacts need not fake a one-hot label (WS-1 / juniper-data#168).
+    task_type: str = "classification"
+    n_classes: int | None = None
     n_train: int
     n_test: int
 
-    # Class Distribution (str keys for JSON compatibility)
-    class_distribution: dict[str, int]
+    # Class Distribution (str keys for JSON compatibility); None when not classification.
+    class_distribution: dict[str, int] | None = None
 
     # Artifacts
     artifact_formats: list[str] = Field(default_factory=lambda: ["npz"])

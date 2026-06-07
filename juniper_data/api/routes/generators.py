@@ -30,28 +30,38 @@ from juniper_data.generators.xor import XorGenerator, XorParams
 router = APIRouter(prefix="/generators", tags=["generators"])
 
 GENERATOR_REGISTRY: dict[str, dict[str, Any]] = {
+    # ``task_type`` is declared per generator and drives the dataset route's
+    # metadata dispatch (WS-1 / juniper-data#168): "classification" generators
+    # get n_classes + class_distribution from their one-hot y; future
+    # "regression" generators leave those None. All current generators are
+    # classification (equities carries an auxiliary y_reg_* rider, but its
+    # canonical target is the one-hot next-day direction).
     "spiral": {
         "generator": SpiralGenerator,
         "params_class": SpiralParams,
         "version": SPIRAL_VERSION,
+        "task_type": "classification",
         "description": "Multi-spiral classification dataset generator. Generates N interleaved spiral arms with configurable points, rotations, and noise.",
     },
     "xor": {
         "generator": XorGenerator,
         "params_class": XorParams,
         "version": XOR_VERSION,
+        "task_type": "classification",
         "description": "XOR classification dataset generator. Generates points in 4 quadrants with opposite classes in diagonal quadrants.",
     },
     "gaussian": {
         "generator": GaussianGenerator,
         "params_class": GaussianParams,
         "version": GAUSSIAN_VERSION,
+        "task_type": "classification",
         "description": "Gaussian blobs classification dataset generator. Generates mixture-of-Gaussians with configurable centers and covariance.",
     },
     "circles": {
         "generator": CirclesGenerator,
         "params_class": CirclesParams,
         "version": CIRCLES_VERSION,
+        "task_type": "classification",
         "description": "Concentric circles classification dataset generator. Generates binary classification with inner and outer circle classes.",
     },
     # XREPO-01b / DC-02 (2026-04-24): added to align with the
@@ -61,36 +71,42 @@ GENERATOR_REGISTRY: dict[str, dict[str, Any]] = {
         "generator": MoonGenerator,
         "params_class": MoonParams,
         "version": MOON_VERSION,
+        "task_type": "classification",
         "description": "Two interleaving half-moons classification dataset generator. Generates binary classification with upper and lower half-circle classes.",
     },
     "checkerboard": {
         "generator": CheckerboardGenerator,
         "params_class": CheckerboardParams,
         "version": CHECKERBOARD_VERSION,
+        "task_type": "classification",
         "description": "Checkerboard pattern classification dataset generator. Generates 2D grid with alternating class squares.",
     },
     "csv_import": {
         "generator": CsvImportGenerator,
         "params_class": CsvImportParams,
         "version": CSV_IMPORT_VERSION,
+        "task_type": "classification",
         "description": "CSV/JSON import generator for custom datasets. Import data from CSV or JSON files with configurable feature and label columns.",
     },
     "equities": {
         "generator": EquitiesGenerator,
         "params_class": EquitiesParams,
         "version": EQUITIES_VERSION,
+        "task_type": "classification",
         "description": "S&P 500 equities time-series generator. Daily OHLCV (2000->present) from Yahoo Finance plus SEC EDGAR shares/market-cap, with 52-week high/low, configurable-purchase-date cost basis, and dual targets: next-day direction (one-hot y_*) and next-day close (y_reg_*).",
     },
     "mnist": {
         "generator": MnistGenerator,
         "params_class": MnistParams,
         "version": MNIST_VERSION,
+        "task_type": "classification",
         "description": "MNIST and Fashion-MNIST dataset generator. Downloads and prepares standard handwritten digit or fashion item classification datasets.",
     },
     "arc_agi": {
         "generator": ArcAgiGenerator,
         "params_class": ArcAgiParams,
         "version": ARC_AGI_VERSION,
+        "task_type": "classification",
         "description": "ARC-AGI (Abstraction and Reasoning Corpus) dataset generator. Generates visual reasoning tasks from the ARC benchmark.",
     },
 }
