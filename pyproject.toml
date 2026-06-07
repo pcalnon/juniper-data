@@ -81,6 +81,9 @@ test = [
     "pytest-timeout>=2.2.0",
     "pytest-asyncio>=0.21.0",
     "pytest-benchmark>=4.0.0",
+    # Property-based testing for the sequence-windowing leakage invariants
+    # (tests/unit/test_sequence_windowing_leakage.py; WS-1 / juniper-data#168).
+    "hypothesis>=6.0.0",
     "httpx>=0.24.0",
     "coverage[toml]>=7.0.0",
     "juniper-data-client>=0.3.0",
