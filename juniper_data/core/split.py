@@ -111,3 +111,35 @@ def shuffle_and_split(
         X, y = shuffle_data(X, y, rng)
 
     return split_data(X, y, train_ratio, test_ratio)
+
+
+def temporal_split_index(n_samples: int, train_ratio: float) -> int:
+    """Row index of the chronological (non-shuffled) train/test boundary.
+
+    Rows ``[0, idx)`` are train (earliest dates) and ``[idx, n)`` are test
+    (latest). This is the date-ordered split the equities time-series generators
+    use; promoting it here lets any time-series generator -- and the sequence
+    windower, which maps the returned index to its target-date cut -- reuse one
+    tested boundary instead of re-deriving it. For ``n_samples >= 2`` the index
+    is clamped to ``[1, n_samples - 1]`` so both splits can be non-empty.
+
+    Args:
+        n_samples: total number of date-ordered rows.
+        train_ratio: fraction of the earliest rows used for training, in ``(0, 1]``.
+
+    Returns:
+        The boundary row index.
+
+    Raises:
+        ValueError: if ``train_ratio`` is not in ``(0, 1]``.
+
+    Note:
+        A walk-forward (multi-fold rolling) variant is a planned extension
+        (WS-1 / juniper-data#168 scope C) and is intentionally not implemented yet.
+    """
+    if not (0.0 < train_ratio <= 1.0):
+        raise ValueError(f"train_ratio must be in (0, 1], got {train_ratio}")
+    idx = int(round(n_samples * train_ratio))
+    if n_samples >= 2:
+        return min(max(idx, 1), n_samples - 1)
+    return max(idx, 0)

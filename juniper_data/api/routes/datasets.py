@@ -24,7 +24,7 @@ from juniper_data.api.constants import (
 from juniper_data.api.observability import record_dataset_generation, record_dataset_post
 from juniper_data.core.artifacts import compute_checksum
 from juniper_data.core.dataset_id import generate_dataset_id
-from juniper_data.core.meta import compute_shape_meta
+from juniper_data.core.meta import compute_shape_meta, derive_sequence_meta
 from juniper_data.core.models import (
     BatchCreateRequest,
     BatchCreateResponse,
@@ -173,6 +173,11 @@ async def create_dataset(
     task_type = generator_info.get("task_type", "classification")
     shape_meta = compute_shape_meta(arrays, task_type)
 
+    # WS-1 PR3: sequence-ness + lookback are derived from the X rank; time_unit
+    # is generator-declared in the registry (like task_type). Per-step Δt lives
+    # in the NPZ (dt_ / observed_mask_); dynamic scaling stats defer to WS-4.
+    seq_meta = derive_sequence_meta(arrays, generator_info.get("time_unit"))
+
     now = datetime.now(UTC)
     expires_at = None
     if request.ttl_seconds is not None:
@@ -190,6 +195,9 @@ async def create_dataset(
         n_train=shape_meta["n_train"],
         n_test=shape_meta["n_test"],
         class_distribution=shape_meta["class_distribution"],
+        sequence=seq_meta["sequence"],
+        lookback=seq_meta["lookback"],
+        time_unit=seq_meta["time_unit"],
         artifact_formats=["npz"],
         created_at=now,
         checksum=checksum,
