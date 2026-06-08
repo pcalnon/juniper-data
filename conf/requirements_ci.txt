@@ -165,7 +165,7 @@ stevedore==5.8.0
 tomli==2.4.1
 tomli_w==1.2.0
 twine==6.2.0
-types-cachetools==6.2.0.20260408
+types-cachetools==7.0.0.20260518
 types-requests==2.33.0.20260518
 typing_extensions==4.15.0
 typing-inspection==0.4.2
