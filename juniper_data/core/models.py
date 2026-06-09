@@ -43,6 +43,14 @@ class DatasetMeta(BaseModel):
     # Class Distribution (str keys for JSON compatibility); None when not classification.
     class_distribution: dict[str, int] | None = None
 
+    # Sequence / time-series metadata (WS-1 / juniper-data#168); False/None for
+    # tabular artifacts. The route derives `sequence` + `lookback` from the X
+    # rank; `time_unit` is generator-declared. Per-step Δt lives in the NPZ
+    # (dt_ / observed_mask_); dynamic dt/target scaling stats defer to WS-4.
+    sequence: bool = False
+    lookback: int | None = None
+    time_unit: str | None = None
+
     # Artifacts
     artifact_formats: list[str] = Field(default_factory=lambda: ["npz"])
 

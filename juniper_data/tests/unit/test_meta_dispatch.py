@@ -19,7 +19,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from juniper_data.core.meta import compute_shape_meta
+from juniper_data.core.meta import compute_shape_meta, derive_sequence_meta
 
 pytestmark = [pytest.mark.unit]
 
@@ -109,3 +109,28 @@ def test_default_task_type_is_classification():
     m = compute_shape_meta(arrays)  # no task_type argument
     assert m["n_classes"] == 2
     assert m["class_distribution"] is not None
+
+
+def test_derive_sequence_meta_tabular_2d():
+    arrays = {"X_train": np.zeros((6, 4), np.float32), "X_test": np.zeros((2, 4), np.float32)}
+    m = derive_sequence_meta(arrays, time_unit="calendar_days")
+    assert m["sequence"] is False
+    assert m["lookback"] is None
+    assert m["time_unit"] is None  # time_unit echoed only for sequence artifacts
+
+
+def test_derive_sequence_meta_3d_sequence():
+    arrays = {"X_train": np.zeros((5, 7, 3), np.float32), "X_test": np.zeros((2, 7, 3), np.float32)}
+    m = derive_sequence_meta(arrays, time_unit="calendar_days")
+    assert m["sequence"] is True
+    assert m["lookback"] == 7
+    assert m["time_unit"] == "calendar_days"
+
+
+def test_derive_sequence_meta_3d_with_empty_train_split():
+    # Rank is well-defined for an empty split; lookback still derived from X_train.
+    arrays = {"X_train": np.zeros((0, 7, 3), np.float32), "X_test": np.zeros((2, 7, 3), np.float32)}
+    m = derive_sequence_meta(arrays)
+    assert m["sequence"] is True
+    assert m["lookback"] == 7
+    assert m["time_unit"] is None

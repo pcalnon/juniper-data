@@ -16,6 +16,8 @@ from juniper_data.generators.csv_import import VERSION as CSV_IMPORT_VERSION
 from juniper_data.generators.csv_import import CsvImportGenerator, CsvImportParams
 from juniper_data.generators.equities import VERSION as EQUITIES_VERSION
 from juniper_data.generators.equities import EquitiesGenerator, EquitiesParams
+from juniper_data.generators.equities_seq import VERSION as EQUITIES_SEQ_VERSION
+from juniper_data.generators.equities_seq import EquitiesSeqGenerator, EquitiesSeqParams
 from juniper_data.generators.gaussian import VERSION as GAUSSIAN_VERSION
 from juniper_data.generators.gaussian import GaussianGenerator, GaussianParams
 from juniper_data.generators.mnist import VERSION as MNIST_VERSION
@@ -94,6 +96,14 @@ GENERATOR_REGISTRY: dict[str, dict[str, Any]] = {
         "version": EQUITIES_VERSION,
         "task_type": "classification",
         "description": "S&P 500 equities time-series generator. Daily OHLCV (2000->present) from Yahoo Finance plus SEC EDGAR shares/market-cap, with 52-week high/low, configurable-purchase-date cost basis, and dual targets: next-day direction (one-hot y_*) and next-day close (y_reg_*).",
+    },
+    "equities_seq": {
+        "generator": EquitiesSeqGenerator,
+        "params_class": EquitiesSeqParams,
+        "version": EQUITIES_SEQ_VERSION,
+        "task_type": "classification",
+        "time_unit": "calendar_days",
+        "description": "Windowed (3-D sequence) S&P 500 equities variant. Slides a per-ticker lookback window over the daily OHLCV rows to produce (W, L, F) sequences with a per-step calendar-day dt (weekend/holiday gaps are the irregular Δt), an irregular forecast horizon target_dt, an all-ones observed_mask, and the next-day direction (one-hot y_*) + next-day close (y_reg_*) targets.",
     },
     "mnist": {
         "generator": MnistGenerator,

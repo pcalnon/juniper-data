@@ -9,7 +9,28 @@ Tests cover:
 import numpy as np
 import pytest
 
-from juniper_data.core.split import shuffle_and_split, shuffle_data, split_data
+from juniper_data.core.split import shuffle_and_split, shuffle_data, split_data, temporal_split_index
+
+
+@pytest.mark.unit
+class TestTemporalSplitIndex:
+    """Tests for the chronological (non-shuffled) split-boundary helper."""
+
+    def test_returns_rounded_index(self) -> None:
+        assert temporal_split_index(100, 0.8) == 80
+        assert temporal_split_index(10, 0.7) == 7
+
+    def test_extreme_ratios_keep_both_splits_nonempty(self) -> None:
+        # train_ratio == 1.0 must still leave at least one test row.
+        assert temporal_split_index(10, 1.0) == 9
+        # a tiny ratio must still leave at least one train row.
+        assert temporal_split_index(10, 0.01) == 1
+
+    def test_rejects_out_of_range_ratio(self) -> None:
+        with pytest.raises(ValueError):
+            temporal_split_index(10, 0.0)
+        with pytest.raises(ValueError):
+            temporal_split_index(10, 1.5)
 
 
 @pytest.mark.unit

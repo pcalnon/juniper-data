@@ -95,3 +95,28 @@ def _classification_meta(
     unique, counts = np.unique(class_labels, return_counts=True)
     class_distribution = {str(int(k)): int(v) for k, v in zip(unique, counts)}
     return n_classes, class_distribution
+
+
+def derive_sequence_meta(arrays: dict[str, np.ndarray], time_unit: str | None = None) -> dict[str, Any]:
+    """Derive sequence-ness + lookback from the X rank (WS-1 / juniper-data#168).
+
+    A 3-D ``X`` of shape ``(W, L, F)`` is a sequence artifact with lookback ``L``;
+    a 2-D ``X`` is tabular. ``time_unit`` (generator-declared, e.g.
+    ``"calendar_days"``) is echoed back only for sequence artifacts. The X rank is
+    well-defined even for an empty split, so ``X_train`` is preferred with
+    ``X_test`` as a fallback.
+
+    Args:
+        arrays: NPZ array dict (uses ``X_train``, falling back to ``X_test``).
+        time_unit: the time unit of the per-step ``dt`` / ``t`` channels, or None.
+
+    Returns:
+        Dict with ``sequence`` (bool), ``lookback`` (``int | None``), and
+        ``time_unit`` (``str | None``; None unless this is a sequence artifact).
+    """
+    ref = arrays.get("X_train")
+    if ref is None:
+        ref = arrays.get("X_test")
+    if ref is None or ref.ndim != 3:
+        return {"sequence": False, "lookback": None, "time_unit": None}
+    return {"sequence": True, "lookback": int(ref.shape[1]), "time_unit": time_unit}
