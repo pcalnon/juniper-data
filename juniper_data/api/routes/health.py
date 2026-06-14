@@ -21,7 +21,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Request, Response
 
-from juniper_data import __version__
+from juniper_data import __version__, provenance
 from juniper_data.api.models.health import DependencyStatus, ReadinessResponse
 from juniper_data.api.settings import Settings, get_settings
 
@@ -131,7 +131,16 @@ async def health_check() -> dict:
       shared by juniper-cascor and juniper-canopy so monitoring tools
       can tell health responses apart without inspecting the URL.
     """
-    return {"status": "ok", "version": __version__, "service": "juniper-data"}
+    return {
+        "status": "ok",
+        "version": __version__,
+        "service": "juniper-data",
+        # Build provenance (juniper-ml notes/BUILD_PROVENANCE_DESIGN_2026-06-14.md):
+        # source git SHA + ISO-8601 build date baked into the image. ``None``
+        # outside a provenance-stamped image; lets ``make doctor`` detect drift.
+        "git_sha": provenance.git_sha(),
+        "build_date": provenance.build_date(),
+    }
 
 
 @router.get("/health/live")
@@ -225,5 +234,7 @@ async def readiness_probe(request: Request, response: Response) -> ReadinessResp
         status=overall,
         version=__version__,
         service="juniper-data",
+        git_sha=provenance.git_sha(),
+        build_date=provenance.build_date(),
         dependencies={"storage": storage_dep},
     )

@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Build provenance on `/v1/health` + `/v1/health/ready`.** The service now
+  reports the source `git_sha` and ISO-8601 `build_date` baked into its image
+  at build time. New `GIT_SHA` / `BUILD_DATE` / `APP_VERSION` Dockerfile
+  build-args become OCI labels (`org.opencontainers.image.revision` /
+  `.created` / `.version` — the hardcoded `version="0.6.0"` label is now driven
+  by `APP_VERSION`) plus `JUNIPER_DATA_GIT_SHA` / `_BUILD_DATE` env vars; a new
+  `juniper_data.provenance` accessor reads them back (both `null` outside a
+  provenance-stamped image — local dev / a bare `docker build`). The values are
+  also passed into `set_build_info(...)` (Prometheus `juniper_data_build` Info
+  metric) and the shared `ReadinessResponse`. Foundation for the ecosystem
+  stale-image-detection effort — see juniper-ml
+  [`notes/BUILD_PROVENANCE_DESIGN_2026-06-14.md`](https://github.com/pcalnon/juniper-ml/blob/main/notes/BUILD_PROVENANCE_DESIGN_2026-06-14.md).
+  Requires `juniper-observability>=0.4.0`.
+
 - **Equities S&P 500 time-series generator** (`equities`): new dataset
   generator producing daily per-(ticker, day) records for S&P 500
   constituents from 2000 to the present. Sources daily OHLCV from Yahoo
@@ -31,6 +45,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   constituents and non-deterministic for live ranges (documented).
 
 ### Changed
+
+- **`juniper_data.__version__` now derives from `importlib.metadata`** instead
+  of a hardcoded literal (OQ-1 of the build-provenance effort), so it can no
+  longer drift from `pyproject.toml`'s `[project].version`. Falls back to the
+  literal only in a bare source checkout where the distribution is not
+  installed.
 
 - **SEC-16 / POC remediation §2.2**: `MetricsAuthMiddleware.trusted_ips`
   now accepts CIDR ranges (`"172.18.0.0/16"`) in addition to bare IP
