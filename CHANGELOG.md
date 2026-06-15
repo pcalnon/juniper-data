@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Synthetic time-series regression generators** (`multi_sine`,
+  `mackey_glass`, `ar_p`): three numpy-only, deterministic, offline
+  generators that emit the additive 3-D sequence NPZ contract (WS-1 /
+  juniper-data#168) as `task_type="regression"` — the recurse CLI
+  "hello-world" datasets ([OQ-5], juniper-data#179 §A). Each samples a
+  process at a regular Δt and windows it into `(W, L, 1)` sequences with a
+  per-step `dt`, a fixed `target_dt` forecast horizon, an all-ones
+  `observed_mask`, and the regression target carried directly in `y_*`
+  (no one-hot, so `compute_shape_meta` leaves `n_classes` /
+  `class_distribution` None). `multi_sine` is a superposition of K sinusoids
+  (closed-form known answer when noise-free); `mackey_glass` integrates the
+  canonical chaotic delay-differential equation (β=0.2, γ=0.1, n=10, τ=17)
+  by a discrete Euler scheme; `ar_p` is an autoregressive process with
+  Gaussian innovations (default stable AR(2)). A new `window_regular_series`
+  helper (the regular-Δt sibling of `window_one_ticker`) and a shared
+  `SyntheticSequenceParams` base back all three. Unlike `equities` these
+  need **no optional extra** (pure numpy) — the zero-dependency smoke
+  datasets for the 3-D contract. Registered in the dataset route with
+  `time_unit="steps"`; closes the WS-1 §B "pure-regression generator
+  traverses the route end-to-end" acceptance check. Adds per-generator unit
+  tests (determinism + known-answer + contract), a `window_regular_series`
+  Hypothesis property test, and an end-to-end route + client-contract
+  integration test.
+
 - **Build provenance on `/v1/health` + `/v1/health/ready`.** The service now
   reports the source `git_sha` and ISO-8601 `build_date` baked into its image
   at build time. New `GIT_SHA` / `BUILD_DATE` / `APP_VERSION` Dockerfile
