@@ -20,8 +20,10 @@ reintroduce either leak. See the design note
 ``juniper-ml/notes/JUNIPER_RECURSE_DELTA_T_HANDLING_2026-06-05.md`` -- §6.3 (this
 implementation), §6.1 (the key contract), and §7 (leakage analysis + invariants).
 
-This module is numpy-only and has no juniper-data import dependencies, so it can
-be reused by any sequence generator (the first consumer is ``equities_seq``).
+This module depends only on numpy and the core split helper, so it can be reused
+by any sequence generator: ``equities_seq`` (irregular calendar-Δt) via
+``window_one_ticker``, and the ``multi_sine`` / ``mackey_glass`` / ``ar_p``
+synthetics (regular-Δt) via ``window_regular_series``.
 """
 
 # Project:       Juniper
@@ -37,6 +39,8 @@ from __future__ import annotations
 import datetime as _dt
 
 import numpy as np
+
+from juniper_data.core.split import temporal_split_index
 
 # Per-window keys produced for every entity (observed_mask is added separately
 # because it is derived from the window count rather than accumulated per step).
@@ -159,4 +163,93 @@ def window_one_ticker(
         # observed_mask is all-ones; dt alone carries the irregularity (notes §6.2).
         block["observed_mask"] = np.ones((block["X"].shape[0], lookback), dtype=np.uint8)
         out[split] = block
+    return out
+
+
+def window_regular_series(
+    series: np.ndarray,
+    *,
+    lookback: int,
+    horizon: int,
+    sample_dt: float,
+    train_ratio: float,
+) -> dict[str, np.ndarray]:
+    """Window a single regular-Δt series into the additive 3-D sequence contract.
+
+    The regular-sampling sibling of :func:`window_one_ticker`, for the synthetic
+    time-series generators (``multi_sine`` / ``mackey_glass`` / ``ar_p``). The
+    input is ONE series sampled at a *constant* step ``sample_dt`` -- there are no
+    calendar dates, so the per-step ``dt`` is constant and ``target_dt`` is the
+    fixed forecast horizon. A window ending at index ``i`` uses steps
+    ``[i - lookback + 1 .. i]`` and predicts the value ``horizon`` steps later
+    (index ``i + horizon``); valid ``i`` runs over ``[lookback - 1, T - 1 - horizon]``.
+
+    Windows are emitted in chronological order and split at
+    :func:`~juniper_data.core.split.temporal_split_index`, so every train target
+    strictly precedes every test target -- the same no-future-leak guarantee as
+    the per-entity windower, here structural because there is a single series and
+    a single chronological cut. ``full`` is ``train`` followed by ``test``.
+
+    Args:
+        series: ``(T, F)`` (or ``(T,)``) float series, ascending in time.
+        lookback: window length ``L`` (steps per window), ``>= 1``.
+        horizon: forecast horizon ``h`` in steps (target is ``h`` steps after the
+            window end), ``>= 1``.
+        sample_dt: constant per-step elapsed time, ``> 0`` (the regular Δt).
+        train_ratio: fraction of the earliest windows used for training, ``(0, 1]``.
+
+    Returns:
+        Flat NPZ dict mapping ``{X, y, dt, target_dt, observed_mask}_{train,test,full}``:
+        ``X`` ``(W, L, F)`` f32; ``y`` ``(W, F)`` f32 (the series value at the
+        horizon step); ``dt`` ``(W, L)`` f32 ``[0, sample_dt, ...]``; ``target_dt``
+        ``(W,)`` f32 ``= horizon * sample_dt``; ``observed_mask`` ``(W, L)`` uint8
+        all-ones. ``X_full == concatenate([X_train, X_test])``.
+
+    Raises:
+        ValueError: if ``lookback < 1``, ``horizon < 1``, ``sample_dt <= 0``, the
+            series is not 1-D/2-D, or it is too short to form two windows
+            (``T < lookback + horizon + 1``).
+    """
+    if lookback < 1:
+        raise ValueError(f"lookback must be >= 1, got {lookback}")
+    if horizon < 1:
+        raise ValueError(f"horizon must be >= 1, got {horizon}")
+    if sample_dt <= 0:
+        raise ValueError(f"sample_dt must be > 0, got {sample_dt}")
+
+    arr = np.asarray(series, dtype=np.float32)
+    if arr.ndim == 1:
+        arr = arr.reshape(-1, 1)
+    if arr.ndim != 2:
+        raise ValueError(f"series must be 1-D or 2-D (T, F), got {arr.ndim}-D")
+
+    n_steps = arr.shape[0]
+    n_windows = n_steps - lookback - horizon + 1
+    if n_windows < 2:
+        raise ValueError(f"series too short: T={n_steps}, lookback={lookback}, horizon={horizon} yields {n_windows} window(s); need >= 2 (T >= lookback + horizon + 1)")
+
+    # Window-end index ``i`` runs over [lookback - 1, T - 1 - horizon]; the target
+    # is the value ``horizon`` steps after the end (index ``i + horizon``).
+    ends = np.arange(lookback - 1, n_steps - horizon)
+    starts = ends - lookback + 1
+    win_idx = starts[:, None] + np.arange(lookback)[None, :]  # (W, L) row indices
+    x = arr[win_idx]  # (W, L, F)
+    y = arr[ends + horizon]  # (W, F)
+
+    # Regular sampling: every in-window step is one ``sample_dt`` apart, the first
+    # step has no predecessor (contract: ``dt[:, 0] == 0``), and the forecast
+    # horizon is the fixed ``horizon * sample_dt``. Every step is a real
+    # observation, so ``observed_mask`` is all-ones (nothing imputed/padded).
+    dt = np.full((n_windows, lookback), np.float32(sample_dt), dtype=np.float32)
+    dt[:, 0] = 0.0
+    target_dt = np.full(n_windows, np.float32(horizon * sample_dt), dtype=np.float32)
+    observed_mask = np.ones((n_windows, lookback), dtype=np.uint8)
+
+    cut = temporal_split_index(n_windows, train_ratio)
+
+    out: dict[str, np.ndarray] = {}
+    for key, full in (("X", x), ("y", y), ("dt", dt), ("target_dt", target_dt), ("observed_mask", observed_mask)):
+        out[f"{key}_train"] = full[:cut]
+        out[f"{key}_test"] = full[cut:]
+        out[f"{key}_full"] = full
     return out

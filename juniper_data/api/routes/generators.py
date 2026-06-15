@@ -6,6 +6,8 @@ from fastapi import APIRouter, HTTPException
 from starlette import status
 
 from juniper_data.core.models import GeneratorInfo
+from juniper_data.generators.ar_p import VERSION as AR_P_VERSION
+from juniper_data.generators.ar_p import ArPGenerator, ArPParams
 from juniper_data.generators.arc_agi import VERSION as ARC_AGI_VERSION
 from juniper_data.generators.arc_agi import ArcAgiGenerator, ArcAgiParams
 from juniper_data.generators.checkerboard import VERSION as CHECKERBOARD_VERSION
@@ -20,10 +22,14 @@ from juniper_data.generators.equities_seq import VERSION as EQUITIES_SEQ_VERSION
 from juniper_data.generators.equities_seq import EquitiesSeqGenerator, EquitiesSeqParams
 from juniper_data.generators.gaussian import VERSION as GAUSSIAN_VERSION
 from juniper_data.generators.gaussian import GaussianGenerator, GaussianParams
+from juniper_data.generators.mackey_glass import VERSION as MACKEY_GLASS_VERSION
+from juniper_data.generators.mackey_glass import MackeyGlassGenerator, MackeyGlassParams
 from juniper_data.generators.mnist import VERSION as MNIST_VERSION
 from juniper_data.generators.mnist import MnistGenerator, MnistParams
 from juniper_data.generators.moon import VERSION as MOON_VERSION
 from juniper_data.generators.moon import MoonGenerator, MoonParams
+from juniper_data.generators.multi_sine import VERSION as MULTI_SINE_VERSION
+from juniper_data.generators.multi_sine import MultiSineGenerator, MultiSineParams
 from juniper_data.generators.spiral import VERSION as SPIRAL_VERSION
 from juniper_data.generators.spiral import SpiralGenerator, SpiralParams
 from juniper_data.generators.xor import VERSION as XOR_VERSION
@@ -34,10 +40,12 @@ router = APIRouter(prefix="/generators", tags=["generators"])
 GENERATOR_REGISTRY: dict[str, dict[str, Any]] = {
     # ``task_type`` is declared per generator and drives the dataset route's
     # metadata dispatch (WS-1 / juniper-data#168): "classification" generators
-    # get n_classes + class_distribution from their one-hot y; future
-    # "regression" generators leave those None. All current generators are
-    # classification (equities carries an auxiliary y_reg_* rider, but its
-    # canonical target is the one-hot next-day direction).
+    # get n_classes + class_distribution from their one-hot y; "regression"
+    # generators leave those None and carry the target directly in y_*. The
+    # classifiers include equities (canonical one-hot next-day direction, with an
+    # auxiliary y_reg_* close rider); the multi_sine / mackey_glass / ar_p
+    # synthetics are the regression generators (juniper-data#179 §A) -- numpy-only
+    # (W, L, 1) sequences with a per-step regular dt.
     "spiral": {
         "generator": SpiralGenerator,
         "params_class": SpiralParams,
@@ -104,6 +112,30 @@ GENERATOR_REGISTRY: dict[str, dict[str, Any]] = {
         "task_type": "classification",
         "time_unit": "calendar_days",
         "description": "Windowed (3-D sequence) S&P 500 equities variant. Slides a per-ticker lookback window over the daily OHLCV rows to produce (W, L, F) sequences with a per-step calendar-day dt (weekend/holiday gaps are the irregular Δt), an irregular forecast horizon target_dt, an all-ones observed_mask, and the next-day direction (one-hot y_*) + next-day close (y_reg_*) targets.",
+    },
+    "multi_sine": {
+        "generator": MultiSineGenerator,
+        "params_class": MultiSineParams,
+        "version": MULTI_SINE_VERSION,
+        "task_type": "regression",
+        "time_unit": "steps",
+        "description": "Multi-sine synthetic time-series regression generator (numpy-only, no extra). Superposition of K sinusoids sampled at a regular Δt, windowed into (W, L, 1) sequences with a per-step dt and a horizon-ahead regression target y_*. Deterministic given the seed.",
+    },
+    "mackey_glass": {
+        "generator": MackeyGlassGenerator,
+        "params_class": MackeyGlassParams,
+        "version": MACKEY_GLASS_VERSION,
+        "task_type": "regression",
+        "time_unit": "steps",
+        "description": "Mackey-Glass synthetic time-series regression generator (numpy-only). Discrete-Euler integration of the chaotic delay-differential equation (β=0.2, γ=0.1, n=10, τ=17), windowed into (W, L, 1) sequences with a per-step dt and a horizon-ahead regression target y_*. Deterministic.",
+    },
+    "ar_p": {
+        "generator": ArPGenerator,
+        "params_class": ArPParams,
+        "version": AR_P_VERSION,
+        "task_type": "regression",
+        "time_unit": "steps",
+        "description": "Autoregressive AR(p) synthetic time-series regression generator (numpy-only). xₜ=c+Σ φᵢ xₜ₋ᵢ+εₜ with Gaussian innovations (default stable AR(2)), windowed into (W, L, 1) sequences with a per-step dt and a horizon-ahead regression target y_*. Deterministic given the seed.",
     },
     "mnist": {
         "generator": MnistGenerator,

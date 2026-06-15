@@ -27,7 +27,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from juniper_data.generators._sequence import _yyyymmdd_to_ordinal, window_one_ticker
+from juniper_data.generators._sequence import _yyyymmdd_to_ordinal, window_one_ticker, window_regular_series
 
 pytestmark = [pytest.mark.unit, pytest.mark.generators]
 
@@ -132,3 +132,50 @@ def test_concat_then_slide_would_leak():
     lookback = 3
     naive = [tuple(codes[i - lookback + 1 : i + 1]) for i in range(lookback - 1, len(codes) - 1)]
     assert any(len(set(w)) > 1 for w in naive)  # at least one cross-entity window exists
+
+
+@settings(max_examples=200, deadline=None)
+@given(
+    n_steps=st.integers(8, 200),
+    lookback=st.integers(2, 12),
+    horizon=st.integers(1, 6),
+    sample_dt=st.floats(0.1, 5.0, allow_nan=False, allow_infinity=False),
+    train_ratio=st.floats(0.5, 0.95),
+)
+def test_regular_windowing_invariants(n_steps, lookback, horizon, sample_dt, train_ratio):
+    """``window_regular_series``: regular-Δt contract, index encoding, no future leak.
+
+    The series value encodes its own index (``series[k] == k``), so each window's
+    content reveals exactly which steps it spans -- letting us pin that a window is
+    L consecutive steps, the target is the step ``horizon`` after the window end,
+    and every train target strictly precedes every test target (the regular-Δt
+    analog of I2).
+    """
+    if n_steps - lookback - horizon + 1 < 2:
+        return  # too short for two windows; the windower raises (covered in the unit tests)
+    series = np.arange(n_steps, dtype=np.float64).reshape(-1, 1)  # value == index
+    out = window_regular_series(series, lookback=lookback, horizon=horizon, sample_dt=sample_dt, train_ratio=train_ratio)
+    n_windows = n_steps - lookback - horizon + 1
+
+    # RR1 -- shapes.
+    assert out["X_full"].shape == (n_windows, lookback, 1)
+    assert out["y_full"].shape == (n_windows, 1)
+
+    # RR2 -- regular-Δt contract: dt[:,0]==0, a constant gap, a fixed target horizon.
+    assert np.all(out["dt_full"][:, 0] == 0)
+    assert np.allclose(out["dt_full"][:, 1:], np.float32(sample_dt))
+    assert np.allclose(out["target_dt_full"], np.float32(horizon * sample_dt))
+    assert np.all(out["observed_mask_full"] == 1)
+
+    # RR3 -- index encoding: each window is L consecutive steps; target == end + horizon.
+    steps = out["X_full"][:, :, 0]
+    assert np.all(np.diff(steps, axis=1) == 1)
+    np.testing.assert_array_equal(out["y_full"][:, 0], steps[:, -1] + horizon)
+
+    # RR4 -- full == train + test, chronological.
+    assert n_windows == out["X_train"].shape[0] + out["X_test"].shape[0]
+    np.testing.assert_array_equal(out["X_full"], np.concatenate([out["X_train"], out["X_test"]]))
+
+    # RR5 -- no future leak: every train target strictly precedes every test target.
+    if out["y_train"].shape[0] and out["y_test"].shape[0]:
+        assert out["y_train"][:, 0].max() < out["y_test"][:, 0].min()
