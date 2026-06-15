@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette import status
 
-from juniper_data import __version__
+from juniper_data import __version__, provenance
 from juniper_data.storage import LocalFSDatasetStore
 
 from .middleware import RequestBodyLimitMiddleware, SecurityHeadersMiddleware, SecurityMiddleware
@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     configure_logging(settings.log_level, settings.log_format, "juniper-data")
     configure_sentry(settings.sentry_dsn, "juniper-data", __version__, send_pii=settings.sentry_send_pii, traces_sample_rate=settings.sentry_traces_sample_rate)
     if settings.metrics_enabled:
-        set_build_info("juniper_data", __version__)
+        set_build_info("juniper_data", __version__, git_sha=provenance.git_sha(), build_date=provenance.build_date())
 
     logger = logging.getLogger("juniper_data")
     logger.info(f"JuniperData API v{__version__} starting")

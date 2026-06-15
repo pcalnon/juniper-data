@@ -72,8 +72,12 @@ api = [
     # added a ``logging.warning`` when ``scope["client"][0]`` is
     # unparseable — juniper-data's inline copy was silent on that
     # path, so this is a behaviour change: operators now see a log
-    # entry for misconfigured scrapers in addition to the 403.
-    "juniper-observability>=0.3.1",
+    # entry for misconfigured scrapers in addition to the 403. 0.4.0
+    # added optional ``git_sha`` / ``build_date`` passthrough on
+    # ``set_build_info`` + the shared ``ReadinessResponse`` model for
+    # build provenance (juniper-ml
+    # notes/BUILD_PROVENANCE_DESIGN_2026-06-14.md).
+    "juniper-observability>=0.4.0",
 ]
 test = [
     "pytest>=7.0.0",

@@ -2,6 +2,7 @@
 Juniper Data - Dataset generation and management service for the Juniper ecosystem.
 """
 
+import importlib.metadata
 import os
 
 from dotenv import load_dotenv
@@ -14,7 +15,14 @@ except ImportError:
     ARC_AGI_AVAILABLE = False
     arc_agi = None  # type: ignore[assignment]
 
-__version__ = "0.6.0"
+# Single source of truth: the installed distribution's metadata (OQ-1 of the
+# build-provenance effort — juniper-ml notes/BUILD_PROVENANCE_DESIGN_2026-06-14.md).
+# Falls back to the literal only in a bare source checkout where the package is
+# not installed, so this constant can no longer drift from pyproject's version.
+try:
+    __version__ = importlib.metadata.version("juniper-data")
+except importlib.metadata.PackageNotFoundError:  # pragma: no cover - source checkout
+    __version__ = "0.6.0"
 __author__ = "Paul Calnon"
 
 

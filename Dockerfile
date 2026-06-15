@@ -30,13 +30,25 @@ RUN pip install --no-cache-dir --no-deps .
 # -----------------------------------------------------------------------------
 FROM python:3.14-slim AS runtime
 
+# Build provenance (juniper-ml notes/BUILD_PROVENANCE_DESIGN_2026-06-14.md):
+# the deploy Makefile passes this repo's own git SHA, an ISO-8601 build
+# timestamp, and the package version at build time. They are stamped as OCI
+# labels and exported as env vars (below) so the running service reports them
+# on /v1/health and `make doctor` can detect stale-image drift. Default empty
+# when the image is built bare (read back as None by the app).
+ARG GIT_SHA=""
+ARG BUILD_DATE=""
+ARG APP_VERSION=""
+
 # Labels for container metadata
 LABEL org.opencontainers.image.title="JuniperData"
 LABEL org.opencontainers.image.description="Dataset generation service for the Juniper ecosystem"
-LABEL org.opencontainers.image.version="0.6.0"
+LABEL org.opencontainers.image.version="${APP_VERSION}"
 LABEL org.opencontainers.image.authors="Paul Calnon"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.source="https://github.com/pcalnon/juniper-data"
+LABEL org.opencontainers.image.revision="${GIT_SHA}"
+LABEL org.opencontainers.image.created="${BUILD_DATE}"
 
 # Create non-root user for security
 RUN groupadd --gid 1000 juniper && \
@@ -60,6 +72,12 @@ ENV JUNIPER_DATA_HOST=0.0.0.0
 ENV JUNIPER_DATA_PORT=8100
 ENV JUNIPER_DATA_STORAGE_PATH=/app/data/datasets
 ENV JUNIPER_DATA_LOG_LEVEL=INFO
+
+# Build provenance (see the ARG block in the runtime stage above): exported so
+# the app process can read its own source revision / build date and report them
+# on /v1/health. Empty when built bare (read back as None).
+ENV JUNIPER_DATA_GIT_SHA=${GIT_SHA}
+ENV JUNIPER_DATA_BUILD_DATE=${BUILD_DATE}
 
 # Expose the API port
 EXPOSE 8100
