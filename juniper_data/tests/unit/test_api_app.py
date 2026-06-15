@@ -58,20 +58,21 @@ class TestCreateApp:
     def test_create_app_includes_health_router(self, test_settings: Settings) -> None:
         """Test health router is included."""
         app = create_app(settings=test_settings)
-        routes = [getattr(route, "path", None) for route in app.routes]
-        assert "/v1/health" in routes
+        # fastapi >=0.137 wraps included routers in ``_IncludedRouter`` objects
+        # (``path`` is ``None``), so included sub-paths are no longer flat in
+        # ``app.routes``. The OpenAPI schema reflects registered REST routes
+        # robustly across fastapi versions.
+        assert "/v1/health" in app.openapi()["paths"]
 
     def test_create_app_includes_generators_router(self, test_settings: Settings) -> None:
         """Test generators router is included."""
         app = create_app(settings=test_settings)
-        routes = [getattr(route, "path", None) for route in app.routes]
-        assert "/v1/generators" in routes
+        assert "/v1/generators" in app.openapi()["paths"]
 
     def test_create_app_includes_datasets_router(self, test_settings: Settings) -> None:
         """Test datasets router is included."""
         app = create_app(settings=test_settings)
-        routes = [getattr(route, "path", None) for route in app.routes]
-        assert "/v1/datasets" in routes
+        assert "/v1/datasets" in app.openapi()["paths"]
 
     def test_create_app_uses_default_settings_when_none_provided(self) -> None:
         """Test create_app loads settings from environment when not provided."""
