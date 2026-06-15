@@ -24,6 +24,14 @@ __pycache__/
 *.pyd
 .Python
 *.egg-info/
+# ``*.egg-info/`` matches only the context root. juniper-data is not vulnerable
+# to the build-provenance version-shadow today (it runs ``python -m juniper_data``
+# off the installed package, and its egg-info is at the repo root) — these nested
+# forms are defense-in-depth + ecosystem consistency with the canopy #362 / cascor
+# fixes (a stale ``*/foo.egg-info`` COPYed onto an import path can shadow the
+# installed package version).
+**/*.egg-info/
+**/*.dist-info/
 *.egg
 dist/
 build/
