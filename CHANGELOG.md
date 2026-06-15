@@ -46,6 +46,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`.dockerignore` now also excludes nested `**/*.egg-info/` + `**/*.dist-info/`** (defense-in-depth). The existing `*.egg-info/` matched only the build-context root. juniper-data is **not** vulnerable to the build-provenance version-shadow — it runs `python -m juniper_data` off the installed package (no `/app/src` on `PYTHONPATH`) and its egg-info is at the repo root (already excluded) — so this is preventive consistency with the canopy [#362](https://github.com/pcalnon/juniper-canopy/pull/362) / cascor fixes, where a stale `src/*.egg-info` COPYed onto an import path shadowed `importlib.metadata`'s version.
+
 - **`juniper_data.__version__` now derives from `importlib.metadata`** instead
   of a hardcoded literal (OQ-1 of the build-provenance effort), so it can no
   longer drift from `pyproject.toml`'s `[project].version`. Falls back to the
