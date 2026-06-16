@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Irregular-Δt synthetic generator** (`irregular_sine`): a fourth numpy-only
+  regression generator (juniper-data#179 §A) that samples a continuous-time
+  sinusoid superposition at **non-uniform** times — each inter-sample gap is
+  `sample_dt · U[1 − jitter, 1 + jitter]` — so the windowed artifact carries a
+  **genuinely non-uniform** per-step `dt` and a variable `target_dt`. It is the
+  synthetic, offline, known-answer counterpart to `equities_seq`'s calendar-gap
+  irregularity, exercising the irregular-Δt contract independently of real market
+  data (the signal stays closed form at each irregular sample time, so it is
+  deterministic given the seed). Backed by a new `window_timed_series(values,
+  times, …)` helper (the irregular-Δt sibling of `window_regular_series`, deriving
+  per-step `dt` from explicit sample times); `window_regular_series` is unchanged.
+  New unit tests (non-uniform-`dt` contract, closed-form known answer at irregular
+  times, `jitter` control, determinism), a `window_timed_series` Hypothesis
+  property test, and an added `irregular_sine` end-to-end route +
+  contract-validator case.
+
 - **Synthetic time-series regression generators** (`multi_sine`,
   `mackey_glass`, `ar_p`): three numpy-only, deterministic, offline
   generators that emit the additive 3-D sequence NPZ contract (WS-1 /

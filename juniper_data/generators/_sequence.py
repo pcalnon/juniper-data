@@ -22,8 +22,9 @@ implementation), §6.1 (the key contract), and §7 (leakage analysis + invariant
 
 This module depends only on numpy and the core split helper, so it can be reused
 by any sequence generator: ``equities_seq`` (irregular calendar-Δt) via
-``window_one_ticker``, and the ``multi_sine`` / ``mackey_glass`` / ``ar_p``
-synthetics (regular-Δt) via ``window_regular_series``.
+``window_one_ticker``, the ``multi_sine`` / ``mackey_glass`` / ``ar_p`` synthetics
+(regular-Δt) via ``window_regular_series``, and the irregular-sampling
+``irregular_sine`` synthetic via ``window_timed_series``.
 """
 
 # Project:       Juniper
@@ -243,6 +244,99 @@ def window_regular_series(
     dt = np.full((n_windows, lookback), np.float32(sample_dt), dtype=np.float32)
     dt[:, 0] = 0.0
     target_dt = np.full(n_windows, np.float32(horizon * sample_dt), dtype=np.float32)
+    observed_mask = np.ones((n_windows, lookback), dtype=np.uint8)
+
+    cut = temporal_split_index(n_windows, train_ratio)
+
+    out: dict[str, np.ndarray] = {}
+    for key, full in (("X", x), ("y", y), ("dt", dt), ("target_dt", target_dt), ("observed_mask", observed_mask)):
+        out[f"{key}_train"] = full[:cut]
+        out[f"{key}_test"] = full[cut:]
+        out[f"{key}_full"] = full
+    return out
+
+
+def window_timed_series(
+    values: np.ndarray,
+    times: np.ndarray,
+    *,
+    lookback: int,
+    horizon: int,
+    train_ratio: float,
+) -> dict[str, np.ndarray]:
+    """Window an irregularly-sampled series (explicit per-step times) into the 3-D contract.
+
+    The irregular-Δt sibling of :func:`window_regular_series`, for synthetics that
+    sample a continuous-time process at *non-uniform* times (e.g. ``irregular_sine``).
+    Instead of a constant ``sample_dt`` the caller supplies the absolute sample
+    ``times``; the per-step ``dt`` is derived from their differences within each
+    window, so ``dt`` is genuinely non-uniform and ``target_dt`` is the (variable)
+    time from the window end to its target step. A window ending at index ``i``
+    uses steps ``[i - lookback + 1 .. i]`` and predicts the value ``horizon`` steps
+    later (index ``i + horizon``).
+
+    Windows are split at :func:`~juniper_data.core.split.temporal_split_index` --
+    the same no-future-leak guarantee as :func:`window_regular_series`. ``full`` is
+    ``train`` followed by ``test``.
+
+    Args:
+        values: ``(T, F)`` (or ``(T,)``) float series, ascending in time.
+        times: ``(T,)`` strictly-increasing float sample times (aligned with
+            ``values``); the irregular-Δt source.
+        lookback: window length ``L`` (steps per window), ``>= 1``.
+        horizon: forecast horizon ``h`` in steps, ``>= 1``.
+        train_ratio: fraction of the earliest windows used for training, ``(0, 1]``.
+
+    Returns:
+        Flat NPZ dict mapping ``{X, y, dt, target_dt, observed_mask}_{train,test,full}``:
+        ``X`` ``(W, L, F)`` f32; ``y`` ``(W, F)`` f32; ``dt`` ``(W, L)`` f32
+        ``[0, diff(window times)]`` (non-uniform); ``target_dt`` ``(W,)`` f32
+        ``= times[i + horizon] - times[i]``; ``observed_mask`` ``(W, L)`` uint8
+        all-ones. ``X_full == concatenate([X_train, X_test])``.
+
+    Raises:
+        ValueError: if ``lookback < 1``, ``horizon < 1``, ``values`` is not
+            1-D/2-D, ``times`` length != ``T`` or is not strictly increasing, or
+            the series is too short to form two windows.
+    """
+    if lookback < 1:
+        raise ValueError(f"lookback must be >= 1, got {lookback}")
+    if horizon < 1:
+        raise ValueError(f"horizon must be >= 1, got {horizon}")
+
+    arr = np.asarray(values, dtype=np.float32)
+    if arr.ndim == 1:
+        arr = arr.reshape(-1, 1)
+    if arr.ndim != 2:
+        raise ValueError(f"values must be 1-D or 2-D (T, F), got {arr.ndim}-D")
+
+    t = np.asarray(times, dtype=np.float64)  # keep absolute-time precision in float64
+    n_steps = arr.shape[0]
+    if t.ndim != 1 or t.shape[0] != n_steps:
+        raise ValueError(f"times must be 1-D of length T={n_steps}, got shape {t.shape}")
+    if n_steps > 1 and not np.all(np.diff(t) > 0):
+        raise ValueError("times must be strictly increasing")
+
+    n_windows = n_steps - lookback - horizon + 1
+    if n_windows < 2:
+        raise ValueError(f"series too short: T={n_steps}, lookback={lookback}, horizon={horizon} yields {n_windows} window(s); need >= 2 (T >= lookback + horizon + 1)")
+
+    # Window-end index ``i`` runs over [lookback - 1, T - 1 - horizon]; the target
+    # is the value ``horizon`` steps after the end (index ``i + horizon``).
+    ends = np.arange(lookback - 1, n_steps - horizon)
+    starts = ends - lookback + 1
+    win_idx = starts[:, None] + np.arange(lookback)[None, :]  # (W, L) row indices
+    x = arr[win_idx]  # (W, L, F)
+    y = arr[ends + horizon]  # (W, F)
+
+    # Irregular sampling: per-step dt is the within-window time gap (first step has
+    # no predecessor -> dt[:, 0] == 0), and target_dt is the (variable) time from
+    # the window end to its target step. Every step is a real observation, so
+    # observed_mask is all-ones -- the irregularity lives in dt, not in masking.
+    win_times = t[win_idx]  # (W, L)
+    dt = np.zeros((n_windows, lookback), dtype=np.float32)
+    dt[:, 1:] = np.diff(win_times, axis=1).astype(np.float32)
+    target_dt = (t[ends + horizon] - t[ends]).astype(np.float32)
     observed_mask = np.ones((n_windows, lookback), dtype=np.uint8)
 
     cut = temporal_split_index(n_windows, train_ratio)

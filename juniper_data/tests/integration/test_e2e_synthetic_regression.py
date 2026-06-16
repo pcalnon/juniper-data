@@ -35,6 +35,7 @@ SYNTHETIC_CASES = [
     ("multi_sine", {"n_steps": 200, "lookback": 16, "horizon": 1, "seed": 0}),
     ("mackey_glass", {"n_steps": 200, "lookback": 16, "horizon": 1, "discard": 50, "seed": 0}),
     ("ar_p", {"n_steps": 200, "lookback": 16, "horizon": 1, "burn_in": 20, "seed": 0}),
+    ("irregular_sine", {"n_steps": 200, "lookback": 16, "horizon": 1, "jitter": 0.5, "seed": 0}),
 ]
 
 

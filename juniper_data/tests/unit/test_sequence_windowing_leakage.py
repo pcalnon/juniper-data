@@ -27,7 +27,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from juniper_data.generators._sequence import _yyyymmdd_to_ordinal, window_one_ticker, window_regular_series
+from juniper_data.generators._sequence import _yyyymmdd_to_ordinal, window_one_ticker, window_regular_series, window_timed_series
 
 pytestmark = [pytest.mark.unit, pytest.mark.generators]
 
@@ -177,5 +177,58 @@ def test_regular_windowing_invariants(n_steps, lookback, horizon, sample_dt, tra
     np.testing.assert_array_equal(out["X_full"], np.concatenate([out["X_train"], out["X_test"]]))
 
     # RR5 -- no future leak: every train target strictly precedes every test target.
+    if out["y_train"].shape[0] and out["y_test"].shape[0]:
+        assert out["y_train"][:, 0].max() < out["y_test"][:, 0].min()
+
+
+@settings(max_examples=200, deadline=None)
+@given(
+    n_steps=st.integers(8, 200),
+    lookback=st.integers(2, 12),
+    horizon=st.integers(1, 6),
+    gaps=st.lists(st.floats(0.05, 10.0, allow_nan=False, allow_infinity=False), min_size=199, max_size=199),
+    train_ratio=st.floats(0.5, 0.95),
+)
+def test_timed_windowing_invariants(n_steps, lookback, horizon, gaps, train_ratio):
+    """``window_timed_series``: dt == within-window time-diffs, variable target_dt, no future leak.
+
+    Index-encoded values (``series[k] == k``) plus strictly-increasing irregular
+    times (cumulative positive gaps) let us pin that ``dt`` equals the per-step
+    time differences, ``target_dt`` is the window-end -> target time gap, and every
+    train target strictly precedes every test target (the irregular-Δt analog of
+    the regular-windowing invariants).
+    """
+    if n_steps - lookback - horizon + 1 < 2:
+        return  # too short for two windows; the windower raises (covered in the unit tests)
+    values = np.arange(n_steps, dtype=np.float64).reshape(-1, 1)  # value == index
+    times = np.concatenate([[0.0], np.cumsum(np.asarray(gaps[: n_steps - 1]))])  # strictly increasing
+    out = window_timed_series(values, times, lookback=lookback, horizon=horizon, train_ratio=train_ratio)
+    n_windows = n_steps - lookback - horizon + 1
+
+    # TR1 -- shapes.
+    assert out["X_full"].shape == (n_windows, lookback, 1)
+    assert out["y_full"].shape == (n_windows, 1)
+
+    # The X value at each cell encodes the original step index it spans.
+    steps = out["X_full"][:, :, 0].astype(np.int64)
+
+    # TR2 -- dt[:,0]==0; dt[:,1:] == the within-window time differences; all > 0.
+    assert np.all(out["dt_full"][:, 0] == 0)
+    expected_dt = np.diff(times[steps], axis=1).astype(np.float32)
+    np.testing.assert_allclose(out["dt_full"][:, 1:], expected_dt, rtol=1e-5, atol=1e-5)
+    assert np.all(out["dt_full"][:, 1:] > 0)
+
+    # TR3 -- target_dt == time(target step) - time(window end).
+    ends = steps[:, -1]
+    expected_target_dt = (times[ends + horizon] - times[ends]).astype(np.float32)
+    np.testing.assert_allclose(out["target_dt_full"], expected_target_dt, rtol=1e-5, atol=1e-5)
+
+    # TR4 -- index encoding: each window is L consecutive steps; target == end + horizon.
+    assert np.all(np.diff(steps, axis=1) == 1)
+    np.testing.assert_array_equal(out["y_full"][:, 0].astype(np.int64), ends + horizon)
+
+    # TR5 -- full == train + test; no future leak.
+    assert n_windows == out["X_train"].shape[0] + out["X_test"].shape[0]
+    np.testing.assert_array_equal(out["X_full"], np.concatenate([out["X_train"], out["X_test"]]))
     if out["y_train"].shape[0] and out["y_test"].shape[0]:
         assert out["y_train"][:, 0].max() < out["y_test"][:, 0].min()
