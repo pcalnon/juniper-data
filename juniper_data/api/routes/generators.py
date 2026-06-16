@@ -22,6 +22,8 @@ from juniper_data.generators.equities_seq import VERSION as EQUITIES_SEQ_VERSION
 from juniper_data.generators.equities_seq import EquitiesSeqGenerator, EquitiesSeqParams
 from juniper_data.generators.gaussian import VERSION as GAUSSIAN_VERSION
 from juniper_data.generators.gaussian import GaussianGenerator, GaussianParams
+from juniper_data.generators.irregular_sine import VERSION as IRREGULAR_SINE_VERSION
+from juniper_data.generators.irregular_sine import IrregularSineGenerator, IrregularSineParams
 from juniper_data.generators.mackey_glass import VERSION as MACKEY_GLASS_VERSION
 from juniper_data.generators.mackey_glass import MackeyGlassGenerator, MackeyGlassParams
 from juniper_data.generators.mnist import VERSION as MNIST_VERSION
@@ -43,9 +45,10 @@ GENERATOR_REGISTRY: dict[str, dict[str, Any]] = {
     # get n_classes + class_distribution from their one-hot y; "regression"
     # generators leave those None and carry the target directly in y_*. The
     # classifiers include equities (canonical one-hot next-day direction, with an
-    # auxiliary y_reg_* close rider); the multi_sine / mackey_glass / ar_p
-    # synthetics are the regression generators (juniper-data#179 §A) -- numpy-only
-    # (W, L, 1) sequences with a per-step regular dt.
+    # auxiliary y_reg_* close rider); the multi_sine / mackey_glass / ar_p /
+    # irregular_sine synthetics are the regression generators (juniper-data#179
+    # §A) -- numpy-only (W, L, 1) sequences with a per-step dt (regular for the
+    # first three; genuinely non-uniform for irregular_sine).
     "spiral": {
         "generator": SpiralGenerator,
         "params_class": SpiralParams,
@@ -136,6 +139,14 @@ GENERATOR_REGISTRY: dict[str, dict[str, Any]] = {
         "task_type": "regression",
         "time_unit": "steps",
         "description": "Autoregressive AR(p) synthetic time-series regression generator (numpy-only). xₜ=c+Σ φᵢ xₜ₋ᵢ+εₜ with Gaussian innovations (default stable AR(2)), windowed into (W, L, 1) sequences with a per-step dt and a horizon-ahead regression target y_*. Deterministic given the seed.",
+    },
+    "irregular_sine": {
+        "generator": IrregularSineGenerator,
+        "params_class": IrregularSineParams,
+        "version": IRREGULAR_SINE_VERSION,
+        "task_type": "regression",
+        "time_unit": "steps",
+        "description": "Irregular-Δt sine synthetic time-series regression generator (numpy-only). K sinusoids sampled at NON-uniform (jittered) times, windowed into (W, L, 1) sequences with a non-uniform per-step dt and variable target_dt. Offline known-answer counterpart to equities' calendar gaps.",
     },
     "mnist": {
         "generator": MnistGenerator,
