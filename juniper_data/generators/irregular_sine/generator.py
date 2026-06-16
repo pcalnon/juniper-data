@@ -22,6 +22,7 @@ from __future__ import annotations
 import numpy as np
 
 from juniper_data.generators._sequence import window_timed_series
+from juniper_data.generators._synthetic import attach_scaling
 
 from .params import IrregularSineParams
 
@@ -53,7 +54,8 @@ class IrregularSineGenerator:
             params: ``IrregularSineParams`` (component + sampling spec + windowing knobs).
         """
         values, times = IrregularSineGenerator._raw_series(params)
-        return window_timed_series(values, times, lookback=params.lookback, horizon=params.horizon, train_ratio=params.train_ratio)
+        arrays = window_timed_series(values, times, lookback=params.lookback, horizon=params.horizon, train_ratio=params.train_ratio)
+        return attach_scaling(arrays, params.scaling)
 
     @staticmethod
     def _raw_series(params: IrregularSineParams) -> tuple[np.ndarray, np.ndarray]:
