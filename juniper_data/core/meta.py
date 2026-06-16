@@ -31,6 +31,8 @@ from typing import Any
 
 import numpy as np
 
+from juniper_data.core.scaling import SCALING_META_KEY
+
 #: The only task type that populates n_classes / class_distribution.
 TASK_TYPE_CLASSIFICATION = "classification"
 
@@ -120,3 +122,24 @@ def derive_sequence_meta(arrays: dict[str, np.ndarray], time_unit: str | None = 
     if ref is None or ref.ndim != 3:
         return {"sequence": False, "lookback": None, "time_unit": None}
     return {"sequence": True, "lookback": int(ref.shape[1]), "time_unit": time_unit}
+
+
+def pop_scaling_meta(arrays: dict[str, Any]) -> dict[str, Any]:
+    """Pop the reserved scaling channel key from a generator's return dict.
+
+    A generator MAY include a single reserved ``"scaling"`` entry (a plain dict,
+    NOT an ndarray) carrying advisory ``dt_scaling`` / ``target_scaling``
+    descriptors -- metadata that is not derivable from the final arrays (the
+    standardization stats). This removes it from ``arrays`` (so the dict stays
+    array-only for checksumming + NPZ persistence) and returns the two
+    descriptors, each ``None`` when the generator did not report scaling.
+
+    Args:
+        arrays: the dict a generator's ``generate()`` returned; mutated in place
+            to drop the reserved ``"scaling"`` key when present.
+
+    Returns:
+        ``{"dt_scaling": <dict | None>, "target_scaling": <dict | None>}``.
+    """
+    scaling = arrays.pop(SCALING_META_KEY, None) or {}
+    return {"dt_scaling": scaling.get("dt_scaling"), "target_scaling": scaling.get("target_scaling")}

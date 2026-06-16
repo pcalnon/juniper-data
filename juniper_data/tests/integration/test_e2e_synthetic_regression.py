@@ -92,3 +92,28 @@ def test_e2e_artifact_passes_client_contract_validator(client: TestClient, gener
         arrays = {key: data[key] for key in data.files}
 
     assert contract.validate_npz_contract(arrays) == "sequence"
+
+
+def test_e2e_standardize_scaling_persisted_in_meta(client: TestClient) -> None:
+    """A synthetic POSTed with scaling="standardize" persists standardize descriptors in meta."""
+    response = client.post(
+        "/v1/datasets",
+        json={"generator": "irregular_sine", "params": {"n_steps": 200, "lookback": 16, "jitter": 0.6, "scaling": "standardize", "seed": 0}, "persist": True},
+    )
+    assert response.status_code == 201, response.text
+    meta = response.json()["meta"]
+    assert meta["dt_scaling"]["method"] == "standardize"
+    assert meta["target_scaling"]["y"]["method"] == "standardize"
+    assert set(meta["dt_scaling"]) >= {"method", "mean", "std", "min", "max"}
+
+
+def test_e2e_default_scaling_is_identity_in_meta(client: TestClient) -> None:
+    """The default (scaling="identity") still surfaces explicit identity descriptors in meta."""
+    response = client.post(
+        "/v1/datasets",
+        json={"generator": "multi_sine", "params": {"n_steps": 200, "lookback": 16, "seed": 0}, "persist": True},
+    )
+    assert response.status_code == 201, response.text
+    meta = response.json()["meta"]
+    assert meta["dt_scaling"] == {"method": "identity"}
+    assert meta["target_scaling"] == {"y": {"method": "identity"}}

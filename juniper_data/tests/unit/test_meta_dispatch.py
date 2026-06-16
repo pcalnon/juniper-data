@@ -19,7 +19,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from juniper_data.core.meta import compute_shape_meta, derive_sequence_meta
+from juniper_data.core.meta import compute_shape_meta, derive_sequence_meta, pop_scaling_meta
 
 pytestmark = [pytest.mark.unit]
 
@@ -134,3 +134,22 @@ def test_derive_sequence_meta_3d_with_empty_train_split():
     assert m["sequence"] is True
     assert m["lookback"] == 7
     assert m["time_unit"] is None
+
+
+def test_pop_scaling_meta_extracts_and_cleans():
+    # The reserved "scaling" channel key is popped (so the dict stays array-only) and mapped out.
+    arrays = {
+        "X_train": np.zeros((2, 3, 1), np.float32),
+        "scaling": {"dt_scaling": {"method": "identity"}, "target_scaling": {"y": {"method": "standardize", "mean": 1.0, "std": 2.0}}},
+    }
+    scaling = pop_scaling_meta(arrays)
+    assert scaling["dt_scaling"] == {"method": "identity"}
+    assert scaling["target_scaling"]["y"]["method"] == "standardize"
+    assert "scaling" not in arrays
+
+
+def test_pop_scaling_meta_absent_returns_none():
+    arrays = {"X_train": np.zeros((2, 3, 1), np.float32)}
+    scaling = pop_scaling_meta(arrays)
+    assert scaling == {"dt_scaling": None, "target_scaling": None}
+    assert "scaling" not in arrays

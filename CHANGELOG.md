@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Advisory `dt` / `target` scaling meta channel** (juniper-data#179 §A; Δt
+  note §6.5): a generator may now report *how* its per-step `dt` and regression
+  target should be standardized, via a reserved `"scaling"` key in the
+  `generate()` return dict that the dataset route pops into two new optional
+  `DatasetMeta` fields — `dt_scaling` and `target_scaling` (JSON-safe
+  descriptors, e.g. `{"method": "standardize", "mean": …, "std": …, "min": …,
+  "max": …}` or `{"method": "identity"}`; `target_scaling` is keyed by
+  target-array name). The scaling is **advisory** — the NPZ keeps RAW arrays
+  (every contract invariant, e.g. `dt[:, 0] == 0`, stays intact), so a consumer
+  standardizes at ingestion and denormalizes for metrics using the persisted
+  stats; nothing in the NPZ is transformed. New `core/scaling.py`
+  (`standardize_descriptor` + the exact-inverse `standardize` /
+  `inverse_standardize`, with a std≈0 guard for constant data) and
+  `core/meta.py::pop_scaling_meta`. The four synthetic generators gain a
+  `scaling: "identity" | "standardize"` parameter (default `identity`; the
+  `standardize` descriptors are fit on the **train split** only, no test
+  leakage). These stats are not derivable from the final arrays, so this is the
+  non-derivable generator→meta path deferred from WS-1's lean scope; it closes
+  the WS-1 §B denorm round-trip acceptance check. Adds `core/scaling.py` unit
+  tests, a `pop_scaling_meta` channel test, a parametrized synthetic emission +
+  denorm round-trip suite, and e2e route assertions.
+
 - **Irregular-Δt synthetic generator** (`irregular_sine`): a fourth numpy-only
   regression generator (juniper-data#179 §A) that samples a continuous-time
   sinusoid superposition at **non-uniform** times — each inter-sample gap is

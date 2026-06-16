@@ -24,7 +24,7 @@ from juniper_data.api.constants import (
 from juniper_data.api.observability import record_dataset_generation, record_dataset_post
 from juniper_data.core.artifacts import compute_checksum
 from juniper_data.core.dataset_id import generate_dataset_id
-from juniper_data.core.meta import compute_shape_meta, derive_sequence_meta
+from juniper_data.core.meta import compute_shape_meta, derive_sequence_meta, pop_scaling_meta
 from juniper_data.core.models import (
     BatchCreateRequest,
     BatchCreateResponse,
@@ -164,6 +164,11 @@ async def create_dataset(
         cache=POST_CACHE_MISS,
     )
 
+    # WS-4 (#179 §A): pull the advisory dt/target scaling descriptors out of the
+    # reserved "scaling" channel key BEFORE checksum + NPZ persist, so the stored
+    # arrays stay array-only. None for generators that do not report scaling.
+    scaling_meta = pop_scaling_meta(arrays)
+
     checksum = compute_checksum(arrays)
 
     # WS-1 (#168): dispatch shape/class metadata on the generator's declared
@@ -198,6 +203,8 @@ async def create_dataset(
         sequence=seq_meta["sequence"],
         lookback=seq_meta["lookback"],
         time_unit=seq_meta["time_unit"],
+        dt_scaling=scaling_meta["dt_scaling"],
+        target_scaling=scaling_meta["target_scaling"],
         artifact_formats=["npz"],
         created_at=now,
         checksum=checksum,

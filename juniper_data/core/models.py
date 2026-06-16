@@ -46,10 +46,20 @@ class DatasetMeta(BaseModel):
     # Sequence / time-series metadata (WS-1 / juniper-data#168); False/None for
     # tabular artifacts. The route derives `sequence` + `lookback` from the X
     # rank; `time_unit` is generator-declared. Per-step Δt lives in the NPZ
-    # (dt_ / observed_mask_); dynamic dt/target scaling stats defer to WS-4.
+    # (dt_ / observed_mask_).
     sequence: bool = False
     lookback: int | None = None
     time_unit: str | None = None
+
+    # Advisory scaling descriptors (WS-4 / juniper-data#179 §A; Δt note §6.5).
+    # A generator MAY report how its per-step `dt` / regression target should be
+    # standardized; the NPZ keeps RAW values, so these are recommended-transform
+    # metadata (the consumer normalizes at ingestion + denorms for metrics), NOT
+    # applied transforms. JSON-safe dicts: `{"method": "identity"}` or
+    # `{"method": "standardize", "mean": .., "std": .., "min": .., "max": ..}`;
+    # `target_scaling` is keyed by target-array name (e.g. `{"y": <desc>}`).
+    dt_scaling: dict[str, Any] | None = None
+    target_scaling: dict[str, Any] | None = None
 
     # Artifacts
     artifact_formats: list[str] = Field(default_factory=lambda: ["npz"])
