@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-06-19
+
 ### Added
 
 - **Advisory `dt` / `target` scaling meta channel** (juniper-data#179 §A; Δt
@@ -840,6 +842,7 @@ params = SpiralParams(
 
 | Version | Date       | Description                                             |
 | ------- | ---------- | ------------------------------------------------------- |
+| 0.7.0   | 2026-06-19 | Synthetic dt-sequence generators + scaling meta channel  |
 | 0.6.0   | 2026-04-08 | Versioning, batch ops, systemd, PostgreSQL fixes        |
 | 0.5.0   | 2026-03-03 | Security hardening                                      |
 | 0.4.2   | 2026-02-17 | CI branch triggers, gitignore cleanup                   |
