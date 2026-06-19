@@ -22,6 +22,7 @@ from .defaults import (
     EQUITIES_DEFAULT_MAX_SYMBOLS,
     EQUITIES_DEFAULT_NORMALIZE_FEATURES,
     EQUITIES_DEFAULT_PURCHASE_DATE,
+    EQUITIES_DEFAULT_REGRESSION_TARGET,
     EQUITIES_DEFAULT_START_DATE,
     EQUITIES_DEFAULT_TEST_RATIO,
     EQUITIES_DEFAULT_TRAIN_RATIO,
@@ -45,7 +46,8 @@ class EquitiesParams(BaseModel):
 
     Downloads and conditions daily S&P 500 equities data into the JuniperData
     NPZ contract: a 10-column numeric feature matrix, a one-hot next-day
-    direction label, and an auxiliary next-day-close regression target.
+    direction label, and a configurable next-day regression target (raw
+    close, simple return, or log return -- see ``regression_target``).
     """
 
     model_config = ConfigDict(populate_by_name=True)
@@ -73,6 +75,10 @@ class EquitiesParams(BaseModel):
     fundamentals_fill: Literal["zero", "nan", "drop"] = Field(
         default=EQUITIES_DEFAULT_FUNDAMENTALS_FILL,
         description="How to represent pre-2009 missing total_shares / market_cap: zero-fill, leave NaN, or drop rows.",
+    )
+    regression_target: Literal["next_close", "return", "log_return"] = Field(
+        default=EQUITIES_DEFAULT_REGRESSION_TARGET,
+        description="Representation of the y_reg target: raw next-day close, simple return (next_close/close - 1), or log return ln(next_close/close). The return variants are stationary; the raw close is not.",
     )
     week52_window: int = Field(
         default=EQUITIES_DEFAULT_WEEK52_WINDOW,

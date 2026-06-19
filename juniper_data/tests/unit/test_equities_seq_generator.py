@@ -144,3 +144,14 @@ class TestEquitiesSeqGenerator:
     def test_get_schema_includes_lookback(self) -> None:
         schema = get_schema()
         assert "lookback" in schema["properties"]
+
+    def test_regression_target_flows_through(self) -> None:
+        # equities_seq inherits regression_target; log_return -> stationary y_reg.
+        frame = _ohlcv(seed=9)
+        nc = _generate(["AAPL"], {"AAPL": frame}, _shares(), lookback=5)
+        lr = _generate(["AAPL"], {"AAPL": frame}, _shares(), lookback=5, regression_target="log_return")
+        assert nc["y_reg_full"].shape == lr["y_reg_full"].shape
+        assert "regression_target" in get_schema()["properties"]
+        # next_close tracks the ~100 price level; log returns are centered near zero.
+        assert abs(float(lr["y_reg_full"].mean())) < abs(float(nc["y_reg_full"].mean()))
+        assert float(np.abs(lr["y_reg_full"]).mean()) < 1.0

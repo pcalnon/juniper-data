@@ -10,8 +10,10 @@ Targets (per the dataset spec) are dual:
   * canonical one-hot **next-day direction** (up/down) in ``y_*`` -- keeps
     ``n_classes == 2`` and the route's ``argmax(y_full)`` class distribution
     correct;
-  * auxiliary **next-day close** regression target carried in extra
-    ``y_reg_*`` arrays (preserved through ``save_versioned`` / ``save_npz``).
+  * auxiliary **next-day regression** target carried in extra ``y_reg_*``
+    arrays (preserved through ``save_versioned`` / ``save_npz``); its
+    representation is configurable via ``regression_target`` -- raw next-day
+    close (default), simple return, or log return.
 
 Compact, row-aligned identifier arrays (``ticker_code_*`` + ``ticker_vocab``,
 ``date_*`` as YYYYMMDD ints) keep every sample traceable without bloating the
@@ -195,7 +197,7 @@ class EquitiesGenerator:
             features = EquitiesGenerator._features(frame, norm)
             arrays[f"X_{name}"] = features
             arrays[f"y_{name}"] = EquitiesGenerator._direction_onehot(frame)
-            arrays[f"y_reg_{name}"] = frame["next_close"].to_numpy(dtype=np.float32).reshape(-1, 1)
+            arrays[f"y_reg_{name}"] = EquitiesGenerator._regression_target(frame, params.regression_target)
             arrays[f"ticker_code_{name}"] = frame["ticker_code"].to_numpy(dtype=np.int32)
             arrays[f"date_{name}"] = EquitiesGenerator._dates_yyyymmdd(frame)
 
@@ -434,6 +436,28 @@ class EquitiesGenerator:
         onehot[:, 1] = up
         onehot[:, 0] = 1.0 - up
         return onehot
+
+    @staticmethod
+    def _regression_target(frame: Any, mode: str) -> np.ndarray:
+        """Build the ``(n, 1)`` float32 ``y_reg`` regression target.
+
+        ``next_close`` is the raw next-day close (non-stationary; the original
+        target, preserved byte-for-byte). ``return`` is the simple next-day
+        return ``next_close / close - 1`` and ``log_return`` is
+        ``ln(next_close / close)`` -- both stationary, the standard conditioning
+        for a regressor on trending price data. Computed in float64 then cast to
+        the contract's float32.
+        """
+        if frame.empty:
+            return np.zeros((0, 1), dtype=np.float32)
+        next_close = frame["next_close"].to_numpy(dtype=np.float64)
+        if mode == "next_close":
+            values = next_close
+        else:
+            close = frame["close"].to_numpy(dtype=np.float64)
+            ratio = next_close / close
+            values = np.log(ratio) if mode == "log_return" else ratio - 1.0
+        return values.astype(np.float32).reshape(-1, 1)
 
     @staticmethod
     def _dates_yyyymmdd(frame: Any) -> np.ndarray:

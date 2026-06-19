@@ -111,6 +111,27 @@ class TestEquitiesGenerator:
         close = frame["Close"].to_numpy().astype(np.float32)
         np.testing.assert_allclose(arrays["y_reg_full"][:, 0], close[1 : arrays["y_reg_full"].shape[0] + 1], rtol=1e-5)
 
+    def test_regression_target_default_is_next_close(self) -> None:
+        # The default mode reproduces the original raw-close target byte-for-byte.
+        frame = _ohlcv(seed=20)
+        default = _generate(["AAPL"], {"AAPL": frame}, _shares())
+        explicit = _generate(["AAPL"], {"AAPL": frame}, _shares(), regression_target="next_close")
+        np.testing.assert_array_equal(default["y_reg_full"], explicit["y_reg_full"])
+
+    def test_regression_target_return_and_log_return(self) -> None:
+        # `return` / `log_return` produce the stationary next-day return targets.
+        frame = _ohlcv(seed=21)
+        n = _generate(["AAPL"], {"AAPL": frame}, _shares())["y_reg_full"].shape[0]
+        ret = _generate(["AAPL"], {"AAPL": frame}, _shares(), regression_target="return")
+        logret = _generate(["AAPL"], {"AAPL": frame}, _shares(), regression_target="log_return")
+        close = frame["Close"].to_numpy(dtype=np.float64)
+        next_close, close_aligned = close[1 : n + 1], close[:n]
+        np.testing.assert_allclose(ret["y_reg_full"][:, 0], (next_close / close_aligned - 1.0).astype(np.float32), rtol=1e-6, atol=1e-7)
+        np.testing.assert_allclose(logret["y_reg_full"][:, 0], np.log(next_close / close_aligned).astype(np.float32), rtol=1e-6, atol=1e-7)
+        assert ret["y_reg_full"].shape == (n, 1)
+        # Raw close tracks the ~100 price level (non-stationary); returns are centered near zero.
+        assert abs(float(ret["y_reg_full"].mean())) < 1.0
+
     def test_temporal_split_ordering_per_ticker(self) -> None:
         arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=5), "MSFT": _ohlcv(seed=6)}, _shares(), train_ratio=0.7, test_ratio=0.3)
         for code in range(len(arrays["ticker_vocab"])):
@@ -251,3 +272,11 @@ class TestEquitiesParams:
         assert params.symbols is None
         assert params.start_date == "2000-01-01"
         assert params.fundamentals_fill == "zero"
+
+    def test_regression_target_default_and_schema(self) -> None:
+        assert EquitiesParams().regression_target == "next_close"
+        assert "regression_target" in get_schema()["properties"]
+
+    def test_invalid_regression_target_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            EquitiesParams(regression_target="returns")  # not a Literal member
