@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-06-19
+
+### Fixed
+
+- **Ship the equities S&P 500 constituents CSV inside the wheel.** 0.7.0 packaged only `*.py`, so
+  `sp500_constituents.csv` was absent from the built wheel and the `equities` / `equities_seq`
+  generators raised `FileNotFoundError` from a pip install of `juniper-data[equities]==0.7.0`. Adds
+  a `[tool.setuptools.package-data]` entry (`juniper_data.generators.equities = ["*.csv"]`) so the
+  constituents list ships, plus a CI build-step assertion that the CSV is present in the built wheel.
+  No API change.
+
 ## [0.7.0] - 2026-06-19
 
 ### Added
@@ -842,6 +853,7 @@ params = SpiralParams(
 
 | Version | Date       | Description                                             |
 | ------- | ---------- | ------------------------------------------------------- |
+| 0.7.1   | 2026-06-19 | Fix: equities constituents CSV now ships in the wheel    |
 | 0.7.0   | 2026-06-19 | Synthetic dt-sequence generators + scaling meta channel  |
 | 0.6.0   | 2026-04-08 | Versioning, batch ops, systemd, PostgreSQL fixes        |
 | 0.5.0   | 2026-03-03 | Security hardening                                      |

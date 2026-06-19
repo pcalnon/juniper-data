@@ -27,7 +27,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "juniper-data"
-version = "0.7.0"
+version = "0.7.1"
 description = "Dataset generation and management service for the Juniper ecosystem"
 readme = "README.md"
 license = { text = "MIT" }
@@ -118,6 +118,12 @@ all = [
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["juniper_data*"]
+
+[tool.setuptools.package-data]
+# Ship generator data files (the equities S&P 500 constituents list) inside the wheel. Without
+# this, setuptools packages only *.py, so the equities / equities_seq generators raise
+# FileNotFoundError on sp500_constituents.csv from a pip install (the 0.7.0 packaging defect).
+"juniper_data.generators.equities" = ["*.csv"]
 
 [tool.ruff]
 # Ecosystem convention is 512, but ruff >=0.15 caps line-length at 320.
