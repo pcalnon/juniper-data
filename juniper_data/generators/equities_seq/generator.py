@@ -13,8 +13,9 @@ The result is the additive 3-D NPZ contract (WS-1 / juniper-data#168): per split
 irregular Δt), the irregular forecast horizon ``target_dt``, an all-ones
 ``observed_mask`` (trading-day-native, nothing imputed), the per-step ``date``
 and the per-window ``window_end_date`` / ``ticker_code``, plus the targets
-``y`` (one-hot next-day direction) and ``y_reg`` (next-day close). ``full`` is
-each ticker's train windows followed by its test windows.
+``y`` (one-hot next-day direction) and ``y_reg`` (the configurable next-day
+regression target -- raw close / return / log-return, per ``regression_target``).
+``full`` is each ticker's train windows followed by its test windows.
 
 See ``juniper-ml/notes/JUNIPER_RECURSE_DELTA_T_HANDLING_2026-06-05.md`` §3
 (schema delta) and §6 (the dt / observed_mask contract).
@@ -127,7 +128,7 @@ class EquitiesSeqGenerator:
             feats = EquitiesGenerator._features(frame, norm)
             dates = EquitiesGenerator._dates_yyyymmdd(frame)
             y_dir = EquitiesGenerator._direction_onehot(frame)
-            y_reg = frame["next_close"].to_numpy(dtype=np.float32).reshape(-1, 1)
+            y_reg = EquitiesGenerator._regression_target(frame, params.regression_target)
             ords = _yyyymmdd_to_ordinal(dates)
             cut_ordinal = int(ords[temporal_split_index(n_rows, params.train_ratio)])
             out = window_one_ticker(

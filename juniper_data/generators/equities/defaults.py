@@ -42,6 +42,15 @@ EQUITIES_DEFAULT_USE_CACHE = True
 EQUITIES_DEFAULT_TRAIN_RATIO = 0.8
 EQUITIES_DEFAULT_TEST_RATIO = 0.2
 
+# Regression-target (y_reg) representation. The raw next-day close is
+# non-stationary (it trends with the price level), which a bounded-memory
+# recurrent regressor extrapolates badly; the return variants are stationary
+# and are the standard conditioning for forecasting on trending price data.
+#   "next_close" -> raw next-day close price (default; back-compatible)
+#   "return"     -> simple next-day return: next_close / close - 1
+#   "log_return" -> log next-day return: ln(next_close / close)
+EQUITIES_DEFAULT_REGRESSION_TARGET: Literal["next_close", "return", "log_return"] = "next_close"
+
 # Bundled snapshot of current S&P 500 constituents (ticker,name,cik,sector),
 # used as the default universe and the ticker -> (name, CIK) map.
 CONSTITUENTS_FILENAME = "sp500_constituents.csv"

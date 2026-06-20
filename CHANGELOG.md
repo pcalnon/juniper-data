@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-06-19
+
+### Added
+
+- **Configurable equities regression target (`regression_target`).** `EquitiesParams` (inherited by
+  `EquitiesSeqParams`) gains a `regression_target: "next_close" | "return" | "log_return"` option
+  controlling the `y_reg_*` array representation:
+  - `next_close` (default) — the raw next-day close price, **byte-identical** to prior output;
+  - `return` — the simple next-day return `next_close / close - 1`;
+  - `log_return` — the log next-day return `ln(next_close / close)`.
+
+  The raw close is non-stationary (it trends with the price level), which a bounded-memory recurrent
+  regressor extrapolates poorly; the return variants are stationary — the standard conditioning for
+  forecasting on trending price data. Both the flat `equities` and the windowed `equities_seq`
+  generators honor it via a shared `EquitiesGenerator._regression_target` helper. The one-hot
+  `direction` target, the feature matrix, and every other array are unchanged, and the default keeps
+  all existing artifacts byte-identical. Motivated by the juniper-recurrence Δt-LMU `equities_seq`
+  finding (raw-close target → r² ≈ −50; see juniper-ml
+  `notes/JUNIPER_RECURRENCE_EVALUATION_FINDINGS_2026-06-18.md`).
+
 ## [0.7.1] - 2026-06-19
 
 ### Fixed
