@@ -181,6 +181,7 @@ exclude_dirs = ["tests", "reports", "logs", "htmlcov", "data"]
 skips = ["B101", "B311"]
 
 [tool.pytest.ini_options]
+asyncio_mode = "auto"
 minversion = "6.0"
 testpaths = ["juniper_data/tests"]
 pythonpath = ["."]
