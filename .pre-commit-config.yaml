@@ -26,7 +26,14 @@
 #####################################################################################################################################################################################################
 
 # Minimum pre-commit version required
-minimum_pre_commit_version: "3.0.0"
+# >=3.2.0 is needed for the renamed pre-commit/pre-push/manual stage syntax used below.
+minimum_pre_commit_version: "3.2.0"
+
+# Install BOTH the pre-commit and pre-push hook types on a plain `pre-commit install`,
+# so the pre-push-staged gates (coverage-check, require-requirements-lock) wire locally
+# without a separate `pre-commit install --hook-type pre-push`. Existing clones must
+# re-run `pre-commit install` once to pick up the pre-push hook.
+default_install_hook_types: [pre-commit, pre-push]
 
 # Default settings for all hooks
 default_language_version:
@@ -224,7 +231,8 @@ repos:
   # aggregate floor is the value of ``COVERAGE_FAIL_UNDER`` (default 80%, set
   # in ``.github/workflows/ci.yml`` and ``pyproject.toml [tool.coverage.report]``).
   # Runs on pre-push only (not pre-commit) to keep commits fast.
-  # Install with: pre-commit install --hook-type pre-push
+  # The pre-push hook type is auto-installed via `default_install_hook_types`
+  # (top of file), so a plain `pre-commit install` now wires this gate.
   # ═══════════════════════════════════════════════════════════════════════════
   - repo: local
     hooks:
