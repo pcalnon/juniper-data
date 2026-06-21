@@ -381,6 +381,15 @@ pytest juniper_data/tests/performance/ --benchmark-enable --benchmark-compare
 - Source: `juniper_data` package (tests excluded from metrics)
 - Branch coverage enabled
 
+Reproduce the CI coverage gates locally (full suite — aggregate + per-module):
+
+```bash
+make coverage                 # convenience wrapper
+bash util/run_coverage.bash   # source of truth (mirrors .github/workflows/ci.yml)
+```
+
+Gates: 80% aggregate (override with `COVERAGE_FAIL_UNDER=<n>`) plus the per-module floor enforced by `scripts/check_module_coverage.py`. Full suite by design; for a narrower run use plain `pytest`.
+
 ---
 
 ## API Design
