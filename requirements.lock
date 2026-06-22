@@ -26,7 +26,7 @@ idna==3.18
     # via anyio
 juniper-observability==0.4.0
     # via juniper-data (pyproject.toml)
-numpy==2.4.6
+numpy==2.5.0
     # via juniper-data (pyproject.toml)
 prometheus-client==0.25.0
     # via juniper-data (pyproject.toml)

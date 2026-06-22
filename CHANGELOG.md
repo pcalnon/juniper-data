@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-06-22
+
+### Added
+
+- **New `delay_product` synthetic time-series generator (DP-3 capacity instrument).** An
+  irregularly-sampled sinusoid superposition (the same non-uniform Δt sampling as `irregular_sine`)
+  whose regression target is the **bilinear product of two delayed in-window values**,
+  `y = x(t−τ₁)·x(t−τ₂)`, with `lag1` / `lag2` step-delays kept strictly inside the lookback. The
+  product is a quadratic form in the (linear) LMU memory state, so a **linear readout provably cannot
+  fit it** (r² bounded below 1) while a **non-linear (random-Fourier-feature) readout can** — making
+  it the capacity-demonstrating dataset that exposes a clear nonlinear ≫ linear r² gap, complementing
+  the near-linear synthetics where the linear readout is already at its ceiling. Emits the standard
+  additive 3-D NPZ contract (`{X, y, dt, target_dt, observed_mask}_{train,test,full}`,
+  `task_type="regression"`, `time_unit="steps"`) and reuses the leakage-safe `window_timed_series`
+  windowing (the target reads only the emitted window contents; `y_full == concat(train, test)`).
+  Registered as `delay_product`; numpy-only, no extra. See juniper-ml
+  `notes/JUNIPER_RECURRENCE_DP3_READOUT_SPECTRUM_DESIGN_2026-06-20.md` §8a.
+
 ## [0.8.0] - 2026-06-19
 
 ### Added
