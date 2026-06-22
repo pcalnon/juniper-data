@@ -22,6 +22,7 @@ import pytest
 from juniper_data.core.meta import pop_scaling_meta
 from juniper_data.core.scaling import inverse_standardize, standardize
 from juniper_data.generators.ar_p import ArPGenerator, ArPParams
+from juniper_data.generators.delay_product import DelayProductGenerator, DelayProductParams
 from juniper_data.generators.irregular_sine import IrregularSineGenerator, IrregularSineParams
 from juniper_data.generators.mackey_glass import MackeyGlassGenerator, MackeyGlassParams
 from juniper_data.generators.multi_sine import MultiSineGenerator, MultiSineParams
@@ -34,6 +35,7 @@ _CASES = [
     (MackeyGlassGenerator, MackeyGlassParams, {"discard": 50}),
     (ArPGenerator, ArPParams, {"burn_in": 20}),
     (IrregularSineGenerator, IrregularSineParams, {"jitter": 0.6}),
+    (DelayProductGenerator, DelayProductParams, {"lag1": 2, "lag2": 8}),
 ]
 
 

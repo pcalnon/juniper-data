@@ -16,6 +16,8 @@ from juniper_data.generators.circles import VERSION as CIRCLES_VERSION
 from juniper_data.generators.circles import CirclesGenerator, CirclesParams
 from juniper_data.generators.csv_import import VERSION as CSV_IMPORT_VERSION
 from juniper_data.generators.csv_import import CsvImportGenerator, CsvImportParams
+from juniper_data.generators.delay_product import VERSION as DELAY_PRODUCT_VERSION
+from juniper_data.generators.delay_product import DelayProductGenerator, DelayProductParams
 from juniper_data.generators.equities import VERSION as EQUITIES_VERSION
 from juniper_data.generators.equities import EquitiesGenerator, EquitiesParams
 from juniper_data.generators.equities_seq import VERSION as EQUITIES_SEQ_VERSION
@@ -147,6 +149,14 @@ GENERATOR_REGISTRY: dict[str, dict[str, Any]] = {
         "task_type": "regression",
         "time_unit": "steps",
         "description": "Irregular-Δt sine synthetic time-series regression generator (numpy-only). K sinusoids sampled at NON-uniform (jittered) times, windowed into (W, L, 1) sequences with a non-uniform per-step dt and variable target_dt. Offline known-answer counterpart to equities' calendar gaps.",
+    },
+    "delay_product": {
+        "generator": DelayProductGenerator,
+        "params_class": DelayProductParams,
+        "version": DELAY_PRODUCT_VERSION,
+        "task_type": "regression",
+        "time_unit": "steps",
+        "description": "Delay-product synthetic time-series regression generator (numpy-only). Irregularly-sampled sinusoid superposition (the same non-uniform Δt as irregular_sine) whose target is the BILINEAR product of two delayed in-window values y=x(t−τ₁)·x(t−τ₂) (lag1/lag2 step-delays inside the lookback). A quadratic form in the LMU memory that a linear readout provably cannot fit but a non-linear (RFF) readout can — the DP-3 capacity instrument that exposes a clear nonlinear ≫ linear r² gap.",
     },
     "mnist": {
         "generator": MnistGenerator,
