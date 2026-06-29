@@ -47,7 +47,7 @@
 # Core dependencies - using flexible versions for Python 3.14 compatibility
 annotated-doc>=0.0.4
 annotated-types>=0.7.0
-anyio>=4.14.0
+anyio>=4.14.1
 # arc-agi>=0.9.1  # Optional: install with pip install 'juniper-data[arc-agi]'
 # attrs>=25.4.0
 # bandit>=1.9.3
