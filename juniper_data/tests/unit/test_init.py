@@ -91,3 +91,44 @@ class TestPackageInit:
         with patch("juniper_data.ARC_AGI_AVAILABLE", False):
             with pytest.raises(ImportError, match="arc-agi package not installed"):
                 get_arc_agi_arcade()
+
+
+@pytest.mark.unit
+class TestPackageInitImportGuard:
+    """Cover the module-level ``except ImportError`` arc-agi degradation branch."""
+
+    def test_missing_arc_agi_sets_unavailable(self) -> None:
+        """Reloading the package with ``arc_agi`` unimportable degrades gracefully.
+
+        The ``import arc_agi`` at import time normally succeeds in this env (the
+        ``arc-agi`` extra is installed), so the ``except ImportError`` fallback
+        (``ARC_AGI_AVAILABLE = False``; ``arc_agi = None``) is otherwise never
+        executed. Reload the package with the import blocked to exercise it, then
+        restore the real module state so no other test is affected.
+        """
+        import builtins
+        import importlib
+        import sys
+
+        import juniper_data as jd
+
+        real_import = builtins.__import__
+
+        def _blocked_import(name, *args, **kwargs):
+            if name == "arc_agi" or name.startswith("arc_agi."):
+                raise ImportError("arc_agi blocked for coverage of the fallback branch")
+            return real_import(name, *args, **kwargs)
+
+        saved = sys.modules.pop("arc_agi", None)
+        try:
+            with patch.object(builtins, "__import__", side_effect=_blocked_import):
+                importlib.reload(jd)
+            assert jd.ARC_AGI_AVAILABLE is False
+            assert jd.arc_agi is None
+        finally:
+            if saved is not None:
+                sys.modules["arc_agi"] = saved
+            importlib.reload(jd)
+
+        # After restore the real extra is importable again in this env.
+        assert jd.ARC_AGI_AVAILABLE is True

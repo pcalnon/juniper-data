@@ -10,6 +10,8 @@ import juniper_data.api.observability as obs
 from juniper_data.core.models import DatasetMeta
 from juniper_data.storage import CachedDatasetStore, InMemoryDatasetStore
 
+pytestmark = [pytest.mark.unit, pytest.mark.storage]
+
 
 @pytest.fixture
 def primary_store() -> InMemoryDatasetStore:

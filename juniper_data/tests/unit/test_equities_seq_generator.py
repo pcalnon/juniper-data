@@ -32,6 +32,7 @@ pytest.importorskip("yfinance")
 
 from juniper_data.generators.equities import generator as eq_gen  # noqa: E402
 from juniper_data.generators.equities_seq import EquitiesSeqGenerator, EquitiesSeqParams, get_schema  # noqa: E402
+from juniper_data.generators.equities_seq import generator as esq_gen  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.generators]
 
@@ -155,3 +156,48 @@ class TestEquitiesSeqGenerator:
         # next_close tracks the ~100 price level; log returns are centered near zero.
         assert abs(float(lr["y_reg_full"].mean())) < abs(float(nc["y_reg_full"].mean()))
         assert float(np.abs(lr["y_reg_full"]).mean()) < 1.0
+
+
+class TestEquitiesSeqGeneratorBranches:
+    """Cover generate()'s guard / skip / normalize branches (offline, deterministic)."""
+
+    def test_generate_raises_without_equities_extra(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(esq_gen, "EQUITIES_DEPS_AVAILABLE", False)
+        with pytest.raises(ImportError, match="equities"):
+            EquitiesSeqGenerator.generate(EquitiesSeqParams(symbols=["AAPL"], lookback=5))
+
+    def test_generate_skips_ticker_whose_download_raises(self) -> None:
+        good = _ohlcv(seed=20)
+
+        def fake_download(symbol, **_kwargs):
+            if symbol == "MSFT":
+                raise RuntimeError("download exploded")
+            return good.copy()
+
+        with patch.object(eq_gen.yf, "download", side_effect=fake_download), patch.object(eq_gen.EquitiesGenerator, "_fetch_shares", staticmethod(lambda *_a: None)):
+            arrays = EquitiesSeqGenerator.generate(EquitiesSeqParams(symbols=["AAPL", "MSFT"], start_date="2008-01-01", end_date="2011-01-01", use_cache=False, lookback=5, fundamentals_fill="zero"))
+        assert arrays["ticker_vocab"].tolist() == ["AAPL"]
+
+    def test_generate_handles_ticker_with_no_data(self) -> None:
+        # MSFT is absent from the ohlcv map -> empty frame -> the "no data" else branch.
+        arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=21)}, _shares(), lookback=5)
+        assert arrays["ticker_vocab"].tolist() == ["AAPL"]
+
+    def test_generate_raises_when_no_symbol_has_data(self) -> None:
+        with pytest.raises(ValueError, match="No data"):
+            _generate(["MSFT"], {}, _shares(), lookback=5)
+
+    def test_generate_with_normalized_features(self) -> None:
+        arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=22), "MSFT": _ohlcv(seed=23)}, _shares(), lookback=5, normalize_features=True)
+        assert arrays["X_full"].shape[0] > 0
+
+    def test_generate_skips_ticker_shorter_than_lookback(self) -> None:
+        # MSFT conditions to ~7 rows (<= lookback + 1 = 21) so no window is built for it,
+        # while AAPL (400 rows) produces windows -> the per-ticker skip branch fires.
+        arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=24, periods=400), "MSFT": _ohlcv(seed=25, periods=8)}, _shares(), lookback=20)
+        assert "AAPL" in arrays["ticker_vocab"].tolist()
+        assert arrays["X_full"].shape[0] > 0
+
+    def test_generate_raises_when_all_tickers_too_short(self) -> None:
+        with pytest.raises(ValueError, match="lookback"):
+            _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=26, periods=8), "MSFT": _ohlcv(seed=27, periods=8)}, _shares(), lookback=20)

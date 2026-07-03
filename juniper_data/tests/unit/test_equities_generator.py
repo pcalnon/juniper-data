@@ -15,8 +15,10 @@ the suite runs fast and offline. Requires the optional ``equities`` extra
 
 from __future__ import annotations
 
+import json
+import urllib.error
 from contextlib import contextmanager
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -280,3 +282,188 @@ class TestEquitiesParams:
     def test_invalid_regression_target_rejected(self) -> None:
         with pytest.raises(ValueError):
             EquitiesParams(regression_target="returns")  # not a Literal member
+
+
+def _fake_urlopen_response(payload: dict):
+    """A ``urlopen``-compatible context manager whose ``read()`` yields ``payload`` JSON."""
+    resp = MagicMock()
+    resp.read.return_value = json.dumps(payload).encode()
+    resp.__enter__.return_value = resp
+    resp.__exit__.return_value = False
+    return resp
+
+
+class TestEquitiesGeneratorInternals:
+    """Direct coverage of the fetch / cache / conditioning helpers (offline, deterministic).
+
+    ``time.sleep`` is patched to a no-op in the SEC-retry tests so the throttle /
+    backoff paths run instantly; caches are redirected to ``tmp_path`` via the
+    module-level ``_CACHE_DIR``.
+    """
+
+    def test_sec_get_returns_parsed_json_on_200(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(eq_gen.time, "sleep", lambda *_a, **_k: None)
+        payload = {"cik": 320193, "units": {}}
+        monkeypatch.setattr(eq_gen.urllib.request, "urlopen", lambda *_a, **_k: _fake_urlopen_response(payload))
+        assert eq_gen._sec_get("https://data.sec.gov/x") == payload
+
+    def test_sec_get_returns_none_on_404(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(eq_gen.time, "sleep", lambda *_a, **_k: None)
+
+        def _not_found(*_a, **_k):
+            raise urllib.error.HTTPError("https://data.sec.gov/x", 404, "Not Found", {}, None)
+
+        monkeypatch.setattr(eq_gen.urllib.request, "urlopen", _not_found)
+        assert eq_gen._sec_get("https://data.sec.gov/x") is None
+
+    def test_sec_get_retries_then_succeeds(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(eq_gen.time, "sleep", lambda *_a, **_k: None)
+        payload = {"ok": 1}
+        state = {"calls": 0}
+
+        def _flaky(*_a, **_k):
+            state["calls"] += 1
+            if state["calls"] == 1:
+                raise urllib.error.HTTPError("https://data.sec.gov/x", 503, "Busy", {}, None)
+            return _fake_urlopen_response(payload)
+
+        monkeypatch.setattr(eq_gen.urllib.request, "urlopen", _flaky)
+        assert eq_gen._sec_get("https://data.sec.gov/x", retries=3) == payload
+        assert state["calls"] == 2
+
+    def test_sec_get_raises_after_exhausting_retries(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(eq_gen.time, "sleep", lambda *_a, **_k: None)
+
+        def _down(*_a, **_k):
+            raise urllib.error.URLError("network down")
+
+        monkeypatch.setattr(eq_gen.urllib.request, "urlopen", _down)
+        with pytest.raises(urllib.error.URLError):
+            eq_gen._sec_get("https://data.sec.gov/x", retries=2)
+
+    def test_load_sec_ticker_map_reads_cache(self, monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+        monkeypatch.setattr(eq_gen, "_CACHE_DIR", tmp_path)
+        (tmp_path / "company_tickers.json").write_text(json.dumps({"0": {"ticker": "aapl", "title": "Apple Inc", "cik_str": 320193}}))
+        result = eq_gen.EquitiesGenerator._load_sec_ticker_map()
+        assert result["AAPL"] == {"name": "Apple Inc", "cik": 320193}
+
+    def test_load_sec_ticker_map_fetches_and_caches(self, monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+        monkeypatch.setattr(eq_gen, "_CACHE_DIR", tmp_path)
+        monkeypatch.setattr(eq_gen, "_sec_get", lambda *_a, **_k: {"0": {"ticker": "msft", "title": "Microsoft", "cik_str": 789019}})
+        result = eq_gen.EquitiesGenerator._load_sec_ticker_map()
+        assert result["MSFT"]["cik"] == 789019
+        assert (tmp_path / "company_tickers.json").exists()
+
+    def test_load_sec_ticker_map_empty_when_unavailable(self, monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+        monkeypatch.setattr(eq_gen, "_CACHE_DIR", tmp_path)
+        monkeypatch.setattr(eq_gen, "_sec_get", lambda *_a, **_k: None)
+        assert eq_gen.EquitiesGenerator._load_sec_ticker_map() == {}
+
+    def test_fetch_shares_reads_cache(self, monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+        monkeypatch.setattr(eq_gen, "_CACHE_DIR", tmp_path)
+        cache = tmp_path / "shares" / f"{320193:010d}.json"
+        cache.parent.mkdir(parents=True)
+        cache.write_text(json.dumps({"units": {"shares": [{"end": "2009-06-30", "val": 1.0e9, "filed": "2009-07-01"}]}}))
+        series = eq_gen.EquitiesGenerator._fetch_shares(320193, use_cache=True)
+        assert series is not None
+        assert len(series) == 1
+
+    def test_fetch_shares_fetches_and_caches(self, monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+        monkeypatch.setattr(eq_gen, "_CACHE_DIR", tmp_path)
+        payload = {"units": {"shares": [{"end": "2009-06-30", "val": 1.0e9, "filed": "2009-07-01"}, {"end": "2010-06-30", "val": 1.1e9, "filed": "2010-07-01"}]}}
+        monkeypatch.setattr(eq_gen, "_sec_get", lambda *_a, **_k: payload)
+        series = eq_gen.EquitiesGenerator._fetch_shares(999999, use_cache=True)
+        assert series is not None
+        assert len(series) == 2
+        assert (tmp_path / "shares" / "0000999999.json").exists()
+
+    def test_fetch_shares_returns_none_when_no_concept_data(self, monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+        monkeypatch.setattr(eq_gen, "_CACHE_DIR", tmp_path)
+        monkeypatch.setattr(eq_gen, "_sec_get", lambda *_a, **_k: None)
+        assert eq_gen.EquitiesGenerator._fetch_shares(111, use_cache=False) is None
+
+    def test_fetch_shares_returns_none_when_no_usable_points(self, monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+        monkeypatch.setattr(eq_gen, "_CACHE_DIR", tmp_path)
+        monkeypatch.setattr(eq_gen, "_sec_get", lambda *_a, **_k: {"units": {"shares": [{"end": None, "val": None}]}})
+        assert eq_gen.EquitiesGenerator._fetch_shares(222, use_cache=False) is None
+
+    def test_download_ohlcv_reads_cache(self, monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+        monkeypatch.setattr(eq_gen, "_CACHE_DIR", tmp_path)
+        cache = tmp_path / "ohlcv" / "AAPL_2008-01-01_2011-01-01.csv"
+        cache.parent.mkdir(parents=True)
+        eq_gen.EquitiesGenerator._normalize_ohlcv_columns(_ohlcv(periods=10)).to_csv(cache)
+        result = eq_gen.EquitiesGenerator._download_ohlcv("AAPL", "2008-01-01", "2011-01-01", use_cache=True)
+        assert result is not None
+        assert len(result) == 10
+
+    def test_download_ohlcv_returns_none_when_normalized_empty(self, monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+        monkeypatch.setattr(eq_gen, "_CACHE_DIR", tmp_path)
+        junk = pd.DataFrame({"Junk": [1.0, 2.0]}, index=pd.bdate_range("2008-01-01", periods=2))
+        monkeypatch.setattr(eq_gen.yf, "download", lambda *_a, **_k: junk)
+        assert eq_gen.EquitiesGenerator._download_ohlcv("AAPL", "2008-01-01", "2011-01-01", use_cache=False) is None
+
+    def test_download_ohlcv_writes_cache_after_download(self, monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+        monkeypatch.setattr(eq_gen, "_CACHE_DIR", tmp_path)
+        monkeypatch.setattr(eq_gen.yf, "download", lambda *_a, **_k: _ohlcv(periods=12).copy())
+        result = eq_gen.EquitiesGenerator._download_ohlcv("AAPL", "2008-01-01", "2011-01-01", use_cache=True)
+        assert result is not None
+        assert len(result) == 12
+        assert (tmp_path / "ohlcv" / "AAPL_2008-01-01_2011-01-01.csv").exists()
+
+    def test_normalize_ohlcv_columns_flattens_multiindex(self) -> None:
+        idx = pd.bdate_range("2008-01-01", periods=3)
+        frame = pd.DataFrame({("Open", "AAPL"): [1.0, 2.0, 3.0], ("High", "AAPL"): [2.0, 3.0, 4.0], ("Low", "AAPL"): [0.5, 1.5, 2.5], ("Close", "AAPL"): [1.0, 2.0, 3.0], ("Volume", "AAPL"): [10.0, 20.0, 30.0]}, index=idx)
+        frame.columns = pd.MultiIndex.from_tuples(list(frame.columns))
+        out = eq_gen.EquitiesGenerator._normalize_ohlcv_columns(frame)
+        assert "open" in out.columns
+        assert "close" in out.columns
+
+    def test_resolve_symbols_uses_sec_map_for_unknown(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        constituents = {"AAPL": {"name": "Apple", "cik": 320193, "sector": "Tech"}}
+        monkeypatch.setattr(eq_gen.EquitiesGenerator, "_load_sec_ticker_map", staticmethod(lambda: {"ZZZZ": {"name": "Zeta Corp", "cik": 111}}))
+        ordered, meta = eq_gen.EquitiesGenerator._resolve_symbols(EquitiesParams(symbols=["AAPL", "ZZZZ"]), constituents)
+        assert ordered == ["AAPL", "ZZZZ"]
+        assert meta["ZZZZ"]["cik"] == 111
+
+    def test_resolve_symbols_defaults_to_full_universe(self) -> None:
+        constituents = {"MSFT": {"name": "MS", "cik": 789019, "sector": "Tech"}, "AAPL": {"name": "Apple", "cik": 320193, "sector": "Tech"}}
+        ordered, meta = eq_gen.EquitiesGenerator._resolve_symbols(EquitiesParams(), constituents)
+        assert ordered == ["AAPL", "MSFT"]
+        assert meta is constituents
+
+    def test_resolve_symbols_respects_max_symbols(self) -> None:
+        constituents = {name: {"name": name, "cik": i, "sector": ""} for i, name in enumerate(["A", "B", "C"])}
+        ordered, _meta = eq_gen.EquitiesGenerator._resolve_symbols(EquitiesParams(max_symbols=2), constituents)
+        assert ordered == ["A", "B"]
+
+    def test_generate_skips_ticker_whose_download_raises(self) -> None:
+        good = _ohlcv(seed=30)
+
+        def fake_download(symbol, **_kwargs):
+            if symbol == "MSFT":
+                raise RuntimeError("download exploded")
+            return good.copy()
+
+        with patch.object(eq_gen.yf, "download", side_effect=fake_download), patch.object(eq_gen.EquitiesGenerator, "_fetch_shares", staticmethod(lambda *_a: None)):
+            arrays = EquitiesGenerator.generate(EquitiesParams(symbols=["AAPL", "MSFT"], start_date="2008-01-01", end_date="2011-01-01", use_cache=False, fundamentals_fill="zero"))
+        assert arrays["ticker_vocab"].tolist() == ["AAPL"]
+
+    def test_generate_clips_test_split_when_rounding_overshoots(self) -> None:
+        # 8 business days condition to 7 rows; train=test=0.5 -> round(3.5)=4 each
+        # -> 4 + 4 > 7, exercising the ``n_test = n_rows - n_train`` clip.
+        arrays = _generate(["AAPL"], {"AAPL": _ohlcv(periods=8, seed=31)}, _shares(), train_ratio=0.5, test_ratio=0.5)
+        n = arrays["X_full"].shape[0]
+        assert n == 7
+        assert arrays["X_train"].shape[0] + arrays["X_test"].shape[0] == n
+
+    def test_condition_one_returns_none_when_too_short(self) -> None:
+        with patch.object(eq_gen.yf, "download", return_value=_ohlcv(periods=1)):
+            result = eq_gen.EquitiesGenerator._condition_one("AAPL", {}, EquitiesParams(use_cache=False), "2011-01-01")
+        assert result is None
+
+    def test_static_array_helpers_handle_empty_frame(self) -> None:
+        empty = pd.DataFrame()
+        assert eq_gen.EquitiesGenerator._features(empty, None).shape == (0, 10)
+        assert eq_gen.EquitiesGenerator._direction_onehot(empty).shape == (0, 2)
+        assert eq_gen.EquitiesGenerator._regression_target(empty, "next_close").shape == (0, 1)
+        assert eq_gen.EquitiesGenerator._dates_yyyymmdd(empty).shape == (0,)

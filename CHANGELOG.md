@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **CI: per-file coverage is now a blocking gate (ecosystem per-file rollout C-5).** The unit-tests
+  job's advisory per-module step — `scripts/check_module_coverage.py`, which only *warned* on modules
+  below 85% — is replaced by the shared `juniper-coverage-gap-map --enforce` gate from
+  `juniper-ci-tools>=0.6.0,<0.7.0`. CI now **fails** when any source file's statement coverage is
+  below 90% or any packaged sub-module's pooled (statement-weighted) coverage is below 95%. The gate
+  computes statement % itself from `reports/coverage.json`, so the `branch = true` coverage config
+  does not change the gate basis. See juniper-ml
+  `notes/JUNIPER_ECOSYSTEM_PER_FILE_COVERAGE_ROLLOUT_SCOPING_2026-06-30.md`. `check_module_coverage.py`
+  is retained (still wired into the pre-push hook and `util/run_coverage.bash`).
+
+### Tests
+
+- **Lifted `unit and not slow` lane coverage of `juniper_data` from 86.8% to 98.3%** to satisfy the
+  new gate, with no production-code changes. Existing but unmarked genuine unit tests were brought
+  into the lane (`test_checkerboard/circles/csv_import/gaussian/moon_generator.py`,
+  `test_cached_store.py` — the `@pytest.mark.unit` marker was missing so CI's `-m "unit"` selection
+  silently excluded them), and new deterministic (no-sleep) tests were added for the API security
+  module, the batch dataset endpoints, the sequence-windowing validation branches, the equities /
+  windowed-equities generators' fetch/cache/conditioning helpers (SEC + yfinance mocked, offline),
+  and the package `__init__` arc-agi import-fallback branch.
+
 ## [0.9.0] - 2026-06-22
 
 ### Added

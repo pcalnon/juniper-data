@@ -5,6 +5,8 @@ import pytest
 
 from juniper_data.generators.gaussian import VERSION, GaussianGenerator, GaussianParams, get_schema
 
+pytestmark = [pytest.mark.unit, pytest.mark.generators]
+
 
 class TestGaussianParams:
     """Tests for GaussianParams validation."""

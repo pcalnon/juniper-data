@@ -10,6 +10,8 @@ from juniper_data.generators.checkerboard import (
     get_schema,
 )
 
+pytestmark = [pytest.mark.unit, pytest.mark.generators]
+
 
 class TestCheckerboardParams:
     """Tests for CheckerboardParams validation."""

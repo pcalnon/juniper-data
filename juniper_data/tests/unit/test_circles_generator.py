@@ -5,6 +5,8 @@ import pytest
 
 from juniper_data.generators.circles import VERSION, CirclesGenerator, CirclesParams, get_schema
 
+pytestmark = [pytest.mark.unit, pytest.mark.generators]
+
 
 class TestCirclesParams:
     """Tests for CirclesParams validation."""
