@@ -357,3 +357,96 @@ class TestSecurityModuleFunctions:
         limiter2 = get_rate_limiter()
         assert auth1 is not auth2
         assert limiter1 is not limiter2
+
+
+@pytest.mark.unit
+class TestSecurityGateCoverage:
+    """Deterministic (no-sleep) coverage of the security module's remaining branches.
+
+    The comprehensive ``TestAPIKeyAuth`` / ``TestRateLimiter`` /
+    ``TestSecurityModuleFunctions`` classes above are unmarked (and two of their
+    rate-limiter tests use ``time.sleep``), so they are excluded from the CI
+    ``unit and not slow`` lane. This class re-covers the same code paths for the
+    per-file coverage gate deterministically: the window-expiry reset uses a
+    seeded ``window_start`` and the capacity warning monkeypatches the module
+    ceiling instead of sleeping / allocating 8k entries.
+    """
+
+    def test_validate_true_when_disabled(self) -> None:
+        assert APIKeyAuth(None).validate("anything") is True
+
+    def test_validate_false_for_none_key_when_enabled(self) -> None:
+        assert APIKeyAuth(["configured-key"]).validate(None) is False
+
+    async def test_call_returns_none_when_auth_disabled(self) -> None:
+        auth = APIKeyAuth(None)
+        request = MagicMock()
+        request.headers.get.return_value = None
+        assert await auth(request) is None
+
+    def test_window_property_returns_configured_seconds(self) -> None:
+        assert RateLimiter(requests_per_minute=10, window_seconds=42).window == 42
+
+    def test_get_key_uses_api_key_when_present(self) -> None:
+        assert RateLimiter()._get_key(MagicMock(), "abc") == "key:abc"
+
+    def test_check_allows_all_when_disabled(self) -> None:
+        limiter = RateLimiter(requests_per_minute=7, window_seconds=33, enabled=False)
+        assert limiter.check("k") == (True, 7, 33)
+
+    def test_check_resets_after_window_expiry(self) -> None:
+        """A stale window (old ``window_start``) resets deterministically -- no sleep."""
+        limiter = RateLimiter(requests_per_minute=5, window_seconds=60, enabled=True)
+        # Seed a full window whose start is at the epoch, so ``now - window_start``
+        # far exceeds the window and the expiry-reset branch fires on next check.
+        limiter._counters["stale"] = (5, 0.0)
+        allowed, remaining, _ = limiter.check("stale")
+        assert allowed is True
+        assert remaining == 4
+
+    def test_capacity_warning_fires_once_then_suppresses(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        import logging as _logging
+
+        from juniper_data.api import security as security_module
+
+        monkeypatch.setattr(security_module, "RATE_LIMITER_MAX_ENTRIES", 5)
+        limiter = RateLimiter(requests_per_minute=100, window_seconds=60, enabled=True)
+        # threshold = int(5 * 0.8) = 4; seed exactly the threshold count.
+        for i in range(4):
+            limiter._counters[f"ip:{i}"] = (1, time.time())
+        with caplog.at_level(_logging.WARNING, logger="juniper_data.api.security"):
+            limiter._warn_on_capacity_locked()
+            limiter._warn_on_capacity_locked()  # second crossing must not double-log
+        warnings = [rec for rec in caplog.records if "Rate limiter cache" in rec.message]
+        assert len(warnings) == 1
+        assert limiter._capacity_warning_emitted is True
+
+    async def test_call_noop_when_rate_limiter_disabled(self) -> None:
+        limiter = RateLimiter(requests_per_minute=5, enabled=False)
+        # A disabled limiter returns immediately via the early-return branch (no raise).
+        await limiter(MagicMock())
+
+    def test_reset_clears_counters(self) -> None:
+        limiter = RateLimiter(requests_per_minute=5, enabled=True)
+        limiter.check("k")
+        assert len(limiter._counters) == 1
+        limiter.reset()
+        assert len(limiter._counters) == 0
+
+    def test_global_getters_are_lazy_singletons_and_resettable(self) -> None:
+        from juniper_data.api.security import get_api_key_auth, get_rate_limiter, reset_security_state
+
+        reset_security_state()
+        try:
+            auth1 = get_api_key_auth()
+            limiter1 = get_rate_limiter()
+            assert isinstance(auth1, APIKeyAuth)
+            assert isinstance(limiter1, RateLimiter)
+            # Second calls return the cached singletons (the ``is None`` guard is false).
+            assert get_api_key_auth() is auth1
+            assert get_rate_limiter() is limiter1
+            reset_security_state()
+            assert get_api_key_auth() is not auth1
+            assert get_rate_limiter() is not limiter1
+        finally:
+            reset_security_state()

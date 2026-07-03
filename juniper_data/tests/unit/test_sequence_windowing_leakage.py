@@ -232,3 +232,77 @@ def test_timed_windowing_invariants(n_steps, lookback, horizon, gaps, train_rati
     np.testing.assert_array_equal(out["X_full"], np.concatenate([out["X_train"], out["X_test"]]))
     if out["y_train"].shape[0] and out["y_test"].shape[0]:
         assert out["y_train"][:, 0].max() < out["y_test"][:, 0].min()
+
+
+class TestSequenceWindowingValidation:
+    """Cover the argument-validation branches of the three windowers (deterministic)."""
+
+    @staticmethod
+    def _one_ticker_args(dates: np.ndarray) -> tuple:
+        n = len(dates)
+        feats = np.zeros((n, 2), dtype=np.float32)
+        y_dir = np.zeros((n, 2), dtype=np.float32)
+        y_reg = np.zeros((n, 1), dtype=np.float32)
+        return feats, dates, y_dir, y_reg
+
+    def test_one_ticker_rejects_lookback_below_one(self) -> None:
+        feats, dates, y_dir, y_reg = self._one_ticker_args(np.array([20200101, 20200102, 20200103], dtype=np.int64))
+        with pytest.raises(ValueError, match="lookback must be >= 1"):
+            window_one_ticker(feats, dates, y_dir, y_reg, 0, lookback=0, cut_ordinal=0)
+
+    def test_one_ticker_rejects_non_increasing_dates(self) -> None:
+        feats, dates, y_dir, y_reg = self._one_ticker_args(np.array([20200103, 20200101, 20200105], dtype=np.int64))
+        with pytest.raises(ValueError, match="strictly increasing"):
+            window_one_ticker(feats, dates, y_dir, y_reg, 0, lookback=1, cut_ordinal=0)
+
+    def test_regular_series_rejects_lookback_below_one(self) -> None:
+        with pytest.raises(ValueError, match="lookback must be >= 1"):
+            window_regular_series(np.arange(6.0), lookback=0, horizon=1, sample_dt=1.0, train_ratio=0.5)
+
+    def test_regular_series_rejects_horizon_below_one(self) -> None:
+        with pytest.raises(ValueError, match="horizon must be >= 1"):
+            window_regular_series(np.arange(6.0), lookback=2, horizon=0, sample_dt=1.0, train_ratio=0.5)
+
+    def test_regular_series_rejects_nonpositive_sample_dt(self) -> None:
+        with pytest.raises(ValueError, match="sample_dt must be > 0"):
+            window_regular_series(np.arange(6.0), lookback=2, horizon=1, sample_dt=0.0, train_ratio=0.5)
+
+    def test_regular_series_accepts_1d_input(self) -> None:
+        out = window_regular_series(np.arange(6.0), lookback=2, horizon=1, sample_dt=1.0, train_ratio=0.5)
+        assert out["X_full"].ndim == 3 and out["X_full"].shape[2] == 1  # 1-D reshaped to (W, L, 1)
+
+    def test_regular_series_rejects_3d_input(self) -> None:
+        with pytest.raises(ValueError, match="1-D or 2-D"):
+            window_regular_series(np.zeros((6, 1, 1)), lookback=2, horizon=1, sample_dt=1.0, train_ratio=0.5)
+
+    def test_regular_series_rejects_too_short(self) -> None:
+        with pytest.raises(ValueError, match="too short"):
+            window_regular_series(np.arange(3.0), lookback=2, horizon=1, sample_dt=1.0, train_ratio=0.5)
+
+    def test_timed_series_rejects_lookback_below_one(self) -> None:
+        with pytest.raises(ValueError, match="lookback must be >= 1"):
+            window_timed_series(np.arange(6.0), np.arange(6.0), lookback=0, horizon=1, train_ratio=0.5)
+
+    def test_timed_series_rejects_horizon_below_one(self) -> None:
+        with pytest.raises(ValueError, match="horizon must be >= 1"):
+            window_timed_series(np.arange(6.0), np.arange(6.0), lookback=2, horizon=0, train_ratio=0.5)
+
+    def test_timed_series_accepts_1d_values(self) -> None:
+        out = window_timed_series(np.arange(6.0), np.arange(6.0), lookback=2, horizon=1, train_ratio=0.5)
+        assert out["X_full"].ndim == 3 and out["X_full"].shape[2] == 1
+
+    def test_timed_series_rejects_3d_values(self) -> None:
+        with pytest.raises(ValueError, match="1-D or 2-D"):
+            window_timed_series(np.zeros((6, 1, 1)), np.arange(6.0), lookback=2, horizon=1, train_ratio=0.5)
+
+    def test_timed_series_rejects_times_length_mismatch(self) -> None:
+        with pytest.raises(ValueError, match="times must be 1-D of length"):
+            window_timed_series(np.arange(6.0), np.arange(5.0), lookback=2, horizon=1, train_ratio=0.5)
+
+    def test_timed_series_rejects_non_increasing_times(self) -> None:
+        with pytest.raises(ValueError, match="strictly increasing"):
+            window_timed_series(np.arange(6.0), np.array([0.0, 2.0, 1.0, 3.0, 4.0, 5.0]), lookback=2, horizon=1, train_ratio=0.5)
+
+    def test_timed_series_rejects_too_short(self) -> None:
+        with pytest.raises(ValueError, match="too short"):
+            window_timed_series(np.arange(3.0), np.arange(3.0), lookback=2, horizon=1, train_ratio=0.5)

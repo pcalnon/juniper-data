@@ -10,6 +10,8 @@ import pytest
 
 from juniper_data.generators.moon import VERSION, MoonGenerator, MoonParams, get_schema
 
+pytestmark = [pytest.mark.unit, pytest.mark.generators]
+
 
 class TestMoonParams:
     """Tests for ``MoonParams`` validation."""

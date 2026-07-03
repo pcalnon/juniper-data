@@ -426,3 +426,77 @@ class TestHealthEndpoint:
         assert "version" in data
         assert data["service"] == "juniper-data"
         assert "dependencies" in data
+
+
+def _create_spiral(client: TestClient, seed: int) -> str:
+    """Create a persisted spiral dataset via the API and return its ID."""
+    request = {"generator": "spiral", "params": {"n_spirals": 2, "n_points_per_spiral": 40, "seed": seed}, "persist": True}
+    resp = client.post("/v1/datasets", json=request)
+    assert resp.status_code == 201
+    return resp.json()["dataset_id"]
+
+
+@pytest.mark.unit
+class TestBatchEndpoints:
+    """Cover the batch endpoints' error/edge branches in the unit lane.
+
+    ``juniper_data/tests/api/test_batch_operations.py`` exercises these routes,
+    but it lives under ``tests/api`` (``@pytest.mark.api``) which the CI
+    ``unit and not slow`` + ``juniper_data/tests/unit`` scope does not collect,
+    so the batch error paths were invisible to the per-file coverage gate. These
+    unit tests use the in-memory-store TestClient (no external services).
+    """
+
+    def test_batch_create_partial_success_on_http_error(self, client: TestClient) -> None:
+        """A bad-generator item is reported via the ``except HTTPException`` branch."""
+        request = {
+            "datasets": [
+                {"generator": "spiral", "params": {"n_spirals": 2, "n_points_per_spiral": 40, "seed": 1}, "persist": True},
+                {"generator": "does_not_exist", "params": {}, "persist": True},
+            ]
+        }
+        response = client.post("/v1/datasets/batch-create", json=request)
+        assert response.status_code == 201
+        data = response.json()
+        assert data["total_created"] == 1
+        assert data["total_failed"] == 1
+        failed = [item for item in data["results"] if not item["success"]]
+        assert len(failed) == 1
+        assert failed[0]["error"]
+
+    def test_batch_create_opaque_error_ref_on_unexpected_failure(self, client: TestClient, memory_store: InMemoryDatasetStore, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A non-HTTP store failure hits the ``except Exception`` branch (ERR-08 opaque ref)."""
+
+        def _boom(*_args, **_kwargs):
+            raise RuntimeError("disk gone")
+
+        monkeypatch.setattr(memory_store, "save_versioned", _boom)
+        request = {"datasets": [{"generator": "spiral", "params": {"n_spirals": 2, "n_points_per_spiral": 40, "seed": 2}, "persist": True}]}
+        response = client.post("/v1/datasets/batch-create", json=request)
+        assert response.status_code == 201
+        data = response.json()
+        assert data["total_created"] == 0
+        assert data["total_failed"] == 1
+        error = data["results"][0]["error"]
+        assert "Dataset creation failed (ref:" in error
+        assert "disk gone" not in error  # raw exception detail must never leak
+
+    def test_batch_update_tags_updates_and_reports_not_found(self, client: TestClient) -> None:
+        """batch-tags updates existing datasets and lists unknown IDs as not_found."""
+        id1 = _create_spiral(client, seed=3)
+        id2 = _create_spiral(client, seed=4)
+        request = {"dataset_ids": [id1, id2, "missing-id"], "add_tags": ["alpha", "beta"], "remove_tags": []}
+        response = client.patch("/v1/datasets/batch-tags", json=request)
+        assert response.status_code == 200
+        data = response.json()
+        assert set(data["updated"]) == {id1, id2}
+        assert data["not_found"] == ["missing-id"]
+        assert data["total_updated"] == 2
+
+    def test_batch_export_skips_raced_deletion(self, client: TestClient, memory_store: InMemoryDatasetStore, monkeypatch: pytest.MonkeyPatch) -> None:
+        """An ID that exists but whose artifact is None is skipped mid-stream (raced delete)."""
+        id1 = _create_spiral(client, seed=5)
+        monkeypatch.setattr(memory_store, "get_artifact_bytes", lambda _dataset_id: None)
+        response = client.post("/v1/datasets/batch-export", json={"dataset_ids": [id1]})
+        # The raced item is skipped; the endpoint still streams a (well-formed) archive.
+        assert response.status_code == 200

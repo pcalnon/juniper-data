@@ -299,13 +299,22 @@ jobs:
 
           python -m coverage report --fail-under=${{ env.COVERAGE_FAIL_UNDER }}
 
-      - name: Enforce Per-Module Coverage Gate (85%)
+      - name: Enforce per-file coverage gate (blocking)
+        # Per-file coverage rollout C-5 (juniper-ml
+        # notes/JUNIPER_ECOSYSTEM_PER_FILE_COVERAGE_ROLLOUT_SCOPING_2026-06-30.md):
+        # exit 1 if any source file's statement coverage < 90 OR a sub-module's
+        # pooled (statement-weighted) coverage < 95. This replaces the advisory
+        # scripts/check_module_coverage.py per-module step, which only *warned*
+        # on below-threshold modules. The shared juniper-ci-tools gate computes
+        # statement % itself from coverage.json, so the branch=true coverage
+        # config does not change the gate basis.
         run: |
           echo "╔════════════════════════════════════════════════════════════╗"
-          echo "║       JuniperData - Per-Module Coverage Gate (85%)         ║"
+          echo "║   JuniperData - Per-File Coverage Gate (>=90 file / >=95)   ║"
           echo "╚════════════════════════════════════════════════════════════╝"
 
-          python scripts/check_module_coverage.py
+          pip install "juniper-ci-tools>=0.6.0,<0.7.0"
+          juniper-coverage-gap-map --coverage-json reports/coverage.json --enforce
 
       - name: Upload Coverage Artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1

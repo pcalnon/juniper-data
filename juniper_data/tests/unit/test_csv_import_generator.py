@@ -13,6 +13,8 @@ from juniper_data.generators.csv_import import (
     get_schema,
 )
 
+pytestmark = [pytest.mark.unit, pytest.mark.generators]
+
 
 @pytest.fixture
 def import_dir(tmp_path: Path):
