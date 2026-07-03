@@ -110,7 +110,7 @@ class TestPackageInitImportGuard:
         import importlib
         import sys
 
-        import juniper_data as jd
+        jd = sys.modules["juniper_data"]
 
         real_import = builtins.__import__
 
