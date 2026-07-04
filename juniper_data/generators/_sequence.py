@@ -17,7 +17,7 @@ impossible:
 The companion property test ``tests/unit/test_sequence_windowing_leakage.py``
 pins the invariants (I1-I5) so a future vectorized rewrite cannot silently
 reintroduce either leak. See the design note
-``juniper-ml/notes/JUNIPER_RECURSE_DELTA_T_HANDLING_2026-06-05.md`` -- §6.3 (this
+``juniper-ml/notes/JUNIPER_2026-06-05_JUNIPER-RECURRENCE_RECURSE-DELTA-T-HANDLING.md`` -- §6.3 (this
 implementation), §6.1 (the key contract), and §7 (leakage analysis + invariants).
 
 This module depends only on numpy and the core split helper, so it can be reused

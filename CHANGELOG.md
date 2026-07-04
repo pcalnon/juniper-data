@@ -156,7 +156,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   also passed into `set_build_info(...)` (Prometheus `juniper_data_build` Info
   metric) and the shared `ReadinessResponse`. Foundation for the ecosystem
   stale-image-detection effort — see juniper-ml
-  [`notes/BUILD_PROVENANCE_DESIGN_2026-06-14.md`](https://github.com/pcalnon/juniper-ml/blob/main/notes/BUILD_PROVENANCE_DESIGN_2026-06-14.md).
+  [`notes/BUILD_PROVENANCE_DESIGN_2026-06-14.md`](https://github.com/pcalnon/juniper-ml/blob/main/notes/JUNIPER_2026-06-14_JUNIPER-ECOSYSTEM_BUILD-PROVENANCE-DESIGN.md).
   Requires `juniper-observability>=0.4.0`.
 
 - **Equities S&P 500 time-series generator** (`equities`): new dataset

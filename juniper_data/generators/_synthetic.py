@@ -12,7 +12,7 @@ process-specific fields, builds a ``(T, F)`` series, and hands it to
 
 Unlike ``equities`` / ``equities_seq`` these have no optional extra -- they are
 pure numpy, so they are the zero-dependency smoke datasets for the 3-D sequence
-contract. See ``juniper-ml/notes/JUNIPER_RECURSE_MODEL_DESIGN_AND_PLAN_2026-05-31.md``
+contract. See ``juniper-ml/notes/JUNIPER_2026-05-31_JUNIPER-RECURRENCE_RECURSE-MODEL-DESIGN-AND-PLAN.md``
 ([OQ-5]) and the WS-4 follow-up tracker juniper-data#179 §A.
 """
 

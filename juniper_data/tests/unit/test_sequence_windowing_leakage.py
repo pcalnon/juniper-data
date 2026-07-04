@@ -7,7 +7,7 @@ enabled (I4), and strictly-positive target horizons (I5). A naive
 concat-then-slide windower fails I1/I2; the per-entity construction makes both
 structural, and these properties pin them so a future vectorized rewrite cannot
 silently reintroduce either leak. See
-``juniper-ml/notes/JUNIPER_RECURSE_DELTA_T_HANDLING_2026-06-05.md`` §7.
+``juniper-ml/notes/JUNIPER_2026-06-05_JUNIPER-RECURRENCE_RECURSE-DELTA-T-HANDLING.md`` §7.
 """
 
 # Project:       Juniper
