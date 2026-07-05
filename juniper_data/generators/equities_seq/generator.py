@@ -17,7 +17,7 @@ and the per-window ``window_end_date`` / ``ticker_code``, plus the targets
 regression target -- raw close / return / log-return, per ``regression_target``).
 ``full`` is each ticker's train windows followed by its test windows.
 
-See ``juniper-ml/notes/JUNIPER_RECURSE_DELTA_T_HANDLING_2026-06-05.md`` §3
+See ``juniper-ml/notes/JUNIPER_2026-06-05_JUNIPER-RECURRENCE_RECURSE-DELTA-T-HANDLING.md`` §3
 (schema delta) and §6 (the dt / observed_mask contract).
 """
 

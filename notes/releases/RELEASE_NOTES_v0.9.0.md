@@ -133,5 +133,5 @@ None known at time of release.
 ## Links
 
 - [Full Changelog](../../CHANGELOG.md)
-- [DP-3 readout-spectrum design](https://github.com/pcalnon/juniper-ml/blob/main/notes/JUNIPER_RECURRENCE_DP3_READOUT_SPECTRUM_DESIGN_2026-06-20.md)
+- [DP-3 readout-spectrum design](https://github.com/pcalnon/juniper-ml/blob/main/notes/JUNIPER_2026-06-20_JUNIPER-RECURRENCE_DP3-READOUT-SPECTRUM-DESIGN.md)
 - [Previous Release](RELEASE_NOTES_v0.8.0.md)

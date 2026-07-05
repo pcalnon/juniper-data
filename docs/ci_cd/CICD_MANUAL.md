@@ -342,7 +342,7 @@ The `required-checks` job in ci.yml acts as the merge quality gate. All of these
 4. **PyPI stage**: Same process, requires manual reviewer approval
 5. Approve the PyPI deployment via GitHub environment approval or `gh api`
 
-See [PyPI Publishing Procedure](../../../juniper-ml/notes/PYPI-PUBLISH-PROCEDURE.md) for ecosystem-wide publishing lessons.
+See [PyPI Publishing Procedure](../../../juniper-ml/notes/JUNIPER_2026-06-18_JUNIPER-ECOSYSTEM_PYPI-PUBLISH-PROCEDURE.md) for ecosystem-wide publishing lessons.
 
 ---
 

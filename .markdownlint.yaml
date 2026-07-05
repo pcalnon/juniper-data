@@ -3,7 +3,7 @@
 # Mirrors the shared juniper-ml config (line-length 512, lenient
 # ordered-list and emphasis rules). Aligned with the rest of the
 # Juniper ecosystem per
-# juniper-ml/notes/CI_PIPELINE_ALIGNMENT_PLAN_2026-04-29.md.
+# juniper-ml/notes/JUNIPER_2026-04-29_JUNIPER-ECOSYSTEM_CI-PIPELINE-ALIGNMENT-PLAN.md.
 # Rule reference: https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
 
 # MD029/ol-prefix: Allow any ordered list prefix style
