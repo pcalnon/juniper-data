@@ -196,7 +196,7 @@ For reproducible Docker builds, the project maintains a `requirements.lock` file
 
 ```bash
 # Regenerate after changing dependencies in pyproject.toml
-uv pip compile pyproject.toml --extra api --extra observability --upgrade -o requirements.lock
+uv pip compile pyproject.toml --extra api --extra observability --extra mnist --upgrade -o requirements.lock
 ```
 
 The `pyproject.toml` retains flexible `>=` ranges for local development, while the lockfile pins exact versions. CI checks lockfile freshness by resolving `pyproject.toml` under the committed `requirements.lock` constraints, so routine `conf/requirements*.txt` snapshot updates do not require a lockfile change.

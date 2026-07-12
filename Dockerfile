@@ -16,7 +16,12 @@ WORKDIR /build
 # Install build dependencies
 RUN pip install --no-cache-dir --upgrade pip wheel setuptools
 
-# Install pinned dependencies from lockfile (best layer caching)
+# Install pinned dependencies from lockfile (best layer caching).
+# The lockfile is compiled with --extra api --extra observability --extra mnist
+# (see .github/workflows/lockfile-update.yml), so the image ships the Hugging
+# Face `datasets` chain and the MNIST / Fashion-MNIST generator works in the
+# service container out of the box. The mnist chain (pyarrow, pandas, pillow,
+# huggingface-hub, aiohttp) is the dominant image-size contributor.
 COPY requirements.lock ./
 RUN pip install --no-cache-dir -r requirements.lock
 
@@ -60,8 +65,13 @@ WORKDIR /app
 COPY --from=builder /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Create data directory with proper ownership
-RUN mkdir -p /app/data/datasets && \
+# Create data directory with proper ownership. hf-cache is the Hugging Face
+# cache home (HF_HOME below): the MNIST / Fashion-MNIST generator downloads
+# from the Hub into it on first use, and keeping it under /app/data lets a
+# mounted data volume persist the cache across container restarts. Offline
+# deployments seed this directory ahead of time (see README
+# "MNIST / Fashion-MNIST (optional extra)").
+RUN mkdir -p /app/data/datasets /app/data/hf-cache && \
     chown -R juniper:juniper /app
 
 # Switch to non-root user
@@ -72,6 +82,12 @@ ENV JUNIPER_DATA_HOST=0.0.0.0
 ENV JUNIPER_DATA_PORT=8100
 ENV JUNIPER_DATA_STORAGE_PATH=/app/data/datasets
 ENV JUNIPER_DATA_LOG_LEVEL=INFO
+
+# Hugging Face cache home for the MNIST / Fashion-MNIST generator. First
+# generation downloads the dataset from the Hub into this directory; placing
+# it under /app/data lets a mounted data volume persist (or pre-seed) the
+# cache, which is required for offline deployments.
+ENV HF_HOME=/app/data/hf-cache
 
 # Build provenance (see the ARG block in the runtime stage above): exported so
 # the app process can read its own source revision / build date and report them

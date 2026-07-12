@@ -87,6 +87,7 @@ jobs:
           uv pip compile pyproject.toml \
             --extra api \
             --extra observability \
+            --extra mnist \
             --upgrade \
             -o requirements.lock
 

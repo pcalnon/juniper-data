@@ -632,11 +632,12 @@ jobs:
           # can support: a new dep was added, a min-version was bumped past a
           # pin, or an entry was removed. Refresh by running:
           #   uv pip compile pyproject.toml \
-          #     --extra api --extra observability \
+          #     --extra api --extra observability --extra mnist \
           #     --upgrade -o requirements.lock
           uv pip compile pyproject.toml \
             --extra api \
             --extra observability \
+            --extra mnist \
             --constraint requirements.lock \
             -o /tmp/requirements.lock.check
 
@@ -649,7 +650,7 @@ jobs:
 
           if ! diff -u /tmp/lock_pins /tmp/check_pins; then
             echo ""
-            echo "::error::requirements.lock no longer satisfies pyproject.toml — refresh with: uv pip compile pyproject.toml --extra api --extra observability --upgrade -o requirements.lock"
+            echo "::error::requirements.lock no longer satisfies pyproject.toml — refresh with: uv pip compile pyproject.toml --extra api --extra observability --extra mnist --upgrade -o requirements.lock"
             exit 1
           fi
 

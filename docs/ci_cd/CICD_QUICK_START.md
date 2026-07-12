@@ -126,7 +126,7 @@ python scripts/check_doc_links.py
 
 **Coverage below 80%**: Run `python scripts/check_module_coverage.py --run-tests` to see per-module breakdown. Add tests for modules below 85%.
 
-**Lockfile check fails in CI**: Regenerate with `uv pip compile pyproject.toml --extra api --extra observability -o requirements.lock`.
+**Lockfile check fails in CI**: Regenerate with `uv pip compile pyproject.toml --extra api --extra observability --extra mnist -o requirements.lock`.
 
 ---
 

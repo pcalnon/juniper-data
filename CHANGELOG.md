@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`[mnist]` extra ships real MNIST / Fashion-MNIST generation (plan unit D2, juniper-ml
+  training-runtime-defects plan §4 I-5).** New optional dependency group `mnist = ["datasets[vision]>=4.0.0"]`
+  (Hugging Face `datasets` + Pillow for image decode); included in `[all]`. The `requirements.lock`
+  compile surface gains `--extra mnist` (lockfile-update workflow, CI freshness gate, and all
+  documented copies of the command), so the service Docker image now ships the chain and MNIST
+  generation works in containers out of the box. The image pins `HF_HOME=/app/data/hf-cache` so a
+  mounted data volume can persist (or pre-seed, for offline deployments) the Hub download cache.
+  Added a real-generation integration test (tiny `n_samples`, slow-marked) that asserts the NPZ
+  contract shapes — `(n, 784)` float32 X, `(n, 10)` one-hot y — and skips cleanly when `datasets`
+  is not installed or the Hub is unreachable with no cache.
+
+### Fixed
+
+- **MNIST generator now loads the canonical namespaced Hub repositories** (`ylecun/mnist`,
+  `zalando-datasets/fashion_mnist`). Bare canonical names (`load_dataset("mnist")`) are rejected by
+  the huggingface-hub 1.x URI layer used by `datasets>=5` ("Repository id must be
+  'namespace/name'"), so the stable `MnistParams.dataset` values (`"mnist"` / `"fashion_mnist"` —
+  the public parameter surface is unchanged) now map internally to the namespaced repos, which load
+  identically on older `datasets` versions. Generator `VERSION` bumped 1.0.0 → 1.0.1.
+
 ### Changed
 
 - **CI: per-file coverage is now a blocking gate (ecosystem per-file rollout C-5).** The unit-tests

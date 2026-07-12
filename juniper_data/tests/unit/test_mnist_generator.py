@@ -293,6 +293,43 @@ class TestMnistGenerator:
         for key in ["X_train", "y_train", "X_test", "y_test", "X_full", "y_full"]:
             assert result[key].dtype == np.float32
 
+    def test_generate_loads_namespaced_mnist_repo(self, mock_hf_load) -> None:
+        """dataset="mnist" loads the canonical namespaced Hub repo (bare names rejected by datasets>=5)."""
+        mock_ds, _, _ = _make_mock_hf_dataset(n_samples=10)
+        mock_hf_load.return_value = mock_ds
+
+        from juniper_data.generators.mnist.generator import MnistGenerator
+
+        MnistGenerator.generate(MnistParams(dataset="mnist"))
+
+        mock_hf_load.assert_called_once_with("ylecun/mnist", split="train")
+
+    def test_generate_loads_namespaced_fashion_mnist_repo(self, mock_hf_load) -> None:
+        """dataset="fashion_mnist" loads the canonical namespaced Hub repo."""
+        mock_ds, _, _ = _make_mock_hf_dataset(n_samples=10)
+        mock_hf_load.return_value = mock_ds
+
+        from juniper_data.generators.mnist.generator import MnistGenerator
+
+        MnistGenerator.generate(MnistParams(dataset="fashion_mnist"))
+
+        mock_hf_load.assert_called_once_with("zalando-datasets/fashion_mnist", split="train")
+
+    def test_repo_mapping_covers_every_dataset_literal(self) -> None:
+        """_HF_DATASET_REPOS stays in lockstep with the MnistParams.dataset Literal values."""
+        from typing import Literal, get_args, get_origin
+
+        from juniper_data.generators.mnist.generator import _HF_DATASET_REPOS
+
+        dataset_annotation = MnistParams.model_fields["dataset"].annotation
+        assert get_origin(dataset_annotation) is Literal
+        literal_values = set(get_args(dataset_annotation))
+
+        assert set(_HF_DATASET_REPOS) == literal_values
+        for repo_id in _HF_DATASET_REPOS.values():
+            namespace, _, name = repo_id.partition("/")
+            assert namespace and name, f"repo id {repo_id!r} must be 'namespace/name'"
+
 
 @pytest.mark.unit
 @pytest.mark.generators
