@@ -280,6 +280,20 @@ class TestMnistGenerator:
             with pytest.raises(ImportError, match="Hugging Face datasets package not installed"):
                 MnistGenerator.generate(params)
 
+    def test_is_available_false_without_datasets(self) -> None:
+        """is_available reports False when the HF datasets package is absent (D1 / I-5)."""
+        with patch("juniper_data.generators.mnist.generator.HF_AVAILABLE", False):
+            from juniper_data.generators.mnist.generator import MnistGenerator
+
+            assert MnistGenerator.is_available() is False
+
+    def test_is_available_true_with_datasets(self) -> None:
+        """is_available reports True when the HF datasets package is importable (D1 / I-5)."""
+        with patch("juniper_data.generators.mnist.generator.HF_AVAILABLE", True):
+            from juniper_data.generators.mnist.generator import MnistGenerator
+
+            assert MnistGenerator.is_available() is True
+
     def test_generate_correct_dtypes(self, mock_hf_load) -> None:
         """All arrays are float32."""
         mock_ds, _, _ = _make_mock_hf_dataset(n_samples=10)

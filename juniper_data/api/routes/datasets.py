@@ -86,7 +86,9 @@ async def create_dataset(
         Dataset metadata and artifact URL.
 
     Raises:
-        HTTPException: 400 if generator not found or parameters invalid.
+        HTTPException: 400 if generator not found or parameters invalid;
+            501 if the generator's optional dependencies are missing in this
+            deployment (D1 / I-5 — the detail carries the install hint).
     """
     if request.generator not in GENERATOR_REGISTRY:
         raise HTTPException(
@@ -146,6 +148,24 @@ async def create_dataset(
     try:
         # arrays = generator_class.generate(params)
         arrays = await asyncio.to_thread(generator_class.generate, params)
+    except ImportError as e:
+        record_dataset_generation(generator=request.generator, status=GENERATION_STATUS_ERROR, duration=time.monotonic() - gen_start)
+        record_dataset_post(
+            generator=request.generator,
+            status=GENERATION_STATUS_ERROR,
+            cache=POST_CACHE_MISS,
+        )
+        # D1 (I-5): a generator raising ImportError means an optional dependency
+        # is missing in this deployment — a deterministic capability gap, not an
+        # internal error. Surface it as 501 Not Implemented with the generator's
+        # actionable install hint (e.g. "pip install datasets") instead of letting
+        # the bare re-raise below mask it as a generic 500. 503 is deliberately
+        # avoided: it invites client retries and health-tooling misreads for a
+        # condition that will not clear on its own.
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail=f"Generator '{request.generator}' is not available in this deployment: {e}",
+        ) from e
     except Exception:
         record_dataset_generation(generator=request.generator, status=GENERATION_STATUS_ERROR, duration=time.monotonic() - gen_start)
         # METRICS-MON R4.5: also bump the POST counter on the error

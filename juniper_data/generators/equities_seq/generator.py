@@ -64,6 +64,16 @@ class EquitiesSeqGenerator:
     """
 
     @staticmethod
+    def is_available() -> bool:
+        """Report whether this generator can run in this deployment (D1 / I-5).
+
+        Returns:
+            True when the optional ``equities`` extra (pandas + yfinance) is
+            importable; False otherwise (``generate`` would raise ImportError).
+        """
+        return EQUITIES_DEPS_AVAILABLE
+
+    @staticmethod
     def generate(params: EquitiesSeqParams) -> dict[str, np.ndarray]:
         """Generate the windowed equities sequence dataset.
 
