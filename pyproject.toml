@@ -51,6 +51,26 @@ equities = [
     "yfinance>=0.2.40",
     "pandas>=2.0.0",
 ]
+mnist = [
+    # MNIST / Fashion-MNIST generator (generators/mnist/): loads the canonical
+    # Hub-hosted parquet datasets (ylecun/mnist, zalando-datasets/fashion_mnist)
+    # via Hugging Face `datasets`. The [vision] extra pulls Pillow, which the
+    # Image feature requires to decode the 28x28 PNGs under .with_format("numpy")
+    # (verified empirically: bare `datasets` raises "To support decoding images,
+    # please install 'Pillow'" at generation time). Floor at the 4.x line:
+    # datasets 4.0 removed dataset-script execution entirely (Hub parquet
+    # loading only — no remote-code path), and the generator's API surface
+    # (load_dataset(repo_id, split=...), .shuffle(seed=...), .select(range),
+    # .with_format("numpy") bulk column access) is stable from 4.x through the
+    # currently-pinned 5.x. The 4.x line is also the first contemporary with
+    # this service's Python 3.14 runtime (older 2.x/3.x chains predate cp314
+    # wheels for pyarrow et al.).
+    # Heavy dependency chain (pyarrow, pandas, huggingface-hub, fsspec) —
+    # deliberately extra-gated, never part of the base install. First call
+    # downloads from the Hugging Face Hub into the HF cache (HF_HOME); offline
+    # deployments need a seeded cache (see README "MNIST / Fashion-MNIST").
+    "datasets[vision]>=4.0.0",
+]
 api = [
     "fastapi>=0.100.0",
     # CVE-2026-48710 (GHSA-86qp-5c8j-p5mr): Host-header poisoning of
@@ -112,7 +132,7 @@ dev = [
     "pre-commit>=3.0.0",
 ]
 all = [
-    "juniper-data[api,arc-agi,equities,observability,dev,test]",
+    "juniper-data[api,arc-agi,equities,mnist,observability,dev,test]",
 ]
 
 [tool.setuptools.packages.find]

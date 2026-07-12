@@ -213,7 +213,7 @@ Automatically regenerates `requirements.lock` when Dependabot updates dependenci
 
 - **Trigger**: Push to `dependabot/pip/**` branches
 - **Condition**: Only runs for `dependabot[bot]` actor
-- Runs `uv pip compile pyproject.toml --extra api --extra observability --upgrade -o requirements.lock`
+- Runs `uv pip compile pyproject.toml --extra api --extra observability --extra mnist --upgrade -o requirements.lock`
 - Uses `CROSS_REPO_DISPATCH_TOKEN` (not `GITHUB_TOKEN`) so the push re-triggers CI
 - Commits with `[dependabot skip]` prefix to prevent Dependabot re-processing
 
@@ -357,7 +357,7 @@ See [PyPI Publishing Procedure](../../../juniper-ml/notes/JUNIPER_2026-06-18_JUN
 **Lockfile check fails**: Regenerate with:
 
 ```bash
-uv pip compile pyproject.toml --extra api --extra observability -o requirements.lock
+uv pip compile pyproject.toml --extra api --extra observability --extra mnist -o requirements.lock
 ```
 
 **Dependabot PR missing lockfile update**: The `lockfile-update.yml` workflow handles `requirements.lock` automatically when the branch matches `dependabot/pip/**` and the actor is `dependabot[bot]`. If the PR only changes `conf/requirements.txt` and `conf/requirements-ORIG.txt`, a lockfile update may not be needed.

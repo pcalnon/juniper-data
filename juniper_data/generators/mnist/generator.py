@@ -10,7 +10,7 @@ from juniper_data.core.split import shuffle_and_split
 
 from .params import MnistParams
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 
 try:
     from datasets import load_dataset as hf_load_dataset
@@ -19,6 +19,17 @@ try:
 except ImportError:
     HF_AVAILABLE = False
     hf_load_dataset = None  # type: ignore[assignment]
+
+# Canonical Hub repositories for the public parameter values. Bare canonical
+# names ("mnist") are rejected by the huggingface-hub 1.x URI layer used by
+# datasets >= 5 ("Repository id must be 'namespace/name'"), so the stable
+# MnistParams.dataset values map to the namespaced repos the Hub migrated the
+# canonical datasets to. Namespaced ids load identically on older datasets
+# versions, so this mapping is safe across the entire supported range.
+_HF_DATASET_REPOS = {
+    "mnist": "ylecun/mnist",
+    "fashion_mnist": "zalando-datasets/fashion_mnist",
+}
 
 
 class MnistGenerator:
@@ -97,8 +108,9 @@ class MnistGenerator:
         # assert hf_load_dataset is not None
 
         # params.dataset is validated by MnistParams (Pydantic) as Literal["mnist", "fashion_mnist"],
-        # so this argument to hf_load_dataset is restricted to these known-safe values.
-        ds = hf_load_dataset(params.dataset, split="train")  # nosec B615
+        # so the repo id passed to hf_load_dataset comes from the closed _HF_DATASET_REPOS mapping
+        # of known-safe canonical Hub repositories.
+        ds = hf_load_dataset(_HF_DATASET_REPOS[params.dataset], split="train")  # nosec B615
 
         if params.seed is not None:
             ds = ds.shuffle(seed=params.seed)

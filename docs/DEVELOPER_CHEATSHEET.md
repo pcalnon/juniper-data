@@ -30,7 +30,7 @@
 | `ruff format juniper_data`                                                             | Format (replaces black)                                                         |
 | `mypy juniper_data --ignore-missing-imports`                                           | Type check                                                                      |
 | `pre-commit run --all-files`                                                           | Run all pre-commit hooks                                                        |
-| `uv pip compile pyproject.toml --extra api --extra observability -o requirements.lock` | Regenerate lockfile                                                             |
+| `uv pip compile pyproject.toml --extra api --extra observability --extra mnist -o requirements.lock` | Regenerate lockfile                                                             |
 
 ---
 

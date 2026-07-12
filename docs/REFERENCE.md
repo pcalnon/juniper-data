@@ -300,7 +300,7 @@ pip install -e ".[api]"
 pip install -e ".[all]"
 
 # Regenerate lockfile for Docker
-uv pip compile pyproject.toml --extra api --extra observability -o requirements.lock
+uv pip compile pyproject.toml --extra api --extra observability --extra mnist -o requirements.lock
 ```
 
 ---
@@ -520,6 +520,17 @@ juniper-data/
 | Package | Version | Purpose |
 |---------|---------|---------|
 | `arc-agi` | >= 0.9.0 | ARC-AGI dataset access |
+
+### MNIST (optional: `pip install -e ".[mnist]"`)
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `datasets[vision]` | >= 4.0.0 | MNIST / Fashion-MNIST from the Hugging Face Hub (`[vision]` pulls Pillow for image decode) |
+
+Heavy chain (pyarrow, pandas, pillow, huggingface-hub); deliberately extra-gated. First generation
+downloads from the Hub into the HF cache (`HF_HOME`); offline deployments need a seeded cache — see
+the README section "MNIST / Fashion-MNIST (optional extra)". The Docker image ships this extra via
+`requirements.lock`.
 
 ---
 

@@ -29,13 +29,35 @@ substrate `juniper-cascor` trains on and `juniper-canopy` visualises.
 pip install juniper-data            # from PyPI
 ```
 
-For development from a clone (the optional extras are `api`, `arc-agi`, `equities`, `observability`,
-`test`, `dev`, `all`):
+For development from a clone (the optional extras are `api`, `arc-agi`, `equities`, `mnist`,
+`observability`, `test`, `dev`, `all`):
 
 ```bash
 git clone https://github.com/pcalnon/juniper-data.git && cd juniper-data
 pip install -e ".[all]"
 ```
+
+### MNIST / Fashion-MNIST (optional extra)
+
+The `mnist` generator loads the real MNIST / Fashion-MNIST datasets from the Hugging Face Hub and
+needs the (heavy) `datasets` chain, shipped behind an explicit extra — it is never part of the base
+install:
+
+```bash
+pip install "juniper-data[mnist]"
+```
+
+- **First call downloads from the Hub** into the Hugging Face cache (`HF_HOME`, default
+  `~/.cache/huggingface`; the Docker image pins it to `/app/data/hf-cache` so a mounted data volume
+  persists it). Later calls are served from the cache.
+- **Offline deployments** must seed that cache ahead of time (run one generation for each dataset
+  while online, or copy a populated `HF_HOME` in); with `HF_HUB_OFFLINE=1` the generator then works
+  entirely from the cache.
+- **Without the extra installed**, the generator is unavailable: the registry reports
+  `available: false` and `POST /v1/datasets` returns `501` with the install hint instead of a
+  masked 500.
+- The service Docker image ships the extra (it is compiled into `requirements.lock`), so MNIST
+  generation works in containers out of the box.
 
 ## Run
 

@@ -5,7 +5,7 @@
 **Author**: Paul Calnon
 **License**: MIT License
 **Version**: 0.9.0
-**Last Updated**: 2026-07-04
+**Last Updated**: 2026-07-12
 
 ---
 
@@ -293,6 +293,12 @@ Tests touching these collectors should use `juniper_observability.testing.reset_
 | Library | Purpose |
 |---------|---------|
 | `arc-agi>=0.9.0` | ARC-AGI visual reasoning dataset support |
+
+### MNIST Dependencies (Optional: `pip install -e ".[mnist]"`)
+
+| Library | Purpose |
+|---------|---------|
+| `datasets[vision]>=4.0.0` | MNIST / Fashion-MNIST from the Hugging Face Hub; `[vision]` pulls Pillow for image decode. Heavy chain (pyarrow, pandas) — extra-gated, in the Docker image via `requirements.lock`. First call downloads into `HF_HOME`; offline deployments need a seeded cache |
 
 ### Test Dependencies (Optional: `pip install -e ".[test]"`)
 
