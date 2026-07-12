@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Generator availability surfaced (D1 / I-5 of the training-runtime defects plan).** Every entry in
+  `GET /v1/generators` and every `GET /v1/generators/{name}/schema` response now carries an additive
+  `available: bool` reporting whether the generator's optional dependencies are importable in the
+  running deployment. Generator classes may declare an `is_available()` hook: `mnist` reports the HF
+  `datasets` package, `equities` / `equities_seq` report the `equities` extra; generators without the
+  hook (the numpy-only synthetics, and `arc_agi` whose HF need is parameter-conditional with a
+  local-file fallback) default to available.
+
+### Fixed
+
+- **`POST /v1/datasets` no longer masks a missing optional dependency as a generic 500.** A generator
+  raising `ImportError` (e.g. `mnist` without the HF `datasets` package — observed live as 71 identical
+  masked 500s) now returns **`501 Not Implemented`** with the generator's actionable install hint in
+  `detail` (`pip install datasets`). The unknown-generator and invalid-params 400 contracts and the
+  generic 500 handler for genuinely unexpected errors are unchanged. See juniper-ml
+  `notes/JUNIPER_2026-07-11_JUNIPER-CANOPY_TRAINING-RUNTIME-DEFECTS-PLAN.md` §4 I-5.
+
 ### Changed
 
 - **CI: per-file coverage is now a blocking gate (ecosystem per-file rollout C-5).** The unit-tests

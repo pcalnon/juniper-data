@@ -175,13 +175,38 @@ GENERATOR_REGISTRY: dict[str, dict[str, Any]] = {
 }
 
 
+def generator_available(info: dict[str, Any]) -> bool:
+    """Return whether a registered generator is usable in this deployment (D1 / I-5).
+
+    A generator class MAY declare an ``is_available()`` static method reporting
+    whether its optional dependencies are importable (mnist -> HF ``datasets``;
+    equities / equities_seq -> the ``equities`` extra). Generators that do not
+    declare the hook are considered available: that is the correct posture for
+    the numpy-only synthetics, and for generators whose dependency need is
+    parameter-conditional (arc_agi's HF source has a local-file fallback), where
+    the request-time ImportError -> 501 mapping in the datasets route is the
+    backstop.
+
+    Args:
+        info: A GENERATOR_REGISTRY entry.
+
+    Returns:
+        True when the generator declares no availability hook or its hook
+        reports True; False when the hook reports a missing capability.
+    """
+    is_available = getattr(info["generator"], "is_available", None)
+    if is_available is None:
+        return True
+    return bool(is_available())
+
+
 @router.get("", response_model=list[GeneratorInfo])
 async def list_generators() -> list[GeneratorInfo]:
-    """List all available dataset generators with their info.
+    """List all registered dataset generators with their info.
 
     Returns:
         List of generator information objects including name, version,
-        description, and parameter schema.
+        description, deployment availability, and parameter schema.
     """
     generators: list[GeneratorInfo] = []
     generators.extend(
@@ -189,6 +214,7 @@ async def list_generators() -> list[GeneratorInfo]:
             name=name,
             version=info["version"],
             description=info["description"],
+            available=generator_available(info),
             schema=info["params_class"].model_json_schema(),
         )
         for name, info in GENERATOR_REGISTRY.items()
@@ -204,7 +230,10 @@ async def get_generator_schema(name: str) -> dict[str, Any]:
         name: Generator name (e.g., "spiral").
 
     Returns:
-        JSON schema dictionary describing the generator's parameters.
+        JSON schema dictionary describing the generator's parameters, plus a
+        top-level ``available`` boolean reporting whether the generator's
+        optional dependencies are present in this deployment (D1 / I-5; an
+        additive key — JSON Schema consumers ignore unknown keywords).
 
     Raises:
         HTTPException: 404 if generator not found.
@@ -212,5 +241,5 @@ async def get_generator_schema(name: str) -> dict[str, Any]:
     if name not in GENERATOR_REGISTRY:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Generator '{name}' not found")
 
-    params_class = GENERATOR_REGISTRY[name]["params_class"]
-    return params_class.model_json_schema()
+    info = GENERATOR_REGISTRY[name]
+    return {**info["params_class"].model_json_schema(), "available": generator_available(info)}

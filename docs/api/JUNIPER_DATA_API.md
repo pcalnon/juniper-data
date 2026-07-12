@@ -173,7 +173,7 @@ livenessProbe:
 
 ### GET /v1/generators
 
-List available dataset generators.
+List registered dataset generators.
 
 **Response:**
 
@@ -182,10 +182,13 @@ List available dataset generators.
   {
     "name": "spiral",
     "version": "1.0.0",
-    "description": "Multi-spiral classification dataset generator"
+    "description": "Multi-spiral classification dataset generator",
+    "available": true
   }
 ]
 ```
+
+`available` reports whether the generator's optional dependencies are present in the running deployment (e.g. `mnist` requires the Hugging Face `datasets` package; `equities` / `equities_seq` require the `equities` extra). Creating a dataset with an unavailable generator returns `501 Not Implemented` with an install hint.
 
 ---
 
@@ -224,9 +227,12 @@ Get the JSON schema for a generator's parameters.
     }
   },
   "title": "SpiralParams",
-  "type": "object"
+  "type": "object",
+  "available": true
 }
 ```
+
+`available` is an additive top-level key (JSON Schema consumers ignore unknown keywords) reporting whether the generator's optional dependencies are present in the running deployment.
 
 **Status Codes:**
 
@@ -339,6 +345,7 @@ Create a new dataset or retrieve an existing one with matching parameters.
 
 - `201 Created` - Dataset created or retrieved
 - `400 Bad Request` - Unknown generator or invalid parameters
+- `501 Not Implemented` - Generator's optional dependencies are missing in this deployment (the `detail` carries an actionable install hint, e.g. `pip install datasets` for `mnist`)
 
 **Caching Behavior:**
 

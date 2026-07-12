@@ -33,6 +33,16 @@ class MnistGenerator:
     """
 
     @staticmethod
+    def is_available() -> bool:
+        """Report whether this generator can run in this deployment (D1 / I-5).
+
+        Returns:
+            True when the optional Hugging Face ``datasets`` dependency is
+            importable; False otherwise (``generate`` would raise ImportError).
+        """
+        return HF_AVAILABLE
+
+    @staticmethod
     def generate(params: MnistParams) -> dict[str, np.ndarray]:
         """Generate a complete MNIST dataset with train/test splits.
 
