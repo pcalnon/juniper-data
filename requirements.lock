@@ -10,7 +10,7 @@ annotated-doc==0.0.4
     # via fastapi
 annotated-types==0.7.0
     # via pydantic
-anyio==4.14.0
+anyio==4.14.1
     # via
     #   httpx
     #   starlette
@@ -37,7 +37,7 @@ dill==0.4.1
     # via
     #   datasets
     #   multiprocess
-fastapi==0.138.0
+fastapi==0.139.0
     # via
     #   juniper-data (pyproject.toml)
     #   sentry-sdk
@@ -83,7 +83,7 @@ multidict==6.7.1
     #   yarl
 multiprocess==0.70.19
     # via datasets
-numpy==2.5.0
+numpy==2.5.1
     # via
     #   juniper-data (pyproject.toml)
     #   datasets
@@ -128,7 +128,7 @@ pyyaml==6.0.3
     #   uvicorn
 requests==2.34.2
     # via datasets
-sentry-sdk==2.63.0
+sentry-sdk==2.64.0
     # via juniper-data (pyproject.toml)
 six==1.17.0
     # via python-dateutil
@@ -141,7 +141,7 @@ tqdm==4.68.4
     # via
     #   datasets
     #   huggingface-hub
-typing-extensions==4.15.0
+typing-extensions==4.16.0
     # via
     #   fastapi
     #   huggingface-hub
@@ -157,13 +157,13 @@ urllib3==2.7.0
     # via
     #   requests
     #   sentry-sdk
-uvicorn==0.49.0
+uvicorn==0.51.0
     # via juniper-data (pyproject.toml)
 uvloop==0.22.1
     # via uvicorn
 watchfiles==1.2.0
     # via uvicorn
-websockets==16.0
+websockets==16.1
     # via uvicorn
 xxhash==3.8.1
     # via datasets
