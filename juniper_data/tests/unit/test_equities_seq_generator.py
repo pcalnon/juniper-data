@@ -166,6 +166,12 @@ class TestEquitiesSeqGeneratorBranches:
         with pytest.raises(ImportError, match="equities"):
             EquitiesSeqGenerator.generate(EquitiesSeqParams(symbols=["AAPL"], lookback=5))
 
+    def test_is_available_reflects_deps_flag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """is_available mirrors EQUITIES_DEPS_AVAILABLE (D1 / I-5 availability surface)."""
+        assert EquitiesSeqGenerator.is_available() is True  # extra installed in this suite (importorskip above)
+        monkeypatch.setattr(esq_gen, "EQUITIES_DEPS_AVAILABLE", False)
+        assert EquitiesSeqGenerator.is_available() is False
+
     def test_generate_skips_ticker_whose_download_raises(self) -> None:
         good = _ohlcv(seed=20)
 

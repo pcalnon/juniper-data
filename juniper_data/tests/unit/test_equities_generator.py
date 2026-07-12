@@ -248,6 +248,12 @@ class TestEquitiesGenerator:
             with pytest.raises(ImportError, match="equities"):
                 EquitiesGenerator.generate(EquitiesParams(symbols=["AAPL"]))
 
+    def test_is_available_reflects_deps_flag(self) -> None:
+        """is_available mirrors EQUITIES_DEPS_AVAILABLE (D1 / I-5 availability surface)."""
+        assert EquitiesGenerator.is_available() is True  # extra installed in this suite (importorskip above)
+        with patch.object(eq_gen, "EQUITIES_DEPS_AVAILABLE", False):
+            assert EquitiesGenerator.is_available() is False
+
 
 class TestEquitiesParams:
     """Validation behavior of EquitiesParams."""

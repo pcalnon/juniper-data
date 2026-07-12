@@ -1,5 +1,7 @@
 """Unit tests for API route modules."""
 
+from unittest.mock import patch
+
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
@@ -374,6 +376,82 @@ class TestGeneratorsEndpoint:
         data = response.json()
         assert "properties" in data
         assert "n_spirals" in data["properties"]
+
+
+@pytest.mark.unit
+class TestGeneratorAvailability:
+    """D1 (I-5): generator availability surfaced — registry/schema ``available`` flag + the 501 capability seam."""
+
+    def test_list_generators_available_flag_present_for_all(self, client: TestClient) -> None:
+        """Every registry listing entry carries a boolean ``available`` flag."""
+        response = client.get("/v1/generators")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) >= 1
+        for entry in data:
+            assert "available" in entry, f"generator '{entry['name']}' is missing the available flag"
+            assert isinstance(entry["available"], bool)
+
+    def test_list_generators_synthetics_available(self, client: TestClient) -> None:
+        """Numpy-only synthetic generators are always available."""
+        response = client.get("/v1/generators")
+
+        by_name = {g["name"]: g for g in response.json()}
+        for name in ("spiral", "xor", "gaussian", "circles", "moon", "checkerboard", "multi_sine", "mackey_glass", "ar_p", "irregular_sine", "delay_product"):
+            assert by_name[name]["available"] is True, f"synthetic generator '{name}' should be available"
+
+    def test_list_generators_capability_gated_flags_match_modules(self, client: TestClient) -> None:
+        """mnist/equities/equities_seq report their real module-level dependency availability."""
+        from juniper_data.generators.equities.generator import EQUITIES_DEPS_AVAILABLE
+        from juniper_data.generators.mnist.generator import HF_AVAILABLE
+
+        response = client.get("/v1/generators")
+
+        by_name = {g["name"]: g for g in response.json()}
+        assert by_name["mnist"]["available"] is HF_AVAILABLE
+        assert by_name["equities"]["available"] is EQUITIES_DEPS_AVAILABLE
+        assert by_name["equities_seq"]["available"] is EQUITIES_DEPS_AVAILABLE
+
+    def test_list_generators_mnist_unavailable_when_hf_missing(self, client: TestClient) -> None:
+        """mnist reports available=False in the listing when the HF datasets package is absent."""
+        with patch("juniper_data.generators.mnist.generator.HF_AVAILABLE", False):
+            response = client.get("/v1/generators")
+
+        assert response.status_code == 200
+        by_name = {g["name"]: g for g in response.json()}
+        assert by_name["mnist"]["available"] is False
+
+    def test_get_schema_carries_available_flag(self, client: TestClient) -> None:
+        """The per-generator schema response carries a top-level ``available`` flag alongside the intact schema."""
+        response = client.get("/v1/generators/spiral/schema")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["available"] is True
+        assert "properties" in data
+        assert "n_spirals" in data["properties"]
+
+    def test_get_schema_mnist_unavailable_when_hf_missing(self, client: TestClient) -> None:
+        """The mnist schema response reports available=False without HF datasets."""
+        with patch("juniper_data.generators.mnist.generator.HF_AVAILABLE", False):
+            response = client.get("/v1/generators/mnist/schema")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["available"] is False
+        assert "properties" in data
+
+    def test_create_dataset_unavailable_generator_returns_501_with_hint(self, client: TestClient) -> None:
+        """POST /v1/datasets for a generator missing its optional dependency returns 501 + the install hint, never a masked 500."""
+        request = {"generator": "mnist", "params": {}, "persist": False}
+        with patch("juniper_data.generators.mnist.generator.HF_AVAILABLE", False):
+            response = client.post("/v1/datasets", json=request)
+
+        assert response.status_code == 501
+        detail = response.json()["detail"]
+        assert "mnist" in detail
+        assert "pip install datasets" in detail
 
 
 @pytest.mark.unit

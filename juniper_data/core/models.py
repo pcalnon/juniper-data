@@ -109,11 +109,15 @@ class CreateDatasetResponse(BaseModel):
 
 
 class GeneratorInfo(BaseModel):
-    """Information about an available generator."""
+    """Information about a registered generator."""
 
     name: str
     version: str
     description: str
+    # D1 (I-5): False when an optional dependency this generator needs is missing
+    # in the running deployment (e.g. mnist without HF ``datasets``). Defaults to
+    # True so older payloads / constructors without the flag mean "available".
+    available: bool = True
     params_schema: dict[str, Any] = Field(alias="schema")  # JSON schema for params
 
 
