@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from juniper_service_core import enforce_auth_posture
 from starlette import status
 
 from juniper_data import __version__, provenance
@@ -44,6 +45,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     logger = logging.getLogger("juniper_data")
     logger.info(f"JuniperData API v{__version__} starting")
+    # SEC-F01 (HO-2): boot-time auth-posture self-check. An empty/blank
+    # JUNIPER_DATA_API_KEYS secret silently disables APIKeyAuth and the API
+    # serves OPEN (docs exposed, protected routes unauthenticated) behind a
+    # healthy health check; make that posture loud here, before serving
+    # begins. require_auth=False because juniper-data has no require-auth
+    # flag today — flipping to fail-closed (CRITICAL + refuse to start) is
+    # the owner-approved JUNIPER_DATA_REQUIRE_AUTH follow-up. Bypass with
+    # JUNIPER_SKIP_AUTH_POSTURE_CHECK=1 (logged loudly).
+    enforce_auth_posture(
+        settings.api_keys,
+        require_auth=False,
+        service_name="juniper-data",
+        logger=logger,
+    )
     # ``Path.absolute()`` is pure path manipulation (no I/O); the
     # ASYNC240 rule is over-conservative here and flags every
     # ``pathlib.Path`` method without distinguishing stat-bound ones

@@ -98,6 +98,16 @@ api = [
     # build provenance (juniper-ml
     # notes/BUILD_PROVENANCE_DESIGN_2026-06-14.md).
     "juniper-observability>=0.4.0",
+    # SEC-F01 / HO-2 (per-service adoption wave): boot-time auth-posture
+    # self-check. The API lifespan calls enforce_auth_posture with the
+    # resolved api_keys beside the startup banner, so an empty/blank
+    # JUNIPER_DATA_API_KEYS secret (which silently disables APIKeyAuth and
+    # serves the API open — docs exposed, protected routes unauthenticated —
+    # behind a healthy health check) is loud at boot. Stdlib-only import
+    # surface; 0.5.0 is the release that ships the check. Capped <0.6.0 to
+    # match the fleet's service-core pin practice (a deliberate deviation
+    # from this file's floor-only style — pre-1.0 minors may break).
+    "juniper-service-core>=0.5.0,<0.6.0",
 ]
 test = [
     "pytest>=7.0.0",
