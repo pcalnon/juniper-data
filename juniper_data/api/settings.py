@@ -65,6 +65,10 @@ _JUNIPER_DATA_API_KEYS_LIST_EMPTY: list[str] | None = None
 _JUNIPER_DATA_API_KEYS_LIST_VALUES: list[str] | None = []
 _JUNIPER_DATA_API_KEYS_LIST_DEFAULT: list[str] | None = _JUNIPER_DATA_API_KEYS_LIST_EMPTY
 
+_JUNIPER_DATA_API_REQUIRE_AUTH_ENABLED: bool = True
+_JUNIPER_DATA_API_REQUIRE_AUTH_DISABLED: bool = False
+_JUNIPER_DATA_API_REQUIRE_AUTH_DEFAULT: bool = _JUNIPER_DATA_API_REQUIRE_AUTH_DISABLED
+
 _JUNIPER_DATA_API_LOG_FORMAT_TEXT: str = "text"
 _JUNIPER_DATA_API_LOG_FORMAT_DEFAULT: str = _JUNIPER_DATA_API_LOG_FORMAT_TEXT
 
@@ -127,6 +131,14 @@ class Settings(BaseSettings):
     # api_keys: list[str] | None = _JUNIPER_DATA_API_KEYS_LIST_DEFAULT
     # api_keys: JSON[list[str]] | None = _JUNIPER_DATA_API_KEYS_LIST_DEFAULT
     api_keys: list[str] | None = _JUNIPER_DATA_API_KEYS_LIST_DEFAULT
+
+    # SEC-F01: the INTENDED auth posture, fed to enforce_auth_posture in the
+    # lifespan (env ``JUNIPER_DATA_REQUIRE_AUTH``). False (default) = an
+    # unset/blank JUNIPER_DATA_API_KEYS only WARNs at boot (service runs
+    # open — bare/dev profile); True = boot REFUSES (CRITICAL +
+    # AuthPostureError) when no real key is configured. Set true wherever
+    # secrets are provisioned (the composed juniper-deploy stack).
+    require_auth: bool = _JUNIPER_DATA_API_REQUIRE_AUTH_DEFAULT
 
     @model_validator(mode="before")
     @classmethod
