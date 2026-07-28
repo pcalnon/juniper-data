@@ -2,13 +2,13 @@
 #    uv pip compile pyproject.toml --extra api --extra observability --extra mnist -o requirements.lock
 aiohappyeyeballs==2.7.1
     # via aiohttp
-aiohttp==3.14.2
+aiohttp==3.14.3
     # via fsspec
 aiosignal==1.4.0
     # via aiohttp
-annotated-doc==0.0.4
+annotated-doc==0.0.5
     # via fastapi
-annotated-types==0.7.0
+annotated-types==0.8.0
     # via pydantic
 anyio==4.14.2
     # via
@@ -17,9 +17,9 @@ anyio==4.14.2
     #   watchfiles
 attrs==26.1.0
     # via aiohttp
-cachetools==7.1.4
+cachetools==7.1.6
     # via juniper-data (pyproject.toml)
-certifi==2026.6.17
+certifi==2026.7.22
     # via
     #   httpcore
     #   httpx
@@ -31,18 +31,18 @@ click==8.4.2
     # via
     #   huggingface-hub
     #   uvicorn
-datasets==5.0.0
+datasets==5.0.1
     # via juniper-data (pyproject.toml)
 dill==0.4.1
     # via
     #   datasets
     #   multiprocess
-fastapi==0.139.2
+fastapi==0.140.13
     # via
     #   juniper-data (pyproject.toml)
     #   juniper-service-core
     #   sentry-sdk
-filelock==3.31.1
+filelock==3.32.0
     # via
     #   datasets
     #   huggingface-hub
@@ -50,7 +50,7 @@ frozenlist==1.8.0
     # via
     #   aiohttp
     #   aiosignal
-fsspec==2026.4.0
+fsspec==2026.6.0
     # via
     #   datasets
     #   huggingface-hub
@@ -68,7 +68,7 @@ httpx==0.28.1
     # via
     #   datasets
     #   huggingface-hub
-huggingface-hub==1.24.0
+huggingface-hub==1.25.1
     # via datasets
 idna==3.18
     # via
@@ -98,11 +98,11 @@ packaging==26.2
     # via
     #   datasets
     #   huggingface-hub
-pandas==3.0.3
+pandas==3.0.5
     # via datasets
 pillow==12.3.0
     # via datasets
-prometheus-client==0.25.0
+prometheus-client==0.26.0
     # via juniper-data (pyproject.toml)
 propcache==0.5.2
     # via
@@ -137,7 +137,7 @@ pyyaml==6.0.3
     #   uvicorn
 requests==2.34.2
     # via datasets
-sentry-sdk==2.66.0
+sentry-sdk==2.66.1
     # via juniper-data (pyproject.toml)
 six==1.17.0
     # via python-dateutil
@@ -146,7 +146,7 @@ starlette==1.3.1
     #   juniper-data (pyproject.toml)
     #   fastapi
     #   juniper-observability
-tqdm==4.69.0
+tqdm==4.70.0
     # via
     #   datasets
     #   huggingface-hub
