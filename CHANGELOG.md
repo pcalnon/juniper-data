@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-07-28
+
 ### Added
 
 - **SEC-F01 boot-time auth-posture self-check (HO-2 class)**: the API lifespan now calls `enforce_auth_posture(settings.api_keys, require_auth=False, service_name="juniper-data")` from the new `juniper-service-core>=0.5.0,<0.6.0` dependency (`[api]` extra). An empty/blank `JUNIPER_DATA_API_KEYS` secret now produces a loud "running OPEN" WARNING at startup instead of silently serving unauthenticated behind a healthy health check. Escape hatch: `JUNIPER_SKIP_AUTH_POSTURE_CHECK=1`. A `JUNIPER_DATA_REQUIRE_AUTH` fail-closed flag is proposed as the owner-approved follow-up.
