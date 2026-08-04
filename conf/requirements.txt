@@ -136,5 +136,5 @@ urllib3>=2.7.0
 uvloop>=0.22.1
 # virtualenv>=20.36.1
 watchfiles>=1.2.0
-websockets>=16.1.1
+websockets>=17.0.1
 zipp>=4.1.0
