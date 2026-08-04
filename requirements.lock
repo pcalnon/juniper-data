@@ -17,7 +17,7 @@ anyio==4.14.2
     #   watchfiles
 attrs==26.1.0
     # via aiohttp
-cachetools==7.1.6
+cachetools==7.1.7
     # via juniper-data (pyproject.toml)
 certifi==2026.7.22
     # via
@@ -37,12 +37,12 @@ dill==0.4.1
     # via
     #   datasets
     #   multiprocess
-fastapi==0.140.13
+fastapi==0.141.1
     # via
     #   juniper-data (pyproject.toml)
     #   juniper-service-core
     #   sentry-sdk
-filelock==3.32.0
+filelock==3.32.2
     # via
     #   datasets
     #   huggingface-hub
@@ -68,7 +68,7 @@ httpx==0.28.1
     # via
     #   datasets
     #   huggingface-hub
-huggingface-hub==1.25.1
+huggingface-hub==1.26.0
     # via datasets
 idna==3.18
     # via
@@ -166,13 +166,13 @@ urllib3==2.7.0
     # via
     #   requests
     #   sentry-sdk
-uvicorn==0.51.0
+uvicorn==0.52.1
     # via juniper-data (pyproject.toml)
 uvloop==0.22.1
     # via uvicorn
 watchfiles==1.2.0
     # via uvicorn
-websockets==16.1.1
+websockets==17.0.1
     # via uvicorn
 xxhash==3.8.1
     # via datasets
