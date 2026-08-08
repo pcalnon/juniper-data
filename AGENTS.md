@@ -5,7 +5,7 @@
 **Author**: Paul Calnon
 **License**: MIT License
 **Version**: 0.11.0
-**Last Updated**: 2026-07-28
+**Last Updated**: 2026-08-08
 
 ---
 
@@ -151,7 +151,7 @@ juniper-data/
 ├── conf/                           # Shell and logging configuration files
 ├── util/                           # Bash utility scripts (40+ scripts)
 ├── .github/                        # GitHub Actions workflows and config
-│   ├── workflows/                  # CI, CodeQL, security, publish, lockfile
+│   ├── workflows/                  # CI, CodeQL, security, publish, lockfile, sequence-safety, main-verify
 │   ├── CODEOWNERS                  # Code ownership rules
 │   └── dependabot.yml              # Automated dependency updates
 ├── Dockerfile                      # Multi-stage production build (Python 3.14-slim)
@@ -641,6 +641,8 @@ Reference: `.env.example` provides a template with all variables.
 | **Security Scan** | `security-scan.yml` | Push, PR | Gitleaks + Bandit SARIF |
 | **Publish** | `publish.yml` | GitHub release | TestPyPI -> PyPI (Trusted Publishing/OIDC) |
 | **Lockfile Update** | `lockfile-update.yml` | Schedule, manual | Update `requirements.lock` |
+| **Sequence Safety** | `sequence-safety.yml` | PR | Advisory per-PR symbol-loss + docs-deletion screens via `juniper-ci-tools` (`--scope 'juniper_data/**'`); never required, never blocks a merge |
+| **Main Verify** | `main-verify.yml` | Push (main) | Bypass-proof post-merge compositional-loss net (screens-only, advisory); stable-title failure-issue upsert + catch-up base |
 
 ### Pre-Commit Hooks
 
