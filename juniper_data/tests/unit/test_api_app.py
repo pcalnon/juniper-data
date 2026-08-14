@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pydantic_core import PydanticSerializationError
 
 from juniper_data import __version__
 from juniper_data.api.app import create_app, lifespan
@@ -108,6 +109,31 @@ class TestExceptionHandlers:
 
         assert response.status_code == 400
         assert response.json()["detail"] == "Invalid request parameters"
+
+    def test_serialization_fault_returns_500_not_400(self, test_settings: Settings, memory_store: InMemoryDatasetStore) -> None:
+        """APD-DATA-034: a serialisation fault is the server's, not the caller's.
+
+        ``PydanticSerializationError`` subclasses ``ValueError``, so the blanket
+        handler reported the app's own failure to serialise a response as a 400 --
+        invisible to 5xx alerting, misattributed to the client, and stripped of its
+        diagnostic by the generic "Invalid request parameters" message. Unlike
+        juniper-cascor, juniper-data has no ``coerce_native_scalars`` helper
+        pre-empting the common case, so every such fault landed here.
+        """
+        app = create_app(settings=test_settings)
+        datasets.set_store(memory_store)
+
+        @app.get("/test-serialization-error")
+        async def raise_serialization_error():
+            raise PydanticSerializationError("Unable to serialize unknown type: <class 'numpy.float32'>")
+
+        client = TestClient(app, raise_server_exceptions=False)
+
+        with patch("logging.Logger.exception"):
+            response = client.get("/test-serialization-error")
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Internal server error"
 
     def test_general_exception_returns_500(self, test_settings: Settings, memory_store: InMemoryDatasetStore) -> None:
         """Test unhandled Exception returns 500 status."""

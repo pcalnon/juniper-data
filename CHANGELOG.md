@@ -28,6 +28,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   client header surfaced as a server fault. It now returns an explicit 400
   `{"detail": "Invalid Content-Length header"}`, matching both sibling implementations.
 
+- **Serialisation faults are reported as `500`, not `400` (`APD-DATA-034`).** The blanket
+  `@app.exception_handler(ValueError)` returned `400`, and `pydantic_core.PydanticSerializationError`
+  subclasses `ValueError` — so when the app failed to serialise its *own* response, the caller was
+  told they had sent a bad request. The defect was invisible to 5xx alerting, misattributed to the
+  client, and stripped of its diagnostic by the generic `"Invalid request parameters"` message.
+  Unlike `juniper-cascor`, juniper-data has no `coerce_native_scalars` helper pre-empting the common
+  numpy-scalar case, so every such fault landed here. `PydanticSerializationError` is now classified
+  as the 500 it is and logged at exception level so the traceback survives; a plain `ValueError` is
+  unchanged and still returns `400`.
+
 ## [0.11.0] - 2026-07-28
 
 ### Added
