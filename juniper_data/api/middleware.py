@@ -70,16 +70,60 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 class RequestBodyLimitMiddleware(BaseHTTPMiddleware):
-    """Reject requests whose Content-Length exceeds a configurable limit."""
+    """Reject requests whose body exceeds a configurable limit.
+
+    ``Content-Length`` is an early-reject hint only and is not trusted as the
+    sole size check (CR-024): a malicious client can under-declare or omit the
+    header and send an unbounded chunked stream. For POST/PUT/PATCH requests we
+    always stream-read the body with a cumulative byte cap, aborting with HTTP
+    413 as soon as the cap is exceeded. This prevents the classic
+    chunked-encoding memory-exhaustion bypass in which ``await request.body()``
+    would allocate the entire body before any size check runs.
+
+    The fully-read body is cached on ``request._body`` so downstream FastAPI
+    route handlers can consume it via ``request.body()`` / ``request.json()``
+    / pydantic body parsing without triggering a second read.
+    """
 
     def __init__(self, app: ASGIApp, max_bytes: int = _MAX_REQUEST_BODY_BYTES) -> None:
         super().__init__(app)
         self._max_bytes = max_bytes
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        # Fast-path early reject on declared Content-Length. Still untrusted
+        # as a floor, so the stream-read below enforces the real limit.
         content_length = request.headers.get("content-length")
-        if content_length is not None and int(content_length) > self._max_bytes:
-            return JSONResponse(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, content={"detail": "Request body too large"})
+        if content_length is not None:
+            try:
+                declared_length = int(content_length)
+            except ValueError:
+                # A malformed header is a client error. Without this guard the
+                # ValueError escapes BaseHTTPMiddleware.dispatch -- outside
+                # ExceptionMiddleware, so the app's own ValueError handler never
+                # sees it -- and surfaces as a 500.
+                return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"detail": "Invalid Content-Length header"})
+            if declared_length > self._max_bytes:
+                return JSONResponse(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, content={"detail": "Request body too large"})
+        if request.method in ("POST", "PUT", "PATCH"):
+            # CR-024: always stream-read mutating methods -- Content-Length is an
+            # early-reject hint only. An under-declared CL with a larger real body,
+            # or a chunked stream with no CL at all, must still hit the cumulative
+            # cap; skipping the stream when CL is present-and-small is the classic
+            # bypass.
+            chunks: list[bytes] = []
+            size = 0
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > self._max_bytes:
+                    return JSONResponse(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, content={"detail": "Request body too large"})
+                chunks.append(chunk)
+            # Cache body for downstream handlers. Starlette's
+            # ``BaseHTTPMiddleware._CachedRequest.wrapped_receive`` short-
+            # circuits to a synthetic ``http.request`` message constructed
+            # from ``self._body`` when that attribute is set, so subsequent
+            # ``await request.body()`` / ``request.json()`` / Pydantic body
+            # parsing in downstream handlers all see the cached payload.
+            request._body = b"".join(chunks)
         return await call_next(request)
 
 

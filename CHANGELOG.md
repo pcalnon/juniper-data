@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **CR-024 request-body cap is no longer bypassable (`APD-DATA-002`).** `RequestBodyLimitMiddleware`
+  checked only `if content_length is not None and int(content_length) > max_bytes`, so a chunked
+  request that sent no `Content-Length` made the first conjunct false and streamed past the 10 MiB
+  cap entirely — an unauthenticated memory-exhaustion vector wherever the service runs in the open
+  bare/dev profile. `POST`/`PUT`/`PATCH` are now always stream-read against a cumulative cap and
+  aborted with 413 mid-stream, with `Content-Length` demoted to an early-reject hint; an
+  under-declared length no longer buys passage either. The fully-read body is cached on
+  `request._body` so downstream handlers still parse it normally. This restores parity with the
+  implementations already shipping in `juniper-cascor` and `juniper-service-core`, where the same
+  fix landed and never propagated here.
+
+### Fixed
+
+- **A malformed `Content-Length` is a 400, not a 500 (`APD-DATA-036`).** The unguarded
+  `int(content_length)` raised `ValueError` inside a `BaseHTTPMiddleware.dispatch`, which propagates
+  *outside* `ExceptionMiddleware` — so the app's own `ValueError` handler never saw it and a bad
+  client header surfaced as a server fault. It now returns an explicit 400
+  `{"detail": "Invalid Content-Length header"}`, matching both sibling implementations.
+
 ## [0.11.0] - 2026-07-28
 
 ### Added
