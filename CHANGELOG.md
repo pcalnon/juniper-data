@@ -38,6 +38,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as the 500 it is and logged at exception level so the traceback survives; a plain `ValueError` is
   unchanged and still returns `400`.
 
+- **A `GET` can no longer silently undo a tag edit (`APD-DATA-006`).** `record_access` — which fires
+  on every metadata read and every artifact download — rewrites the *whole* `DatasetMeta` document
+  under `_version_lock`, while `PATCH /v1/datasets/{id}/tags` did its own read-modify-write across
+  two `asyncio.to_thread` hops taking no lock at all, so the lock protected nothing against it. A
+  plain `GET` could interleave between those hops and write back a pre-edit snapshot, discarding the
+  tag change with no error anywhere — a silent lost write triggered by a *safe* method. New
+  `DatasetStore.update_tags` does the whole read-modify-write inside that same lock in one thread
+  hop, and the route delegates to it. The per-process caveat is unchanged (BUG-JD-05): this
+  serialises threads within one process, not across a multi-process deployment.
+
 ## [0.11.0] - 2026-07-28
 
 ### Added

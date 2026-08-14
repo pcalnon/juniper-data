@@ -221,6 +221,43 @@ class DatasetStore(ABC):
                 meta.access_count += 1
                 self.update_meta(dataset_id, meta)
 
+    def update_tags(self, dataset_id: str, add_tags: list[str], remove_tags: list[str]) -> DatasetMeta | None:
+        """Atomically add and/or remove tags on a dataset's metadata.
+
+        Args:
+            dataset_id: Unique identifier for the dataset.
+            add_tags: Tags to add.
+            remove_tags: Tags to remove. Applied after ``add_tags``.
+
+        Returns:
+            The updated metadata, or ``None`` if the dataset does not exist.
+
+        APD-DATA-006: this exists so the tag read-modify-write happens under
+        the same ``_version_lock`` that :meth:`record_access` holds. Both
+        methods rewrite the *whole* ``DatasetMeta`` document, so a lock taken
+        by only one of them protects nothing: the route previously read the
+        metadata, mutated ``tags``, and wrote it back across two separate
+        ``asyncio.to_thread`` hops with no lock at all. ``record_access`` fires
+        on every metadata read and every artifact download, so a plain ``GET``
+        could interleave between those hops and write back its own pre-edit
+        snapshot -- silently discarding a committed tag edit. Losing a write to
+        a *safe* method is the failure nobody thinks to look for.
+
+        The per-process caveat from :meth:`record_access` applies unchanged:
+        this serialises threads within one process, not across a multi-process
+        deployment (BUG-JD-05).
+        """
+        with self._version_lock:
+            meta = self.get_meta(dataset_id)
+            if meta is None:
+                return None
+            tags = set(meta.tags)
+            tags.update(add_tags)
+            tags -= set(remove_tags)
+            meta.tags = sorted(tags)
+            self.update_meta(dataset_id, meta)
+            return meta
+
     def is_expired(self, meta: DatasetMeta) -> bool:
         """Check if a dataset has expired based on its TTL.
 
