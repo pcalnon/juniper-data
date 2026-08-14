@@ -3,6 +3,7 @@
 import contextlib
 import io
 import tempfile
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -711,3 +712,92 @@ class TestStorageModuleFactories:
                     sys.modules.pop(mod, None)
             # Force reimport to restore normal state
             importlib.import_module("juniper_data.storage")
+
+
+@pytest.mark.unit
+class TestTagUpdateAtomicity:
+    """APD-DATA-006: a `GET` must not be able to undo a concurrent tag edit.
+
+    ``record_access`` fires on every metadata read and every artifact download,
+    and rewrites the WHOLE metadata document under ``_version_lock``. The tag
+    update path used to do its own read-modify-write across two
+    ``asyncio.to_thread`` hops while taking no lock at all, so a lock held by
+    only one of the two writers protected nothing: a plain ``GET`` could land
+    between those hops and write back its pre-edit snapshot, silently
+    discarding the tag change.
+
+    ``LocalFSDatasetStore`` here is deliberate, not incidental.
+    ``InMemoryDatasetStore.get_meta`` returns the very object it stores, so both
+    writers mutate one shared instance and the lost write cannot be expressed at
+    all. The filesystem store re-reads from disk on every call -- like the store
+    the application actually wires up in ``lifespan``.
+    """
+
+    def test_update_tags_excludes_record_access_until_the_edit_commits(
+        self,
+        fs_store: LocalFSDatasetStore,
+        sample_meta: DatasetMeta,
+        sample_arrays: dict[str, np.ndarray],
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        """The two writers must be mutually exclusive, and neither write lost."""
+        fs_store.save(sample_meta.dataset_id, sample_meta, sample_arrays)
+        dataset_id = sample_meta.dataset_id
+
+        original_get_meta = fs_store.get_meta
+        inside_critical_section = threading.Event()
+        may_proceed = threading.Event()
+        gated_once: list[int] = []
+
+        def gated_get_meta(ds_id: str) -> DatasetMeta | None:
+            """Hold the FIRST read open so a GET can try to interleave."""
+            meta = original_get_meta(ds_id)
+            if not gated_once:
+                gated_once.append(1)
+                inside_critical_section.set()
+                may_proceed.wait(timeout=5)
+            return meta
+
+        monkeypatch.setattr(fs_store, "get_meta", gated_get_meta)
+
+        tagger = threading.Thread(target=fs_store.update_tags, args=(dataset_id, ["beta"], []))
+        tagger.start()
+        assert inside_critical_section.wait(timeout=5), "update_tags never entered its critical section"
+
+        # A GET lands squarely inside the tag read-modify-write. It must not be
+        # able to complete its own rewrite of the document until the tag edit
+        # has committed.
+        accessor = threading.Thread(target=fs_store.record_access, args=(dataset_id,))
+        accessor.start()
+        accessor.join(timeout=0.5)
+        assert accessor.is_alive(), "record_access rewrote metadata while update_tags held _version_lock -- the two writers are not mutually exclusive"
+
+        may_proceed.set()
+        tagger.join(timeout=5)
+        accessor.join(timeout=5)
+        assert not tagger.is_alive(), "update_tags did not finish"
+        assert not accessor.is_alive(), "record_access did not finish"
+
+        final = original_get_meta(dataset_id)
+        assert "beta" in final.tags, "the tag edit was overwritten by the concurrent GET"
+        assert final.access_count == 1, "the access increment was overwritten by the tag edit"
+
+    def test_update_tags_adds_and_removes_and_returns_updated_meta(
+        self,
+        fs_store: LocalFSDatasetStore,
+        sample_meta: DatasetMeta,
+        sample_arrays: dict[str, np.ndarray],
+    ):
+        """Removal is applied after addition, and the result is persisted."""
+        sample_meta.tags = ["keep", "drop"]
+        fs_store.save(sample_meta.dataset_id, sample_meta, sample_arrays)
+
+        returned = fs_store.update_tags(sample_meta.dataset_id, ["added"], ["drop"])
+
+        assert returned is not None
+        assert returned.tags == ["added", "keep"]
+        assert fs_store.get_meta(sample_meta.dataset_id).tags == ["added", "keep"]
+
+    def test_update_tags_returns_none_for_a_missing_dataset(self, fs_store: LocalFSDatasetStore):
+        """A missing dataset is reported to the caller, not raised."""
+        assert fs_store.update_tags("no-such-dataset", ["x"], []) is None

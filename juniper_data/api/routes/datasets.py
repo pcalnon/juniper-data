@@ -782,14 +782,13 @@ async def update_dataset_tags(
     Raises:
         HTTPException: 404 if dataset not found.
     """
-    meta = await asyncio.to_thread(store.get_meta, dataset_id)
+    # APD-DATA-006: the read-modify-write must happen inside ONE hop, under the
+    # store's ``_version_lock``. Doing it here across two ``asyncio.to_thread``
+    # calls left a window in which ``record_access`` -- which fires on every
+    # metadata read and every artifact download, and which rewrites the whole
+    # metadata document under that lock -- could write back a pre-edit snapshot
+    # and silently discard the tag change.
+    meta = await asyncio.to_thread(store.update_tags, dataset_id, request.add_tags, request.remove_tags)
     if meta is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dataset '{dataset_id}' not found")
-
-    current_tags = set(meta.tags)
-    current_tags.update(request.add_tags)
-    current_tags -= set(request.remove_tags)
-    meta.tags = sorted(current_tags)
-
-    await asyncio.to_thread(store.update_meta, dataset_id, meta)
     return meta
