@@ -78,6 +78,17 @@ MAX_REQUEST_BODY_BYTES: int = 10 * 1024 * 1024  # 10 MB
 DEFAULT_RATE_LIMIT_REQUESTS_PER_MINUTE: int = 60
 DEFAULT_RATE_LIMIT_WINDOW_SECONDS: int = 60
 
+# ─── Failed-Authentication Throttle Defaults ─────────────────────────────────
+#
+# Budget for the *pre-authentication* throttle (APD-DATA-001). Distinct from the
+# rate-limit defaults above: those are an identity-keyed fairness quota applied
+# after auth succeeds, these bound how many *failed* credential attempts a single
+# source IP may make. Only a failed attempt consumes budget, so a caller with a
+# valid key is never counted.
+
+DEFAULT_FAILED_AUTH_MAX_FAILURES: int = 10
+DEFAULT_FAILED_AUTH_WINDOW_SECONDS: int = 60
+
 # ─── Observability ───────────────────────────────────────────────────────────
 
 DEFAULT_SERVICE_NAME: str = "juniper-data"
