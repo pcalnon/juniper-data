@@ -1,5 +1,7 @@
 """FastAPI middleware for security and request processing."""
 
+import logging
+
 from fastapi import HTTPException, Request, Response
 from starlette import status
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -11,6 +13,7 @@ from juniper_data.api.constants import (
     HEADER_CONTENT_SECURITY_POLICY,
     HEADER_PERMISSIONS_POLICY,
     HEADER_REFERRER_POLICY,
+    HEADER_RETRY_AFTER,
     HEADER_STRICT_TRANSPORT_SECURITY,
     HEADER_X_CONTENT_TYPE_OPTIONS,
     HEADER_X_FORWARDED_PROTO,
@@ -32,7 +35,9 @@ from juniper_data.api.constants import (
     MAX_REQUEST_BODY_BYTES as _MAX_REQUEST_BODY_BYTES_CONST,
 )
 
-from .security import APIKeyAuth, RateLimiter
+from .security import APIKeyAuth, FailedAuthThrottle, RateLimiter, build_failed_auth_throttle
+
+logger = logging.getLogger(__name__)
 
 # Module-level aliases preserved for tests that may import these names directly.
 # The canonical source of truth is :mod:`juniper_data.api.constants`.
@@ -132,6 +137,15 @@ class SecurityMiddleware(BaseHTTPMiddleware):
 
     Applies authentication and rate limiting to all requests except
     explicitly exempt paths (health checks, docs).
+
+    The identity-keyed :class:`~juniper_data.api.security.RateLimiter` runs *after*
+    authentication and is therefore never reached when auth raises, so before APD-DATA-001 the
+    401 path consumed no budget at all and credential guessing was unthrottled. The fix is not
+    to reorder -- that trades a real protection for a worse one, collapsing every authenticated
+    caller behind one NAT into a single ``ip:`` bucket -- but to add a coarse, IP-keyed
+    :class:`~juniper_data.api.security.FailedAuthThrottle` *ahead* of authentication. It only
+    consumes budget on a failed attempt, so a caller with a valid key is never counted and
+    well-behaved traffic is unaffected.
     """
 
     def __init__(
@@ -139,6 +153,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         app: ASGIApp,
         api_key_auth: APIKeyAuth,
         rate_limiter: RateLimiter,
+        failed_auth_throttle: FailedAuthThrottle | None = None,
     ) -> None:
         """Initialize the security middleware.
 
@@ -146,10 +161,16 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             app: The ASGI application.
             api_key_auth: API key authentication handler.
             rate_limiter: Rate limiter instance.
+            failed_auth_throttle: Pre-authentication, IP-keyed throttle for failed attempts.
+                Defaults to an enabled throttle at the library default budget. Pass
+                ``build_failed_auth_throttle(enabled=False)`` to opt out. Defaulting to enabled
+                is safe because budget is consumed only on a *failed* attempt, so a caller with
+                valid credentials never sees a behaviour change.
         """
         super().__init__(app)
         self._api_key_auth = api_key_auth
         self._rate_limiter = rate_limiter
+        self._failed_auth_throttle = failed_auth_throttle if failed_auth_throttle is not None else build_failed_auth_throttle()
 
     async def dispatch(
         self,
@@ -170,6 +191,21 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         if self._is_exempt(path):
             return await call_next(request)
 
+        client_ip = request.client.host if request.client else "unknown"
+
+        # Pre-authentication throttle. Checked first so an IP already over its failed-attempt
+        # budget is rejected without burning an auth comparison, and -- crucially -- so the
+        # rejection happens on a path that auth failure cannot skip past.
+        if self._failed_auth_throttle.enabled:
+            blocked, retry_after = self._failed_auth_throttle.check(client_ip)
+            if blocked:
+                logger.warning("Too many failed authentication attempts from %s; throttled for %ss", client_ip, retry_after)
+                return JSONResponse(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    content={"detail": f"Too many failed authentication attempts. Try again in {retry_after} seconds."},
+                    headers={HEADER_RETRY_AFTER: str(retry_after)},
+                )
+
         api_key = None
         try:
             if self._api_key_auth.enabled:
@@ -178,6 +214,11 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             if self._rate_limiter.enabled:
                 await self._rate_limiter(request, api_key)
         except HTTPException as exc:
+            # Record the attempt only for authentication failures. A 429 from the identity-keyed
+            # limiter is a quota outcome, not a credential guess, and counting it here would let
+            # a caller throttle itself out of the auth path by exceeding its own quota.
+            if exc.status_code == status.HTTP_401_UNAUTHORIZED and self._failed_auth_throttle.enabled:
+                self._failed_auth_throttle.record_failure(client_ip)
             return JSONResponse(
                 status_code=exc.status_code,
                 content={"detail": exc.detail},
