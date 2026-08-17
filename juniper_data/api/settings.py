@@ -153,10 +153,24 @@ class Settings(BaseSettings):
     @field_validator("api_keys", mode="before")
     @classmethod
     def _parse_api_keys(cls, v: object) -> list[str] | None:
+        """Normalise ``api_keys`` to ``list[str] | None``, dropping blank entries.
+
+        APD-DATA-003: both branches must filter. The comma-separated-string branch
+        always did; the list branch returned ``v`` untouched, so the JSON form
+        ``JUNIPER_DATA_API_KEYS='[""]'`` survived as ``['']`` and enabled
+        authentication that then accepted an empty ``X-API-Key``.
+        ``APIKeyAuth.__init__`` also filters -- that is the load-bearing guard, and
+        this is defence in depth at the boundary where the inconsistency lived.
+        A list that filters down to empty becomes ``None`` (auth disabled), which
+        matches the empty-string case above rather than leaving an empty list.
+        """
         if v is None or v == "":
             return None
         if isinstance(v, str):
             return [k.strip() for k in v.split(",") if k.strip()]
+        if isinstance(v, (list, tuple)):
+            cleaned = [k.strip() if isinstance(k, str) else k for k in v if not isinstance(k, str) or k.strip()]
+            return cleaned or None
         return v  # type: ignore[return-value]
 
     import_dir: str = _JUNIPER_DATA_API_IMPORT_DIR_DEFAULT
