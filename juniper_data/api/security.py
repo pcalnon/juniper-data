@@ -54,7 +54,23 @@ class APIKeyAuth:
         # against each key with hmac.compare_digest to eliminate the timing
         # side-channel that a `value in set` membership test would leak
         # (SEC-01/JD-SEC-02).
-        self._api_keys: list[str] = list(dict.fromkeys(api_keys)) if api_keys else []
+        #
+        # APD-DATA-003: blank / whitespace-only / non-string entries are filtered
+        # out BEFORE `_enabled` is derived. Without the filter,
+        # ``JUNIPER_DATA_API_KEYS='[""]'`` parses to ``['']``, sets
+        # ``_enabled = True``, and then validates an empty ``X-API-Key``. That is
+        # strictly worse than authentication being off, because the deployment
+        # believes it is protected. Mirrors
+        # ``juniper_service_core.security.APIKeyAuth`` (security.py:44), which
+        # carries this filter and whose comment names the same failure -- the
+        # container differs (list here, set there) but the invariant must not.
+        # ``dict.fromkeys`` still supplies the order-preserving de-duplication, but
+        # it must run AFTER the filter, not before: it hashes every element, so a
+        # malformed env value containing an unhashable entry (e.g. a JSON object)
+        # raises TypeError if it is fed the raw list. Filtering first also matches
+        # the canonical set-comprehension in service-core, where the isinstance
+        # guard likewise runs before the element is hashed.
+        self._api_keys: list[str] = list(dict.fromkeys(k for k in (api_keys or []) if isinstance(k, str) and k.strip()))
         self._enabled = len(self._api_keys) > 0
 
     @property
