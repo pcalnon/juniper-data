@@ -68,9 +68,9 @@ httpx==0.28.1
     # via
     #   datasets
     #   huggingface-hub
-huggingface-hub==1.27.0
+huggingface-hub==1.28.0
     # via datasets
-idna==3.18
+idna==3.19
     # via
     #   anyio
     #   httpx
