@@ -5,7 +5,7 @@
 **Author**: Paul Calnon
 **License**: MIT License
 **Version**: 0.11.0
-**Last Updated**: 2026-08-08
+**Last Updated**: 2026-08-20
 
 ---
 
@@ -457,12 +457,26 @@ Middleware executes in LIFO order (last added = first to execute):
 
 | Order | Middleware | Purpose |
 |-------|-----------|---------|
-| 1 | `RequestIdMiddleware` | Inject/propagate X-Request-ID header |
-| 2 | `PrometheusMiddleware` | HTTP request metrics (if enabled) |
-| 3 | `SecurityMiddleware` | API key auth + rate limiting |
-| 4 | `SecurityHeadersMiddleware` | Security response headers (CSP, HSTS, etc.) |
-| 5 | `RequestBodyLimitMiddleware` | Reject bodies > 10 MB |
-| 6 | `CORSMiddleware` | Cross-origin resource sharing (if configured) |
+| 1 | `CORSMiddleware` | Cross-origin resource sharing (if configured) |
+| 2 | `RequestIdMiddleware` | Inject/propagate X-Request-ID header |
+| 3 | `PrometheusMiddleware` | HTTP request metrics (if enabled) |
+| 4 | `SecurityMiddleware` | API key auth + rate limiting |
+| 5 | `SecurityHeadersMiddleware` | Security response headers (CSP, HSTS, etc.) |
+| 6 | `RequestBodyLimitMiddleware` | Reject bodies > 10 MB |
+
+**`CORSMiddleware` must stay outermost.** A browser preflight carries no
+`X-API-Key` -- the browser generates it, and author-defined headers ride only on
+the actual request that follows -- so any layer that puts `SecurityMiddleware`
+outside CORS answers every preflight to a non-exempt path with 401, and no
+browser client can reach a protected endpoint. Running outermost also attaches
+the CORS headers to error responses (401/429), so a browser surfaces the real
+status instead of an opaque CORS failure.
+
+Note this is a stronger requirement than an `OPTIONS` bypass in
+`SecurityMiddleware._is_exempt`: CORS short-circuits only a *genuine* preflight
+(one carrying `Access-Control-Request-Method`), so a plain `OPTIONS` request
+still authenticates. Pinned by `TestCorsPreflight` in
+`juniper_data/tests/unit/test_api_app.py`.
 
 ### Response Models
 
