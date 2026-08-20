@@ -162,9 +162,43 @@ async def create_dataset(
         # the bare re-raise below mask it as a generic 500. 503 is deliberately
         # avoided: it invites client retries and health-tooling misreads for a
         # condition that will not clear on its own.
+        # ERR-08 (APD-DATA-004): only a DECLARED capability gap may echo the
+        # exception text. Every generator that guards an optional dependency
+        # raises a curated message carrying the install hint, and that is what
+        # D1 exists to surface. But this ``except`` also catches ImportErrors
+        # raised *beneath* the guard -- a broken native extension, a partial
+        # install, a failed lazy import inside the third-party package -- and
+        # those messages routinely carry filesystem paths. Echoing them would
+        # defeat the ERR-08 control that batch-create applies to the sibling
+        # ``except Exception`` branch, because batch-create copies ``e.detail``
+        # verbatim; the single-create path returns it to the caller directly.
+        #
+        # ``is_available()`` is the discriminator: the three optional-dependency
+        # generators check it first, so when the guard fires it reports False.
+        # A generator that reports itself available -- or does not declare the
+        # method at all, as the thirteen numpy-only generators do not -- has
+        # failed for a reason the caller must not be shown.
+        availability_check = getattr(generator_class, "is_available", None)
+        dependency_declared_missing = callable(availability_check) and not availability_check()
+
+        if dependency_declared_missing:
+            detail = f"Generator '{request.generator}' is not available in this deployment: {e}"
+        else:
+            error_id = uuid.uuid4().hex[:12]
+            # The generator name is deliberately NOT interpolated here. It is
+            # request-supplied, and this module's ERR-08 logging idiom (see the
+            # batch-create handler below) keeps caller-controlled strings out of
+            # log records entirely rather than sanitizing them per call site --
+            # juniper-data has no ``_sanitize_for_log`` helper to lean on.
+            # ``logger.exception`` emits the traceback, which names the failing
+            # generator module and class, and ``error_id`` is the join key back
+            # to the 501 the caller received.
+            logger.exception("A generator reported itself available but raised ImportError [error_id=%s]", error_id)
+            detail = f"Generator '{request.generator}' is not available in this deployment (ref: {error_id})"
+
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail=f"Generator '{request.generator}' is not available in this deployment: {e}",
+            detail=detail,
         ) from e
     except Exception:
         record_dataset_generation(generator=request.generator, status=GENERATION_STATUS_ERROR, duration=time.monotonic() - gen_start)
