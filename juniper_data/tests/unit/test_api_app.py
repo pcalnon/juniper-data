@@ -91,6 +91,103 @@ class TestCreateApp:
         assert "CORSMiddleware" in middleware_classes
 
 
+@pytest.fixture
+def cors_auth_settings() -> Settings:
+    """Settings with BOTH a CORS origin and an API key, so auth is actually active.
+
+    The plain ``test_settings`` fixture configures no API key, which leaves
+    ``SecurityMiddleware`` permissive -- a preflight would pass there for the
+    wrong reason.
+    """
+    return Settings(
+        storage_path="/tmp/juniper_test",
+        cors_origins=["http://localhost:3000"],
+        api_keys=["preflight-test-key"],
+    )
+
+
+@pytest.mark.unit
+class TestCorsPreflight:
+    """CORS must execute OUTSIDE SecurityMiddleware.
+
+    Regression coverage for APD-DATA-035 (sibling of APD-CASCOR-001b). CORS was
+    registered first, which under Starlette's prepending ``add_middleware`` made
+    it the INNERMOST layer -- so ``SecurityMiddleware`` saw browser preflights
+    first and answered them 401. A preflight carries no ``X-API-Key`` by
+    specification, so no browser could ever reach a protected endpoint.
+    """
+
+    def test_cors_executes_outside_security_middleware(self, cors_auth_settings: Settings) -> None:
+        """Order is the contract: index 0 runs outermost, so CORS must precede Security."""
+        app = create_app(settings=cors_auth_settings)
+        order = [getattr(m.cls, "__name__", None) for m in app.user_middleware]
+
+        assert "CORSMiddleware" in order, order
+        assert "SecurityMiddleware" in order, order
+        assert order.index("CORSMiddleware") < order.index("SecurityMiddleware"), f"CORS must run outside SecurityMiddleware, got outermost-first order {order}"
+
+    def test_preflight_to_protected_path_is_not_answered_401(self, cors_auth_settings: Settings) -> None:
+        """The defect itself: a genuine preflight must get CORS headers, not 401."""
+        client = TestClient(create_app(settings=cors_auth_settings))
+
+        response = client.options(
+            "/v1/generators",
+            headers={
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+
+        assert response.status_code != 401, "preflight was rejected by auth; it carries no API key by design"
+        assert response.status_code == 200
+        assert response.headers.get("access-control-allow-origin") == "http://localhost:3000"
+
+    def test_preflight_from_disallowed_origin_is_still_rejected(self, cors_auth_settings: Settings) -> None:
+        """Negative control: moving CORS outermost must not accept arbitrary origins."""
+        client = TestClient(create_app(settings=cors_auth_settings))
+
+        response = client.options(
+            "/v1/generators",
+            headers={
+                "Origin": "http://evil.example",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+
+        assert response.headers.get("access-control-allow-origin") is None
+        assert response.status_code == 400
+
+    def test_non_preflight_options_still_requires_auth(self, cors_auth_settings: Settings) -> None:
+        """The auth surface must not widen.
+
+        This is why the fix is a reorder and not an ``OPTIONS`` bypass inside
+        ``_is_exempt``: a bypass would exempt every ``OPTIONS`` request, while
+        CORS short-circuits only a genuine preflight (one carrying
+        ``Access-Control-Request-Method``).
+        """
+        client = TestClient(create_app(settings=cors_auth_settings))
+
+        with_origin = client.options("/v1/generators", headers={"Origin": "http://localhost:3000"})
+        bare = client.options("/v1/generators")
+
+        assert with_origin.status_code == 401
+        assert bare.status_code == 401
+
+    def test_auth_failure_still_carries_cors_headers(self, cors_auth_settings: Settings) -> None:
+        """Outermost CORS also annotates error responses.
+
+        Without this a browser sees an opaque CORS failure instead of the real
+        401, which is why the misordering was so hard to diagnose from the
+        client side.
+        """
+        client = TestClient(create_app(settings=cors_auth_settings))
+
+        response = client.get("/v1/generators", headers={"Origin": "http://localhost:3000"})
+
+        assert response.status_code == 401
+        assert response.headers.get("access-control-allow-origin") == "http://localhost:3000"
+
+
 @pytest.mark.unit
 class TestExceptionHandlers:
     """Tests for custom exception handlers."""
