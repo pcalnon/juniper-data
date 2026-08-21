@@ -118,6 +118,15 @@ class GeneratorInfo(BaseModel):
     # in the running deployment (e.g. mnist without HF ``datasets``). Defaults to
     # True so older payloads / constructors without the flag mean "available".
     available: bool = True
+    # W-4: the generator's own curated install hint — the same string its guarded
+    # ``ImportError`` carries, and therefore the same text the 501 on ``POST /v1/datasets``
+    # returns for a DECLARED capability gap (ERR-08 / APD-DATA-004 keeps undeclared ones
+    # behind a correlation id). Without it ``available: false`` says a generator cannot run
+    # and nothing at all about what would fix that, so a preflight has nowhere to send an
+    # operator: juniper-ml's experiment driver refuses an unavailable generator with "see
+    # GET /v1/generators for the install hint" against a payload that carried none.
+    # None for the generators that declare no optional dependency.
+    install_hint: str | None = None
     params_schema: dict[str, Any] = Field(alias="schema")  # JSON schema for params
 
 

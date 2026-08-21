@@ -54,6 +54,18 @@ class MnistGenerator:
         return HF_AVAILABLE
 
     @staticmethod
+    def install_hint() -> str:
+        """Report how to make this generator available (W-4, companion to ``is_available``).
+
+        Single source of truth: ``generate`` raises this exact text, so the hint on
+        ``GET /v1/generators`` and the 501 detail on ``POST /v1/datasets`` cannot drift.
+
+        Returns:
+            The curated, actionable install instruction for the missing dependency.
+        """
+        return "Hugging Face datasets package not installed. Install with: pip install datasets"
+
+    @staticmethod
     def generate(params: MnistParams) -> dict[str, np.ndarray]:
         """Generate a complete MNIST dataset with train/test splits.
 
@@ -73,7 +85,7 @@ class MnistGenerator:
             ImportError: If datasets package is not installed.
         """
         if not HF_AVAILABLE:
-            raise ImportError("Hugging Face datasets package not installed. Install with: pip install datasets")
+            raise ImportError(MnistGenerator.install_hint())
 
         X, y = MnistGenerator._load_and_preprocess(params)
 

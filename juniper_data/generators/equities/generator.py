@@ -138,6 +138,18 @@ class EquitiesGenerator:
         return EQUITIES_DEPS_AVAILABLE
 
     @staticmethod
+    def install_hint() -> str:
+        """Report how to make this generator available (W-4, companion to ``is_available``).
+
+        Single source of truth: ``generate`` raises this exact text, so the hint on
+        ``GET /v1/generators`` and the 501 detail on ``POST /v1/datasets`` cannot drift.
+
+        Returns:
+            The curated, actionable install instruction for the missing extra.
+        """
+        return 'The "equities" extra is required. Install with: pip install "juniper-data[equities]"'
+
+    @staticmethod
     def generate(params: EquitiesParams) -> dict[str, np.ndarray]:
         """Generate the equities dataset.
 
@@ -156,7 +168,7 @@ class EquitiesGenerator:
             ValueError: If no data could be retrieved for any requested symbol.
         """
         if not EQUITIES_DEPS_AVAILABLE:
-            raise ImportError('The "equities" extra is required. Install with: pip install "juniper-data[equities]"')
+            raise ImportError(EquitiesGenerator.install_hint())
 
         constituents = EquitiesGenerator._load_constituents()
         symbols, meta_map = EquitiesGenerator._resolve_symbols(params, constituents)

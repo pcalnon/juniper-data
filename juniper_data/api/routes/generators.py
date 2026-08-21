@@ -200,6 +200,37 @@ def generator_available(info: dict[str, Any]) -> bool:
     return bool(is_available())
 
 
+def generator_install_hint(info: dict[str, Any]) -> str | None:
+    """Return a registered generator's curated install hint, if it declares one (W-4).
+
+    The companion to ``generator_available``. A generator that guards an optional
+    dependency MAY declare an ``install_hint()`` static method returning the actionable
+    text for making it available; the three that do return the identical string their
+    guarded ``ImportError`` carries, so ``GET /v1/generators`` and the 501 on
+    ``POST /v1/datasets`` cannot drift apart. That is the whole point of routing both
+    through one method rather than restating the command in the registry.
+
+    Deliberately reported whether or not the generator is currently available: the hint
+    describes what the generator NEEDS, which is as true on a host that already has it.
+
+    The hint is curated by the generator author, never derived from an exception raised
+    beneath the guard — those carry filesystem paths, and ERR-08 (APD-DATA-004) keeps
+    them behind a correlation id. Nothing here echoes caller-supplied or ambient text.
+
+    Args:
+        info: A GENERATOR_REGISTRY entry.
+
+    Returns:
+        The install hint, or None when the generator declares no hook (the thirteen
+        numpy-only synthetics) or its hook does not return usable text.
+    """
+    install_hint = getattr(info["generator"], "install_hint", None)
+    if install_hint is None:
+        return None
+    hint = install_hint()
+    return hint if isinstance(hint, str) and hint.strip() else None
+
+
 @router.get("", response_model=list[GeneratorInfo])
 async def list_generators() -> list[GeneratorInfo]:
     """List all registered dataset generators with their info.
@@ -215,6 +246,7 @@ async def list_generators() -> list[GeneratorInfo]:
             version=info["version"],
             description=info["description"],
             available=generator_available(info),
+            install_hint=generator_install_hint(info),
             schema=info["params_class"].model_json_schema(),
         )
         for name, info in GENERATOR_REGISTRY.items()
