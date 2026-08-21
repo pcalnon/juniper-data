@@ -453,6 +453,77 @@ class TestGeneratorAvailability:
         assert "mnist" in detail
         assert "pip install datasets" in detail
 
+    # ------------------------------------------------------------------
+    # APD-DATA-004: the 501 detail must not echo an UNDECLARED ImportError.
+    #
+    # The register filed this against batch-create's ``except HTTPException``
+    # branch, which copies ``e.detail`` verbatim beside a sibling branch that
+    # redacts. It is verified here on BOTH paths, because single-create returns
+    # the same detail to the caller directly -- batch-create amplifies the
+    # leak, it is not the source of it. The source is the 501 construction.
+    # ------------------------------------------------------------------
+
+    #: Shaped like a real broken-native-extension ImportError: it carries an
+    #: absolute filesystem path, unlike the generators' curated install hints.
+    LEAKY_IMPORT_ERROR = "libcudart.so.11.0: cannot open shared object file at /opt/miniforge3/envs/JuniperData/lib"
+
+    @staticmethod
+    def _available_but_broken_entry() -> dict:
+        """A registry entry whose generator reports itself AVAILABLE and still raises ImportError."""
+
+        class AvailableButBroken:
+            @staticmethod
+            def is_available() -> bool:
+                return True
+
+            @staticmethod
+            def generate(params):
+                raise ImportError(TestGeneratorAvailability.LEAKY_IMPORT_ERROR)
+
+        return {**datasets.GENERATOR_REGISTRY["mnist"], "generator": AvailableButBroken}
+
+    def test_undeclared_importerror_is_not_echoed_by_create(self, client: TestClient) -> None:
+        """A generator reporting itself available has failed for a reason the caller must not see."""
+        request = {"generator": "mnist", "params": {}, "persist": False}
+
+        with patch.dict(datasets.GENERATOR_REGISTRY, {"mnist": self._available_but_broken_entry()}):
+            response = client.post("/v1/datasets", json=request)
+
+        assert response.status_code == 501
+        assert "libcudart" not in response.text
+        assert "/opt/" not in response.text
+        detail = response.json()["detail"]
+        assert "mnist" in detail
+        assert "ref: " in detail
+
+    def test_undeclared_importerror_is_not_echoed_through_batch_create(self, client: TestClient) -> None:
+        """The same leak through the branch the register named: batch-create copies ``e.detail`` verbatim."""
+        request = {"generator": "mnist", "params": {}, "persist": False}
+
+        with patch.dict(datasets.GENERATOR_REGISTRY, {"mnist": self._available_but_broken_entry()}):
+            response = client.post("/v1/datasets/batch-create", json={"datasets": [request]})
+
+        assert response.status_code == 201
+        assert "libcudart" not in response.text
+        assert "/opt/" not in response.text
+        assert "ref: " in response.json()["results"][0]["error"]
+
+    def test_declared_missing_dependency_keeps_the_install_hint_through_batch_create(self, client: TestClient) -> None:
+        """Negative control: redaction must not swallow the D1 hint for a genuine capability gap.
+
+        Without this, a fix that simply redacted every ImportError would pass
+        the two tests above while destroying the behaviour D1 was added for.
+        """
+        request = {"generator": "mnist", "params": {}, "persist": False}
+
+        with patch("juniper_data.generators.mnist.generator.HF_AVAILABLE", False):
+            response = client.post("/v1/datasets/batch-create", json={"datasets": [request]})
+
+        assert response.status_code == 201
+        error = response.json()["results"][0]["error"]
+        assert "pip install datasets" in error
+        assert "ref: " not in error
+
 
 @pytest.mark.unit
 class TestHealthEndpoint:
