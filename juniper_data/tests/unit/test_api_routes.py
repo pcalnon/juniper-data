@@ -422,6 +422,78 @@ class TestGeneratorAvailability:
         by_name = {g["name"]: g for g in response.json()}
         assert by_name["mnist"]["available"] is False
 
+    def test_list_generators_carries_install_hint_when_unavailable(self, client: TestClient) -> None:
+        """W-4: ``available: false`` must be accompanied by text an operator can act on.
+
+        juniper-ml's experiment driver refuses an unavailable generator with "see
+        GET /v1/generators for the install hint" (``util/experiments/run_experiment.py``).
+        Before this field the endpoint carried five fields and no hint anywhere, so the
+        preflight sent operators to a payload that could not answer them.
+        """
+        with patch("juniper_data.generators.mnist.generator.HF_AVAILABLE", False):
+            response = client.get("/v1/generators")
+
+        assert response.status_code == 200
+        mnist = {g["name"]: g for g in response.json()}["mnist"]
+        assert mnist["available"] is False
+        assert mnist["install_hint"], "an unavailable generator must carry an install hint"
+        assert "pip install datasets" in mnist["install_hint"]
+
+    def test_list_generators_install_hint_matches_the_501_detail(self, client: TestClient) -> None:
+        """The listing hint and the 501 detail are the same curated string, by construction.
+
+        Both read the generator's ``install_hint()``. Restating the command in the registry
+        instead would let the two surfaces drift, which is the failure this pins: an
+        operator who follows the listing must land on what the request path would have told
+        them, and D1 (I-5) already made the 501 the authoritative copy.
+        """
+        with patch("juniper_data.generators.mnist.generator.HF_AVAILABLE", False):
+            listed = {g["name"]: g for g in client.get("/v1/generators").json()}["mnist"]
+            refusal = client.post("/v1/datasets", json={"generator": "mnist", "params": {}, "persist": False})
+
+        assert refusal.status_code == 501
+        assert listed["install_hint"] in refusal.json()["detail"]
+
+    def test_list_generators_install_hint_reported_even_when_available(self, client: TestClient) -> None:
+        """The hint describes what a generator NEEDS, which is as true where it is installed.
+
+        Gating it on ``available is False`` would make the field useless for capacity
+        planning — an operator sizing a deployment could not read off what the extras are.
+        """
+        response = client.get("/v1/generators")
+
+        by_name = {g["name"]: g for g in response.json()}
+        assert by_name["equities"]["install_hint"] is not None
+        assert "juniper-data[equities]" in by_name["equities"]["install_hint"]
+
+    def test_list_generators_synthetics_declare_no_install_hint(self, client: TestClient) -> None:
+        """The numpy-only synthetics need nothing installed, so they must claim nothing."""
+        response = client.get("/v1/generators")
+
+        by_name = {g["name"]: g for g in response.json()}
+        for name in ("spiral", "xor", "gaussian", "circles", "moon", "checkerboard", "multi_sine", "mackey_glass", "ar_p", "irregular_sine", "delay_product"):
+            assert by_name[name]["install_hint"] is None, f"synthetic generator '{name}' should declare no install hint"
+
+    def test_install_hint_helper_declines_a_blank_hook(self) -> None:
+        """A hook returning non-text yields None rather than an empty string in the payload.
+
+        ``generator_install_hint`` is reached through ``getattr``, so a generator may
+        declare anything; ``install_hint: ""`` would read as "a hint exists" to every
+        client that truth-tests the field.
+        """
+        from juniper_data.api.routes.generators import generator_install_hint
+
+        class _Blank:
+            @staticmethod
+            def install_hint() -> str:
+                return "   "
+
+        class _Undeclared:
+            pass
+
+        assert generator_install_hint({"generator": _Blank}) is None
+        assert generator_install_hint({"generator": _Undeclared}) is None
+
     def test_get_schema_carries_available_flag(self, client: TestClient) -> None:
         """The per-generator schema response carries a top-level ``available`` flag alongside the intact schema."""
         response = client.get("/v1/generators/spiral/schema")
