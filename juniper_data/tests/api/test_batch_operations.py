@@ -175,7 +175,12 @@ class TestBatchCreate:
         assert "success" in result
 
     def test_counts_correct_on_all_failures(self, client: TestClient) -> None:
-        """When all items fail, total_created is 0 and total_failed matches count."""
+        """When all items fail, total_created is 0 and total_failed matches count.
+
+        APD-DATA-009: this asserted ``201`` before the fix. The status assertion was
+        incidental -- copied from the success-path tests in this class -- but it pinned
+        the defect, so a reader had no way to tell the claim was unintended.
+        """
         request = {
             "datasets": [
                 {"generator": "bad_gen_1", "params": {}, "persist": True},
@@ -184,10 +189,68 @@ class TestBatchCreate:
         }
         response = client.post("/v1/datasets/batch-create", json=request)
 
-        assert response.status_code == 201
+        assert response.status_code == 200
         data = response.json()
         assert data["total_created"] == 0
         assert data["total_failed"] == 2
+
+    def test_status_is_200_not_201_when_nothing_was_created(self, client: TestClient) -> None:
+        """APD-DATA-009: a batch that created nothing must not answer "201 Created".
+
+        The failure this closes is a caller that checks only the status line -- the
+        single most common way an HTTP client decides whether a write happened. Before
+        the fix the server reported ``201 Created`` while ``total_created`` was 0.
+        """
+        request = {
+            "datasets": [
+                {"generator": "bad_gen_1", "params": {}, "persist": True},
+                {"generator": "bad_gen_2", "params": {}, "persist": True},
+            ]
+        }
+        response = client.post("/v1/datasets/batch-create", json=request)
+
+        assert response.status_code == 200
+        assert response.json()["total_created"] == 0
+
+    def test_status_is_still_201_when_some_items_succeed(self, client: TestClient) -> None:
+        """Partial success keeps 201: resources genuinely were created.
+
+        The negative control for the fix. A change that downgraded every batch carrying
+        any failure to 200 would also pass the all-failed test above, and would be wrong
+        -- ``201`` is a true statement whenever at least one dataset exists that did not
+        before.
+        """
+        request = {
+            "datasets": [
+                {
+                    "generator": "spiral",
+                    "params": {"n_spirals": 2, "n_points_per_spiral": 50, "seed": 77},
+                    "persist": True,
+                },
+                {"generator": "bad_gen", "params": {}, "persist": True},
+            ]
+        }
+        response = client.post("/v1/datasets/batch-create", json=request)
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["total_created"] == 1
+        assert data["total_failed"] == 1
+
+    def test_all_failed_response_still_carries_per_item_errors(self, client: TestClient) -> None:
+        """200 must not be read as "nothing to see here".
+
+        The status was corrected, not the body: every item still reports its own failure,
+        so a caller that reads ``results`` learns exactly as much as it did before.
+        """
+        request = {"datasets": [{"generator": "bad_gen_1", "params": {}, "persist": True}]}
+        response = client.post("/v1/datasets/batch-create", json=request)
+
+        assert response.status_code == 200
+        item = response.json()["results"][0]
+        assert item["success"] is False
+        assert item["error"]
+        assert item["dataset_id"] is None
 
     def test_batch_create_with_tags(self, client: TestClient) -> None:
         """Batch-created datasets respect tags in each item."""

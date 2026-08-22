@@ -5,7 +5,7 @@
 **Author**: Paul Calnon
 **License**: MIT License
 **Version**: 0.11.0
-**Last Updated**: 2026-08-21
+**Last Updated**: 2026-08-22
 
 ---
 
@@ -446,7 +446,7 @@ Gates: 80% aggregate (override with `COVERAGE_FAIL_UNDER=<n>`) plus the per-modu
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/v1/datasets/batch-create` | Create multiple datasets (max 50, returns 201) |
+| POST | `/v1/datasets/batch-create` | Create multiple datasets (max 50; 201 when at least one was created, 200 when none was) |
 | POST | `/v1/datasets/batch-delete` | Delete multiple datasets (max 100) |
 | POST | `/v1/datasets/batch-export` | Export multiple datasets as ZIP (max 50) |
 | PATCH | `/v1/datasets/batch-tags` | Add/remove tags from multiple datasets |

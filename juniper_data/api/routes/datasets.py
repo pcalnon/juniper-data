@@ -8,7 +8,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import numpy as np
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
 from starlette import status
@@ -411,6 +411,7 @@ async def batch_delete_datasets(
 @router.post("/batch-create", response_model=BatchCreateResponse, status_code=status.HTTP_201_CREATED)
 async def batch_create_datasets(
     request: BatchCreateRequest,
+    response: Response,
     store: DatasetStore = Depends(get_store),
 ) -> BatchCreateResponse:
     """Create multiple datasets in a single request.
@@ -418,8 +419,23 @@ async def batch_create_datasets(
     Each item is processed independently; failures in one item do not
     affect others. Results include per-item success/failure status.
 
+    Status code: ``201 Created`` when at least one dataset was created,
+    ``200 OK`` when none was. The decorator's ``201`` is only a default —
+    a batch in which every item failed created no resource, so reporting
+    "Created" tells a caller that checks only the status line the exact
+    opposite of what happened. ``200`` is not "success" here either; it
+    means the batch was processed and the per-item ``results`` are the
+    authority, which is the contract the three sibling batch routes
+    already use (they declare no ``status_code`` at all).
+
+    Deliberately not ``207 Multi-Status``: that would be a new response
+    semantic for every existing client to learn, and per-item statuses
+    are a redesign of this endpoint's contract rather than a correction
+    of this one false claim.
+
     Args:
         request: Batch create request with list of dataset specifications.
+        response: Injected so the status can depend on the outcome.
         store: Dataset storage backend.
 
     Returns:
@@ -480,6 +496,9 @@ async def batch_create_datasets(
                 )
             )
             total_failed += 1
+
+    if total_created == 0:
+        response.status_code = status.HTTP_200_OK
 
     return BatchCreateResponse(
         results=results,

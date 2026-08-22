@@ -616,6 +616,19 @@ Create multiple datasets in one request.
 
 Each item is processed independently. A failure in one item does not fail the whole batch.
 
+**Status codes:**
+
+| Status | When |
+|--------|------|
+| `201 Created` | At least one dataset was created (`total_created > 0`), whether or not other items failed. |
+| `200 OK` | No dataset was created (`total_created == 0`). The batch was processed; read `results` for the per-item reason. |
+| `422 Unprocessable Entity` | The request itself is invalid — e.g. an empty `datasets` list, or more than 50 items. |
+
+`200` is not an error status here. Because every item reports its own outcome, the body is
+the authority for what happened; the status line only distinguishes "something was created"
+from "nothing was". A caller that checks only the status must not read `201` as a guarantee
+that *every* item succeeded — inspect `total_failed`.
+
 **Request Body:**
 
 ```json
