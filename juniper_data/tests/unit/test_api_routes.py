@@ -575,7 +575,9 @@ class TestGeneratorAvailability:
         with patch.dict(datasets.GENERATOR_REGISTRY, {"mnist": self._available_but_broken_entry()}):
             response = client.post("/v1/datasets/batch-create", json={"datasets": [request]})
 
-        assert response.status_code == 201
+        # APD-DATA-009: one item, and it failed, so nothing was created -> 200, not 201.
+        # The leak assertions below are what this test is for and are unchanged.
+        assert response.status_code == 200
         assert "libcudart" not in response.text
         assert "/opt/" not in response.text
         assert "ref: " in response.json()["results"][0]["error"]
@@ -591,7 +593,7 @@ class TestGeneratorAvailability:
         with patch("juniper_data.generators.mnist.generator.HF_AVAILABLE", False):
             response = client.post("/v1/datasets/batch-create", json={"datasets": [request]})
 
-        assert response.status_code == 201
+        assert response.status_code == 200  # APD-DATA-009: nothing created
         error = response.json()["results"][0]["error"]
         assert "pip install datasets" in error
         assert "ref: " not in error
@@ -694,7 +696,9 @@ class TestBatchEndpoints:
         monkeypatch.setattr(memory_store, "save_versioned", _boom)
         request = {"datasets": [{"generator": "spiral", "params": {"n_spirals": 2, "n_points_per_spiral": 40, "seed": 2}, "persist": True}]}
         response = client.post("/v1/datasets/batch-create", json=request)
-        assert response.status_code == 201
+        # APD-DATA-009: this asserted 201 directly beside ``total_created == 0`` --
+        # the contradiction was written down and never read as one.
+        assert response.status_code == 200
         data = response.json()
         assert data["total_created"] == 0
         assert data["total_failed"] == 1
