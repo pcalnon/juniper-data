@@ -725,3 +725,75 @@ class TestBatchEndpoints:
         response = client.post("/v1/datasets/batch-export", json={"dataset_ids": [id1]})
         # The raced item is skipped; the endpoint still streams a (well-formed) archive.
         assert response.status_code == 200
+
+
+@pytest.mark.unit
+class TestFilterCursorPagination:
+    """APD-DATA-011 at the HTTP boundary: next_cursor, and the two ways to get it wrong."""
+
+    @staticmethod
+    def _seed(client: TestClient, n: int = 5) -> None:
+        for seed in range(n):
+            resp = client.post(
+                "/v1/datasets",
+                json={"generator": "spiral", "params": {"n_spirals": 2, "n_points_per_spiral": 40, "seed": seed}, "persist": True},
+            )
+            assert resp.status_code == 201
+
+    def test_next_cursor_is_returned_and_pages_do_not_overlap(self, client: TestClient) -> None:
+        self._seed(client)
+
+        first = client.get("/v1/datasets/filter", params={"limit": 2})
+        assert first.status_code == 200
+        cursor = first.json()["next_cursor"]
+        assert cursor, "next_cursor must be emitted so a caller can paginate stably"
+
+        second = client.get("/v1/datasets/filter", params={"limit": 2, "cursor": cursor})
+        assert second.status_code == 200
+
+        ids1 = {d["dataset_id"] for d in first.json()["datasets"]}
+        ids2 = {d["dataset_id"] for d in second.json()["datasets"]}
+        assert not ids1 & ids2
+
+    def test_next_cursor_is_emitted_in_offset_mode_too(self, client: TestClient) -> None:
+        """So a caller can switch to stable pagination without a round trip."""
+        self._seed(client)
+
+        resp = client.get("/v1/datasets/filter", params={"limit": 2, "offset": 0})
+
+        assert resp.status_code == 200
+        assert resp.json()["next_cursor"]
+
+    def test_empty_page_has_no_cursor(self, client: TestClient) -> None:
+        """There is no position to name, and inventing one would be a lie."""
+        resp = client.get("/v1/datasets/filter", params={"limit": 2, "generator": "no_such_generator"})
+
+        assert resp.status_code == 200
+        assert resp.json()["datasets"] == []
+        assert resp.json()["next_cursor"] is None
+
+    def test_malformed_cursor_is_400_not_500(self, client: TestClient) -> None:
+        """Schema-valid string, semantically wrong -> 400 (the APD-DATA-014 rule)."""
+        resp = client.get("/v1/datasets/filter", params={"limit": 2, "cursor": "not-a-real-cursor"})
+
+        assert resp.status_code == 400
+        assert isinstance(resp.json()["detail"], str)
+
+    def test_cursor_and_offset_together_are_rejected(self, client: TestClient) -> None:
+        """Rejected rather than silently resolved: passing both means one is misunderstood."""
+        self._seed(client, n=2)
+        cursor = client.get("/v1/datasets/filter", params={"limit": 1}).json()["next_cursor"]
+
+        resp = client.get("/v1/datasets/filter", params={"limit": 1, "offset": 1, "cursor": cursor})
+
+        assert resp.status_code == 400
+        assert "cursor" in resp.json()["detail"].lower()
+
+    def test_offset_zero_with_cursor_is_allowed(self, client: TestClient) -> None:
+        """offset defaults to 0, so the guard must not fire on the default."""
+        self._seed(client, n=2)
+        cursor = client.get("/v1/datasets/filter", params={"limit": 1}).json()["next_cursor"]
+
+        resp = client.get("/v1/datasets/filter", params={"limit": 1, "offset": 0, "cursor": cursor})
+
+        assert resp.status_code == 200

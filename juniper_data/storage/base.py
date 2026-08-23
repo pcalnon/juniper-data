@@ -1,5 +1,6 @@
 """Abstract base class for dataset storage."""
 
+import base64
 import contextlib
 import threading
 import time
@@ -11,6 +12,7 @@ from datetime import UTC, datetime
 
 import numpy as np
 
+from juniper_data.core.constants import CHARSET_UTF8
 from juniper_data.core.models import DatasetMeta
 
 # from typing import Dict, List, Optional
@@ -26,6 +28,58 @@ from juniper_data.core.models import DatasetMeta
 # ``_invalidate_metadata_cache()`` from their concrete ``save`` / ``delete``
 # / ``update_meta`` implementations.
 _METADATA_CACHE_TTL_SECONDS = 5.0
+
+# APD-DATA-011: keyset pagination. The cursor encodes one row's position in
+# ``filter_datasets``' total order -- ``(created_at DESC, dataset_id ASC)`` -- and a page
+# is "everything strictly after that position". Unlike an offset it names a *place in the
+# ordering* rather than a count of rows before it, so rows inserted or deleted ahead of
+# the cursor cannot shift the next page.
+_CURSOR_SEPARATOR = "|"
+
+
+def encode_cursor(meta: DatasetMeta) -> str:
+    """Encode a row's position in the total order as an opaque cursor.
+
+    Opaque by intent: callers must treat it as a token to hand back, not as a structure
+    to build. Encoding the sort key rather than an index is the whole point -- an index
+    would drift for exactly the reasons keyset pagination exists to avoid.
+    """
+    raw = f"{meta.created_at.isoformat()}{_CURSOR_SEPARATOR}{meta.dataset_id}"
+    return base64.urlsafe_b64encode(raw.encode(CHARSET_UTF8)).decode("ascii")
+
+
+def decode_cursor(cursor: str) -> tuple[datetime, str]:
+    """Decode a cursor produced by :func:`encode_cursor`.
+
+    Raises:
+        ValueError: If the cursor is not a well-formed token. The caller is expected to
+            translate this into an HTTP 400 -- the cursor is schema-valid as a string but
+            semantically wrong, which is the 400/422 rule stated in ``create_dataset``
+            (APD-DATA-014).
+    """
+    try:
+        raw = base64.urlsafe_b64decode(cursor.encode("ascii")).decode(CHARSET_UTF8)
+        encoded_at, _, dataset_id = raw.partition(_CURSOR_SEPARATOR)
+        if not encoded_at or not dataset_id:
+            raise ValueError("cursor is missing a component")
+        return datetime.fromisoformat(encoded_at), dataset_id
+    except ValueError:
+        raise
+    except Exception as exc:  # undecodable base64 / non-ascii / bad utf-8
+        raise ValueError(f"Malformed pagination cursor: {cursor!r}") from exc
+
+
+def _strictly_after(meta: DatasetMeta, cursor_created_at: datetime, cursor_dataset_id: str) -> bool:
+    """Is ``meta`` strictly after the cursor position in ``(created_at DESC, id ASC)``?
+
+    ``created_at`` descends, so "after" means OLDER; ``dataset_id`` ascends, so within one
+    timestamp "after" means a GREATER id. Getting either comparison backwards silently
+    returns the page the caller already has, or skips the rest of a tie group -- which is
+    why both halves are pinned by their own tests.
+    """
+    if meta.created_at != cursor_created_at:
+        return meta.created_at < cursor_created_at
+    return meta.dataset_id > cursor_dataset_id
 
 
 class DatasetStore(ABC):
@@ -386,6 +440,7 @@ class DatasetStore(ABC):
         dataset_version: int | None = None,
         limit: int = 100,
         offset: int = 0,
+        cursor: str | None = None,
     ) -> tuple[list[DatasetMeta], int]:
         """Filter datasets by various criteria.
 
@@ -434,8 +489,31 @@ class DatasetStore(ABC):
                 continue
             filtered.append(meta)
 
+        # APD-DATA-012: sort on a TOTAL order. ``created_at`` alone is not one --
+        # ``list.sort`` is stable, so datasets sharing a timestamp came back in whatever
+        # order the enumeration produced, and ``LocalFSDatasetStore`` enumerates with
+        # ``Path.glob``, which specifies no ordering at all (measured: its order is not
+        # sorted order even on ext4). Feeding the same six datasets in two enumeration
+        # orders produced two different pages. Sorting by ``dataset_id`` first and then
+        # stably by ``created_at`` descending breaks ties by id ASCENDING, which is
+        # reproducible across calls, across processes, and across the two store
+        # implementations -- whose enumeration orders otherwise disagree by construction
+        # (glob order vs dict insertion order).
+        filtered.sort(key=lambda m: m.dataset_id)
         filtered.sort(key=lambda m: m.created_at, reverse=True)
         total = len(filtered)
+
+        # APD-DATA-011: keyset pagination. ``filtered[offset:offset+limit]`` re-slices a
+        # collection that may have changed since the previous page, so an insert repeats
+        # a row across pages and a delete skips one -- reproduced, an insert between two
+        # fetches returned the same dataset on both. A cursor names the last row's
+        # position in the total order above and asks for what strictly follows it, which
+        # no insert or delete before that point can shift.
+        if cursor is not None:
+            cursor_created_at, cursor_dataset_id = decode_cursor(cursor)
+            filtered = [m for m in filtered if _strictly_after(m, cursor_created_at, cursor_dataset_id)]
+            return filtered[:limit], total
+
         return filtered[offset : offset + limit], total
 
     def batch_delete(self, dataset_ids: list[str]) -> tuple[list[str], list[str]]:
