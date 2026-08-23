@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.testclient import TestClient
 from pydantic_core import PydanticSerializationError
 
@@ -335,3 +336,102 @@ class TestGetAppFactory:
         from juniper_data.api.app import get_app
 
         assert get_app() is get_app()
+
+
+class TestErrorSurfaceContract:
+    """APD-DATA-013 / APD-DATA-014 -- the 400/422 split and the ``detail`` shape.
+
+    Both findings were about the error surface being *inherited* rather than decided:
+    the 422 body came from FastAPI's default handler, and which of 400/422 a caller got
+    depended on where validation happened to run. Neither was pinned by anything, so
+    both could change without a test failing.
+    """
+
+    def _client(self, test_settings: Settings, memory_store: InMemoryDatasetStore) -> TestClient:
+        app = create_app(settings=test_settings)
+        datasets.set_store(memory_store)
+        return TestClient(app)
+
+    def test_request_validation_handler_is_owned_by_this_app(self, test_settings: Settings) -> None:
+        """Anti-vacuous guard for every other assertion in this class.
+
+        The handler is deliberately byte-identical to FastAPI's default, so each payload
+        assertion below would pass just as happily if the handler had never been
+        registered at all. That is the whole risk: the point of APD-DATA-013 is *who owns
+        the contract*, and only this test can tell the two situations apart.
+        """
+        app = create_app(settings=test_settings)
+        handler = app.exception_handlers.get(RequestValidationError)
+
+        assert handler is not None, "no RequestValidationError handler -- the 422 contract is FastAPI's, not ours"
+        assert handler.__module__.startswith("juniper_data"), f"RequestValidationError is handled by {handler.__module__}, not this app"
+
+    def test_schema_violation_is_422_with_a_list_detail(self, test_settings: Settings, memory_store: InMemoryDatasetStore) -> None:
+        """A violation of the DECLARED schema is rejected at the boundary as 422."""
+        client = self._client(test_settings, memory_store)
+        response = client.post("/v1/datasets", json={"params": {}})
+
+        assert response.status_code == 422
+        detail = response.json()["detail"]
+        assert isinstance(detail, list)
+        assert all(isinstance(item, dict) for item in detail)
+        # juniper-data-client's _render_error_detail reads exactly these keys
+        # (APD-DCLIENT-003). Losing them is a published-client break.
+        assert {"loc", "msg", "type"} <= set(detail[0])
+
+    def test_semantic_rejection_is_400_with_a_string_detail(self, test_settings: Settings, memory_store: InMemoryDatasetStore) -> None:
+        """Schema-valid but wrong for the named generator -> 400, string detail."""
+        client = self._client(test_settings, memory_store)
+        response = client.post("/v1/datasets", json={"generator": "spiral", "params": {"n_spirals": "not_a_number"}})
+
+        assert response.status_code == 400
+        assert isinstance(response.json()["detail"], str)
+
+    @pytest.mark.parametrize(
+        ("label", "body", "expected_status", "expected_detail_type"),
+        [
+            ("missing required field", {"params": {}}, 422, list),
+            ("params is not a mapping", {"generator": "spiral", "params": "nope"}, 422, list),
+            ("field violates its constraint", {"generator": "spiral", "params": {"n_spirals": 2, "n_points_per_spiral": 50, "seed": 1}, "ttl_seconds": 0}, 422, list),
+            ("unknown generator", {"generator": "no_such_generator", "params": {}}, 400, str),
+            ("generator rejects the params", {"generator": "spiral", "params": {"n_spirals": "not_a_number"}}, 400, str),
+        ],
+    )
+    def test_the_400_422_rule_holds_on_every_rejection_path(
+        self,
+        test_settings: Settings,
+        memory_store: InMemoryDatasetStore,
+        label: str,
+        body: dict,
+        expected_status: int,
+        expected_detail_type: type,
+    ) -> None:
+        """The rule, stated as a table: 422 = schema, 400 = semantics.
+
+        APD-DATA-014's finding was that this split fell out of exception-subclass MRO
+        rather than a decision. Whether or not one agrees with the split, it is now a
+        decision, and this table is where it is written down.
+        """
+        client = self._client(test_settings, memory_store)
+        response = client.post("/v1/datasets", json=body)
+
+        assert response.status_code == expected_status, label
+        assert isinstance(response.json()["detail"], expected_detail_type), label
+
+    def test_detail_shape_is_status_dependent_and_this_is_a_known_limitation(self, test_settings: Settings, memory_store: InMemoryDatasetStore) -> None:
+        """The half of APD-DATA-013 that is NOT fixed here, pinned so it stays visible.
+
+        ``detail`` is a list on 422 and a string on 400. Unifying them needs a response
+        envelope (RFC 9457), which is the deferred APD-DATA-026..-033 work. This test
+        exists so that a future "cleanup" which flattens the 422 list -- destroying the
+        per-field structure juniper-data-client consumes -- fails here rather than in a
+        downstream repo.
+        """
+        client = self._client(test_settings, memory_store)
+
+        schema = client.post("/v1/datasets", json={"params": {}})
+        semantic = client.post("/v1/datasets", json={"generator": "no_such_generator", "params": {}})
+
+        assert isinstance(schema.json()["detail"], list)
+        assert isinstance(semantic.json()["detail"], str)
+        assert type(schema.json()["detail"]) is not type(semantic.json()["detail"])

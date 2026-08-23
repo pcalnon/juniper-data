@@ -952,23 +952,55 @@ JuniperData guarantees:
 
 ### Error Response Format
 
+Every error response is a JSON object with a `detail` key. **`detail` has two shapes, and
+which one you get depends on the status code** — check the type before consuming it.
+
+Most errors carry a human-readable **string**:
+
 ```json
 {
-  "detail": "Error message describing what went wrong"
+  "detail": "Unknown generator 'nope'. Available: ['spiral', ...]"
 }
 ```
 
+A `422` carries a **list of per-field error objects**, so a caller can report which field
+failed and why:
+
+```json
+{
+  "detail": [
+    {"type": "missing", "loc": ["body", "generator"], "msg": "Field required"}
+  ]
+}
+```
+
+This split is a known limitation, not an accident: unifying the two shapes requires a
+response envelope (RFC 9457 problem details), which is tracked separately. `juniper-data-client`
+already handles both — it renders the list as `body.generator: Field required` for the
+exception message while leaving the structure intact on `exc.detail`.
+
 ### Common Status Codes
 
-| Code                        | Description                |
-| --------------------------- | -------------------------- |
-| `200 OK`                    | Request succeeded          |
-| `201 Created`               | Resource created           |
-| `204 No Content`            | Resource deleted           |
-| `400 Bad Request`           | Invalid request parameters |
-| `404 Not Found`             | Resource not found         |
-| `422 Unprocessable Entity`  | Validation error           |
-| `500 Internal Server Error` | Server error               |
+| Code                        | Description                                      | `detail` shape |
+| --------------------------- | ------------------------------------------------ | -------------- |
+| `200 OK`                    | Request succeeded                                | —              |
+| `201 Created`               | Resource created                                 | —              |
+| `204 No Content`            | Resource deleted                                 | —              |
+| `400 Bad Request`           | Schema-valid, but semantically wrong             | `str`          |
+| `404 Not Found`             | Resource not found                               | `str`          |
+| `422 Unprocessable Content` | Violates the declared request schema             | `list[object]` |
+| `500 Internal Server Error` | Server error                                     | `str`          |
+| `501 Not Implemented`       | Generator's optional dependency is not installed | `str`          |
+
+#### 400 vs 422 — the rule
+
+Both mean "the caller sent something wrong", and the boundary between them is deliberate:
+
+- **`422`** — the request violates the **declared schema**, and is rejected before the
+  handler runs: a missing required field, `ttl_seconds: 0`, or `params` that is not an object.
+- **`400`** — the request is schema-valid but **semantically wrong for the generator it
+  names**: an unknown generator, or params that the named generator rejects. `params` is
+  typed as a free-form object, so only the resolved generator can validate its contents.
 
 ---
 
