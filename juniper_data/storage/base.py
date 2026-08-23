@@ -1,8 +1,10 @@
 """Abstract base class for dataset storage."""
 
+import contextlib
 import threading
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 
 # from collections.abc import Callable
 from datetime import UTC, datetime
@@ -214,7 +216,7 @@ class DatasetStore(ABC):
         counting (see BUG-JD-05). Access counting is informational so
         this is an acceptable trade-off.
         """
-        with self._version_lock:
+        with self._version_lock, self._meta_write_lock(dataset_id):
             meta = self.get_meta(dataset_id)
             if meta is not None:
                 meta.last_accessed_at = datetime.now(UTC)
@@ -247,7 +249,7 @@ class DatasetStore(ABC):
         this serialises threads within one process, not across a multi-process
         deployment (BUG-JD-05).
         """
-        with self._version_lock:
+        with self._version_lock, self._meta_write_lock(dataset_id):
             meta = self.get_meta(dataset_id)
             if meta is None:
                 return None
@@ -257,6 +259,28 @@ class DatasetStore(ABC):
             meta.tags = sorted(tags)
             self.update_meta(dataset_id, meta)
             return meta
+
+    @contextlib.contextmanager
+    def _meta_write_lock(self, dataset_id: str) -> Iterator[None]:
+        """Serialise a metadata read-modify-write against *other processes*.
+
+        APD-DATA-007. ``_version_lock`` is a ``threading.Lock``, so it orders the
+        read-modify-write only among threads of one interpreter. Both writers of the
+        whole ``DatasetMeta`` document -- :meth:`record_access` and :meth:`update_tags`
+        -- rewrite every field, so two processes that interleave read/write lose one
+        side's change entirely. Measured before this existed: twelve processes each
+        adding one distinct tag left **two** tags on disk.
+
+        The default is a no-op, which is correct for any store whose state does not
+        outlive the process (``InMemoryDatasetStore``); a store backed by shared
+        durable state overrides it. Both call sites take ``_version_lock`` first and
+        this second, so the acquisition order is uniform and cannot deadlock.
+
+        This closes lost updates between processes on ONE host. It is not a
+        distributed lock: separate hosts sharing network storage still need
+        coordination this class does not provide.
+        """
+        yield
 
     def is_expired(self, meta: DatasetMeta) -> bool:
         """Check if a dataset has expired based on its TTL.

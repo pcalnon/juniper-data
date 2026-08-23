@@ -32,6 +32,11 @@ POSTGRES_DATASETS_TABLE: str = "datasets"
 META_FILE_SUFFIX: str = ".meta.json"
 NPZ_FILE_SUFFIX: str = ".npz"
 TMP_FILE_SUFFIX: str = ".tmp"
+# APD-DATA-007: advisory cross-process lock guarding a dataset's metadata
+# read-modify-write. Appended AFTER ``META_FILE_SUFFIX`` so the resulting name does
+# not end in ``.meta.json`` and is therefore invisible to the ``*.meta.json`` globs
+# that enumerate datasets.
+LOCK_FILE_SUFFIX: str = ".lock"
 
 # ─── JSON Serialization ──────────────────────────────────────────────────────
 
