@@ -489,7 +489,13 @@ class TestLocalFSUpdateAndList:
         original_unlink = path_cls.unlink
 
         def failing_replace(self_path, target):
-            if str(self_path).endswith(".npz.tmp"):
+            # APD-DATA-007: the temp path now carries a pid+uuid segment
+            # (``X.npz.<pid>.<uuid>.tmp``) so concurrent writers cannot share one temp
+            # file. Match the npz temp file by shape rather than by the exact old name;
+            # what this test exercises -- an OSError during replace, and a second one
+            # during the cleanup unlink -- is unchanged.
+            name = str(self_path)
+            if ".npz." in name and name.endswith(".tmp"):
                 raise OSError("Simulated disk error during replace")
             return original_replace(self_path, target)
 

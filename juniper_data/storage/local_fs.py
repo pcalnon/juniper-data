@@ -1,9 +1,14 @@
 """Local filesystem dataset store."""
 
+import contextlib
+import fcntl
 import io
 import json
 import logging
+import os
 import re
+import uuid
+from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
 
@@ -19,6 +24,7 @@ from juniper_data.storage.constants import (
     DEFAULT_LIST_LIMIT,
     DEFAULT_LIST_OFFSET,
     JSON_INDENT_DEFAULT,
+    LOCK_FILE_SUFFIX,
     META_FILE_SUFFIX,
     NPZ_FILE_SUFFIX,
     TMP_FILE_SUFFIX,
@@ -101,6 +107,61 @@ class LocalFSDatasetStore(DatasetStore):
         """Get path to metadata file."""
         return self._build_path(dataset_id, META_FILE_SUFFIX)
 
+    def _lock_path(self, dataset_id: str) -> Path:
+        """Path of the advisory lock file guarding one dataset's metadata."""
+        meta_path = self._meta_path(dataset_id)
+        return meta_path.with_suffix(meta_path.suffix + LOCK_FILE_SUFFIX)
+
+    @contextlib.contextmanager
+    def _meta_write_lock(self, dataset_id: str) -> Iterator[None]:
+        """Hold an exclusive advisory lock on this dataset's metadata (APD-DATA-007).
+
+        The base class serialises the metadata read-modify-write only within one
+        interpreter. Because this store's state is a shared directory, two *processes*
+        against the same ``storage_path`` interleave freely, and the loser's whole
+        document is overwritten. Reproduced before the fix: twelve processes each adding
+        one distinct tag left two tags on disk.
+
+        A separate lock file is used rather than locking the metadata file itself: the
+        write path replaces that file by ``rename``, so a lock held on the old inode
+        would guard nothing once the first writer swapped it out. The lock file is only
+        ever created and locked, never renamed or removed -- unlinking it would let a
+        second process create and lock a *different* inode by the same name and
+        immediately enter the critical section.
+
+        ``flock`` is advisory and per-host. It orders writers on one machine, including
+        separate uvicorn workers, but is not a distributed lock and gives no guarantee
+        over NFS.
+        """
+        lock_path = self._lock_path(dataset_id)
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        # 0o600: the lock file carries no data -- it exists only as an flock target --
+        # so nothing needs to read it and a world-readable mode is pure exposure
+        # (CodeQL py/overly-permissive-file). Every process locking it runs as the
+        # service user; cross-user locking would be a deliberate change, not a default.
+        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
+
+    def _tmp_path(self, final_path: Path) -> Path:
+        """A temp path unique to this process and call.
+
+        BUG-JD-03 writes to a sibling temp file and ``replace()``s it over the final
+        path so a crash cannot leave partial JSON readable. That temp name used to be
+        derived from the final path alone, so two processes writing the same dataset
+        chose the *same* temp file: one would replace it away while the other was still
+        using it, and the loser raised ``FileNotFoundError`` mid-write. Found while
+        reproducing APD-DATA-007. The pid+uuid suffix makes collision impossible; the
+        atomic ``replace`` onto the final path is unchanged.
+        """
+        return final_path.with_suffix(f"{final_path.suffix}.{os.getpid()}.{uuid.uuid4().hex[:8]}{TMP_FILE_SUFFIX}")
+
     def _npz_path(self, dataset_id: str) -> Path:
         """Get path to NPZ file."""
         return self._build_path(dataset_id, NPZ_FILE_SUFFIX)
@@ -125,8 +186,8 @@ class LocalFSDatasetStore(DatasetStore):
         npz_path = self._npz_path(dataset_id)
 
         # Write to temporary files first, then atomically replace the final files
-        tmp_meta_path = meta_path.with_suffix(meta_path.suffix + TMP_FILE_SUFFIX)
-        tmp_npz_path = npz_path.with_suffix(npz_path.suffix + TMP_FILE_SUFFIX)
+        tmp_meta_path = self._tmp_path(meta_path)
+        tmp_npz_path = self._tmp_path(npz_path)
 
         meta_json = json.dumps(
             meta.model_dump(),
@@ -281,7 +342,7 @@ class LocalFSDatasetStore(DatasetStore):
             default=_json_serializer,
             indent=JSON_INDENT_DEFAULT,
         )
-        tmp_meta_path = meta_path.with_suffix(meta_path.suffix + TMP_FILE_SUFFIX)
+        tmp_meta_path = self._tmp_path(meta_path)
         try:
             tmp_meta_path.write_text(meta_json, encoding=CHARSET_UTF8)
             tmp_meta_path.replace(meta_path)
