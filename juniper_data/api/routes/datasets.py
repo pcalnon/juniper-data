@@ -10,7 +10,6 @@ from datetime import UTC, datetime, timedelta
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
-from pydantic import ValidationError
 from starlette import status
 
 logger = logging.getLogger(__name__)
@@ -101,9 +100,28 @@ async def create_dataset(
     params_class = generator_info["params_class"]
     version = generator_info["version"]
 
+    # APD-DATA-014 -- the 400-vs-422 rule, stated rather than inferred.
+    #
+    # Both of this endpoint's rejection paths are "the caller sent something
+    # wrong", and which status you get used to fall out of *where* validation
+    # happened rather than out of a decision. The rule is:
+    #
+    #   422  the request violates the DECLARED schema, and FastAPI rejects it at
+    #        the boundary before this function runs (``params`` not a mapping,
+    #        ``ttl_seconds=0``, a missing required field).
+    #   400  the request is schema-valid but SEMANTICALLY wrong for the generator
+    #        it names -- an unknown generator above, or params this generator
+    #        rejects here. ``params`` is typed ``dict[str, Any]``, so the boundary
+    #        cannot check it; only the resolved ``params_class`` can.
+    #
+    # ``except ValueError`` alone is the whole catch: ``pydantic.ValidationError``
+    # subclasses ``ValueError`` (verified against pydantic v2 -- its MRO is
+    # ValidationError -> ValueError -> Exception). Naming both in the tuple, as
+    # this did, implied a distinction between them that does not exist and was
+    # precisely the "the split falls out of the MRO, not design" finding.
     try:
         params = params_class(**request.params)
-    except (ValueError, ValidationError) as e:
+    except ValueError as e:
         record_dataset_post(
             generator=request.generator,
             status=GENERATION_STATUS_ERROR,

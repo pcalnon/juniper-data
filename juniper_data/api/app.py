@@ -7,6 +7,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from juniper_service_core import enforce_auth_posture
@@ -160,6 +162,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.mount(
             "/metrics",
             MetricsAuthMiddleware(get_prometheus_app(), settings.metrics_trusted_ips),
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def request_validation_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+        """Own the 422 contract instead of inheriting FastAPI's default (APD-DATA-013).
+
+        **This is deliberately byte-identical to FastAPI's built-in handler.** Nothing
+        about the response changes; what changes is who decides it. Until this existed,
+        the 422 body -- and specifically the fact that ``detail`` is a *list* of error
+        objects rather than a string -- was a framework default that no test in this repo
+        pinned. ``juniper-data-client`` parses exactly that list (``APD-DCLIENT-003``:
+        ``_render_error_detail`` renders it, and ``exc.detail`` exposes it unmodified), so
+        a FastAPI upgrade that reshaped its default would have broken a published client
+        with nothing here failing first.
+
+        **``detail`` shape is status-dependent, and that is the known limitation.**
+        This handler answers with ``list[dict]``; the ``ValueError`` and ``Exception``
+        handlers below, and every ``HTTPException`` raised in a route, answer with
+        ``str``. Unifying the two shapes needs a response envelope (RFC 9457 problem
+        details), which is a separate, deliberately deferred piece of work -- see the
+        defect register's ``APD-DATA-026``--``-033``. Flattening the list here is NOT the
+        interim fix: it would destroy the per-field structure the client was just built
+        to consume. The contract is therefore documented and pinned rather than changed.
+        """
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            content={"detail": jsonable_encoder(exc.errors())},
         )
 
     @app.exception_handler(ValueError)
