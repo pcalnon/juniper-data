@@ -364,8 +364,13 @@ class LocalFSDatasetStore(DatasetStore):
         Returns:
             List of all DatasetMeta objects.
         """
+        # APD-DATA-012: sorted, because ``Path.glob`` specifies no ordering and does not
+        # deliver one -- measured on ext4, its order is not sorted order. The total sort
+        # in ``filter_datasets`` is what actually fixes tie order; this makes the
+        # enumeration underneath it deterministic too, so any *other* consumer of this
+        # method gets a reproducible sequence rather than directory-entry order.
         result = []
-        for meta_file in self._base_path.glob("*.meta.json"):
+        for meta_file in sorted(self._base_path.glob("*.meta.json")):
             dataset_id = meta_file.stem.replace(".meta", "")
             meta = self.get_meta(dataset_id)
             if meta is not None:

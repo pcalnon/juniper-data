@@ -160,6 +160,12 @@ class DatasetListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+    # APD-DATA-011: position of the last returned row in the total order
+    # ``(created_at DESC, dataset_id ASC)``. Pass it back as ``cursor`` to get the next
+    # page without the skip/duplicate drift that re-slicing by ``offset`` suffers under
+    # concurrent writes. Optional with a default so adding it does not break any existing
+    # client; ``None`` on an empty page, since there is no position to name.
+    next_cursor: str | None = None
 
 
 class DatasetVersionListResponse(BaseModel):

@@ -43,6 +43,7 @@ from juniper_data.core.models import (
     UpdateTagsRequest,
 )
 from juniper_data.storage import DatasetStore
+from juniper_data.storage.base import encode_cursor
 
 from .generators import GENERATOR_REGISTRY
 
@@ -339,6 +340,7 @@ async def filter_datasets(
     dataset_version: int | None = Query(default=None, description="Filter by dataset version number"),
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
+    cursor: str | None = Query(default=None, description="Opaque cursor from a previous response's next_cursor. Stable under concurrent writes; mutually exclusive with offset."),
     store: DatasetStore = Depends(get_store),
 ) -> DatasetListResponse:
     """Filter datasets by various criteria.
@@ -356,34 +358,68 @@ async def filter_datasets(
         dataset_version: Filter by dataset version number.
         limit: Maximum number of results.
         offset: Number of results to skip.
+        cursor: Opaque cursor naming the last row of a previous page.
         store: Dataset storage backend.
 
     Returns:
         Filtered list of dataset metadata with pagination info.
+
+    Raises:
+        HTTPException: 400 if ``cursor`` is malformed, or if ``cursor`` and a non-zero
+            ``offset`` are combined.
+
+    APD-DATA-011: two pagination modes, and ``next_cursor`` is always returned so a
+    caller can move from one to the other without a round trip.
+
+    * ``offset`` re-slices the current result set, so a row inserted or deleted before
+      the offset shifts every later page -- reproduced, an insert between two fetches
+      returned the same dataset on both. Kept because it is the existing contract and
+      is fine for a one-shot page.
+    * ``cursor`` names a position in the total order and asks for what strictly follows,
+      which nothing inserted or deleted ahead of it can shift.
+
+    Combining them is rejected rather than silently resolved: passing both means the
+    caller believes one of them is doing something it is not.
     """
+    if cursor is not None and offset:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Pass either 'cursor' or 'offset', not both: a cursor already names where the page starts.",
+        )
+
     tag_list = [t.strip() for t in tags.split(",")] if tags else None
 
-    datasets, total = await asyncio.to_thread(
-        store.filter_datasets,
-        generator=generator,
-        tags=tag_list,
-        tags_match=tags_match,
-        created_after=created_after,
-        created_before=created_before,
-        min_samples=min_samples,
-        max_samples=max_samples,
-        include_expired=include_expired,
-        dataset_name=dataset_name,
-        dataset_version=dataset_version,
-        limit=limit,
-        offset=offset,
-    )
+    try:
+        datasets, total = await asyncio.to_thread(
+            store.filter_datasets,
+            generator=generator,
+            tags=tag_list,
+            tags_match=tags_match,
+            created_after=created_after,
+            created_before=created_before,
+            min_samples=min_samples,
+            max_samples=max_samples,
+            include_expired=include_expired,
+            dataset_name=dataset_name,
+            dataset_version=dataset_version,
+            limit=limit,
+            offset=offset,
+            cursor=cursor,
+        )
+    except ValueError as exc:
+        # decode_cursor rejects a token it did not issue. Schema-valid string,
+        # semantically wrong -> 400, per the rule stated in create_dataset.
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     return DatasetListResponse(
         datasets=datasets,
         total=total,
         limit=limit,
         offset=offset,
+        # Always emitted, in both modes: it is simply the last returned row's position,
+        # so an offset-mode caller can switch to stable pagination at any point. ``None``
+        # on an empty page because there is no position to name.
+        next_cursor=encode_cursor(datasets[-1]) if datasets else None,
     )
 
 

@@ -406,7 +406,8 @@ Filter dataset metadata by generator, tags, creation time, size, and version fie
 | `dataset_name` | string | `null` | Filter by logical dataset name |
 | `dataset_version` | integer | `null` | Filter by version number |
 | `limit` | integer | `100` | Page size (`1..1000`) |
-| `offset` | integer | `0` | Page offset |
+| `offset` | integer | `0` | Page offset. Mutually exclusive with `cursor`. |
+| `cursor` | string | `null` | Opaque token from a previous response's `next_cursor`. Stable under concurrent writes. |
 
 **Response:**
 
@@ -527,7 +528,8 @@ Filter datasets and return full metadata results with pagination.
 - `dataset_name` - Logical dataset name filter
 - `dataset_version` - Exact dataset version filter
 - `limit` - Page size (default `100`, max `1000`)
-- `offset` - Pagination offset (default `0`)
+- `offset` - Pagination offset (default `0`); mutually exclusive with `cursor`
+- `cursor` - Opaque token from a previous response's `next_cursor` (see **Ordering and pagination** below)
 
 **Response:**
 
@@ -589,6 +591,31 @@ Get the latest stored version for a logical dataset name.
 - `404 Not Found` - No versions found for the provided name
 
 ---
+
+#### Ordering and pagination
+
+Results are ordered **newest first**, ties broken by `dataset_id` ascending. That second
+key matters: sorting on `created_at` alone is not a total order, so datasets sharing a
+timestamp used to come back in whatever sequence the storage layer happened to enumerate.
+
+Every response carries `next_cursor` — the position of the last returned row in that
+order. There are two ways to page:
+
+| | Behaviour |
+|---|---|
+| `offset` | Re-slices the current result set. A dataset created or deleted before the offset shifts every later page, so a row can be **returned twice or skipped**. Fine for a one-shot page; unsafe for a full walk of a live collection. |
+| `cursor` | Asks for the rows strictly after a named position. Inserts and deletes ahead of the cursor cannot shift it, so a full walk neither repeats nor skips. |
+
+Pass `cursor` **or** `offset`, never both — a request carrying both is rejected with `400`,
+because a cursor already determines where the page starts. A cursor the service did not
+issue is also a `400`. Treat the token as opaque: it is not a stable identifier, and its
+encoding may change.
+
+```bash
+# Stable walk of the whole collection.
+curl "$BASE/v1/datasets/filter?limit=100" | jq -r '.next_cursor'
+curl "$BASE/v1/datasets/filter?limit=100&cursor=<next_cursor>"
+```
 
 ### GET /v1/datasets/stats
 
