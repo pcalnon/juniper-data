@@ -126,3 +126,10 @@ GENERATION_STATUS_ERROR: str = "error"
 # create a spurious bucket and undermine the R1.1 cardinality discipline.
 POST_CACHE_HIT: str = "hit"
 POST_CACHE_MISS: str = "miss"
+
+# APD-DATA-010: name of the accounting member added to a batch-export archive when at
+# least one requested dataset could not be included. Absent from a complete export, so
+# the archive a caller already knows how to read is unchanged; its presence is the
+# signal that something is missing. Cannot collide with a dataset member, which is
+# always ``{dataset_id}.npz``.
+BATCH_EXPORT_MANIFEST_NAME: str = "manifest.json"

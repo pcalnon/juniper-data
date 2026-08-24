@@ -9,6 +9,7 @@ Covers:
 """
 
 import io
+import json
 import tempfile
 import zipfile
 from datetime import UTC, datetime
@@ -284,7 +285,12 @@ class TestBugJD01StreamingBatchExport:
         )
         assert resp.status_code == 200
         with zipfile.ZipFile(io.BytesIO(resp.content), mode="r") as zf:
-            assert zf.namelist() == [f"{meta.dataset_id}.npz"]
+            # APD-DATA-010: the present dataset is still the only ARTIFACT exported --
+            # that is what this test is for and it is unchanged. The archive now also
+            # carries a manifest naming the two ids it could not include; asserting the
+            # bare namelist was pinning the silence this endpoint used to keep.
+            assert [n for n in zf.namelist() if n.endswith(".npz")] == [f"{meta.dataset_id}.npz"]
+            assert json.loads(zf.read("manifest.json"))["missing"] == {"missing-A": "not_found", "missing-B": "not_found"}
 
     def test_uses_streaming_store_compression(self, app_client) -> None:
         """ZIP entries must be ZIP_STORED, a prerequisite for true streaming
