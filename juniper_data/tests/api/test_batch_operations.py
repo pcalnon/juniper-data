@@ -7,6 +7,7 @@ Covers the three batch endpoints:
 """
 
 import io
+import json
 import zipfile
 
 import numpy as np
@@ -532,7 +533,13 @@ class TestBatchExport:
         assert "none of the requested datasets were found" in data["detail"].lower()
 
     def test_mix_existing_and_nonexisting_returns_zip_with_found_only(self, client: TestClient) -> None:
-        """Mix of existing and non-existing IDs returns ZIP with only found datasets."""
+        """Mix of existing and non-existing IDs returns ZIP with only found datasets.
+
+        APD-DATA-010: the substance of this test is unchanged -- one bad id must not cost
+        the caller the good one. What changed is that the archive now ACCOUNTS for the
+        bad id instead of dropping it silently, so the member count is 2: the artifact
+        plus the manifest. Asserting ``len(names) == 1`` was pinning the silence.
+        """
         dataset_id = _create_spiral(client, seed=220)
 
         response = client.post(
@@ -546,7 +553,8 @@ class TestBatchExport:
         with zipfile.ZipFile(io.BytesIO(response.content)) as zf:
             names = zf.namelist()
             assert f"{dataset_id}.npz" in names
-            assert len(names) == 1
+            assert [n for n in names if n.endswith(".npz")] == [f"{dataset_id}.npz"]
+            assert json.loads(zf.read("manifest.json"))["missing"] == {"nonexistent-id": "not_found"}
 
     def test_empty_dataset_ids_returns_422(self, client: TestClient) -> None:
         """Empty dataset_ids list triggers validation error (422)."""
@@ -569,3 +577,98 @@ class TestBatchExport:
         assert response.status_code == 200
         assert "content-disposition" in response.headers
         assert "datasets.zip" in response.headers["content-disposition"]
+
+
+class TestBatchExportManifest:
+    """APD-DATA-010 — an omitted dataset must not be silent.
+
+    A dataset the caller asked for can be absent two ways: it did not exist at the
+    pre-check, or it disappeared between the pre-check and its artifact read. Both used
+    to end in HTTP 200 and a ZIP with fewer members than ids requested, with nothing
+    saying which -- the second case carried the comment "skip quietly".
+
+    The signal has to live inside the archive. This is a streamed response: the status
+    line and headers are on the wire before the first artifact is read, so neither can
+    report a dataset that vanishes later.
+    """
+
+    @staticmethod
+    def _members(response) -> list[str]:
+        return zipfile.ZipFile(io.BytesIO(response.content)).namelist()
+
+    @staticmethod
+    def _manifest(response) -> dict:
+        with zipfile.ZipFile(io.BytesIO(response.content)) as zf:
+            return json.loads(zf.read("manifest.json"))
+
+    def test_complete_export_carries_no_manifest(self, client: TestClient) -> None:
+        """Back-compat, and the reason the manifest is conditional.
+
+        A caller that already reads this archive must see exactly what it saw before.
+        The manifest's PRESENCE is the signal; adding it unconditionally would change
+        every complete export for no benefit.
+        """
+        ids = [_create_spiral(client, seed=s) for s in (601, 602)]
+
+        response = client.post("/v1/datasets/batch-export", json={"dataset_ids": ids})
+
+        assert response.status_code == 200
+        assert sorted(self._members(response)) == sorted(f"{i}.npz" for i in ids)
+
+    def test_nonexistent_id_is_reported_in_the_manifest(self, client: TestClient) -> None:
+        """The likelier of the two paths: an id that was never there."""
+        ids = [_create_spiral(client, seed=603)]
+        ghost = "spiral-1.0.0-deadbeefdeadbeef"
+
+        response = client.post("/v1/datasets/batch-export", json={"dataset_ids": [*ids, ghost]})
+
+        assert response.status_code == 200
+        manifest = self._manifest(response)
+        assert manifest["missing"] == {ghost: "not_found"}
+        assert manifest["exported"] == ids
+        assert manifest["requested"] == [*ids, ghost]
+
+    def test_dataset_vanishing_mid_stream_is_reported(self, client: TestClient, memory_store: InMemoryDatasetStore) -> None:
+        """The path the register names, and the one no header could ever report."""
+        ids = [_create_spiral(client, seed=604), _create_spiral(client, seed=605)]
+        victim = ids[1]
+        real_get = memory_store.get_artifact_bytes
+
+        def racing_get(dataset_id: str):
+            return None if dataset_id == victim else real_get(dataset_id)
+
+        memory_store.get_artifact_bytes = racing_get  # type: ignore[method-assign]
+        try:
+            response = client.post("/v1/datasets/batch-export", json={"dataset_ids": ids})
+        finally:
+            memory_store.get_artifact_bytes = real_get  # type: ignore[method-assign]
+
+        assert response.status_code == 200
+        assert self._manifest(response)["missing"] == {victim: "vanished_during_export"}
+
+    def test_present_datasets_are_still_exported_alongside_the_manifest(self, client: TestClient) -> None:
+        """One missing dataset must not cost the caller the ones that are there."""
+        ids = [_create_spiral(client, seed=606), _create_spiral(client, seed=607)]
+
+        response = client.post("/v1/datasets/batch-export", json={"dataset_ids": [*ids, "spiral-1.0.0-0000000000000000"]})
+
+        members = self._members(response)
+        for dataset_id in ids:
+            assert f"{dataset_id}.npz" in members
+        with zipfile.ZipFile(io.BytesIO(response.content)) as zf:
+            assert zf.read(f"{ids[0]}.npz")  # the artifact is intact, not truncated
+
+    def test_manifest_accounts_for_every_requested_id(self, client: TestClient) -> None:
+        """requested == exported + missing, so the caller can reconcile without guessing."""
+        ids = [_create_spiral(client, seed=608)]
+        requested = [*ids, "spiral-1.0.0-1111111111111111", "spiral-1.0.0-2222222222222222"]
+
+        manifest = self._manifest(client.post("/v1/datasets/batch-export", json={"dataset_ids": requested}))
+
+        assert sorted(manifest["exported"] + list(manifest["missing"])) == sorted(requested)
+
+    def test_all_ids_missing_is_still_404(self, client: TestClient) -> None:
+        """Unchanged contract: nothing to export is an error, not an empty archive."""
+        response = client.post("/v1/datasets/batch-export", json={"dataset_ids": ["spiral-1.0.0-3333333333333333"]})
+
+        assert response.status_code == 404

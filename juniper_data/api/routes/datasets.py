@@ -2,6 +2,7 @@
 
 import asyncio
 import io
+import json
 import logging
 import time
 import uuid
@@ -15,6 +16,7 @@ from starlette import status
 logger = logging.getLogger(__name__)
 
 from juniper_data.api.constants import (
+    BATCH_EXPORT_MANIFEST_NAME,
     GENERATION_STATUS_ERROR,
     GENERATION_STATUS_SUCCESS,
     POST_CACHE_HIT,
@@ -44,6 +46,7 @@ from juniper_data.core.models import (
 )
 from juniper_data.storage import DatasetStore
 from juniper_data.storage.base import encode_cursor
+from juniper_data.storage.constants import JSON_INDENT_DEFAULT
 
 from .generators import GENERATOR_REGISTRY
 
@@ -639,6 +642,12 @@ async def batch_export_datasets(
     if not present_ids:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="None of the requested datasets were found")
 
+    # APD-DATA-010: a dataset the caller asked for can be absent for two reasons -- it
+    # did not exist at this pre-check, or it disappeared between here and its artifact
+    # read. Both used to drop it from the archive with no signal at all: HTTP 200, a ZIP
+    # with fewer members than ids requested, and nothing saying which.
+    missing: dict[str, str] = {dsid: "not_found" for dsid in request.dataset_ids if dsid not in set(present_ids)}
+
     class _ChunkBuffer:
         """File-like sink that accumulates bytes for the streaming generator to drain.
 
@@ -666,6 +675,8 @@ async def batch_export_datasets(
         def flush(self) -> None:  # pragma: no cover - required by ZipFile protocol
             return None
 
+    exported: list[str] = []
+
     def _stream_zip():
         buf = _ChunkBuffer()
         # ZIP_STORED is required for streaming-friendly archives: with ZIP_DEFLATED
@@ -675,9 +686,48 @@ async def batch_export_datasets(
             for dataset_id in present_ids:
                 artifact_bytes = store.get_artifact_bytes(dataset_id)
                 if artifact_bytes is None:
-                    # Raced with a concurrent deletion; skip quietly.
+                    # Raced with a concurrent deletion. Recorded rather than skipped
+                    # quietly (APD-DATA-010) -- the caller cannot otherwise tell this
+                    # export apart from one where it never asked for the dataset.
+                    missing[dataset_id] = "vanished_during_export"
                     continue
+                exported.append(dataset_id)
                 zf.writestr(f"{dataset_id}.npz", artifact_bytes)
+                chunk = buf.drain()
+                if chunk:
+                    yield chunk
+
+            # APD-DATA-010: the archive carries its own account of what is in it, but
+            # ONLY when something is absent -- a complete export stays byte-identical to
+            # what this endpoint has always produced, so no existing consumer changes.
+            #
+            # It has to live inside the ZIP. The response is a streamed 200: the status
+            # line and headers are already on the wire before the first artifact is read,
+            # so neither can report a dataset that vanishes mid-stream. The manifest is
+            # written after the loop, when the full picture is known.
+            if missing:
+                # Counts only. ``dataset_ids`` is caller-controlled, and this module's
+                # ERR-08 idiom keeps caller strings out of log records (see the
+                # batch-create handler); the ids themselves go to the caller, who sent
+                # them, not into the log.
+                logger.warning(
+                    "Batch export omitted %d of %d requested datasets (%d not found, %d vanished mid-export)",
+                    len(missing),
+                    len(request.dataset_ids),
+                    sum(1 for reason in missing.values() if reason == "not_found"),
+                    sum(1 for reason in missing.values() if reason == "vanished_during_export"),
+                )
+                zf.writestr(
+                    BATCH_EXPORT_MANIFEST_NAME,
+                    json.dumps(
+                        {
+                            "requested": list(request.dataset_ids),
+                            "exported": exported,
+                            "missing": missing,
+                        },
+                        indent=JSON_INDENT_DEFAULT,
+                    ),
+                )
                 chunk = buf.drain()
                 if chunk:
                     yield chunk

@@ -763,6 +763,33 @@ Export multiple artifacts as a ZIP archive of `*.npz` files.
 - `200 OK` - ZIP archive returned (`application/zip`)
 - `404 Not Found` - None of the requested dataset IDs exist
 
+**Partial exports:** a `200` does **not** guarantee every requested dataset is in the
+archive. An id can be absent because it did not exist when the request was received, or
+because it was deleted while the archive was being streamed.
+
+When anything is missing, the archive carries an extra member, `manifest.json`:
+
+```json
+{
+  "requested": ["spiral-1.0.0-a1...", "spiral-1.0.0-b2...", "spiral-1.0.0-gone..."],
+  "exported": ["spiral-1.0.0-a1...", "spiral-1.0.0-b2..."],
+  "missing": {"spiral-1.0.0-gone...": "not_found"}
+}
+```
+
+`missing` maps each absent id to a reason: `not_found` (absent when the request was
+received) or `vanished_during_export` (deleted mid-stream). `requested` always equals
+`exported` plus the keys of `missing`, so a caller can reconcile without guessing.
+
+**A complete export contains no `manifest.json`** — its presence *is* the signal that
+something is missing, and an archive with every requested dataset is byte-for-byte what
+this endpoint has always returned. Callers that only read `*.npz` members are unaffected
+either way.
+
+The manifest lives inside the archive rather than in a header because the response is
+streamed: the status line and headers are sent before the first artifact is read, so
+neither can report a dataset that disappears later.
+
 ---
 
 ### POST /v1/datasets/cleanup-expired
