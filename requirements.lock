@@ -42,7 +42,7 @@ fastapi==0.141.1
     #   juniper-data (pyproject.toml)
     #   juniper-service-core
     #   sentry-sdk
-filelock==3.32.3
+filelock==3.32.4
     # via
     #   datasets
     #   huggingface-hub
@@ -137,7 +137,7 @@ pyyaml==6.0.3
     #   uvicorn
 requests==2.34.2
     # via datasets
-sentry-sdk==2.68.0
+sentry-sdk==2.68.1
     # via juniper-data (pyproject.toml)
 six==1.17.0
     # via python-dateutil
@@ -166,7 +166,7 @@ urllib3==2.7.0
     # via
     #   requests
     #   sentry-sdk
-uvicorn==0.52.3
+uvicorn==0.52.4
     # via juniper-data (pyproject.toml)
 uvloop==0.22.1
     # via uvicorn
