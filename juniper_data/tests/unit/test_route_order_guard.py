@@ -41,6 +41,7 @@ from fastapi import APIRouter, FastAPI
 from starlette.routing import BaseRoute, compile_path
 
 from juniper_data.api.app import create_app
+from juniper_data.api.constants import API_PREFIX
 from juniper_data.api.routes import datasets, generators, health
 from juniper_data.api.settings import Settings
 
@@ -50,7 +51,6 @@ ROUTERS: dict[str, APIRouter] = {
     "generators": generators.router,
     "datasets": datasets.router,
 }
-API_PREFIX = "/v1"
 
 DATASETS_CATCH_ALL = "/datasets/{dataset_id}"
 

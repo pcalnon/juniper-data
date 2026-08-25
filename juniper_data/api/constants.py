@@ -17,6 +17,19 @@ License: MIT License
 """
 
 
+# ─── API Versioning ──────────────────────────────────────────────────────────
+
+# The public wire prefix every router is mounted under. It used to be an independent
+# ``/v1`` literal in eight places -- the three ``include_router`` calls, the two
+# self-referential ``artifact_url`` f-strings and the three health entries of
+# ``EXEMPT_PATHS`` below -- with nothing tying them together (APD-DATA-020). Spell it
+# once here; every site derives from it. Changing the value is a BREAKING change for
+# every client (``juniper-data-client`` hard-codes ``/v1/...``), so
+# ``tests/unit/test_api_prefix.py`` pins the published value and fails on any
+# ``/v1`` literal that creeps back into the package.
+API_VERSION: str = "v1"
+API_PREFIX: str = f"/{API_VERSION}"
+
 # ─── Security: Exempt Paths ──────────────────────────────────────────────────
 
 # Paths exempt from API key auth and rate limiting (health checks + docs +
@@ -32,9 +45,9 @@ License: MIT License
 # SecurityMiddleware again and returns 401.
 EXEMPT_PATHS: frozenset[str] = frozenset(
     {
-        "/v1/health",
-        "/v1/health/live",
-        "/v1/health/ready",
+        f"{API_PREFIX}/health",
+        f"{API_PREFIX}/health/live",
+        f"{API_PREFIX}/health/ready",
         "/docs",
         "/openapi.json",
         "/redoc",
