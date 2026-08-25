@@ -36,6 +36,9 @@ BATCH_UPDATE_TAGS_MAX_ITEMS: int = 100
 BATCH_EXPORT_MAX_ITEMS: int = 50
 BATCH_MIN_ITEMS: int = 1
 
-# DatasetListFilter ``tags_match`` default and pattern.
+# ``tags_match`` default and pattern for the datasets ``/filter`` route (APD-DATA-021: the
+# route is the contract of record; the never-wired ``DatasetListFilter`` model that used
+# to share these was removed, and ``tests/unit/test_filter_contract.py`` pins the route
+# to them at the call site).
 TAGS_MATCH_DEFAULT: str = "any"
 TAGS_MATCH_PATTERN: str = "^(any|all)$"

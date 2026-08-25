@@ -25,6 +25,7 @@ from juniper_data.api.constants import (
 )
 from juniper_data.api.observability import record_dataset_generation, record_dataset_post
 from juniper_data.core.artifacts import compute_checksum
+from juniper_data.core.constants import TAGS_MATCH_DEFAULT, TAGS_MATCH_PATTERN
 from juniper_data.core.dataset_id import generate_dataset_id
 from juniper_data.core.meta import compute_shape_meta, derive_sequence_meta, pop_scaling_meta
 from juniper_data.core.models import (
@@ -334,7 +335,7 @@ async def list_datasets(
 async def filter_datasets(
     generator: str | None = Query(default=None, description="Filter by generator name"),
     tags: str | None = Query(default=None, description="Comma-separated list of tags to filter by"),
-    tags_match: str = Query(default="any", pattern="^(any|all)$", description="Tag matching mode: 'any' (OR) or 'all' (AND)"),
+    tags_match: str = Query(default=TAGS_MATCH_DEFAULT, pattern=TAGS_MATCH_PATTERN, description="Tag matching mode: 'any' (OR) or 'all' (AND)"),
     created_after: datetime | None = Query(default=None, description="Filter by creation date (after)"),
     created_before: datetime | None = Query(default=None, description="Filter by creation date (before)"),
     min_samples: int | None = Query(default=None, ge=1, description="Minimum number of samples"),

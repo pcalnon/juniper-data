@@ -13,8 +13,6 @@ from juniper_data.core.constants import (
     BATCH_UPDATE_TAGS_MAX_ITEMS,
     CREATED_BY_MAX_LENGTH,
     DESCRIPTION_MAX_LENGTH,
-    TAGS_MATCH_DEFAULT,
-    TAGS_MATCH_PATTERN,
 )
 
 
@@ -136,21 +134,6 @@ class PreviewData(BaseModel):
     n_samples: int
     X_sample: list[list[float]]
     y_sample: list[list[float]]
-
-
-class DatasetListFilter(BaseModel):
-    """Filter criteria for listing datasets."""
-
-    generator: str | None = None
-    tags: list[str] | None = None
-    tags_match: str = Field(default=TAGS_MATCH_DEFAULT, pattern=TAGS_MATCH_PATTERN)
-    created_after: datetime | None = None
-    created_before: datetime | None = None
-    min_samples: int | None = Field(default=None, ge=1)
-    max_samples: int | None = Field(default=None, ge=1)
-    include_expired: bool = False
-    dataset_name: str | None = None
-    dataset_version: int | None = None
 
 
 class DatasetListResponse(BaseModel):
