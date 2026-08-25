@@ -18,6 +18,7 @@ from starlette import status
 from juniper_data import __version__, provenance
 from juniper_data.storage import LocalFSDatasetStore
 
+from .constants import API_PREFIX
 from .middleware import RequestBodyLimitMiddleware, SecurityHeadersMiddleware, SecurityMiddleware
 from .observability import (
     MetricsAuthMiddleware,
@@ -152,9 +153,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             allow_headers=["*"],
         )
 
-    app.include_router(health.router, prefix="/v1")
-    app.include_router(generators.router, prefix="/v1")
-    app.include_router(datasets.router, prefix="/v1")
+    app.include_router(health.router, prefix=API_PREFIX)
+    app.include_router(generators.router, prefix=API_PREFIX)
+    app.include_router(datasets.router, prefix=API_PREFIX)
 
     # Mount Prometheus metrics endpoint (SEC-16: wrap with trusted-IP
     # auth because ASGI sub-app mounts bypass SecurityMiddleware).

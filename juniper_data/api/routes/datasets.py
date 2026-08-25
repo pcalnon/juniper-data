@@ -16,6 +16,7 @@ from starlette import status
 logger = logging.getLogger(__name__)
 
 from juniper_data.api.constants import (
+    API_PREFIX,
     BATCH_EXPORT_MANIFEST_NAME,
     GENERATION_STATUS_ERROR,
     GENERATION_STATUS_SUCCESS,
@@ -157,7 +158,7 @@ async def create_dataset(
             dataset_id=dataset_id,
             generator=request.generator,
             meta=existing_meta,
-            artifact_url=f"/v1/datasets/{dataset_id}/artifact",
+            artifact_url=f"{API_PREFIX}/datasets/{dataset_id}/artifact",
         )
 
     # SEC-04 / JD-PERF-01 / CONC-04: move the potentially CPU-bound
@@ -306,7 +307,7 @@ async def create_dataset(
         dataset_id=dataset_id,
         generator=request.generator,
         meta=meta,
-        artifact_url=f"/v1/datasets/{dataset_id}/artifact",
+        artifact_url=f"{API_PREFIX}/datasets/{dataset_id}/artifact",
     )
 
 
