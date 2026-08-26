@@ -6,7 +6,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Security
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,7 +30,7 @@ from .observability import (
     set_build_info,
 )
 from .routes import datasets, generators, health
-from .security import APIKeyAuth, RateLimiter
+from .security import APIKeyAuth, RateLimiter, api_key_header
 from .settings import Settings, get_settings
 
 
@@ -91,16 +91,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if settings is None:
         settings = get_settings()
 
-    # Disable interactive API docs when authentication is enabled (production).
-    docs_enabled = not settings.api_keys
+    # APD-DATA-024: the OpenAPI document is served unconditionally, and when API keys
+    # are configured it sits BEHIND the key -- `/openapi.json` is no longer in
+    # EXEMPT_PATHS, so SecurityMiddleware authenticates it like any other route. A
+    # secured deployment is therefore self-describing to authenticated callers instead
+    # of silently schema-less, which is what made APD-DATA-005's missing
+    # `securitySchemes` block unobservable exactly where it mattered.
+    #
+    # The interactive explorers stay off under auth. They are browser pages, and
+    # Swagger UI / ReDoc fetch `/openapi.json` by XHR with no `X-API-Key` header, so
+    # mounting them behind the key would serve a page that can only 401. Serving them
+    # while leaving them exempt is the trap this change exists to avoid: it looks like
+    # "behind the key" and is in fact "open to everyone".
+    explorers_enabled = not settings.api_keys
     app = FastAPI(
         title="Juniper Data API",
         description="Dataset generation and management service for the Juniper ecosystem",
         version=__version__,
         lifespan=lifespan,
-        docs_url="/docs" if docs_enabled else None,
-        redoc_url="/redoc" if docs_enabled else None,
-        openapi_url="/openapi.json" if docs_enabled else None,
+        docs_url="/docs" if explorers_enabled else None,
+        redoc_url="/redoc" if explorers_enabled else None,
+        openapi_url="/openapi.json",
     )
 
     app.state.settings = settings
@@ -153,9 +164,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             allow_headers=["*"],
         )
 
+    # APD-DATA-005: `api_key_header` was instantiated and referenced nowhere, so the
+    # generated document declared no `securitySchemes` at all. Declaring it here (rather
+    # than as an app-wide dependency) keeps the document HONEST: the health router is in
+    # EXEMPT_PATHS and genuinely needs no key, so it must not be documented as if it did.
+    # `auto_error=False` means this never rejects a request -- enforcement stays in
+    # SecurityMiddleware, and this only describes it.
+    protected = [Security(api_key_header)]
     app.include_router(health.router, prefix=API_PREFIX)
-    app.include_router(generators.router, prefix=API_PREFIX)
-    app.include_router(datasets.router, prefix=API_PREFIX)
+    app.include_router(generators.router, prefix=API_PREFIX, dependencies=protected)
+    app.include_router(datasets.router, prefix=API_PREFIX, dependencies=protected)
 
     # Mount Prometheus metrics endpoint (SEC-16: wrap with trusted-IP
     # auth because ASGI sub-app mounts bypass SecurityMiddleware).

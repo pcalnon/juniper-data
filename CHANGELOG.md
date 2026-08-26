@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **The OpenAPI document is served behind the API key, and declares the scheme
+  (`APD-DATA-005` + `APD-DATA-024` — one defect wearing two faces).** `openapi_url` was `None`
+  whenever any key was configured, so a **secured deployment served no schema at all**; and
+  `api_key_header` was instantiated but referenced nowhere, so what it did serve declared no
+  `securitySchemes` — an SDK generated from it never sent `X-API-Key`. Neither was fixable alone:
+  adding the scheme to a document nobody can fetch changes nothing.
+  **The trap worth knowing about:** `EXEMPT_PATHS` already listed `/docs`, `/openapi.json` and
+  `/redoc`, and `SecurityMiddleware._is_exempt()` is a bare `path in EXEMPT_PATHS` evaluated
+  *regardless of whether a key was supplied*. So simply re-enabling `openapi_url` would **not**
+  have put the document behind the key — it would have served it to **everyone**, while looking
+  exactly like the intended fix. All three paths were therefore removed from the exempt set, and
+  the document is now authenticated like any other route.
+  The interactive explorers (`/docs`, `/redoc`) remain unmounted when keys are configured: they
+  are browser pages that fetch `/openapi.json` by XHR with no `X-API-Key` header, so serving them
+  behind the key could only 401. Local development, where no keys are set, is unchanged.
+  The scheme is declared **per protected router rather than app-wide**, so the document stays
+  honest — the health probes are genuinely exempt and are not documented as needing a key.
+  `auto_error=False` keeps enforcement in `SecurityMiddleware`; the declaration only describes it.
+
 - **CR-024 request-body cap is no longer bypassable (`APD-DATA-002`).** `RequestBodyLimitMiddleware`
   checked only `if content_length is not None and int(content_length) > max_bytes`, so a chunked
   request that sent no `Content-Length` made the first conjunct false and streamed past the 10 MiB
