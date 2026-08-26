@@ -30,6 +30,22 @@ License: MIT License
 API_VERSION: str = "v1"
 API_PREFIX: str = f"/{API_VERSION}"
 
+# ─── Binary Responses ────────────────────────────────────────────────────────
+
+# The one media type for both binary routes (APD-DATA-025). An NPZ artifact is a ZIP
+# container (numpy's format is a zip of ``.npy`` members) and the batch export is a zip
+# of NPZ files, so ``application/zip`` is accurate for both and strictly more informative
+# than ``application/octet-stream`` -- the RFC 9110 §8.3 fallback a recipient may assume
+# when no Content-Type is present at all. The artifact route used to say octet-stream
+# while the export said zip, as two unrelated inline literals. The format each route
+# serves is named by its Content-Disposition filename (``<id>.npz`` / ``datasets.zip``),
+# not by the media type. ``juniper-data-client`` returns ``response.content`` without
+# reading the header, so the change is not observable through the client -- and the same
+# fact means only ``tests/unit/test_binary_media_types.py`` would notice the next change:
+# it pins this value, fails on any ``media_type=`` literal that creeps back into a route,
+# and checks that the bytes really are a zip. Spelled once; both routes derive.
+BINARY_MEDIA_TYPE: str = "application/zip"
+
 # ─── Security: Exempt Paths ──────────────────────────────────────────────────
 
 # Paths exempt from API key auth and rate limiting (health checks + docs +

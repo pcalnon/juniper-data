@@ -33,6 +33,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tests/unit/test_operation_ids.py` pins the ids at the call site (AST), on the registered routes
   and as a frozen contract in the published document — renaming a handler must not rename its id.
 
+- **Both binary routes declare `application/zip` (`APD-DATA-025`).** `GET /v1/datasets/{id}/artifact`
+  answered `application/octet-stream` while `POST /v1/datasets/batch-export` answered
+  `application/zip` — two unrelated inline literals. Both payloads are ZIP containers (an NPZ
+  artifact is numpy's zip of `.npy` members; the export is a zip of NPZ files), and
+  `application/octet-stream` is only the RFC 9110 §8.3 fallback a recipient may assume when no
+  `Content-Type` is present at all, so the artifact route now says `application/zip` too. The one
+  spelling lives in `api/constants.py` as `BINARY_MEDIA_TYPE`; both routes derive from it, and the
+  `Content-Disposition` filenames (`<id>.npz` / `datasets.zip`) are unchanged. **Wire-visible**
+  only in the artifact response's `Content-Type` header; `juniper-data-client` returns
+  `response.content` without reading it. `tests/unit/test_binary_media_types.py` pins the
+  published value, every `media_type=` call site (AST) and the wire — including that the bytes
+  really are a zip.
+
 ### Fixed
 
 - **A malformed `Content-Length` is a 400, not a 500 (`APD-DATA-036`).** The unguarded
