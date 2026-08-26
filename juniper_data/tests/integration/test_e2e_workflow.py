@@ -71,7 +71,7 @@ class TestE2EModernAlgorithm:
 
         artifact_response = e2e_client.get(f"/v1/datasets/{dataset_id}/artifact")
         assert artifact_response.status_code == 200
-        assert artifact_response.headers["content-type"] == "application/octet-stream"
+        assert artifact_response.headers["content-type"] == "application/zip"
 
         with np.load(io.BytesIO(artifact_response.content)) as data:
             assert "X_train" in data.files

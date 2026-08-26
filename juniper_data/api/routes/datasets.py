@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 from juniper_data.api.constants import (
     API_PREFIX,
     BATCH_EXPORT_MANIFEST_NAME,
+    BINARY_MEDIA_TYPE,
     GENERATION_STATUS_ERROR,
     GENERATION_STATUS_SUCCESS,
     POST_CACHE_HIT,
@@ -740,7 +741,7 @@ async def batch_export_datasets(
 
     return StreamingResponse(
         _stream_zip(),
-        media_type="application/zip",
+        media_type=BINARY_MEDIA_TYPE,
         headers={"Content-Disposition": "attachment; filename=datasets.zip"},
     )
 
@@ -858,7 +859,7 @@ async def download_artifact(
 
     return StreamingResponse(
         io.BytesIO(artifact_bytes),
-        media_type="application/octet-stream",
+        media_type=BINARY_MEDIA_TYPE,
         headers={"Content-Disposition": f"attachment; filename={dataset_id}.npz"},
     )
 
