@@ -297,7 +297,13 @@ class TestSecurityMiddleware:
 
     def test_is_exempt_checks_known_paths(self):
         assert "/v1/health" in EXEMPT_PATHS
-        assert "/docs" in EXEMPT_PATHS
+        # APD-DATA-024: the documentation surface is deliberately NOT exempt.
+        # `_is_exempt()` ignores whether a key is configured, so leaving these
+        # listed meant that re-enabling `openapi_url` would serve the document to
+        # everyone while looking like it sat behind the key.
+        assert "/openapi.json" not in EXEMPT_PATHS
+        assert "/docs" not in EXEMPT_PATHS
+        assert "/redoc" not in EXEMPT_PATHS
         # Prometheus scrape endpoint must be exempt from API-key auth;
         # SEC-16 MetricsAuthMiddleware (IP allowlist) still gates it.
         # Both the bare path and the trailing-slash form are listed because

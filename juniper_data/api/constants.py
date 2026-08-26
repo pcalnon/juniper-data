@@ -48,8 +48,18 @@ BINARY_MEDIA_TYPE: str = "application/zip"
 
 # ─── Security: Exempt Paths ──────────────────────────────────────────────────
 
-# Paths exempt from API key auth and rate limiting (health checks + docs +
-# the Prometheus /metrics scrape endpoint). The /metrics surface remains
+# Paths exempt from API key auth and rate limiting (health checks + the
+# Prometheus /metrics scrape endpoint).
+#
+# APD-DATA-024: `/docs`, `/openapi.json` and `/redoc` were removed from this set.
+# While they were listed here, `_is_exempt()` waved them through REGARDLESS of
+# whether a key was configured -- so the moment `openapi_url` was re-enabled the
+# document would have been served to everyone, looking exactly like "behind the
+# key" and in fact being open. The document is now mounted unconditionally and
+# authenticated like any other route; the explorers are simply not mounted when
+# keys are configured (see `create_app`).
+#
+# The /metrics surface remains
 # gated by SEC-16's MetricsAuthMiddleware (IP allowlist) — see
 # juniper_data.api.observability.MetricsAuthMiddleware. The two layers
 # compose: SecurityMiddleware skips /metrics, MetricsAuthMiddleware then
@@ -64,9 +74,6 @@ EXEMPT_PATHS: frozenset[str] = frozenset(
         f"{API_PREFIX}/health",
         f"{API_PREFIX}/health/live",
         f"{API_PREFIX}/health/ready",
-        "/docs",
-        "/openapi.json",
-        "/redoc",
         "/metrics",
         "/metrics/",
     }
