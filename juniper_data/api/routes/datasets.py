@@ -73,7 +73,7 @@ def set_store(store: DatasetStore) -> None:
     _store = store
 
 
-@router.post("", response_model=CreateDatasetResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", operation_id="create_dataset", response_model=CreateDatasetResponse, status_code=status.HTTP_201_CREATED)
 async def create_dataset(
     request: CreateDatasetRequest,
     store: DatasetStore = Depends(get_store),
@@ -312,7 +312,7 @@ async def create_dataset(
     )
 
 
-@router.get("", response_model=list[str])
+@router.get("", operation_id="list_datasets", response_model=list[str])
 async def list_datasets(
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
@@ -331,7 +331,7 @@ async def list_datasets(
     return await asyncio.to_thread(store.list_datasets, limit=limit, offset=offset)
 
 
-@router.get("/filter", response_model=DatasetListResponse)
+@router.get("/filter", operation_id="filter_datasets", response_model=DatasetListResponse)
 async def filter_datasets(
     generator: str | None = Query(default=None, description="Filter by generator name"),
     tags: str | None = Query(default=None, description="Comma-separated list of tags to filter by"),
@@ -428,7 +428,7 @@ async def filter_datasets(
     )
 
 
-@router.get("/stats", response_model=DatasetStats)
+@router.get("/stats", operation_id="get_dataset_stats", response_model=DatasetStats)
 async def get_dataset_stats(
     store: DatasetStore = Depends(get_store),
 ) -> DatasetStats:
@@ -444,7 +444,7 @@ async def get_dataset_stats(
     return DatasetStats(**stats)  # type: ignore[arg-type]
 
 
-@router.post("/batch-delete", response_model=BatchDeleteResponse)
+@router.post("/batch-delete", operation_id="batch_delete_datasets", response_model=BatchDeleteResponse)
 async def batch_delete_datasets(
     request: BatchDeleteRequest,
     store: DatasetStore = Depends(get_store),
@@ -467,7 +467,7 @@ async def batch_delete_datasets(
     )
 
 
-@router.post("/batch-create", response_model=BatchCreateResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/batch-create", operation_id="batch_create_datasets", response_model=BatchCreateResponse, status_code=status.HTTP_201_CREATED)
 async def batch_create_datasets(
     request: BatchCreateRequest,
     response: Response,
@@ -566,7 +566,7 @@ async def batch_create_datasets(
     )
 
 
-@router.patch("/batch-tags", response_model=BatchUpdateTagsResponse)
+@router.patch("/batch-tags", operation_id="batch_update_tags", response_model=BatchUpdateTagsResponse)
 async def batch_update_tags(
     request: BatchUpdateTagsRequest,
     store: DatasetStore = Depends(get_store),
@@ -608,7 +608,7 @@ async def batch_update_tags(
     )
 
 
-@router.post("/batch-export")
+@router.post("/batch-export", operation_id="batch_export_datasets")
 async def batch_export_datasets(
     request: BatchExportRequest,
     store: DatasetStore = Depends(get_store),
@@ -745,7 +745,7 @@ async def batch_export_datasets(
     )
 
 
-@router.post("/cleanup-expired", response_model=list[str])
+@router.post("/cleanup-expired", operation_id="cleanup_expired_datasets", response_model=list[str])
 async def cleanup_expired_datasets(
     store: DatasetStore = Depends(get_store),
 ) -> list[str]:
@@ -760,7 +760,7 @@ async def cleanup_expired_datasets(
     return await asyncio.to_thread(store.delete_expired)
 
 
-@router.get("/versions", response_model=DatasetVersionListResponse)
+@router.get("/versions", operation_id="list_dataset_versions", response_model=DatasetVersionListResponse)
 async def list_dataset_versions(
     name: str = Query(description="Dataset name to list versions for"),
     store: DatasetStore = Depends(get_store),
@@ -784,7 +784,7 @@ async def list_dataset_versions(
     )
 
 
-@router.get("/latest", response_model=DatasetMeta)
+@router.get("/latest", operation_id="get_latest_version", response_model=DatasetMeta)
 async def get_latest_version(
     name: str = Query(description="Dataset name to get latest version of"),
     store: DatasetStore = Depends(get_store),
@@ -807,7 +807,7 @@ async def get_latest_version(
     return meta
 
 
-@router.get("/{dataset_id}", response_model=DatasetMeta)
+@router.get("/{dataset_id}", operation_id="get_dataset_metadata", response_model=DatasetMeta)
 async def get_dataset_metadata(
     dataset_id: str,
     store: DatasetStore = Depends(get_store),
@@ -832,7 +832,7 @@ async def get_dataset_metadata(
     return meta
 
 
-@router.get("/{dataset_id}/artifact")
+@router.get("/{dataset_id}/artifact", operation_id="download_artifact")
 async def download_artifact(
     dataset_id: str,
     store: DatasetStore = Depends(get_store),
@@ -863,7 +863,7 @@ async def download_artifact(
     )
 
 
-@router.get("/{dataset_id}/preview", response_model=PreviewData)
+@router.get("/{dataset_id}/preview", operation_id="preview_dataset", response_model=PreviewData)
 async def preview_dataset(
     dataset_id: str,
     n: int = Query(default=100, ge=1, le=1000),
@@ -903,7 +903,7 @@ async def preview_dataset(
     )
 
 
-@router.delete("/{dataset_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{dataset_id}", operation_id="delete_dataset", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_dataset(
     dataset_id: str,
     store: DatasetStore = Depends(get_store),
@@ -922,7 +922,7 @@ async def delete_dataset(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dataset '{dataset_id}' not found")
 
 
-@router.patch("/{dataset_id}/tags", response_model=DatasetMeta)
+@router.patch("/{dataset_id}/tags", operation_id="update_dataset_tags", response_model=DatasetMeta)
 async def update_dataset_tags(
     dataset_id: str,
     request: UpdateTagsRequest,

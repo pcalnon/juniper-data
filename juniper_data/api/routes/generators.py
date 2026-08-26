@@ -231,7 +231,7 @@ def generator_install_hint(info: dict[str, Any]) -> str | None:
     return hint if isinstance(hint, str) and hint.strip() else None
 
 
-@router.get("", response_model=list[GeneratorInfo])
+@router.get("", operation_id="list_generators", response_model=list[GeneratorInfo])
 async def list_generators() -> list[GeneratorInfo]:
     """List all registered dataset generators with their info.
 
@@ -254,7 +254,7 @@ async def list_generators() -> list[GeneratorInfo]:
     return generators
 
 
-@router.get("/{name}/schema")
+@router.get("/{name}/schema", operation_id="get_generator_schema")
 async def get_generator_schema(name: str) -> dict[str, Any]:
     """Get the JSON schema for a generator's parameters.
 
