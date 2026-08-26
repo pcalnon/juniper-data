@@ -234,7 +234,7 @@ class TestArtifactEndpoint:
         response = client.get(f"/v1/datasets/{dataset_id}/artifact")
 
         assert response.status_code == 200
-        assert response.headers["content-type"] == "application/octet-stream"
+        assert response.headers["content-type"] == "application/zip"
         assert len(response.content) > 0
 
         with np.load(io.BytesIO(response.content)) as data:
