@@ -20,6 +20,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   implementations already shipping in `juniper-cascor` and `juniper-service-core`, where the same
   fix landed and never propagated here.
 
+### Changed
+
+- **Every route declares an explicit `operation_id` (`APD-DATA-023`).** FastAPI derived the
+  `operationId` of all 21 operations from the handler name, the full path and the method
+  (`create_dataset_v1_datasets_post`), so a handler rename, a router move or a prefix change
+  silently renamed every generated-SDK method. Each decorator now carries
+  `operation_id="<handler name>"` (`create_dataset`, `download_artifact`, `readiness_probe`, …),
+  decoupling the published id from the Python name. This is the one-time change of every published
+  `operationId` from the generated shape to the explicit one; no generated SDK exists in the
+  ecosystem (`juniper-data-client` is hand-written), so no consumer is affected.
+  `tests/unit/test_operation_ids.py` pins the ids at the call site (AST), on the registered routes
+  and as a frozen contract in the published document — renaming a handler must not rename its id.
+
 ### Fixed
 
 - **A malformed `Content-Length` is a 400, not a 500 (`APD-DATA-036`).** The unguarded

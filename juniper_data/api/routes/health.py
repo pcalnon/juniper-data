@@ -114,7 +114,7 @@ def _reset_probe_cache() -> None:
     _probe_cache = None
 
 
-@router.get("/health")
+@router.get("/health", operation_id="health_check")
 async def health_check() -> dict:
     """Combined health check endpoint (backward compatible).
 
@@ -143,7 +143,7 @@ async def health_check() -> dict:
     }
 
 
-@router.get("/health/live")
+@router.get("/health/live", operation_id="liveness_probe")
 async def liveness_probe(request: Request, response: Response) -> dict:
     """Liveness probe — runs an in-process tick within a strict budget.
 
@@ -183,7 +183,7 @@ async def liveness_probe(request: Request, response: Response) -> dict:
     }
 
 
-@router.get("/health/ready", response_model=ReadinessResponse)
+@router.get("/health/ready", operation_id="readiness_probe", response_model=ReadinessResponse)
 async def readiness_probe(request: Request, response: Response) -> ReadinessResponse:
     """Readiness probe — drives orchestrator traffic decisions via status code.
 
