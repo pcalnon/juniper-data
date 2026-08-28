@@ -1,10 +1,13 @@
 """Unit tests for API settings module."""
 
 import os
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 
+from juniper_data.api.app import create_app
+from juniper_data.api.constants import DEFAULT_RATE_LIMIT_WINDOW_SECONDS
 from juniper_data.api.settings import (
     _JUNIPER_DATA_API_HOST_DEFAULT,
     Settings,
@@ -98,3 +101,51 @@ class TestGetSettings:
         settings2 = get_settings()
 
         assert settings1 is not settings2
+
+
+@pytest.mark.unit
+class TestRateLimitWindowSetting:
+    """APD-DATA-033: the rate-limit window must be operator-configurable.
+
+    ``RateLimiter`` has always accepted ``window_seconds`` and uses it in three
+    places, but ``create_app`` passed only ``requests_per_minute`` and
+    ``enabled`` -- so the window was pinned to the constant and was the one knob
+    of three an operator could not set.
+    """
+
+    def test_window_default_matches_the_limiter_constructor_default(self) -> None:
+        # The setting default and the RateLimiter default must be the SAME
+        # object, not two literals that happen to agree -- otherwise they drift.
+        env = {k: v for k, v in os.environ.items() if not k.startswith("JUNIPER_DATA_")}
+        with patch.dict(os.environ, env, clear=True):
+            assert Settings().rate_limit_window_seconds == DEFAULT_RATE_LIMIT_WINDOW_SECONDS
+
+    def test_window_is_settable_from_the_environment(self) -> None:
+        env = {k: v for k, v in os.environ.items() if not k.startswith("JUNIPER_DATA_")}
+        env["JUNIPER_DATA_RATE_LIMIT_WINDOW_SECONDS"] = "300"
+        with patch.dict(os.environ, env, clear=True):
+            assert Settings().rate_limit_window_seconds == 300
+
+    def test_configured_window_reaches_the_live_rate_limiter(self) -> None:
+        """The decisive arm -- a Settings field nobody reads is the defect itself.
+
+        The two arms above pass unchanged against the broken code: the field can
+        exist, parse and validate while ``create_app`` still never passes it.
+        Only reading the window back off the limiter the app actually built
+        proves the knob is wired.
+        """
+        settings = Settings(api_keys=None, rate_limit_window_seconds=300, rate_limit_requests_per_minute=7)
+        app = create_app(settings=settings)
+        limiter = _rate_limiter_of(app)
+        assert limiter is not None, "no RateLimiter found on the app's middleware stack"
+        assert limiter.window == 300
+        assert limiter.limit == 7
+
+
+def _rate_limiter_of(app: Any) -> Any:
+    """Pull the RateLimiter out of the app's SecurityMiddleware options."""
+    for middleware in app.user_middleware:
+        limiter = middleware.kwargs.get("rate_limiter")
+        if limiter is not None:
+            return limiter
+    return None

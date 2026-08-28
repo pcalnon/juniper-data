@@ -125,6 +125,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api_key_auth = APIKeyAuth(settings.api_keys)
     rate_limiter = RateLimiter(
         requests_per_minute=settings.rate_limit_requests_per_minute,
+        window_seconds=settings.rate_limit_window_seconds,
         enabled=settings.rate_limit_enabled,
     )
     app.add_middleware(
