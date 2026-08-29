@@ -5,7 +5,7 @@
 **Author**: Paul Calnon
 **License**: MIT License
 **Version**: 0.11.0
-**Last Updated**: 2026-08-22
+**Last Updated**: 2026-08-28
 
 ---
 
@@ -78,148 +78,11 @@ python -m juniper_data --host 0.0.0.0 --port 8100
 
 ## Project Architecture
 
-### Directory Structure
-
-```bash
-juniper-data/
-├── juniper_data/                   # Main Python package
-│   ├── __init__.py                 # Package init, version, ARC-AGI env helpers
-│   ├── __main__.py                 # CLI entry point (python -m juniper_data)
-│   ├── core/                       # Core domain logic
-│   │   ├── constants.py            # Core-layer constants (encoding, magic numbers, fixed metadata keys)
-│   │   ├── models.py               # Pydantic models (DatasetMeta, request/response types)
-│   │   ├── dataset_id.py           # Deterministic SHA-256 dataset ID generation
-│   │   ├── split.py                # Train/test data splitting
-│   │   ├── artifacts.py            # NPZ artifact handling and checksums
-│   │   └── secrets.py              # Docker secrets management
-│   ├── generators/                 # Dataset generators (10 types)
-│   │   ├── spiral/                 # Multi-spiral classification (configurable arms)
-│   │   ├── xor/                    # XOR classification
-│   │   ├── gaussian/               # Mixture of Gaussians
-│   │   ├── circles/                # Concentric circles
-│   │   ├── moon/                   # Two interleaving half-moons
-│   │   ├── checkerboard/           # 2D checkerboard pattern
-│   │   ├── csv_import/             # CSV/JSON file import
-│   │   ├── equities/               # S&P 500 equities time-series (Yahoo Finance + SEC EDGAR)
-│   │   ├── mnist/                  # MNIST / Fashion-MNIST (HuggingFace)
-│   │   └── arc_agi/                # ARC-AGI visual reasoning (optional)
-│   ├── storage/                    # Dataset persistence (7 backends)
-│   │   ├── constants.py            # Storage-layer constants (filenames, metadata keys, table/column names)
-│   │   ├── base.py                 # Abstract DatasetStore interface
-│   │   ├── local_fs.py             # Local filesystem (default)
-│   │   ├── memory.py               # In-memory (testing)
-│   │   ├── cached.py               # Composable caching wrapper
-│   │   ├── redis_store.py          # Redis backend
-│   │   ├── postgres_store.py       # PostgreSQL backend
-│   │   ├── hf_store.py             # Hugging Face Hub integration
-│   │   └── kaggle_store.py         # Kaggle dataset integration
-│   ├── api/                        # FastAPI application
-│   │   ├── app.py                  # Factory-pattern app creation with lifespan
-│   │   ├── constants.py            # API-layer constants (header names, status codes, defaults, error messages)
-│   │   ├── settings.py             # Pydantic BaseSettings (JUNIPER_DATA_ prefix)
-│   │   ├── middleware.py           # Security headers, body limits, rate limiting
-│   │   ├── security.py             # API key auth (APIKeyAuth) and RateLimiter
-│   │   ├── observability.py        # Prometheus metrics, JSON logging, Sentry, request IDs
-│   │   ├── models/                 # Response models
-│   │   │   └── health.py           # DependencyStatus, ReadinessResponse
-│   │   └── routes/                 # API route handlers
-│   │       ├── health.py           # /v1/health, /v1/health/live, /v1/health/ready
-│   │       ├── generators.py       # /v1/generators, /v1/generators/{name}/schema
-│   │       └── datasets.py         # /v1/datasets (CRUD, batch, versioning, lifecycle)
-│   └── tests/                      # Test suite (835+ tests)
-│       ├── conftest.py             # Shared fixtures
-│       ├── unit/                   # Unit tests (30+ files)
-│       ├── integration/            # Integration tests (5 files)
-│       ├── performance/            # Benchmarks via pytest-benchmark (41 tests)
-│       ├── api/                    # API-specific tests
-│       └── fixtures/               # Golden dataset fixtures (NPZ + metadata)
-├── docs/                           # User and developer documentation
-│   ├── QUICK_START.md              # 5-minute setup guide
-│   ├── USER_MANUAL.md              # Full user documentation
-│   ├── REFERENCE.md                # API, config, and command reference
-│   ├── DEVELOPER_CHEATSHEET.md     # Quick reference for developers
-│   ├── ENVIRONMENT_SETUP.md        # Environment configuration guide
-│   ├── DOCUMENTATION_OVERVIEW.md   # Documentation navigation guide
-│   ├── api/                        # API documentation
-│   ├── testing/                    # Testing documentation
-│   └── ci_cd/                      # CI/CD documentation
-├── scripts/                        # CI and coverage scripts
-│   ├── check_module_coverage.py    # Per-module coverage enforcement (85% min)
-│   ├── check_doc_links.py          # Internal markdown link validation
-│   └── generate_dep_docs.sh        # Dependency documentation generator
-├── notes/                          # Development notes, procedures, roadmaps
-├── conf/                           # Shell and logging configuration files
-├── util/                           # Bash utility scripts (40+ scripts)
-├── .github/                        # GitHub Actions workflows and config
-│   ├── workflows/                  # CI, CodeQL, security, publish, lockfile, sequence-safety, main-verify
-│   ├── CODEOWNERS                  # Code ownership rules
-│   └── dependabot.yml              # Automated dependency updates
-├── Dockerfile                      # Multi-stage production build (Python 3.14-slim)
-├── pyproject.toml                  # Project configuration (authoritative)
-├── .pre-commit-config.yaml         # Pre-commit hooks (ruff, mypy, bandit, yamllint, shellcheck)
-├── .env.example                    # Environment variables template
-├── requirements.lock               # Pinned dependency versions for Docker builds
-├── CHANGELOG.md                    # Version history (0.1.0 to 0.5.0)
-├── README.md                       # Project overview and PyPI landing page
-├── AGENTS.md                       # This file
-└── CLAUDE.md                       # Symlink to AGENTS.md
-```
-
-### Component Overview
-
-| Component | Purpose |
-|-----------|---------|
-| `core/constants.py` | Core-layer constants (encoding strings like `utf-8`, magic numbers, fixed metadata keys) |
-| `core/models.py` | Pydantic models: DatasetMeta, CreateDatasetRequest/Response, batch models, filters, stats |
-| `core/dataset_id.py` | Deterministic SHA-256 based dataset ID generation |
-| `core/split.py` | Shuffle and split data into train/test sets |
-| `core/artifacts.py` | NPZ save/load, array-to-bytes conversion, SHA-256 checksums |
-| `core/secrets.py` | Docker secrets and environment variable secret loading |
-| `generators/` | 10 dataset generator implementations (each with `generator.py` + `params.py`) |
-| `generators/spiral/` | Multi-spiral classification dataset (configurable arms, noise, rotation) |
-| `generators/xor/` | XOR 4-quadrant binary classification |
-| `generators/gaussian/` | Mixture-of-Gaussians multivariate classification |
-| `generators/circles/` | Concentric circles binary classification |
-| `generators/moon/` | Two interleaving half-moons binary classification |
-| `generators/checkerboard/` | 2D grid pattern with alternating classes |
-| `generators/csv_import/` | Import datasets from CSV/JSON files |
-| `generators/equities/` | S&P 500 equities daily time-series (OHLCV + SEC fundamentals; dual next-day targets) |
-| `generators/mnist/` | MNIST and Fashion-MNIST via HuggingFace Hub |
-| `generators/arc_agi/` | ARC-AGI visual reasoning tasks (optional dependency) |
-| `storage/constants.py` | Storage-layer constants (filenames, metadata keys, table/column names, default size limits) |
-| `storage/base.py` | Abstract `DatasetStore` interface with versioning and lifecycle |
-| `storage/local_fs.py` | Local filesystem storage (atomic writes, compressed NPZ) |
-| `storage/memory.py` | In-memory storage for testing |
-| `storage/cached.py` | Composable caching wrapper (read-through, write-through) |
-| `storage/redis_store.py` | Redis storage backend (optional) |
-| `storage/postgres_store.py` | PostgreSQL storage with JSONB metadata (optional) |
-| `storage/hf_store.py` | Hugging Face Hub read-only integration (optional) |
-| `storage/kaggle_store.py` | Kaggle dataset download integration (optional) |
-| `api/app.py` | FastAPI application factory with lifespan management |
-| `api/constants.py` | API-layer constants (HTTP header names, default body limits, rate-limit defaults, error message templates, exempt paths) |
-| `api/settings.py` | Pydantic BaseSettings with `JUNIPER_DATA_` prefix |
-| `api/middleware.py` | SecurityHeadersMiddleware, RequestBodyLimitMiddleware |
-| `api/security.py` | APIKeyAuth authentication, RateLimiter |
-| `api/observability.py` | Prometheus metrics, JSON logging, Sentry, RequestIdMiddleware |
-| `api/models/health.py` | DependencyStatus, ReadinessResponse models |
-| `api/routes/health.py` | Health, liveness, and readiness endpoints |
-| `api/routes/generators.py` | Generator listing and schema endpoints |
-| `api/routes/datasets.py` | Dataset CRUD, batch, versioning, lifecycle, filtering |
-
----
+The service's layered architecture, request lifecycle, and generator plug-in model. Moved to [`docs/REFERENCE.md` § Project Architecture Reference](docs/REFERENCE.md#project-architecture-reference) — read it when working on this area.
 
 ## Observability — Prometheus Collectors
 
-For any new `prometheus_client` `Counter` / `Gauge` / `Histogram` / `Summary` / `Info` / `Enum` registration, use the canonical helpers from `juniper-observability` (`>=0.2.0`):
-
-- `register_or_reuse(factory, name, *args, **kwargs)` — adopt-existing on duplicate (the default for almost every call site; preserves accumulated samples across in-process re-init).
-- `register_fresh(...)` — drop-and-recreate on duplicate (only when args genuinely differ).
-- `register_info_or_update(name, description, **labels)` — sugar for the `Info` two-step register-then-`.info({...})` pattern.
-- `lazy_register_or_reuse(...)` — for the lazy-init-with-`None`-sentinel pattern.
-
-Tests touching these collectors should use `juniper_observability.testing.reset_prometheus_registry`. Existing examples in this repo: `juniper_data/api/observability.py:_ensure_dataset_metrics`. See [the design doc in juniper-ml](https://github.com/pcalnon/juniper-ml/blob/main/notes/observability/JUNIPER_2026-05-05_JUNIPER-ML_REGISTER-OR-REUSE-HELPER-DESIGN.md) for the rationale.
-
----
+Every Prometheus collector this service registers, and the register-or-reuse contract behind it. Moved to [`docs/REFERENCE.md` § Prometheus Collector Reference](docs/REFERENCE.md#prometheus-collector-reference) — read it when working on this area.
 
 ## Code Style Conventions
 
@@ -400,134 +263,11 @@ Gates: 80% aggregate (override with `COVERAGE_FAIL_UNDER=<n>`) plus the per-modu
 
 ## API Design
 
-### REST Conventions
-
-- Use nouns for resources: `/datasets`, `/generators`
-- All endpoints prefixed with `/v1/`
-- Use HTTP methods appropriately: GET, POST, PATCH, DELETE
-- Return proper status codes (200, 201, 204, 400, 404, 413, 429, 500)
-- Include pagination for list endpoints (limit, offset)
-
-### Endpoint Catalog
-
-**Health Endpoints**:
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/v1/health` | Health check (status + version) |
-| GET | `/v1/health/live` | Liveness probe |
-| GET | `/v1/health/ready` | Readiness probe with dependency status |
-
-**Generator Endpoints**:
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/v1/generators` | List all generators with info (name, version, description, schema) |
-| GET | `/v1/generators/{name}/schema` | Get JSON schema for generator parameters |
-
-**Dataset Endpoints**:
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/v1/datasets` | Create dataset (returns 201) |
-| GET | `/v1/datasets` | List dataset IDs (paginated) |
-| GET | `/v1/datasets/{dataset_id}` | Get dataset metadata |
-| DELETE | `/v1/datasets/{dataset_id}` | Delete dataset (returns 204) |
-| GET | `/v1/datasets/{dataset_id}/artifact` | Download NPZ artifact |
-| GET | `/v1/datasets/{dataset_id}/preview` | Preview first N samples as JSON |
-| GET | `/v1/datasets/filter` | Advanced filtering (generator, tags, dates, sample count) |
-| GET | `/v1/datasets/stats` | Aggregate statistics |
-| GET | `/v1/datasets/versions` | List all versions of a named dataset |
-| GET | `/v1/datasets/latest` | Get latest version of a named dataset |
-| PATCH | `/v1/datasets/{dataset_id}/tags` | Update tags on a dataset |
-| POST | `/v1/datasets/cleanup-expired` | Delete all expired datasets |
-
-**Batch Endpoints**:
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/v1/datasets/batch-create` | Create multiple datasets (max 50; 201 when at least one was created, 200 when none was) |
-| POST | `/v1/datasets/batch-delete` | Delete multiple datasets (max 100) |
-| POST | `/v1/datasets/batch-export` | Export multiple datasets as ZIP (max 50) |
-| PATCH | `/v1/datasets/batch-tags` | Add/remove tags from multiple datasets |
-
-### Middleware Stack
-
-Middleware executes in LIFO order (last added = first to execute):
-
-| Order | Middleware | Purpose |
-|-------|-----------|---------|
-| 1 | `CORSMiddleware` | Cross-origin resource sharing (if configured) |
-| 2 | `RequestIdMiddleware` | Inject/propagate X-Request-ID header |
-| 3 | `PrometheusMiddleware` | HTTP request metrics (if enabled) |
-| 4 | `SecurityMiddleware` | API key auth + rate limiting |
-| 5 | `SecurityHeadersMiddleware` | Security response headers (CSP, HSTS, etc.) |
-| 6 | `RequestBodyLimitMiddleware` | Reject bodies > 10 MB |
-
-**`CORSMiddleware` must stay outermost.** A browser preflight carries no
-`X-API-Key` -- the browser generates it, and author-defined headers ride only on
-the actual request that follows -- so any layer that puts `SecurityMiddleware`
-outside CORS answers every preflight to a non-exempt path with 401, and no
-browser client can reach a protected endpoint. Running outermost also attaches
-the CORS headers to error responses (401/429), so a browser surfaces the real
-status instead of an opaque CORS failure.
-
-Note this is a stronger requirement than an `OPTIONS` bypass in
-`SecurityMiddleware._is_exempt`: CORS short-circuits only a *genuine* preflight
-(one carrying `Access-Control-Request-Method`), so a plain `OPTIONS` request
-still authenticates. Pinned by `TestCorsPreflight` in
-`juniper_data/tests/unit/test_api_app.py`.
-
-### Response Models
-
-Responses use typed Pydantic models (defined in `core/models.py` and `api/models/`):
-
-- `CreateDatasetResponse` -- dataset_id, generator, meta, artifact_url
-- `DatasetListResponse` -- datasets (list of DatasetMeta), total, limit, offset
-- `DatasetVersionListResponse` -- dataset_name, versions, total, latest_version
-- `BatchCreateResponse` -- results, total_created, total_failed
-- `BatchDeleteResponse` -- deleted, not_found, total_deleted
-- `DatasetStats` -- total_datasets, total_samples, by_generator, by_tag
-- `ReadinessResponse` -- status, version, service, timestamp, dependencies
-
----
+Route-by-route design notes: status codes, pagination, content negotiation, and the binary routes. Moved to [`docs/REFERENCE.md` § API Design Reference](docs/REFERENCE.md#api-design-reference) — read it when working on this area.
 
 ## Storage Backends
 
-JuniperData supports 7 storage backend implementations with a composable architecture.
-
-### Abstract Interface
-
-`DatasetStore` (in `storage/base.py`) defines the standard interface:
-
-- **Core**: `save()`, `get_meta()`, `get_artifact_bytes()`, `exists()`, `delete()`, `list_datasets()`
-- **Versioning**: `list_versions()`, `get_latest_version()`, `next_version_number()`, `save_versioned()`
-- **Lifecycle**: `record_access()`, `is_expired()`, `delete_expired()`, `filter_datasets()`
-- **Batch**: `batch_delete()`, `get_stats()`
-
-### Implementations
-
-| Backend | Module | Use Case | Dependencies |
-|---------|--------|----------|--------------|
-| **LocalFS** | `storage/local_fs.py` | Default production storage | None (stdlib) |
-| **InMemory** | `storage/memory.py` | Testing and development | None (stdlib) |
-| **Cached** | `storage/cached.py` | Composable cache wrapper | None (wraps another store) |
-| **Redis** | `storage/redis_store.py` | Distributed caching | `redis` |
-| **PostgreSQL** | `storage/postgres_store.py` | Persistent metadata with JSONB | `psycopg2` |
-| **HuggingFace** | `storage/hf_store.py` | Read-only HF Hub integration | `datasets` |
-| **Kaggle** | `storage/kaggle_store.py` | Kaggle dataset downloads | `kaggle` |
-
-### Composable Caching
-
-`CachedDatasetStore` wraps any primary store with a cache store:
-
-```python
-primary = LocalFSDatasetStore(path="./data")
-cache = InMemoryDatasetStore()
-store = CachedDatasetStore(primary=primary, cache=cache)
-```
-
----
+Each storage backend, its configuration, and the durability guarantee it does and does not make. Moved to [`docs/REFERENCE.md` § Storage Backend Reference](docs/REFERENCE.md#storage-backend-reference) — read it when working on this area.
 
 ## Security
 
@@ -646,96 +386,11 @@ Reference: `.env.example` provides a template with all variables.
 
 ## CI/CD Pipeline
 
-### GitHub Actions Workflows
-
-| Workflow | File | Triggers | Purpose |
-|----------|------|----------|---------|
-| **CI** | `ci.yml` | Push, PR, daily schedule | Pre-commit, tests (3.12-3.14), coverage, security, type checking, docs |
-| **CodeQL** | `codeql.yml` | Push, PR, schedule | GitHub code scanning |
-| **Security Scan** | `security-scan.yml` | Push, PR | Gitleaks + Bandit SARIF |
-| **Publish** | `publish.yml` | GitHub release | TestPyPI -> PyPI (Trusted Publishing/OIDC) |
-| **Lockfile Update** | `lockfile-update.yml` | Schedule, manual | Update `requirements.lock` |
-| **Sequence Safety** | `sequence-safety.yml` | PR | Advisory per-PR symbol-loss + docs-deletion screens via `juniper-ci-tools` (`--scope 'juniper_data/**'`); never required, never blocks a merge |
-| **Main Verify** | `main-verify.yml` | Push (main) | Bypass-proof post-merge compositional-loss net (screens-only, advisory); stable-title failure-issue upsert + catch-up base |
-
-### Pre-Commit Hooks
-
-Configured in `.pre-commit-config.yaml`:
-
-| Hook | Purpose |
-|------|---------|
-| Ruff (`ruff check --fix`) | Linting with auto-fix |
-| Ruff (`ruff format`) | Code formatting |
-| MyPy | Type checking |
-| Bandit | Security scanning |
-| yamllint | YAML validation |
-| shellcheck | Shell script analysis |
-| SOPS check | Block unencrypted `.env` files |
-| General checks | Trailing whitespace, merge conflicts, YAML/TOML/JSON syntax |
-
-### Coverage Gates
-
-- **Aggregate**: 80% minimum (pyproject.toml `fail_under`)
-- **Per-module**: 85% minimum (enforced by `scripts/check_module_coverage.py` in CI)
-- **Branch coverage**: Enabled
-
----
-
-### PR base-branch guard (required check)
-
-`.github/workflows/pr-base-branch-guard.yml` fails any PR whose base branch is not the
-default branch. Its job name -- **`Guard PR base branch`** -- is a **required status check**
-in this repo's ruleset, so renaming the job or deleting the file makes `main` unmergeable
-until the context is un-required first.
-
-**What it protects against.** A PR based on another feature branch can squash-merge into
-that branch, stranding its content off `main` behind a green **MERGED** badge. It has
-happened three times in this ecosystem (`juniper-recurrence#7`/`#8`, `juniper-canopy#365`).
-
-**Why it matters more than it looks.** Both rulesets here are scoped to `~DEFAULT_BRANCH`, so
-a PR whose base is a feature branch is governed by **no ruleset at all** -- it has zero
-required status checks and merges clean with nothing having run:
-
-```bash
-gh api repos/pcalnon/<repo>/rules/branches/feature%2Fanything --jq length   # -> 0
-gh api repos/pcalnon/<repo>/rules/branches/main               --jq length   # -> 9
-```
-
-This workflow carries no `branches:` filter, so it is the **only** check that runs on such a
-PR. It cannot block the merge there -- no ruleset applies -- but it turns a silent merge into
-a visibly red one.
-
-**If it fails.** Re-open the work against the default branch. The house practice is
-**close and re-open** a fresh PR titled `[retarget #NNN]`. Retargeting in place is *not*
-sufficient on its own: every `ci*.yml` here uses the default `pull_request` types
-`[opened, synchronize, reopened]`, which exclude `edited`, so a retarget re-runs this guard
-and nothing else -- the PR stays blocked on its other required contexts until a push or a
-close/re-open.
-
-**`stacked-pr` label.** Silences this guard for a deliberate stack. It does **not** make the
-PR mergeable into `main`, and it does **not** re-land the stack -- do that separately.
-
-Rollout and rationale: [juniper-ml#434](https://github.com/pcalnon/juniper-ml/issues/434).
+Per-workflow reference for `.github/workflows/`, including the contract each job must not break. Moved to [`docs/REFERENCE.md` § CI/CD Pipeline Reference](docs/REFERENCE.md#cicd-pipeline-reference) — read it when working on this area.
 
 ## Docker
 
-### Dockerfile
-
-- **Build**: Multi-stage (builder -> runtime) using `python:3.14-slim`
-- **User**: Non-root `juniper:juniper` (UID 1000, GID 1000)
-- **Port**: 8100 (exposed)
-- **Health Check**: `curl -f http://localhost:8100/v1/health` (30s interval, 10s timeout, 3 retries)
-- **Entry Point**: `python -m juniper_data`
-
-### Environment Variables
-
-All `JUNIPER_DATA_*` variables (see [Configuration](#configuration)) are supported in the container.
-
-### Docker Compose
-
-Full-stack orchestration is in the `juniper-deploy` repository. JuniperData runs as a service alongside juniper-cascor and JuniperCanopy.
-
----
+Image build, compose wiring, and the environment each container expects. Moved to [`docs/REFERENCE.md` § Docker Reference](docs/REFERENCE.md#docker-reference) — read it when working on this area.
 
 ## Development Workflow
 
