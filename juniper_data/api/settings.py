@@ -7,6 +7,7 @@ from typing import Any
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from juniper_data.api.constants import DEFAULT_RATE_LIMIT_WINDOW_SECONDS
 from juniper_data.core.secrets import get_secret
 
 # Define Safe and Reasonable Defaults for API Model Config
@@ -56,6 +57,15 @@ _JUNIPER_DATA_API_RATELIMIT_VALUE_MID: int = 60  # Requests per Minute
 _JUNIPER_DATA_API_RATELIMIT_VALUE_FAST: int = 120  # Requests per Minute
 _JUNIPER_DATA_API_RATELIMIT_DEFAULT: int = _JUNIPER_DATA_API_RATELIMIT_VALUE_MID
 
+# APD-DATA-033: the window was the one knob of three with no operator-facing
+# setting. ``RateLimiter`` has always accepted ``window_seconds`` and uses it in
+# three places (``self._window``, the cache TTL, and the ``window`` property),
+# but ``app.py`` never passed it, so the value was pinned to the constant.
+# Sourced from ``api.constants.DEFAULT_RATE_LIMIT_WINDOW_SECONDS`` so the
+# setting default and the ``RateLimiter`` constructor default cannot drift --
+# the two are the same object, not two literals that happen to agree.
+_JUNIPER_DATA_API_RATELIMIT_WINDOW_DEFAULT: int = DEFAULT_RATE_LIMIT_WINDOW_SECONDS
+
 _JUNIPER_DATA_API_CORS_ORIGINS_ALL: list[str] = ["*"]
 _JUNIPER_DATA_API_CORS_ORIGINS_NONE: list[str] = []
 _JUNIPER_DATA_API_CORS_ORIGINS_DEFAULT: list[str] = _JUNIPER_DATA_API_CORS_ORIGINS_NONE
@@ -104,7 +114,8 @@ class Settings(BaseSettings):
         - api_keys: JSON list of comma-separated, valid API keys (e.g., ["key1,key2"] ).
         - If empty, authentication is disabled (open access).
         - rate_limit_enabled: Enable/disable rate limiting.
-        - rate_limit_requests_per_minute: Max requests per minute per client.
+        - rate_limit_requests_per_minute: Max requests allowed per window per client.
+        - rate_limit_window_seconds: Length of that window, in seconds.
     """
 
     model_config = SettingsConfigDict(
@@ -177,6 +188,7 @@ class Settings(BaseSettings):
 
     rate_limit_enabled: bool = _JUNIPER_DATA_API_RATELIMIT_ACTIVE_DEFAULT
     rate_limit_requests_per_minute: int = _JUNIPER_DATA_API_RATELIMIT_DEFAULT
+    rate_limit_window_seconds: int = _JUNIPER_DATA_API_RATELIMIT_WINDOW_DEFAULT
 
     log_format: str = _JUNIPER_DATA_API_LOG_FORMAT_DEFAULT
     sentry_dsn: str | None = _JUNIPER_DATA_API_SENTRY_DSN_DEFAULT
