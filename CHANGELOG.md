@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`juniper-service-core` ceiling raised to `<0.8.0`** so 0.7.0 can be adopted. 0.7.0 re-files
+  juniper-ml#1332 under `Added` — it introduces `WorkerCoordinator.release_worker_tasks`, which
+  reclaims a worker'''s in-flight tasks on a clean `/ws/workers` disconnect or a mid-result abort
+  instead of waiting out `task_reassignment_timeout`. juniper-data does not import
+  `juniper_service_core.workers` or `.websocket`, so this is a ceiling raise for adoptability, not
+  a behaviour change here. The lockfile still pins `==0.6.0` and is refreshed separately once 0.7.0
+  publishes — constraint-mode `Lockfile Freshness` asks only whether the lock still *satisfies*
+  pyproject, so it stays green while stale and nothing prompts the adoption.
+
 ## [0.12.0] - 2026-08-30
 
 ### Added
