@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-08-30
+
+### Added
+
+- **`GET /v1/generators` carries the `install_hint` it is documented to carry (`#277`, plan W-4).**
+  `GeneratorInfo` declared five fields and no hint, while juniper-ml's experiment driver refused an
+  unavailable generator by telling the operator to "see `GET /v1/generators` for the install hint".
+  The endpoint now returns it, so the driver's message resolves to something real instead of
+  pointing at a field that did not exist.
+- **The rate-limit window is operator-configurable (`APD-DATA-033`, `#297`).** `RateLimiter` has
+  always accepted `window_seconds` and uses it in three places, but `create_app` passed only
+  `requests_per_minute` and `enabled`, so the window was the one knob of three an operator could
+  not set. Adds `Settings.rate_limit_window_seconds`, overridable as
+  `JUNIPER_DATA_RATE_LIMIT_WINDOW_SECONDS`, defaulted from the same
+  `DEFAULT_RATE_LIMIT_WINDOW_SECONDS` object the constructor uses rather than a second copy.
+  Worth restating what this was **not**: that constant was never unwired — it is load-bearing at
+  all three sites. The gap was only the absent operator-facing setting.
+- **Total ordering and keyset pagination on `/v1/datasets/filter` (`APD-DATA-011`,
+  `APD-DATA-012`, `#283`).** `filter_datasets` sorted on `created_at` alone; `list.sort` is stable,
+  so rows sharing a timestamp came back in whatever order enumeration produced — and
+  `LocalFSDatasetStore` enumerates with `Path.glob`, which specifies no ordering. Measured: the
+  same six datasets fed in two insertion orders produced exactly reversed pages. Now sorted by
+  `created_at` descending with `dataset_id` ascending as the tie-break, reproducible across calls,
+  processes, and both store implementations.
+
 ### Security
 
 - **The OpenAPI document is served behind the API key, and declares the scheme
