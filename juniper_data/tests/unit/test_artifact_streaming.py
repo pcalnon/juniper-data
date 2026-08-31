@@ -66,7 +66,7 @@ def arrays() -> dict[str, np.ndarray]:
 
 @pytest.fixture
 def local_store(tmp_path, meta, arrays) -> LocalFSDatasetStore:
-    store = LocalFSDatasetStore(base_path=str(tmp_path))
+    store = LocalFSDatasetStore(base_path=tmp_path)
     store.save(meta.dataset_id, meta, arrays)
     return store
 
