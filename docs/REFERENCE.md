@@ -355,6 +355,59 @@ uv pip compile pyproject.toml --extra api --extra observability --extra mnist -o
 
 ---
 
+## Code Style Conventions Reference
+
+Relocated verbatim from `AGENTS.md` (P3 of the shared-session-memory plan) so it is read on demand rather than loaded into every session.
+
+### Naming Conventions
+
+**Constants**:
+
+- Uppercase with underscores, prefixed by component: `_DATA_DEFAULT_NOISE`
+- Hierarchical naming: `_SPIRAL_GENERATOR_DEFAULT_POINTS`
+- Layer-scoped constants live in their layer's `constants.py`:
+  - `juniper_data/api/constants.py` — header names, status code defaults, body/rate-limit limits, error message templates
+  - `juniper_data/storage/constants.py` — filenames, metadata keys, table/column names, storage size limits
+  - `juniper_data/core/constants.py` — encoding strings (`utf-8`), magic numbers, fixed metadata keys
+  - `juniper_data/generators/<name>/params.py` — per-generator parameter defaults referenced by Pydantic `Field(default=...)`
+- Application code (middleware, security, observability, storage backends, generators, route handlers) imports from these modules; inline literals are reserved for genuinely local one-shot values
+- HTTP status codes use `starlette.status` constants instead of magic numbers (`HTTP_404_NOT_FOUND` rather than `404`)
+
+**Classes**:
+
+- PascalCase: `SpiralGenerator`, `DatasetStore`, `LocalFSDatasetStore`
+
+**Methods/Functions**:
+
+- snake_case: `generate_dataset`, `get_configuration`
+
+**Private Members**:
+
+- Single underscore prefix: `_internal_method`, `_private_attribute`
+
+**Dunder Methods**:
+
+- Double underscore: `__init__`, `__repr__`
+
+### Code Formatting
+
+- Line length: 320 characters (configured in `[tool.ruff] line-length` in pyproject.toml)
+- Ruff formatter (replaces black) with `ruff>=0.9.0`
+- Ruff isort rules for imports (profile: known-first-party = `juniper_data`)
+- Quote style: double quotes, LF line endings
+- Type hints required for all public methods
+- Max cyclomatic complexity: 15
+
+### Documentation
+
+- Docstrings for all public classes and methods
+- Google-style docstring format
+- Type annotations in signatures, not docstrings
+
+---
+
+---
+
 ## Code Quality Tools
 
 ### Ruff
@@ -407,6 +460,34 @@ pre-commit install
 # Run manually on all files
 pre-commit run --all-files
 ```
+
+---
+
+## Development Workflow Reference
+
+Relocated verbatim from `AGENTS.md` (P3 of the shared-session-memory plan) so it is read on demand rather than loaded into every session.
+
+### Adding New Features
+
+1. Create feature in appropriate module
+2. Add Pydantic models for validation
+3. Add tests in `tests/unit/` or `tests/integration/`
+4. Run security scanning (`bandit -r juniper_data`)
+5. Run pre-commit hooks (`pre-commit run --all-files`)
+6. Update documentation
+7. Run full test suite with coverage
+
+### Adding New Generators
+
+1. Create new subpackage under `generators/` with `__init__.py`, `params.py`, and `generator.py`
+2. Implement `params.py` with a Pydantic `GeneratorParams` model
+3. Implement `generator.py` with a `@staticmethod generate(params)` method returning `dict[str, np.ndarray]`
+4. Register generator in `GENERATOR_REGISTRY` in `api/routes/generators.py`
+5. Add unit tests in `tests/unit/test_<generator>_generator.py`
+6. Add integration test coverage
+7. Run full test suite
+
+---
 
 ---
 
