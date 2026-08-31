@@ -14,6 +14,7 @@ import numpy as np
 
 from juniper_data.core.constants import CHARSET_UTF8
 from juniper_data.core.models import DatasetMeta
+from juniper_data.storage.constants import ARTIFACT_STREAM_CHUNK_SIZE
 
 # from typing import Dict, List, Optional
 
@@ -193,6 +194,38 @@ class DatasetStore(ABC):
             NPZ file contents as bytes if found, None otherwise.
         """
         pass
+
+    def open_artifact_stream(self, dataset_id: str, chunk_size: int = ARTIFACT_STREAM_CHUNK_SIZE) -> Iterator[bytes] | None:
+        """Yield the artifact in chunks without materialising it whole.
+
+        Defect-register ``APD-DATA-016``. ``download_artifact`` wrapped
+        :meth:`get_artifact_bytes` in ``io.BytesIO`` and returned a
+        ``StreamingResponse``, which bounds the **socket buffer**, not process
+        memory: the entire artifact existed in RAM before the response object did,
+        once per concurrent request. Calling that "streaming" invites the
+        assumption that it is safe for arbitrarily large artifacts, and it was not.
+
+        **Deliberately NOT abstract.** A backend that has no cheaper path than
+        reading the whole blob inherits this default and is unchanged — the seven
+        existing stores keep working without edits, and adding one does not become
+        harder. Only a backend that can genuinely do better overrides it (see
+        :class:`~juniper_data.storage.local_fs.LocalFSDatasetStore`, which reads the
+        NPZ file in chunks). So the interface widens without a flag day, and the
+        route gets real streaming exactly where a backend can supply it.
+
+        Args:
+            dataset_id: Unique identifier for the dataset.
+            chunk_size: Bytes per yielded chunk. Overriders should honour it.
+
+        Returns:
+            An iterator over the artifact's bytes, or ``None`` when the dataset has
+            no artifact — the same "absent" signal :meth:`get_artifact_bytes` uses,
+            so callers keep one 404 branch rather than two.
+        """
+        payload = self.get_artifact_bytes(dataset_id)
+        if payload is None:
+            return None
+        return iter((payload,))
 
     @abstractmethod
     def exists(self, dataset_id: str) -> bool:

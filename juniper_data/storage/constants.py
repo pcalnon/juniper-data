@@ -50,3 +50,12 @@ DEFAULT_LIST_OFFSET: int = 0
 # ─── Default Artifact Format ─────────────────────────────────────────────────
 
 DEFAULT_ARTIFACT_FORMAT: str = "npz"
+
+# ─── Artifact Streaming ──────────────────────────────────────────────────────
+
+# Chunk size for ``DatasetStore.open_artifact_stream`` (defect-register
+# APD-DATA-016). 1 MiB: large enough that per-chunk overhead stays negligible on
+# a multi-hundred-MB NPZ, small enough that peak resident bytes per concurrent
+# download is bounded by a CONSTANT rather than by artifact size -- which is the
+# whole point of the method. Backends overriding the default should honour it.
+ARTIFACT_STREAM_CHUNK_SIZE: int = 1024 * 1024
