@@ -80,7 +80,7 @@ juniper-model-core==0.3.1
     # via juniper-service-core
 juniper-observability==0.4.0
     # via juniper-data (pyproject.toml)
-juniper-service-core==0.6.0
+juniper-service-core==0.7.0
     # via juniper-data (pyproject.toml)
 multidict==6.7.1
     # via
