@@ -21,6 +21,7 @@ from juniper_data.core.constants import CHARSET_UTF8
 from juniper_data.core.models import DatasetMeta
 from juniper_data.storage.base import DatasetStore
 from juniper_data.storage.constants import (
+    ARTIFACT_STREAM_CHUNK_SIZE,
     DEFAULT_LIST_LIMIT,
     DEFAULT_LIST_OFFSET,
     JSON_INDENT_DEFAULT,
@@ -258,6 +259,39 @@ class LocalFSDatasetStore(DatasetStore):
         """
         npz_path = self._npz_path(dataset_id)
         return npz_path.read_bytes() if npz_path.exists() else None
+
+    def open_artifact_stream(self, dataset_id: str, chunk_size: int = ARTIFACT_STREAM_CHUNK_SIZE) -> Iterator[bytes] | None:
+        """Read the NPZ off disk in chunks instead of materialising it whole.
+
+        Defect-register ``APD-DATA-016``. The base-class default falls back to
+        :meth:`get_artifact_bytes`, so peak memory there is still the full
+        artifact; this backend has a file on disk and can do better, which is why
+        it overrides.
+
+        **Existence is decided eagerly, before the generator is returned.** A
+        generator body does not run until first iteration, so testing for the file
+        inside one would defer the ``None``/404 decision until after the caller had
+        already committed to a 200 response — the route would have sent headers for
+        a dataset that does not exist. The ``exists()`` check therefore stays out
+        here, and only the reading is lazy.
+
+        The handle is opened inside the generator and closed by its ``with`` block,
+        so an abandoned download (client disconnects mid-stream) releases the file
+        when the generator is finalised rather than holding it open.
+        """
+        npz_path = self._npz_path(dataset_id)
+        if not npz_path.exists():
+            return None
+
+        def _chunks() -> Iterator[bytes]:
+            with npz_path.open("rb") as handle:
+                while True:
+                    block = handle.read(chunk_size)
+                    if not block:
+                        return
+                    yield block
+
+        return _chunks()
 
     def exists(self, dataset_id: str) -> bool:
         """Check if dataset exists on filesystem.

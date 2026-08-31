@@ -840,6 +840,13 @@ async def download_artifact(
 ) -> StreamingResponse:
     """Download dataset artifact as NPZ file.
 
+    The body is produced incrementally via
+    :meth:`~juniper_data.storage.base.DatasetStore.open_artifact_stream`, so peak
+    memory is bounded by the chunk size rather than by artifact size — on a backend
+    that overrides the default. Backends that inherit the base implementation still
+    read the artifact whole, so the memory bound is a property of the *store*, not
+    of this route (defect-register ``APD-DATA-016``).
+
     Args:
         dataset_id: Unique dataset identifier.
         store: Dataset storage backend.
@@ -850,15 +857,28 @@ async def download_artifact(
     Raises:
         HTTPException: 404 if dataset not found.
     """
-    artifact_bytes = await asyncio.to_thread(store.get_artifact_bytes, dataset_id)
-    if artifact_bytes is None:
+    # APD-DATA-016: stream the artifact rather than materialise it. The previous
+    # form read the whole NPZ into memory and wrapped it in ``io.BytesIO``, which
+    # bounds the SOCKET BUFFER but not process memory -- peak RSS was the full
+    # artifact, once per concurrent download, while the name "streaming" invited
+    # the opposite assumption. ``open_artifact_stream`` yields it in chunks; the
+    # base-class default still falls back to a whole read, so backends that cannot
+    # do better are unchanged and only this route's memory profile improves.
+    #
+    # ``to_thread`` wraps the OPEN (an existence check plus a file handle on
+    # LocalFS) because that is the blocking part which must complete before the
+    # response exists -- the 404 decision cannot be deferred into the generator, or
+    # the route would already have committed to a 200. Subsequent chunk reads
+    # happen as the ASGI server pulls them.
+    artifact_stream = await asyncio.to_thread(store.open_artifact_stream, dataset_id)
+    if artifact_stream is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dataset '{dataset_id}' not found")
 
     # BUG-JD-08: record access asynchronously to avoid blocking I/O on read paths
     asyncio.get_event_loop().call_soon(lambda: store.record_access(dataset_id))
 
     return StreamingResponse(
-        io.BytesIO(artifact_bytes),
+        artifact_stream,
         media_type=BINARY_MEDIA_TYPE,
         headers={"Content-Disposition": f"attachment; filename={dataset_id}.npz"},
     )

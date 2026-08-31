@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`GET /{dataset_id}/artifact` streams the NPZ instead of materialising it** (defect-register
+  `APD-DATA-016`). The route returned a `StreamingResponse` wrapping
+  `io.BytesIO(get_artifact_bytes(...))`, which bounds the **socket buffer**, not process memory:
+  the whole artifact existed in RAM before the response object did, once per concurrent download,
+  while the endpoint's name invited the opposite assumption.
+
+  New `DatasetStore.open_artifact_stream(dataset_id, chunk_size=...)` yields the artifact in
+  chunks. **It is deliberately not abstract**: the base implementation falls back to
+  `get_artifact_bytes`, so all seven existing backends keep working untouched and adding a new one
+  does not get harder. `LocalFSDatasetStore` overrides it with a real chunked file read, so the
+  memory bound is a property of the *store* rather than of the route.
+
+  **Absence is decided eagerly, before the generator is returned.** A generator body does not run
+  until first iteration, so an existence check placed inside one would defer the 404 until after
+  the route had already committed to a 200 and sent headers — it would answer *200 with an empty
+  body* for a missing dataset. A test pins this by asserting the call returns `None` rather than a
+  generator; the mutation that moves the check inside fails exactly that arm.
+
+  Not a wire change: the delivered bytes are identical, verified against the materialised read.
+  Chunk size is `ARTIFACT_STREAM_CHUNK_SIZE` (1 MiB).
+
+  **Out of scope, deliberately:** the `ETag` / conditional-GET half of the same primer passage
+  belongs to `APD-DATA-017`, which is part of the owner-routed REST group and is not touched here.
+  The `application/octet-stream` half was already fixed — `BINARY_MEDIA_TYPE` is `application/zip`
+  and owns every call site.
+
 ### Changed
 
 - **`juniper-service-core` ceiling raised to `<0.8.0`** so 0.7.0 can be adopted. 0.7.0 re-files
