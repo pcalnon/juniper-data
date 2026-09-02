@@ -34,11 +34,17 @@ def _make_sample_tasks(n_tasks=3, train_pairs=2, test_pairs=1):
     return tasks
 
 
-def _make_mock_hf_dataset(tasks):
-    """Create a mock HuggingFace dataset from task list."""
+def _make_mock_hf_dataset(tasks, column_names=("train", "test")):
+    """Create a mock HuggingFace dataset from task list.
+
+    ``column_names`` is explicit because the generator's schema guard reads it.
+    The default is the real ARC schema; pass a different tuple to simulate a
+    source whose columns do not match, which is the failure that shipped.
+    """
     mock_ds = MagicMock()
     mock_ds.__len__ = MagicMock(return_value=len(tasks))
     mock_ds.__iter__ = MagicMock(return_value=iter(tasks))
+    mock_ds.column_names = list(column_names)
 
     return mock_ds
 
@@ -199,34 +205,65 @@ class TestArcAgiGeneratorHuggingFace:
 
         assert result["X_full"].shape[0] == 3
 
-    def test_generate_hf_fallback_dataset(self, mock_hf_load) -> None:
-        """HuggingFace loading tries fallback dataset on a network/HTTP failure (ERR-13).
+    def test_generate_hf_source_unavailable_raises(self, mock_hf_load) -> None:
+        """A network failure raises RuntimeError naming the repo and split.
 
-        Uses ``ConnectionError`` to simulate an expected network failure that
-        should trigger the fallback. After ERR-13, only ``(ConnectionError,
-        TimeoutError, OSError)`` trigger the fallback path; arbitrary
-        ``Exception`` subclasses propagate as programming errors.
+        **There is no longer a fallback, and its removal is the fix, not a
+        simplification.** The former fallback ``multimodal-reasoning-lab/ARC-AGI``
+        is a multimodal reasoning-trace dataset -- columns ``Question`` / ``Text
+        Reasoning Trace`` / ``Final Answer`` plus 46 image columns, no ``train`` or
+        ``test``. It could never satisfy the ARC parse, so on every real failure of
+        the primary it produced a zero-sample dataset after ~9 minutes of decoding
+        images that were then discarded. A fallback that cannot work is worse than
+        none: it converts a loud outage into silent bad data.
         """
-        tasks = _make_sample_tasks(n_tasks=2, train_pairs=1, test_pairs=0)
-        mock_ds = _make_mock_hf_dataset(tasks)
+        from juniper_data.generators.arc_agi.generator import HF_DATASET_REPO, ArcAgiGenerator
 
-        call_count = [0]
-
-        def side_effect(name, split=None):
-            call_count[0] += 1
-            if call_count[0] == 1:
-                raise ConnectionError("primary dataset unreachable")
-            return mock_ds
-
-        mock_hf_load.side_effect = side_effect
-
-        from juniper_data.generators.arc_agi.generator import ArcAgiGenerator
+        mock_hf_load.side_effect = ConnectionError("primary dataset unreachable")
 
         params = ArcAgiParams(include_test=False, pad_to=5, seed=42)
-        result = ArcAgiGenerator.generate(params)
+        with pytest.raises(RuntimeError, match="unavailable") as excinfo:
+            ArcAgiGenerator.generate(params)
 
-        assert mock_hf_load.call_count == 2
-        assert result["X_full"].shape[0] == 2
+        assert HF_DATASET_REPO in str(excinfo.value)
+        assert isinstance(excinfo.value.__cause__, ConnectionError)
+        # Exactly one source is attempted; there is nothing to fall back to.
+        assert mock_hf_load.call_count == 1
+
+    def test_generate_hf_wrong_schema_raises_rather_than_returning_empty(self, mock_hf_load) -> None:
+        """A source whose columns are not the ARC schema must fail loudly.
+
+        This is the regression arm for the defect that shipped. The rows parse
+        without error -- ``item.get("train", [])`` yields ``[]`` for every one --
+        so the old code returned ``X_full`` with shape ``(0, 900)``: a valid,
+        entirely empty dataset that juniper-data would persist, content-address and
+        serve to a trainer. The guard reads the declared columns once, before any
+        row is parsed, so the failure names the cause instead of the symptom.
+        """
+        from juniper_data.generators.arc_agi.generator import ArcAgiGenerator
+
+        # Shaped like the real fallback that caused this: right row count, wrong columns.
+        rows = [{"Question": "q", "Final Answer": "a"} for _ in range(3)]
+        mock_hf_load.return_value = _make_mock_hf_dataset(rows, column_names=("Question", "Text Reasoning Trace", "Final Answer"))
+
+        params = ArcAgiParams(include_test=False, pad_to=5, seed=42)
+        with pytest.raises(RuntimeError, match="expected ARC task schema") as excinfo:
+            ArcAgiGenerator.generate(params)
+
+        message = str(excinfo.value)
+        assert "train" in message and "test" in message, "the message must name the missing columns"
+
+    def test_hf_repo_and_split_are_paired(self) -> None:
+        """The split constant must match the configured repo.
+
+        ``lordspline/arc-agi`` publishes ``training`` / ``evaluation`` / ``trial``
+        and has **no** ``train`` split -- the value the previous code requested.
+        Pinning the pair keeps a repo change from silently leaving a stale split.
+        """
+        from juniper_data.generators.arc_agi.generator import HF_DATASET_REPO, HF_DATASET_SPLIT
+
+        assert HF_DATASET_REPO == "lordspline/arc-agi"
+        assert HF_DATASET_SPLIT == "training"
 
     def test_generate_hf_programming_error_propagates(self, mock_hf_load) -> None:
         """ERR-13: programming errors (TypeError, ValueError) propagate; no fallback."""
@@ -240,44 +277,6 @@ class TestArcAgiGeneratorHuggingFace:
 
         # Fallback must NOT be attempted — programming errors are not network failures.
         assert mock_hf_load.call_count == 1
-
-    def test_generate_hf_both_sources_fail_raises_runtime_error(self, mock_hf_load) -> None:
-        """ERR-13: when both primary and fallback HF sources fail, raise RuntimeError chained on the second failure."""
-        mock_hf_load.side_effect = ConnectionError("offline")
-
-        from juniper_data.generators.arc_agi.generator import ArcAgiGenerator
-
-        params = ArcAgiParams(include_test=False, pad_to=5, seed=42)
-        with pytest.raises(RuntimeError, match="Both ARC-AGI dataset sources") as excinfo:
-            ArcAgiGenerator.generate(params)
-
-        # Both endpoints were attempted.
-        assert mock_hf_load.call_count == 2
-        # The RuntimeError chains on the second ConnectionError.
-        assert isinstance(excinfo.value.__cause__, ConnectionError)
-
-    def test_generate_hf_fallback_on_oserror(self, mock_hf_load) -> None:
-        """ERR-13: ``OSError`` (covers requests.HTTPError / huggingface_hub HTTP errors) triggers the fallback."""
-        tasks = _make_sample_tasks(n_tasks=1, train_pairs=1, test_pairs=0)
-        mock_ds = _make_mock_hf_dataset(tasks)
-
-        call_count = [0]
-
-        def side_effect(name, split=None):
-            call_count[0] += 1
-            if call_count[0] == 1:
-                raise OSError("HTTP 503 from primary")
-            return mock_ds
-
-        mock_hf_load.side_effect = side_effect
-
-        from juniper_data.generators.arc_agi.generator import ArcAgiGenerator
-
-        params = ArcAgiParams(include_test=False, pad_to=5, seed=42)
-        result = ArcAgiGenerator.generate(params)
-
-        assert mock_hf_load.call_count == 2
-        assert result["X_full"].shape[0] == 1
 
     def test_generate_raises_without_datasets(self) -> None:
         """Raises ImportError when datasets not installed."""
@@ -412,14 +411,27 @@ class TestArcAgiGeneratorLocal:
 
         assert result["X_full"].shape[0] == 3
 
-    def test_generate_local_missing_subdirs(self, tmp_path) -> None:
-        """Handle missing training/evaluation subdirectories gracefully."""
+    def test_generate_local_missing_subdirs_raises(self, tmp_path) -> None:
+        """An empty local path must RAISE, not return an empty dataset.
+
+        **This assertion is inverted from what it used to say, deliberately.** It
+        previously asserted ``result["X_full"].shape[0] == 0`` and described that
+        as handling the case "gracefully" -- pinning the silent-empty behaviour as
+        correct. It is not graceful: a caller who typos ``local_path`` received a
+        syntactically valid zero-sample dataset, which juniper-data then persists
+        and serves like any other, because nothing downstream rejects an empty one.
+        The trainer reads the result as a modelling outcome rather than a
+        configuration error.
+
+        Same class as the Hub failure this suite now covers: the parse used
+        ``.get(key, default)``, so an absent source became an empty result instead
+        of an error.
+        """
         from juniper_data.generators.arc_agi.generator import ArcAgiGenerator
 
         params = ArcAgiParams(source="local", local_path=str(tmp_path), subset="training", include_test=False, pad_to=5, seed=42)
-        result = ArcAgiGenerator.generate(params)
-
-        assert result["X_full"].shape[0] == 0
+        with pytest.raises(RuntimeError, match="produced 0 samples"):
+            ArcAgiGenerator.generate(params)
 
 
 @pytest.mark.unit
