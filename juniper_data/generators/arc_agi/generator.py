@@ -28,6 +28,23 @@ except ImportError:
     hf_load_dataset = None  # type: ignore[assignment]
 
 
+# Hub source for ARC task JSON.
+#
+# The original primary, ``fchollet/arc-agi``, no longer exists on the Hub (its
+# ``stat`` reports missing, not a transient error), and the former fallback,
+# ``multimodal-reasoning-lab/ARC-AGI``, is a different kind of dataset entirely --
+# reasoning traces and images, with no ARC task columns. This repo carries the
+# canonical schema: rows of ``train`` / ``test`` lists of ``{"input", "output"}``
+# integer grids, 400 tasks in the ``training`` split, ~348 KB.
+#
+# NOTE the split name. This dataset's splits are ``training`` / ``evaluation`` /
+# ``trial`` -- there is no ``train``. The previous code requested ``split="train"``,
+# which would fail here too; the constant keeps the pairing visible so the two
+# cannot drift apart.
+HF_DATASET_REPO = "lordspline/arc-agi"
+HF_DATASET_SPLIT = "training"
+
+
 class ArcAgiGenerator:
     """Generator for ARC-AGI reasoning tasks.
 
@@ -68,6 +85,19 @@ class ArcAgiGenerator:
 
         X, y, task_ids = ArcAgiGenerator._convert_tasks_to_arrays(tasks, params)
 
+        # A generator that produces nothing must say so, not return an empty dataset.
+        #
+        # Backstop for the whole class, independent of WHY the arrays came back empty:
+        # a dead source, a schema change, an over-aggressive filter, or a future
+        # source whose rows parse but contain no grid pairs. Without it, a
+        # zero-sample result is indistinguishable from a real one to everything
+        # downstream -- juniper-data has no empty-dataset check in its API or core
+        # layers, so the artifact is persisted, content-addressed, and served to a
+        # trainer. Silent-empty is strictly worse than a loud failure: the caller
+        # trains on nothing and reads the result as a modelling outcome.
+        if X.shape[0] == 0:
+            raise RuntimeError(f"ARC-AGI generation produced 0 samples from {len(tasks)} task(s). The source loaded but yielded no usable input/output grid pairs -- this is a source or schema problem, not an empty request.")
+
         split_result = shuffle_and_split(
             X=X,
             y=y,
@@ -104,17 +134,30 @@ class ArcAgiGenerator:
         # which transitively covers ``huggingface_hub.errors.HfHubHTTPError``
         # and friends (gated/private/missing repo errors, rate-limits, etc.).
         try:
-            ds = hf_load_dataset("fchollet/arc-agi", split="train")  # nosec B615
+            ds = hf_load_dataset(HF_DATASET_REPO, split=HF_DATASET_SPLIT)  # nosec B615
         except (ConnectionError, TimeoutError, OSError) as exc:
-            logger.warning(
-                "ARC-AGI primary HF dataset load failed (%s: %s); trying fallback 'multimodal-reasoning-lab/ARC-AGI'",
-                type(exc).__name__,
-                exc,
-            )
-            try:
-                ds = hf_load_dataset("multimodal-reasoning-lab/ARC-AGI", split="train")  # nosec B615
-            except (ConnectionError, TimeoutError, OSError) as exc2:
-                raise RuntimeError(f"Both ARC-AGI dataset sources (fchollet/arc-agi, multimodal-reasoning-lab/ARC-AGI) unavailable: {type(exc2).__name__}: {exc2}") from exc2
+            raise RuntimeError(f"ARC-AGI dataset {HF_DATASET_REPO!r} (split {HF_DATASET_SPLIT!r}) is unavailable: {type(exc).__name__}: {exc}. Use source='local' with local_path pointing at ARC task JSON if the Hub is unreachable.") from exc
+
+        # Fail loudly on a schema mismatch instead of silently yielding nothing.
+        #
+        # This guard exists because its absence shipped a real, silent failure. The
+        # previous primary, ``fchollet/arc-agi``, was removed from the Hub; the
+        # fallback, ``multimodal-reasoning-lab/ARC-AGI``, is a multimodal
+        # reasoning-trace dataset whose columns are ``Question`` / ``Text Reasoning
+        # Trace`` / ``Final Answer`` plus 46 image columns -- no ``train``, no
+        # ``test``. The parse below used ``item.get("train", [])``, so all 2000 rows
+        # produced empty tasks and ``generate`` returned ``X_full`` with shape
+        # ``(0, 900)``: a syntactically valid, entirely empty dataset, after ~9
+        # minutes spent decoding ~92 000 images that were then discarded. Nothing
+        # downstream rejects a zero-sample dataset, so it would have been persisted,
+        # content-addressed, and served to a trainer as if real.
+        #
+        # ``.get(key, default)`` is what made it silent. The columns are checked
+        # once, against the dataset's declared features, before any row is parsed.
+        columns = set(getattr(ds, "column_names", None) or [])
+        missing = {"train", "test"} - columns
+        if columns and missing:
+            raise RuntimeError(f"ARC-AGI dataset {HF_DATASET_REPO!r} (split {HF_DATASET_SPLIT!r}) does not have the expected ARC task schema: missing column(s) {sorted(missing)}; found {sorted(columns)}. An ARC task row must carry 'train' and 'test' lists of {{'input', 'output'}} grids.")
 
         tasks: list[dict] = []
         for item in ds:

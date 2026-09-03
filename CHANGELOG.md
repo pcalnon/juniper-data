@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`arc_agi` returned an empty dataset, silently, after ~9 minutes.** Its Hub source
+  `fchollet/arc-agi` no longer exists, and the fallback `multimodal-reasoning-lab/ARC-AGI` is a
+  multimodal reasoning-trace dataset — columns `Question` / `Text Reasoning Trace` / `Final Answer`
+  plus 46 image columns, with no `train` or `test`. The parse used `item.get("train", [])`, so all
+  2000 rows produced empty tasks and `generate()` returned `X_full` with shape `(0, 900)`: a valid,
+  entirely empty dataset, after decoding ~92,000 images that were then discarded.
+
+  Nothing rejected it. juniper-data has no empty-dataset check in its API or core layers, so the
+  artifact would have been persisted, content-addressed, and served to a trainer as real data.
+
+  **Fixed in three parts.** The source moves to `lordspline/arc-agi` split `training`, which
+  carries the canonical ARC schema — note the split is `training`, not `train`, so the old request
+  would have failed here too; the pair is now pinned by a test. The unusable fallback is
+  **removed**: one that cannot satisfy the parse is worse than none, because it converts a loud
+  outage into silent bad data. And two guards were added — a schema check that reads the declared
+  columns *before* parsing any row, so a mismatch names its cause, and a non-empty backstop in
+  `generate()` that catches the class regardless of why the arrays came back empty.
+
+  **Measured: 536 s → 1.30 s, and `(0, 900)` → `(1717, 900)`.** The old runtime was almost entirely
+  image decoding for data that was thrown away.
+
+  **A checked-in test asserted the defect as correct** and is inverted here, with the reason
+  recorded at the test: `test_generate_local_missing_subdirs` asserted that an empty `local_path`
+  yields a zero-sample dataset and called that handling the case "gracefully". A caller who typos
+  the path now gets an error instead of an empty dataset.
+
+
 - **`GET /{dataset_id}/artifact` streams the NPZ instead of materialising it** (defect-register
   `APD-DATA-016`). The route returned a `StreamingResponse` wrapping
   `io.BytesIO(get_artifact_bytes(...))`, which bounds the **socket buffer**, not process memory:
