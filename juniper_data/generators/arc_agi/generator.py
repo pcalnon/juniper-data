@@ -30,8 +30,13 @@ except ImportError:
 
 # Hub source for ARC task JSON.
 #
-# The original primary, ``fchollet/arc-agi``, no longer exists on the Hub (its
-# ``stat`` reports missing, not a transient error), and the former fallback,
+# The original primary, ``fchollet/arc-agi``, does not exist on the Hub (its
+# ``stat`` reports missing, not a transient error) -- and, on the evidence, never
+# did for this code: it was hardcoded as a literal when the generator was
+# introduced and never changed, while every test patches ``hf_load_dataset``, so
+# no test ever resolved it live. Say "does not exist and was never verified",
+# not "no longer exists": the second asserts a removal nobody observed. The
+# former fallback,
 # ``multimodal-reasoning-lab/ARC-AGI``, is a different kind of dataset entirely --
 # reasoning traces and images, with no ARC task columns. This repo carries the
 # canonical schema: rows of ``train`` / ``test`` lists of ``{"input", "output"}``
@@ -141,16 +146,22 @@ class ArcAgiGenerator:
         # Fail loudly on a schema mismatch instead of silently yielding nothing.
         #
         # This guard exists because its absence shipped a real, silent failure. The
-        # previous primary, ``fchollet/arc-agi``, was removed from the Hub; the
+        # previous primary, ``fchollet/arc-agi``, does not exist on the Hub (and was
+        # never verified to -- see the source note at the top of this module); the
         # fallback, ``multimodal-reasoning-lab/ARC-AGI``, is a multimodal
         # reasoning-trace dataset whose columns are ``Question`` / ``Text Reasoning
         # Trace`` / ``Final Answer`` plus 46 image columns -- no ``train``, no
         # ``test``. The parse below used ``item.get("train", [])``, so all 2000 rows
         # produced empty tasks and ``generate`` returned ``X_full`` with shape
-        # ``(0, 900)``: a syntactically valid, entirely empty dataset, after ~9
-        # minutes spent decoding ~92 000 images that were then discarded. Nothing
-        # downstream rejects a zero-sample dataset, so it would have been persisted,
-        # content-addressed, and served to a trainer as if real.
+        # ``(0, 900)``: a syntactically valid, entirely empty dataset, built out of
+        # 17 232 decoded images that were then discarded. Nothing downstream rejects
+        # a zero-sample dataset, so it would have been persisted, content-addressed,
+        # and served to a trainer as if real.
+        #
+        # 17 232, not 92 000. 2000 rows x 46 image columns is 92 000 *cells*, but
+        # only 18.7% are populated; a null cell decodes to ``None`` at no cost. The
+        # larger figure is arithmetic presented as a count of work done -- which is
+        # the same error class as the runtime it was quoted to explain (below).
         #
         # ``.get(key, default)`` is what made it silent. The columns are checked
         # once, against the dataset's declared features, before any row is parsed.
