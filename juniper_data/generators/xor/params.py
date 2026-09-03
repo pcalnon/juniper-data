@@ -2,6 +2,8 @@
 
 from pydantic import BaseModel, Field
 
+from juniper_data.core.constants import DEFAULT_GENERATOR_SEED
+
 from .defaults import (
     MIN_MARGIN,
     MIN_N_POINTS_PER_QUADRANT,
@@ -37,7 +39,7 @@ class XorParams(BaseModel):
     )
     margin: float = Field(default=XOR_DEFAULT_MARGIN, ge=MIN_MARGIN, description="Margin around axes (exclusion zone)")
     noise: float = Field(default=XOR_DEFAULT_NOISE, ge=MIN_NOISE, description="Gaussian noise level")
-    seed: int | None = Field(default=None, ge=0, description="Random seed for reproducibility")
+    seed: int | None = Field(default=DEFAULT_GENERATOR_SEED, ge=0, description="Random seed for reproducibility. Defaults to DEFAULT_GENERATOR_SEED so the documented default configuration is REPRODUCIBLE (juniper-data#319); pass None explicitly to opt into a fresh draw per call.")
     train_ratio: float = Field(default=XOR_DEFAULT_TRAIN_RATIO, gt=0, le=1, description="Fraction of data for training")
     test_ratio: float = Field(default=XOR_DEFAULT_TEST_RATIO, ge=0, le=1, description="Fraction of data for testing")
     shuffle: bool = Field(default=True, description="Shuffle dataset before train/test split")
