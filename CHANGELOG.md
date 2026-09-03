@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Nine generators were not reproducible at their documented defaults.** `checkerboard`,
+  `circles`, `gaussian`, `moon`, `xor`, `csv_import`, `mnist`, `arc_agi` and `equities` declared
+  `seed: int | None = Field(default=None)`, so two identical calls at the default configuration
+  produced different data — and `shuffle_and_split` re-drew the partition boundaries from OS
+  entropy as well. `spiral` was the only 2-D generator with a concrete default; its value (42) is
+  now the shared one.
+
+  The default resolves from `JUNIPER_DATA_DEFAULT_GENERATOR_SEED` at import time, falling back to
+  the compiled-in `DEFAULT_GENERATOR_SEED`, so a deployment can pin it without editing code.
+  Import-time resolution rather than a pydantic `default_factory` keeps the value visible as a
+  concrete `default` in `model_json_schema()`, which published clients read. A malformed, negative
+  or empty override falls back rather than raising — a configuration error must not make the
+  package unimportable.
+
+  **Passing `seed=None` explicitly is unchanged**: it still opts into a fresh draw per call, and
+  still receives the BUG-JD-04 cache nonce in `generate_dataset_id` so a seedless request cannot
+  collide with a stale seedless artifact. Only the *default* moved.
+
+  `mackey_glass`'s `init_noise_std` gets the same treatment via
+  `JUNIPER_DATA_DEFAULT_MACKEY_GLASS_INIT_NOISE_STD`. That knob decides whether that generator's
+  `seed` has any effect at all — the seed is consumed only inside `if init_noise_std > 0`, so at
+  the default every seed produces byte-identical output. Documented and intentional; exposing the
+  knob is what lets a deployment make the generator seed-sensitive without editing code.
+
+  Note `equities` is a special case: its seed is *"unused for the temporal split; retained for API
+  parity"*, so defaulting it there is cosmetic. Its real non-reproducibility source is untouched by
+  this change — `end_date` defaults to the wall clock, so the same params yield different data on
+  different days.
+
 - **`arc_agi` returned an empty dataset, silently, in over ten minutes.** Its Hub source
   `fchollet/arc-agi` does not exist — and was never verified to: it was hardcoded when the
   generator was introduced and never changed, and every test patches the Hub loader, so no test

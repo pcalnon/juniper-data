@@ -15,6 +15,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from juniper_data.core.constants import DEFAULT_GENERATOR_SEED
+
 from .defaults import (
     EQUITIES_DEFAULT_BASIS_PRICE_FIELD,
     EQUITIES_DEFAULT_END_DATE,
@@ -112,9 +114,11 @@ class EquitiesParams(BaseModel):
         description="Fraction of each ticker's latest rows used for testing.",
     )
     seed: int | None = Field(
-        default=None,
+        default=DEFAULT_GENERATOR_SEED,
         ge=0,
-        description="Unused for the temporal split; retained for API parity.",
+        description=(
+            "Unused for the temporal split; retained for API parity. Defaulted rather than left None purely for consistency with the other generators (juniper-data#319) -- setting it changes nothing here. Note this generator's real non-reproducibility source is elsewhere: ``end_date`` defaults to the wall clock, so the same params yield different data on different days."
+        ),
     )
 
     @model_validator(mode="after")

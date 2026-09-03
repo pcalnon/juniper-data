@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from juniper_data.core.constants import DEFAULT_GENERATOR_SEED
+
 from .defaults import (
     ARC_AGI_DEFAULT_FLATTEN_PAIRS,
     ARC_AGI_DEFAULT_INCLUDE_TEST,
@@ -65,7 +67,7 @@ class ArcAgiParams(BaseModel):
         default=ARC_AGI_DEFAULT_FLATTEN_PAIRS,
         description="Flatten all input/output pairs into single arrays",
     )
-    seed: int | None = Field(default=None, ge=0, description="Random seed for reproducibility")
+    seed: int | None = Field(default=DEFAULT_GENERATOR_SEED, ge=0, description="Random seed for reproducibility. Defaults to DEFAULT_GENERATOR_SEED so the documented default configuration is REPRODUCIBLE (juniper-data#319); pass None explicitly to opt into a fresh draw per call.")
     train_ratio: float = Field(default=ARC_AGI_DEFAULT_TRAIN_RATIO, gt=0, le=1, description="Fraction of data for training")
     test_ratio: float = Field(default=ARC_AGI_DEFAULT_TEST_RATIO, ge=0, le=1, description="Fraction of data for testing")
     shuffle: bool = Field(default=True, description="Shuffle before splitting")

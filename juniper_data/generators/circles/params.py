@@ -2,6 +2,8 @@
 
 from pydantic import BaseModel, Field
 
+from juniper_data.core.constants import DEFAULT_GENERATOR_SEED
+
 from .defaults import (
     CIRCLES_DEFAULT_FACTOR,
     CIRCLES_DEFAULT_INNER_RATIO,
@@ -37,7 +39,7 @@ class CirclesParams(BaseModel):
         le=1,
         description="Fraction of samples on the inner circle",
     )
-    seed: int | None = Field(default=None, ge=0, description="Random seed for reproducibility")
+    seed: int | None = Field(default=DEFAULT_GENERATOR_SEED, ge=0, description="Random seed for reproducibility. Defaults to DEFAULT_GENERATOR_SEED so the documented default configuration is REPRODUCIBLE (juniper-data#319); pass None explicitly to opt into a fresh draw per call.")
     train_ratio: float = Field(default=CIRCLES_DEFAULT_TRAIN_RATIO, gt=0, le=1, description="Fraction of data for training")
     test_ratio: float = Field(default=CIRCLES_DEFAULT_TEST_RATIO, ge=0, le=1, description="Fraction of data for testing")
     shuffle: bool = Field(default=True, description="Shuffle before splitting")
