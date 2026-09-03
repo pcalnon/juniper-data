@@ -9,12 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **`arc_agi` returned an empty dataset, silently, after ~9 minutes.** Its Hub source
-  `fchollet/arc-agi` no longer exists, and the fallback `multimodal-reasoning-lab/ARC-AGI` is a
+- **`arc_agi` returned an empty dataset, silently, in over ten minutes.** Its Hub source
+  `fchollet/arc-agi` does not exist — and was never verified to: it was hardcoded when the
+  generator was introduced and never changed, and every test patches the Hub loader, so no test
+  ever resolved it live. The fallback `multimodal-reasoning-lab/ARC-AGI` is a
   multimodal reasoning-trace dataset — columns `Question` / `Text Reasoning Trace` / `Final Answer`
   plus 46 image columns, with no `train` or `test`. The parse used `item.get("train", [])`, so all
   2000 rows produced empty tasks and `generate()` returned `X_full` with shape `(0, 900)`: a valid,
-  entirely empty dataset, after decoding ~92,000 images that were then discarded.
+  entirely empty dataset, after decoding 17,232 images that were then discarded.
 
   Nothing rejected it. juniper-data has no empty-dataset check in its API or core layers, so the
   artifact would have been persisted, content-addressed, and served to a trainer as real data.
@@ -27,8 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   columns *before* parsing any row, so a mismatch names its cause, and a non-empty backstop in
   `generate()` that catches the class regardless of why the arrays came back empty.
 
-  **Measured: 536 s → 1.30 s, and `(0, 900)` → `(1717, 900)`.** The old runtime was almost entirely
-  image decoding for data that was thrown away.
+  **Measured: `> 600 s` → 1.30 s cold (0.67 s warm), and `(0, 900)` → `(1717, 900)`.** Both figures
+  in the pair are cold runs; an earlier note compared a warm pre-fix run against a cold post-fix
+  one. The old runtime was **not** "almost entirely image decoding": a ~1.09 GB parquet download
+  was a substantial share of it, and only 17,232 of the 92,000 image cells were populated — 2000
+  rows × 46 columns is the cell count, not a count of images decoded.
 
   **A checked-in test asserted the defect as correct** and is inverted here, with the reason
   recorded at the test: `test_generate_local_missing_subdirs` asserted that an empty `local_path`
