@@ -8,7 +8,7 @@ from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from juniper_data.api.constants import DEFAULT_RATE_LIMIT_WINDOW_SECONDS
-from juniper_data.core.limits import CSV_IMPORT_DEFAULT_ALLOW_TRUNCATION, CSV_IMPORT_DEFAULT_MAX_BYTES
+from juniper_data.core.limits import CSV_IMPORT_DEFAULT_ALLOW_TRUNCATION, CSV_IMPORT_DEFAULT_MAX_BYTES, EQUITIES_DEFAULT_ALLOW_TRUNCATION, EQUITIES_DEFAULT_MAX_SYMBOLS
 from juniper_data.core.secrets import get_secret
 
 # Define Safe and Reasonable Defaults for API Model Config
@@ -110,6 +110,8 @@ _JUNIPER_DATA_API_IMPORT_DIR_DEFAULT: str = _JUNIPER_DATA_API_IMPORT_DIR
 # would create.
 _JUNIPER_DATA_API_CSV_IMPORT_MAX_BYTES_DEFAULT: int = CSV_IMPORT_DEFAULT_MAX_BYTES
 _JUNIPER_DATA_API_CSV_IMPORT_ALLOW_TRUNCATION_DEFAULT: bool = CSV_IMPORT_DEFAULT_ALLOW_TRUNCATION
+_JUNIPER_DATA_API_EQUITIES_MAX_SYMBOLS_DEFAULT: int = EQUITIES_DEFAULT_MAX_SYMBOLS
+_JUNIPER_DATA_API_EQUITIES_ALLOW_TRUNCATION_DEFAULT: bool = EQUITIES_DEFAULT_ALLOW_TRUNCATION
 
 
 class Settings(BaseSettings):
@@ -211,6 +213,13 @@ class Settings(BaseSettings):
     # construction fails the deployment loudly instead.
     csv_import_max_bytes: int = Field(default=_JUNIPER_DATA_API_CSV_IMPORT_MAX_BYTES_DEFAULT, gt=0)
     csv_import_allow_truncation: bool = _JUNIPER_DATA_API_CSV_IMPORT_ALLOW_TRUNCATION_DEFAULT
+
+    # APD-DATA-018, equities half. Same three opt-in surfaces as csv_import
+    # above -- request parameter, JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION, and the
+    # matching .env entry -- and the same gt=0 reasoning: a non-positive cap
+    # would make the slice below it empty rather than bounded.
+    equities_max_symbols: int = Field(default=_JUNIPER_DATA_API_EQUITIES_MAX_SYMBOLS_DEFAULT, gt=0)
+    equities_allow_truncation: bool = _JUNIPER_DATA_API_EQUITIES_ALLOW_TRUNCATION_DEFAULT
 
     rate_limit_enabled: bool = _JUNIPER_DATA_API_RATELIMIT_ACTIVE_DEFAULT
     rate_limit_requests_per_minute: int = _JUNIPER_DATA_API_RATELIMIT_DEFAULT

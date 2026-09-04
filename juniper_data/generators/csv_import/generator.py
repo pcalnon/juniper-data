@@ -14,7 +14,7 @@ import numpy as np
 
 from juniper_data.api.settings import get_settings
 from juniper_data.core.constants import CHARSET_UTF8
-from juniper_data.core.limits import TRUNCATION_META_KEY, InputTooLargeError, build_truncation_meta
+from juniper_data.core.limits import REASON_BYTE_CAP, TRUNCATION_META_KEY, UNIT_BYTES, InputTooLargeError, build_truncation_meta
 from juniper_data.core.split import shuffle_and_split
 
 from .params import CsvImportParams
@@ -223,7 +223,7 @@ class CsvImportGenerator:
 
         # Cheap refusal: obviously over the cap, and no opt-in. No read at all.
         if stat_bytes > cap_bytes and not allow_truncation:
-            raise InputTooLargeError(source=params.file_path, bytes_total=stat_bytes, cap_bytes=cap_bytes)
+            raise InputTooLargeError(source=f"Source {params.file_path!r}", unit=UNIT_BYTES, cap=cap_bytes, actual=stat_bytes, opt_in_env="JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION")
 
         # One byte past the cap is what distinguishes "fits exactly" from
         # "there is more"; without it a source of exactly cap_bytes and one of
@@ -240,19 +240,21 @@ class CsvImportGenerator:
         # Over the cap by the READ, whatever stat claimed. Catches the FIFO and
         # the grew-after-stat cases, which the pre-check above cannot see.
         if not allow_truncation:
-            raise InputTooLargeError(source=params.file_path, bytes_total=max(stat_bytes, len(raw)), cap_bytes=cap_bytes)
+            raise InputTooLargeError(source=f"Source {params.file_path!r}", unit=UNIT_BYTES, cap=cap_bytes, actual=max(stat_bytes, len(raw)), opt_in_env="JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION")
 
         chunk = CsvImportGenerator._trim_to_record_boundary(raw[:cap_bytes])
         data = CsvImportGenerator._parse_csv_text(chunk, params, drop_trailing_partial=True) if file_format == "csv" else CsvImportGenerator._parse_json_text(chunk, tolerate_truncated=True)
 
         X, y = CsvImportGenerator._convert_to_arrays(data, params)
         truncation = build_truncation_meta(
-            bytes_read=len(chunk.encode(CHARSET_UTF8)),
+            reason=REASON_BYTE_CAP,
+            unit=UNIT_BYTES,
+            cap=cap_bytes,
             # A source whose real size the stat under-reports (a FIFO) has no
             # knowable total; report the larger of what stat said and what was
             # actually observed, which is a true lower bound either way.
-            bytes_total=max(stat_bytes, len(raw)),
-            cap_bytes=cap_bytes,
+            requested=max(stat_bytes, len(raw)),
+            imported=len(chunk.encode(CHARSET_UTF8)),
             records_imported=len(data),
         )
         return X, y, truncation
