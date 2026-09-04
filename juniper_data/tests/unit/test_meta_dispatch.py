@@ -20,6 +20,7 @@ import numpy as np
 import pytest
 
 from juniper_data.core.meta import compute_shape_meta, derive_sequence_meta, pop_scaling_meta
+from juniper_data.core.models import DatasetMeta
 
 pytestmark = [pytest.mark.unit]
 
@@ -153,3 +154,93 @@ def test_pop_scaling_meta_absent_returns_none():
     scaling = pop_scaling_meta(arrays)
     assert scaling == {"dt_scaling": None, "target_scaling": None}
     assert "scaling" not in arrays
+
+
+def test_val_partition_absent_reports_zero():
+    """A two-partition artifact predating the third partition still derives cleanly."""
+    arrays = {
+        "X_train": np.zeros((6, 4), np.float32),
+        "y_train": _onehot([0, 1, 0, 1, 0, 1], 2),
+        "X_test": np.zeros((2, 4), np.float32),
+        "y_test": _onehot([0, 1], 2),
+    }
+
+    meta = compute_shape_meta(arrays)
+
+    assert meta["n_val"] == 0
+    assert meta["n_train"] == 6
+    assert meta["n_test"] == 2
+    assert meta["n_samples"] == 8
+
+
+def test_val_partition_counted_in_shape_meta():
+    """n_val is reported and n_samples spans all THREE partitions."""
+    arrays = {
+        "X_train": np.zeros((6, 4), np.float32),
+        "y_train": _onehot([0, 1, 0, 1, 0, 1], 2),
+        "X_val": np.zeros((3, 4), np.float32),
+        "y_val": _onehot([0, 1, 0], 2),
+        "X_test": np.zeros((2, 4), np.float32),
+        "y_test": _onehot([0, 1], 2),
+    }
+
+    meta = compute_shape_meta(arrays)
+
+    assert meta["n_train"] == 6
+    assert meta["n_val"] == 3
+    assert meta["n_test"] == 2
+    assert meta["n_samples"] == 11, "n_samples must be train + val + test, not train + test"
+
+
+def test_class_distribution_without_y_full_includes_val():
+    """The y_full-less fallback must stack val too, or it under-counts silently.
+
+    ``y_full`` is dropped from the contract by decision 11, so the fallback
+    becomes the normal path -- and a fallback that stacks only train + test
+    would omit an entire class here while still returning a well-formed dict.
+    """
+    arrays = {
+        "X_train": np.zeros((2, 4), np.float32),
+        "y_train": _onehot([0, 0], 2),
+        "X_val": np.zeros((3, 4), np.float32),
+        "y_val": _onehot([1, 1, 1], 2),
+        "X_test": np.zeros((2, 4), np.float32),
+        "y_test": _onehot([0, 0], 2),
+    }
+
+    meta = compute_shape_meta(arrays)
+
+    # Omitting y_val would yield {"0": 4} -- class 1 missing entirely.
+    assert meta["class_distribution"] == {"0": 4, "1": 3}
+    assert sum(meta["class_distribution"].values()) == meta["n_samples"]
+
+
+def test_class_distribution_prefers_y_full_when_present():
+    """y_full still wins when the artifact carries it, unchanged from before."""
+    arrays = {
+        "X_train": np.zeros((2, 4), np.float32),
+        "y_train": _onehot([0, 0], 2),
+        "X_val": np.zeros((1, 4), np.float32),
+        "y_val": _onehot([1], 2),
+        "X_test": np.zeros((1, 4), np.float32),
+        "y_test": _onehot([1], 2),
+        "y_full": _onehot([0, 0, 1, 1], 2),
+    }
+
+    meta = compute_shape_meta(arrays)
+
+    assert meta["class_distribution"] == {"0": 2, "1": 2}
+
+
+def test_dataset_meta_n_val_is_defaulted():
+    """R-3: a required n_val would make every stored .meta.json unreadable.
+
+    Existing artifacts are loaded with ``DatasetMeta(**meta_dict)`` from JSON
+    written before the third partition existed. The field must therefore carry a
+    default, and the default must be 0 -- the honest count for an artifact with
+    no validation rows.
+    """
+    field = DatasetMeta.model_fields["n_val"]
+
+    assert field.is_required() is False, "n_val must be defaulted or legacy .meta.json cannot load"
+    assert field.default == 0

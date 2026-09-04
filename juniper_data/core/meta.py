@@ -46,12 +46,13 @@ def compute_shape_meta(
 
     Args:
         arrays: NPZ array dict with at least ``X_train`` / ``X_test`` and, for
-            classification, one-hot ``y_train`` / ``y_test`` (``y_full`` optional).
+            classification, one-hot ``y_train`` / ``y_test``. ``X_val`` / ``y_val``
+            and ``y_full`` are optional.
         task_type: dataset task type; only ``"classification"`` populates
             ``n_classes`` and ``class_distribution``.
 
     Returns:
-        Dict with ``n_samples``, ``n_features``, ``n_train``, ``n_test``,
+        Dict with ``n_samples``, ``n_features``, ``n_train``, ``n_val``, ``n_test``,
         ``n_classes`` (``int | None``), and ``class_distribution``
         (``dict[str, int] | None``).
     """
@@ -59,7 +60,10 @@ def compute_shape_meta(
     x_test = arrays["X_test"]
     n_train = len(x_train)
     n_test = len(x_test)
-    n_samples = n_train + n_test
+    # `X_val` is presence-conditional: a two-partition artifact predating the
+    # third partition simply has none, and reports 0 rather than failing.
+    n_val = len(arrays["X_val"]) if "X_val" in arrays else 0
+    n_samples = n_train + n_val + n_test
     # Feature count is the trailing axis for both (N, F) and (W, L, F).
     n_features = int(x_train.shape[-1]) if n_train > 0 else 2
 
@@ -72,6 +76,7 @@ def compute_shape_meta(
         "n_samples": n_samples,
         "n_features": n_features,
         "n_train": n_train,
+        "n_val": n_val,
         "n_test": n_test,
         "n_classes": n_classes,
         "class_distribution": class_distribution,
@@ -93,7 +98,15 @@ def _classification_meta(
 
     y_full = arrays.get("y_full")
     if y_full is None:
-        y_full = np.vstack([arrays["y_train"], arrays["y_test"]])
+        # Every partition present must be stacked. Omitting `y_val` here would
+        # under-count the distribution silently -- and would do so ONLY on
+        # artifacts without `y_full`, which is precisely what decision 11 makes
+        # the normal case.
+        parts = [arrays["y_train"]]
+        if "y_val" in arrays:
+            parts.append(arrays["y_val"])
+        parts.append(arrays["y_test"])
+        y_full = np.vstack(parts)
     class_labels = np.argmax(y_full, axis=1)
     unique, counts = np.unique(class_labels, return_counts=True)
     class_distribution = {str(int(k)): int(v) for k, v in zip(unique, counts)}

@@ -67,6 +67,7 @@ _SQL_DEFAULTS: dict[str, str] = {
     "artifact_formats": "ARRAY['npz']",
     "tags": "ARRAY[]::TEXT[]",
     "access_count": "0",
+    "n_val": "0",
     "sequence": "FALSE",
     "task_type": "'classification'",
 }
