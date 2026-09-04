@@ -46,14 +46,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   prefix of its source. It is metadata, not a transient warning. `None` means complete, so the
   field's presence alone answers the question.
 
-  **The cut lands on a record boundary.** A byte cap slices mid-record essentially always, so the
-  reader trims to the last newline, drops a partial multi-byte character, and discards a final row
-  left short — a newline *inside a quoted field* is legal CSV, so the newline trim alone is not
-  sufficient. A truncated JSON array decodes as many complete elements as fit rather than failing;
-  JSONL drops only an unparseable **final** line, so a corrupt line mid-file still raises instead of
-  importing as a short dataset.
+  **The cut lands on a record boundary.** A byte cap slices mid-record essentially always. For CSV
+  the reader trims to the last newline, drops a partial multi-byte character, and discards a final
+  row left short — a newline *inside a quoted field* is legal CSV, so the newline trim alone is not
+  sufficient, and an unclosed quote that fills every column (no `None` from `DictReader`) is scanned
+  and dropped too. Newline trim is CSV-only: a truncated JSON array (including minified
+  `json.dumps` / `JSON.stringify` output, which is one line) decodes as many complete elements as
+  fit rather than becoming empty text; JSONL drops only an unparseable **final** line, so a corrupt
+  line mid-file still raises instead of importing as a short dataset. The create route binds the
+  effective cap and truncation opt-in onto params before hashing, so a persisted truncation under a
+  tight deployment cap is not served after the operator raises the cap (or turns truncation off).
 
 ### Fixed
+
+- **`csv_import` truncation of minified JSON discarded the prefix, and a 2-column unclosed quote kept a fabricated row.** `_trim_to_record_boundary` ran before JSON parse, so `json.dumps` / `JSON.stringify` (one line, no newline) became empty text and raised "No data found in file" instead of importing the complete elements that fit. `drop_trailing_partial` only dropped a last row with a `None` field, so a 2-column file whose unclosed quote swallowed later lines populated every column and kept a row that never existed (`value` later coerced to `0.0`). Newline trim is now CSV-only; an RFC 4180 unclosed-quote scan drops that last capped CSV row. The create route also binds the effective cap and truncation opt-in onto params before `generate_dataset_id`, so omit-max_bytes no longer hashes as the 128 MiB Field default while generation used the tighter deployment ceiling.
 
 - **The feature normaliser was fit on the full set, including chronologically-later test rows.**
   `equities`, `equities_seq` and `csv_import` computed min/max over every row and then applied

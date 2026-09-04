@@ -588,6 +588,32 @@ class TestGeneratorAvailability:
         assert response.status_code == 201
         assert response.json()["meta"]["truncation"] is None
 
+    def test_create_dataset_cache_does_not_reuse_tight_cap_after_operator_raises_it(self, client: TestClient, tmp_path: Path) -> None:
+        """A persisted truncation under a tight deployment cap must not be served
+        after the operator raises the cap. ``model_dump()`` fills Field defaults,
+        so omit-max_bytes hashed as 128 MiB even when generation used 120.
+        """
+        source = tmp_path / "big.csv"
+        source.write_text("feature1,feature2,label\n" + "".join(f"{i}.0,{i + 1}.0,A\n" for i in range(40)))
+
+        from juniper_data.core.limits import CSV_IMPORT_DEFAULT_MAX_BYTES
+
+        payload = {"generator": "csv_import", "params": {"file_path": "big.csv", "allow_truncation": True}, "persist": True}
+        tight = Settings(storage_path=str(tmp_path), import_dir=str(tmp_path), csv_import_max_bytes=120)
+        wide = Settings(storage_path=str(tmp_path), import_dir=str(tmp_path), csv_import_max_bytes=CSV_IMPORT_DEFAULT_MAX_BYTES)
+        with patch("juniper_data.generators.csv_import.generator.get_settings", return_value=tight):
+            first = client.post("/v1/datasets", json=payload)
+        with patch("juniper_data.generators.csv_import.generator.get_settings", return_value=wide):
+            second = client.post("/v1/datasets", json=payload)
+
+        assert first.status_code == 201
+        assert second.status_code == 201
+        assert first.json()["dataset_id"] != second.json()["dataset_id"]
+        assert first.json()["meta"]["truncation"] is not None
+        assert first.json()["meta"]["n_samples"] < 40
+        assert second.json()["meta"]["truncation"] is None
+        assert second.json()["meta"]["n_samples"] == 40
+
     # ------------------------------------------------------------------
     # APD-DATA-004: the 501 detail must not echo an UNDECLARED ImportError.
     #

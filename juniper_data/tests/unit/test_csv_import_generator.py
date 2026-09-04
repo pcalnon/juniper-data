@@ -506,6 +506,65 @@ class TestInputByteCap:
         assert all(value is not None for row in kept for value in row.values()), label
         assert any(value is None for value in dropped[-1].values()), label
 
+    def test_truncated_minified_json_array_keeps_complete_elements(self, bounded_import_dir) -> None:
+        """json.dumps / JSON.stringify emit one line. Newline-trimming that
+        prefix yields empty text and "No data found" -- the decoder must see
+        the byte prefix itself.
+        """
+        directory, _ = bounded_import_dir
+        path = directory / "wide.json"
+        elements = [{"feature1": float(i), "feature2": float(i + 1), "label": "A"} for i in range(40)]
+        path.write_text(json.dumps(elements, separators=(",", ":")))
+        assert "\n" not in path.read_text()
+
+        result = CsvImportGenerator.generate(CsvImportParams(file_path="wide.json", allow_truncation=True))
+        annotation = result[TRUNCATION_META_KEY]
+        assert 0 < annotation["records_imported"] < 40
+        assert result["X_full"].shape[0] == annotation["records_imported"]
+
+    def test_unclosed_quote_drops_last_row_even_when_all_fields_are_present(self) -> None:
+        """A 2-column file whose unclosed quote swallows later lines has no None.
+
+        The short-row guard therefore cannot see the damage; the quote scan must.
+        """
+        text = 'id,value\n1,a\n2,"multi\n3,b\n'
+        params = CsvImportParams(file_path="unused.csv")
+        kept = CsvImportGenerator._parse_csv_text(text, params, drop_trailing_partial=True)
+        dropped = CsvImportGenerator._parse_csv_text(text, params, drop_trailing_partial=False)
+
+        assert len(kept) == len(dropped) - 1
+        assert kept == [{"id": "1", "value": "a"}]
+        assert all(value is not None for row in kept for value in row.values())
+        assert all(value is not None for value in dropped[-1].values())
+
+    def test_bind_deployment_defaults_puts_effective_policy_in_dump(self, bounded_import_dir) -> None:
+        """The cache key must follow the resolved cap and opt-in, not Field defaults.
+
+        After the request-cannot-raise-the-cap clamp, omit-max_bytes and an
+        explicit 128 MiB schema default resolve to the SAME effective cap
+        (the deployment ceiling). Binding must record that ceiling, not leave
+        the dump at 128 MiB -- otherwise a later restart that raises the cap
+        reuses the truncated artifact. Global allow_truncation must appear in
+        the dump for the same reason.
+        """
+        _directory, mock_settings = bounded_import_dir
+        omitted = CsvImportGenerator.bind_deployment_defaults(CsvImportParams(file_path="wide.csv", allow_truncation=True))
+        explicit_default = CsvImportGenerator.bind_deployment_defaults(CsvImportParams(file_path="wide.csv", allow_truncation=True, max_bytes=CSV_IMPORT_DEFAULT_MAX_BYTES))
+        assert omitted.max_bytes == TINY_CAP_BYTES
+        assert explicit_default.max_bytes == TINY_CAP_BYTES
+        assert omitted.model_dump()["max_bytes"] == explicit_default.model_dump()["max_bytes"]
+
+        mock_settings.csv_import_max_bytes = CSV_IMPORT_DEFAULT_MAX_BYTES
+        omitted_wide = CsvImportGenerator.bind_deployment_defaults(CsvImportParams(file_path="wide.csv", allow_truncation=True))
+        assert omitted_wide.max_bytes == CSV_IMPORT_DEFAULT_MAX_BYTES
+        assert omitted.model_dump()["max_bytes"] != omitted_wide.model_dump()["max_bytes"]
+
+        mock_settings.csv_import_max_bytes = TINY_CAP_BYTES
+        mock_settings.csv_import_allow_truncation = True
+        inherited = CsvImportGenerator.bind_deployment_defaults(CsvImportParams(file_path="wide.csv"))
+        assert inherited.allow_truncation is True
+        assert inherited.model_dump()["allow_truncation"] is True
+
     def test_truncated_json_array_keeps_only_complete_elements(self, bounded_import_dir) -> None:
         """A byte cap cannot cut a JSON array at a valid point; decode what fits."""
         directory, _ = bounded_import_dir
