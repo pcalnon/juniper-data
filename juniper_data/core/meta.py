@@ -31,6 +31,7 @@ from typing import Any
 
 import numpy as np
 
+from juniper_data.core.limits import TRUNCATION_META_KEY
 from juniper_data.core.scaling import SCALING_META_KEY
 
 #: The only task type that populates n_classes / class_distribution.
@@ -143,3 +144,28 @@ def pop_scaling_meta(arrays: dict[str, Any]) -> dict[str, Any]:
     """
     scaling = arrays.pop(SCALING_META_KEY, None) or {}
     return {"dt_scaling": scaling.get("dt_scaling"), "target_scaling": scaling.get("target_scaling")}
+
+
+def pop_truncation_meta(arrays: dict[str, Any]) -> dict[str, Any] | None:
+    """Pop the reserved truncation channel key from a generator's return dict.
+
+    Mirrors :func:`pop_scaling_meta`. A generator that bounded its input MAY
+    include a single reserved ``"truncation"`` entry (a plain dict, NOT an
+    ndarray) describing what was cut. This removes it from ``arrays`` -- so the
+    dict stays array-only for checksumming and NPZ persistence -- and returns
+    it for storage on ``DatasetMeta``.
+
+    Returning ``None`` rather than an empty dict is deliberate: ``DatasetMeta``
+    stores ``None`` for "complete", so a reader can test the field's presence
+    alone. An empty dict would be truthy-adjacent and invite
+    ``if meta.truncation:`` to be read as "was it truncated" in one place and
+    "did the generator report" in another.
+
+    Args:
+        arrays: the dict a generator's ``generate()`` returned; mutated in place
+            to drop the reserved ``"truncation"`` key when present.
+
+    Returns:
+        The truncation descriptor, or ``None`` when nothing was truncated.
+    """
+    return arrays.pop(TRUNCATION_META_KEY, None) or None

@@ -4,10 +4,11 @@
 from functools import lru_cache
 from typing import Any
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from juniper_data.api.constants import DEFAULT_RATE_LIMIT_WINDOW_SECONDS
+from juniper_data.core.limits import CSV_IMPORT_DEFAULT_ALLOW_TRUNCATION, CSV_IMPORT_DEFAULT_MAX_BYTES
 from juniper_data.core.secrets import get_secret
 
 # Define Safe and Reasonable Defaults for API Model Config
@@ -103,6 +104,13 @@ _JUNIPER_DATA_API_METRICS_TRUSTED_IPS_DEFAULT: list[str] = ["127.0.0.1", "::1"]
 _JUNIPER_DATA_API_IMPORT_DIR: str = "/data/imports"
 _JUNIPER_DATA_API_IMPORT_DIR_DEFAULT: str = _JUNIPER_DATA_API_IMPORT_DIR
 
+# APD-DATA-018. Sourced from juniper_data.core.limits, which is the single
+# definition -- core imports nothing from api or generators, so it is reachable
+# from both sides without the cycle that importing the csv_import package here
+# would create.
+_JUNIPER_DATA_API_CSV_IMPORT_MAX_BYTES_DEFAULT: int = CSV_IMPORT_DEFAULT_MAX_BYTES
+_JUNIPER_DATA_API_CSV_IMPORT_ALLOW_TRUNCATION_DEFAULT: bool = CSV_IMPORT_DEFAULT_ALLOW_TRUNCATION
+
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables.
@@ -185,6 +193,24 @@ class Settings(BaseSettings):
         return v  # type: ignore[return-value]
 
     import_dir: str = _JUNIPER_DATA_API_IMPORT_DIR_DEFAULT
+
+    # APD-DATA-018: deployment-wide input bound for csv_import, and the
+    # deployment-wide opt-in to partial imports. Both are overridable per
+    # request via CsvImportParams; these are the defaults a request inherits
+    # when it does not set the field explicitly.
+    #
+    # Because Settings is a pydantic-settings BaseSettings with env_prefix
+    # "JUNIPER_DATA_" and an env_file, declaring the fields here gives the
+    # owner's three required opt-in surfaces at once: request parameter,
+    # JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION environment variable, and the
+    # matching .env / config-file entry.
+    # ``gt=0`` is load-bearing, not decoration. Python's ``read(n)`` treats a
+    # NEGATIVE n as "read everything", so a cap of -1 arriving from a mistyped
+    # environment variable would turn the bound into its exact opposite --
+    # silently, and only on the ingestion path. Rejecting it at settings
+    # construction fails the deployment loudly instead.
+    csv_import_max_bytes: int = Field(default=_JUNIPER_DATA_API_CSV_IMPORT_MAX_BYTES_DEFAULT, gt=0)
+    csv_import_allow_truncation: bool = _JUNIPER_DATA_API_CSV_IMPORT_ALLOW_TRUNCATION_DEFAULT
 
     rate_limit_enabled: bool = _JUNIPER_DATA_API_RATELIMIT_ACTIVE_DEFAULT
     rate_limit_requests_per_minute: int = _JUNIPER_DATA_API_RATELIMIT_DEFAULT

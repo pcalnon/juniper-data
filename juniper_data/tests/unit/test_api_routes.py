@@ -1,5 +1,6 @@
 """Unit tests for API route modules."""
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -524,6 +525,68 @@ class TestGeneratorAvailability:
         detail = response.json()["detail"]
         assert "mnist" in detail
         assert "pip install datasets" in detail
+
+    # ------------------------------------------------------------------
+    # APD-DATA-018: an over-cap csv_import source is a caller-fixable refusal,
+    # not a server fault, and an authorised truncation is permanently recorded.
+    # ------------------------------------------------------------------
+
+    def test_create_dataset_over_byte_cap_returns_422_not_500(self, client: TestClient, tmp_path: Path) -> None:
+        """An oversized source must not reach the bare re-raise and surface as a 500.
+
+        422 is deliberate: it is already on this API's surface (the app-level
+        RequestValidationError handler answers 422), so the fix introduces no
+        new status code -- which matters because ``APD-DATA-022``, the row that
+        would document one in ``responses={}``, is parked as an owner decision.
+        """
+        source = tmp_path / "big.csv"
+        source.write_text("feature1,feature2,label\n" + "".join(f"{i}.0,{i + 1}.0,A\n" for i in range(40)))
+
+        bounded = Settings(storage_path=str(tmp_path), import_dir=str(tmp_path), csv_import_max_bytes=120)
+        with patch("juniper_data.generators.csv_import.generator.get_settings", return_value=bounded):
+            response = client.post("/v1/datasets", json={"generator": "csv_import", "params": {"file_path": "big.csv"}, "persist": False})
+
+        assert response.status_code == 422
+        detail = response.json()["detail"]
+        # The refusal must be actionable, naming the remedy and both numbers.
+        assert "allow_truncation" in detail
+        assert "over the" in detail
+
+    def test_create_dataset_authorised_truncation_is_recorded_in_meta(self, client: TestClient, tmp_path: Path) -> None:
+        """The annotation must reach DatasetMeta, not merely the generator's return.
+
+        This is the half that makes truncation safe: a consumer reading the
+        stored metadata later -- who never saw this HTTP response -- still
+        learns the dataset is a prefix of its source.
+        """
+        source = tmp_path / "big.csv"
+        source.write_text("feature1,feature2,label\n" + "".join(f"{i}.0,{i + 1}.0,A\n" for i in range(40)))
+
+        bounded = Settings(storage_path=str(tmp_path), import_dir=str(tmp_path), csv_import_max_bytes=120)
+        with patch("juniper_data.generators.csv_import.generator.get_settings", return_value=bounded):
+            response = client.post(
+                "/v1/datasets",
+                json={"generator": "csv_import", "params": {"file_path": "big.csv", "allow_truncation": True}, "persist": False},
+            )
+
+        assert response.status_code == 201
+        truncation = response.json()["meta"]["truncation"]
+        assert truncation is not None
+        assert truncation["truncated"] is True
+        assert truncation["cap_bytes"] == 120
+        assert truncation["bytes_total"] == source.stat().st_size
+
+    def test_create_dataset_within_cap_records_no_truncation(self, client: TestClient, tmp_path: Path) -> None:
+        """A complete dataset stores None -- so ``meta.truncation`` alone answers the question."""
+        source = tmp_path / "small.csv"
+        source.write_text("feature1,feature2,label\n1.0,2.0,A\n3.0,4.0,B\n5.0,6.0,A\n")
+
+        bounded = Settings(storage_path=str(tmp_path), import_dir=str(tmp_path))
+        with patch("juniper_data.generators.csv_import.generator.get_settings", return_value=bounded):
+            response = client.post("/v1/datasets", json={"generator": "csv_import", "params": {"file_path": "small.csv"}, "persist": False})
+
+        assert response.status_code == 201
+        assert response.json()["meta"]["truncation"] is None
 
     # ------------------------------------------------------------------
     # APD-DATA-004: the 501 detail must not echo an UNDECLARED ImportError.
