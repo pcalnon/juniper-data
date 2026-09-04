@@ -1,10 +1,29 @@
-"""PostgreSQL-backed dataset storage for metadata with file system artifacts."""
+"""PostgreSQL-backed dataset storage for metadata with file system artifacts.
+
+The table schema and both row mappers are DERIVED FROM ``DatasetMeta`` rather than
+hand-maintained (juniper-data#320). They used to be three independent transcriptions of the
+same field set, and all three had drifted from the model in different directions:
+
+* ``SCHEMA_SQL`` declared ``n_classes`` and ``class_distribution`` ``NOT NULL`` long after
+  the model made both nullable for regression and sequence artifacts (WS-1 /
+  juniper-data#168) -- so the first regression dataset written would have failed the INSERT;
+* ``_meta_to_row`` / ``_row_to_meta`` enumerated 23 of the model's 30 fields, silently
+  dropping ``task_type``, ``sequence``, ``lookback``, ``time_unit``, ``dt_scaling``,
+  ``target_scaling`` and ``truncation`` on every round trip;
+* ``_row_to_meta`` raised ``TypeError`` on a NULL ``class_distribution`` because its
+  ``isinstance(..., dict) else json.loads(...)`` fallback did not admit ``None``.
+
+Deriving them makes that class of drift unrepresentable: a new field on ``DatasetMeta``
+appears in the DDL, the INSERT and the read without anyone remembering to add it.
+"""
 
 import io
 import json
-from datetime import datetime  # noqa: F401 - used by DatasetMeta serialization
+import re
+from datetime import datetime
 from pathlib import Path
-from typing import Any
+from types import UnionType
+from typing import Any, Union, get_args, get_origin
 from uuid import uuid4
 
 import numpy as np
@@ -17,6 +36,196 @@ from juniper_data.storage.constants import (
 )
 
 from .base import DatasetStore
+
+# ─── Model-derived schema (juniper-data#320) ─────────────────────────────────
+
+#: A bare SQL identifier. Used to gate the one interpolated position (the table name).
+_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+#: Column that is the table's primary key.
+_PRIMARY_KEY = "dataset_id"
+
+#: Columns that carry a JSON document. Stored JSONB, dumped on write, loaded on read.
+_JSONB_FIELDS = frozenset({"params", "class_distribution", "dt_scaling", "target_scaling", "truncation"})
+
+#: Columns that carry a list of strings. Stored as a native TEXT[] rather than JSON so the
+#: existing ``tags`` containment queries keep working.
+_TEXT_ARRAY_FIELDS = frozenset({"artifact_formats", "tags"})
+
+#: Scalar Python type -> PostgreSQL column type.
+_SCALAR_SQL_TYPES: dict[type, str] = {
+    bool: "BOOLEAN",
+    int: "INTEGER",
+    float: "DOUBLE PRECISION",
+    str: "TEXT",
+    datetime: "TIMESTAMP WITH TIME ZONE",
+}
+
+#: SQL defaults for non-nullable columns whose model field has a default. Without these an
+#: ``ADD COLUMN ... NOT NULL`` against a populated table fails.
+_SQL_DEFAULTS: dict[str, str] = {
+    "artifact_formats": "ARRAY['npz']",
+    "tags": "ARRAY[]::TEXT[]",
+    "access_count": "0",
+    "sequence": "FALSE",
+    "task_type": "'classification'",
+}
+
+
+def _safe_identifier(name: str) -> str:
+    """Return ``name`` if it is a bare SQL identifier, else raise.
+
+    The DDL and statement builders interpolate a table name, which bandit correctly flags as
+    a B608 string-construction pattern. Values cannot be parameterised into an identifier
+    position, so the defence is to prove the identifier is not attacker-shaped: this admits
+    only ``[A-Za-z_][A-Za-z0-9_]*``, which cannot carry a quote, a semicolon, a comment
+    marker or whitespace.
+
+    Column names need no such check -- they come from ``DatasetMeta.model_fields``, which are
+    Python identifiers by construction and never derived from a request.
+    """
+    if not _IDENTIFIER_RE.fullmatch(name):
+        raise ValueError(f"unsafe SQL identifier: {name!r}")
+    return name
+
+
+def _admits_none(annotation: Any) -> bool:
+    """True when ``None`` is a valid value for this annotation."""
+    if get_origin(annotation) in (Union, UnionType):
+        return type(None) in get_args(annotation)
+    return annotation is type(None)
+
+
+def _non_none_type(annotation: Any) -> Any:
+    """The annotation with ``None`` stripped out of a union."""
+    if get_origin(annotation) in (Union, UnionType):
+        args = [a for a in get_args(annotation) if a is not type(None)]
+        return args[0] if args else annotation
+    return annotation
+
+
+def _sql_type_for(name: str, annotation: Any) -> str:
+    """PostgreSQL column type for one model field."""
+    if name in _JSONB_FIELDS:
+        return "JSONB"
+    if name in _TEXT_ARRAY_FIELDS:
+        return "TEXT[]"
+    base = _non_none_type(annotation)
+    if get_origin(base) is dict:
+        return "JSONB"
+    if get_origin(base) is list:
+        return "TEXT[]"
+    return _SCALAR_SQL_TYPES.get(base, "TEXT")
+
+
+def _column_specs() -> list[tuple[str, str, bool]]:
+    """``(name, sql_type, nullable)`` for every ``DatasetMeta`` field, in declaration order.
+
+    A column is nullable exactly when the model admits ``None`` for it. A field that is
+    optional-but-not-``None``-able (``task_type``, ``sequence``, ``access_count`` and the two
+    list fields) stays NOT NULL and carries a SQL default, because the model would reject a
+    ``None`` read back out of it.
+    """
+    specs: list[tuple[str, str, bool]] = []
+    for name, field in DatasetMeta.model_fields.items():
+        specs.append((name, _sql_type_for(name, field.annotation), _admits_none(field.annotation)))
+    return specs
+
+
+def build_schema_sql(table: str = "datasets") -> str:
+    """Generate the full DDL from ``DatasetMeta``.
+
+    Emits ``CREATE TABLE IF NOT EXISTS`` plus an ``ALTER TABLE ... ADD COLUMN IF NOT EXISTS``
+    for every column. The ALTERs are what migrate an existing deployment: ``SCHEMA_SQL`` runs
+    on every init, so a table created before a field existed gains it without a manual
+    migration -- and ``IF NOT EXISTS`` is what keeps the second boot from erroring.
+    """
+    table = _safe_identifier(table)
+    specs = _column_specs()
+    lines = []
+    for name, sql_type, nullable in specs:
+        if name == _PRIMARY_KEY:
+            lines.append(f"    {name} {sql_type} PRIMARY KEY")
+            continue
+        parts = [f"    {name} {sql_type}"]
+        if not nullable:
+            parts.append("NOT NULL")
+            if name in _SQL_DEFAULTS:
+                parts.append(f"DEFAULT {_SQL_DEFAULTS[name]}")
+        lines.append(" ".join(parts))
+
+    create = f"CREATE TABLE IF NOT EXISTS {table} (\n" + ",\n".join(lines) + "\n);"
+
+    alters = []
+    for name, sql_type, nullable in specs:
+        if name == _PRIMARY_KEY:
+            continue
+        clause = f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {name} {sql_type}"
+        # An ADD COLUMN on a POPULATED table cannot be NOT NULL without a default, so only
+        # the defaulted columns carry the constraint here. The CREATE TABLE above still
+        # declares it for a fresh database.
+        if not nullable and name in _SQL_DEFAULTS:
+            clause += f" NOT NULL DEFAULT {_SQL_DEFAULTS[name]}"
+        alters.append(clause + ";")
+
+    indexes = [
+        f"CREATE INDEX IF NOT EXISTS idx_{table}_generator ON {table}(generator);",
+        f"CREATE INDEX IF NOT EXISTS idx_{table}_created_at ON {table}(created_at);",
+        f"CREATE INDEX IF NOT EXISTS idx_{table}_expires_at ON {table}(expires_at);",
+        f"CREATE INDEX IF NOT EXISTS idx_{table}_name ON {table}(dataset_name);",
+    ]
+    return "\n".join([create, "", *alters, "", *indexes, ""])
+
+
+#: Columns an upsert must NOT overwrite. ``created_at`` records when the dataset first
+#: existed; a re-save is not a re-creation. This mirrors the previous hand-written statement.
+_UPSERT_PRESERVED = frozenset({_PRIMARY_KEY, "created_at"})
+
+
+def build_update_sql(table: str = "datasets") -> str:
+    """Generate the UPDATE ... WHERE from ``DatasetMeta``.
+
+    The FIFTH transcription of the field list. Same 23-of-30 omission as the others, so
+    ``update_meta`` silently discarded the sequence and scaling metadata on every edit.
+    """
+    table = _safe_identifier(table)
+    names = [name for name, _, _ in _column_specs() if name not in _UPSERT_PRESERVED]
+    assignments = ",\n            ".join(f"{n} = %({n})s::jsonb" if n in _JSONB_FIELDS else f"{n} = %({n})s" for n in names)
+    # nosec B608 - the only interpolated identifier is `table`, gated by _safe_identifier;
+    # column names come from DatasetMeta.model_fields and are never request-derived. Values
+    # are bound by the driver through %(name)s placeholders, not interpolated.
+    statement = f"""
+        UPDATE {table} SET
+            {assignments}
+        WHERE {_PRIMARY_KEY} = %({_PRIMARY_KEY})s
+        """  # nosec B608
+    return statement
+
+
+def build_upsert_sql(table: str = "datasets") -> str:
+    """Generate the INSERT ... ON CONFLICT DO UPDATE from ``DatasetMeta``.
+
+    This was a FOURTH independent transcription of the field list (after the DDL and the two
+    row mappers), enumerating the same 23 of 30 columns -- so deriving the mappers alone would
+    still have dropped the other seven at the INSERT. All four now come from one source.
+    """
+    table = _safe_identifier(table)
+    names = [name for name, _, _ in _column_specs()]
+    columns = ", ".join(names)
+    values = ", ".join(f"%({n})s::jsonb" if n in _JSONB_FIELDS else f"%({n})s" for n in names)
+    updates = ",\n            ".join(f"{n} = EXCLUDED.{n}" for n in names if n not in _UPSERT_PRESERVED)
+    # nosec B608 - same reasoning as build_update_sql: `table` is gated by _safe_identifier,
+    # column names come from DatasetMeta.model_fields, and every value is driver-bound.
+    statement = f"""
+        INSERT INTO {table} (
+            {columns}
+        ) VALUES (
+            {values}
+        ) ON CONFLICT ({_PRIMARY_KEY}) DO UPDATE SET
+            {updates}
+        """  # nosec B608
+    return statement
+
 
 try:
     import psycopg2
@@ -37,44 +246,9 @@ class PostgresDatasetStore(DatasetStore):
     Requires the `psycopg2` package: pip install psycopg2-binary
     """
 
-    SCHEMA_SQL = """
-    CREATE TABLE IF NOT EXISTS datasets (
-        dataset_id VARCHAR(255) PRIMARY KEY,
-        generator VARCHAR(100) NOT NULL,
-        generator_version VARCHAR(50) NOT NULL,
-        params JSONB NOT NULL,
-        n_samples INTEGER NOT NULL,
-        n_features INTEGER NOT NULL,
-        n_classes INTEGER NOT NULL,
-        n_train INTEGER NOT NULL,
-        n_test INTEGER NOT NULL,
-        class_distribution JSONB NOT NULL,
-        artifact_formats TEXT[] NOT NULL DEFAULT ARRAY['npz'],
-        created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-        checksum VARCHAR(64),
-        dataset_name VARCHAR(255),
-        dataset_version INTEGER,
-        parent_dataset_id VARCHAR(255),
-        description TEXT,
-        created_by VARCHAR(100),
-        tags TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
-        ttl_seconds INTEGER,
-        expires_at TIMESTAMP WITH TIME ZONE,
-        last_accessed_at TIMESTAMP WITH TIME ZONE,
-        access_count INTEGER NOT NULL DEFAULT 0
-    );
-
-    ALTER TABLE datasets ADD COLUMN IF NOT EXISTS dataset_name TEXT;
-    ALTER TABLE datasets ADD COLUMN IF NOT EXISTS dataset_version INTEGER;
-    ALTER TABLE datasets ADD COLUMN IF NOT EXISTS parent_dataset_id VARCHAR(255);
-    ALTER TABLE datasets ADD COLUMN IF NOT EXISTS description TEXT;
-    ALTER TABLE datasets ADD COLUMN IF NOT EXISTS created_by VARCHAR(100);
-
-    CREATE INDEX IF NOT EXISTS idx_datasets_generator ON datasets(generator);
-    CREATE INDEX IF NOT EXISTS idx_datasets_created_at ON datasets(created_at);
-    CREATE INDEX IF NOT EXISTS idx_datasets_expires_at ON datasets(expires_at);
-    CREATE INDEX IF NOT EXISTS idx_datasets_name ON datasets(dataset_name);
-    """
+    #: Full DDL, DERIVED from ``DatasetMeta`` (juniper-data#320) rather than transcribed.
+    #: Adding a field to the model adds its column here automatically.
+    SCHEMA_SQL = build_schema_sql()
 
     def __init__(
         self,
@@ -138,60 +312,46 @@ class PostgresDatasetStore(DatasetStore):
         return self._artifact_path / f"{dataset_id}{NPZ_FILE_SUFFIX}"
 
     def _meta_to_row(self, meta: DatasetMeta) -> dict:
-        """Convert DatasetMeta to database row dict."""
-        return {
-            "dataset_id": meta.dataset_id,
-            "generator": meta.generator,
-            "generator_version": meta.generator_version,
-            "params": json.dumps(meta.params),
-            "n_samples": meta.n_samples,
-            "n_features": meta.n_features,
-            "n_classes": meta.n_classes,
-            "n_train": meta.n_train,
-            "n_test": meta.n_test,
-            "class_distribution": json.dumps(meta.class_distribution),
-            "artifact_formats": meta.artifact_formats,
-            "created_at": meta.created_at,
-            "checksum": meta.checksum,
-            "dataset_name": meta.dataset_name,
-            "dataset_version": meta.dataset_version,
-            "parent_dataset_id": meta.parent_dataset_id,
-            "description": meta.description,
-            "created_by": meta.created_by,
-            "tags": meta.tags,
-            "ttl_seconds": meta.ttl_seconds,
-            "expires_at": meta.expires_at,
-            "last_accessed_at": meta.last_accessed_at,
-            "access_count": meta.access_count,
-        }
+        """Convert ``DatasetMeta`` to a database row dict, DERIVED from the model.
+
+        Iterating ``model_fields`` is what stops this drifting: the previous hand-written
+        version enumerated 23 of 30 fields and silently dropped the other seven on every
+        write (juniper-data#320).
+        """
+        row: dict[str, Any] = {}
+        for name in DatasetMeta.model_fields:
+            value = getattr(meta, name)
+            # ``json.dumps(None)`` yields the string "null", which round-trips as a JSON null
+            # rather than a SQL NULL -- keep None as None so the column is genuinely NULL.
+            row[name] = json.dumps(value) if (name in _JSONB_FIELDS and value is not None) else value
+        return row
 
     def _row_to_meta(self, row: dict) -> DatasetMeta:
-        """Convert database row to DatasetMeta."""
-        return DatasetMeta(
-            dataset_id=row["dataset_id"],
-            generator=row["generator"],
-            generator_version=row["generator_version"],
-            params=row["params"] if isinstance(row["params"], dict) else json.loads(row["params"]),
-            n_samples=row["n_samples"],
-            n_features=row["n_features"],
-            n_classes=row["n_classes"],
-            n_train=row["n_train"],
-            n_test=row["n_test"],
-            class_distribution=row["class_distribution"] if isinstance(row["class_distribution"], dict) else json.loads(row["class_distribution"]),
-            artifact_formats=list(row["artifact_formats"]),
-            created_at=row["created_at"],
-            checksum=row["checksum"],
-            dataset_name=row.get("dataset_name"),
-            dataset_version=row.get("dataset_version"),
-            parent_dataset_id=row.get("parent_dataset_id"),
-            description=row.get("description"),
-            created_by=row.get("created_by"),
-            tags=list(row["tags"]) if row["tags"] else [],
-            ttl_seconds=row["ttl_seconds"],
-            expires_at=row["expires_at"],
-            last_accessed_at=row["last_accessed_at"],
-            access_count=row["access_count"],
-        )
+        """Convert a database row to ``DatasetMeta``, DERIVED from the model.
+
+        A column that is absent (an older table not yet migrated) or NULL for a field that
+        does not admit ``None`` is OMITTED from the constructor call, so the model's own
+        default applies. That makes the read tolerant of a schema behind the code in either
+        direction, which is what the previous version got wrong: it indexed ``row[...]``
+        unconditionally and its ``isinstance(..., dict) else json.loads(...)`` fallback raised
+        ``TypeError`` on a NULL ``class_distribution``.
+        """
+        kwargs: dict[str, Any] = {}
+        for name, field in DatasetMeta.model_fields.items():
+            if name not in row:
+                continue
+            value = row[name]
+            if value is None:
+                # Only pass an explicit None where the model actually accepts one.
+                if _admits_none(field.annotation):
+                    kwargs[name] = None
+                continue
+            if name in _JSONB_FIELDS and not isinstance(value, (dict, list)):
+                value = json.loads(value)
+            elif name in _TEXT_ARRAY_FIELDS:
+                value = list(value)
+            kwargs[name] = value
+        return DatasetMeta(**kwargs)
 
     def save(
         self,
@@ -206,43 +366,9 @@ class PostgresDatasetStore(DatasetStore):
             meta: Dataset metadata.
             arrays: Dictionary of numpy arrays.
         """
-        insert_sql = """
-        INSERT INTO datasets (
-            dataset_id, generator, generator_version, params, n_samples,
-            n_features, n_classes, n_train, n_test, class_distribution,
-            artifact_formats, created_at, checksum, dataset_name, dataset_version,
-            parent_dataset_id, description, created_by, tags, ttl_seconds,
-            expires_at, last_accessed_at, access_count
-        ) VALUES (
-            %(dataset_id)s, %(generator)s, %(generator_version)s, %(params)s::jsonb,
-            %(n_samples)s, %(n_features)s, %(n_classes)s, %(n_train)s, %(n_test)s,
-            %(class_distribution)s::jsonb, %(artifact_formats)s, %(created_at)s,
-            %(checksum)s, %(dataset_name)s, %(dataset_version)s,
-            %(parent_dataset_id)s, %(description)s, %(created_by)s, %(tags)s,
-            %(ttl_seconds)s, %(expires_at)s, %(last_accessed_at)s, %(access_count)s
-        ) ON CONFLICT (dataset_id) DO UPDATE SET
-            generator = EXCLUDED.generator,
-            generator_version = EXCLUDED.generator_version,
-            params = EXCLUDED.params,
-            n_samples = EXCLUDED.n_samples,
-            n_features = EXCLUDED.n_features,
-            n_classes = EXCLUDED.n_classes,
-            n_train = EXCLUDED.n_train,
-            n_test = EXCLUDED.n_test,
-            class_distribution = EXCLUDED.class_distribution,
-            artifact_formats = EXCLUDED.artifact_formats,
-            checksum = EXCLUDED.checksum,
-            dataset_name = EXCLUDED.dataset_name,
-            dataset_version = EXCLUDED.dataset_version,
-            parent_dataset_id = EXCLUDED.parent_dataset_id,
-            description = EXCLUDED.description,
-            created_by = EXCLUDED.created_by,
-            tags = EXCLUDED.tags,
-            ttl_seconds = EXCLUDED.ttl_seconds,
-            expires_at = EXCLUDED.expires_at,
-            last_accessed_at = EXCLUDED.last_accessed_at,
-            access_count = EXCLUDED.access_count
-        """
+        # DERIVED from DatasetMeta (juniper-data#320) -- see build_upsert_sql. The
+        # hand-written version here enumerated 23 of 30 columns.
+        insert_sql = build_upsert_sql()
 
         artifact_path = self._artifact_file(dataset_id)
         # Use a per-save temp file so concurrent writes for the same dataset_id
@@ -400,31 +526,10 @@ class PostgresDatasetStore(DatasetStore):
         """
         row = self._meta_to_row(meta)
 
-        update_sql = """
-        UPDATE datasets SET
-            generator = %(generator)s,
-            generator_version = %(generator_version)s,
-            params = %(params)s::jsonb,
-            n_samples = %(n_samples)s,
-            n_features = %(n_features)s,
-            n_classes = %(n_classes)s,
-            n_train = %(n_train)s,
-            n_test = %(n_test)s,
-            class_distribution = %(class_distribution)s::jsonb,
-            artifact_formats = %(artifact_formats)s,
-            checksum = %(checksum)s,
-            dataset_name = %(dataset_name)s,
-            dataset_version = %(dataset_version)s,
-            parent_dataset_id = %(parent_dataset_id)s,
-            description = %(description)s,
-            created_by = %(created_by)s,
-            tags = %(tags)s,
-            ttl_seconds = %(ttl_seconds)s,
-            expires_at = %(expires_at)s,
-            last_accessed_at = %(last_accessed_at)s,
-            access_count = %(access_count)s
-        WHERE dataset_id = %(dataset_id)s
-        """
+        # DERIVED from DatasetMeta (juniper-data#320) -- see build_update_sql. The
+        # hand-written version here enumerated 23 of 30 columns, so update_meta
+        # silently discarded the sequence and scaling metadata on every edit.
+        update_sql = build_update_sql()
 
         with self._get_connection() as conn:
             with conn.cursor() as cur:
