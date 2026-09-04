@@ -113,6 +113,169 @@ def shuffle_and_split(
     return split_data(X, y, train_ratio, test_ratio)
 
 
+# --- Three-partition sizing (train / val / test) -----------------------------
+#
+# Decisions 2 and 8 of the partition design of record
+# (notes/JUNIPER_2026-08-29_JUNIPER-ECOSYSTEM_TRAIN-EVAL-TEST-PARTITION-DESIGN.md
+# in juniper-ml, sections 6.3 and 9.2):
+#
+#   * The requested TRAIN count is honoured literally -- ``val`` and ``test``
+#     are ADDITIONAL rows, not a carve-up of the requested N.
+#   * Percentages are expressed relative to ``train``, which starts at 100 %.
+#     The default breakdown 100/40/30 at n_train=1000 yields 1000/400/300.
+#   * The percentages denote absolute ROWS of the realised dataset, identically
+#     for every generator regardless of its native size knob. They are never
+#     per-spiral / per-quadrant / per-class units.
+#
+# Note what this does NOT buy: asking a generator for N+M rows does not
+# reproduce the first N rows it would have produced for N (V-1, measured
+# 2026-08-30 -- 6/6 generators differ). The train COUNT is preserved; the train
+# CONTENT is not. Existing baselines move under this model exactly as they would
+# under a carve-up, so do not cite baseline preservation as a reason for it.
+
+DEFAULT_VAL_PERCENT: float = 40.0
+DEFAULT_TEST_PERCENT: float = 30.0
+
+
+def partition_row_counts(
+    n_train: int,
+    val_percent: float = DEFAULT_VAL_PERCENT,
+    test_percent: float = DEFAULT_TEST_PERCENT,
+) -> dict[str, int]:
+    """Absolute row counts for an additively-sized three-way partition.
+
+    Implements the sizing model of design decisions 2 and 8: ``n_train`` is
+    taken literally and the other two partitions are sized as percentages
+    *of it*, so the realised dataset has ``n_train + n_val + n_test`` rows.
+
+    Args:
+        n_train: Requested number of training rows. Honoured exactly.
+        val_percent: Validation rows as a percentage of ``n_train``.
+        test_percent: Test rows as a percentage of ``n_train``.
+
+    Returns:
+        Dictionary with keys ``n_train``, ``n_val``, ``n_test`` and
+        ``n_total``, where ``n_total`` is the sum of the other three.
+
+    Raises:
+        ValueError: If ``n_train`` is below 1, or either percentage is
+            negative or not finite.
+    """
+    if n_train < 1:
+        raise ValueError(f"n_train must be at least 1. Got {n_train}")
+
+    for name, pct in (("val_percent", val_percent), ("test_percent", test_percent)):
+        if not np.isfinite(pct):
+            raise ValueError(f"{name} must be finite. Got {pct}")
+        if pct < 0.0:
+            raise ValueError(f"{name} must not be negative. Got {pct}")
+
+    n_val = int(np.round(n_train * val_percent / 100.0))
+    n_test = int(np.round(n_train * test_percent / 100.0))
+
+    return {
+        "n_train": n_train,
+        "n_val": n_val,
+        "n_test": n_test,
+        "n_total": n_train + n_val + n_test,
+    }
+
+
+def split_three_way(
+    X: np.ndarray,
+    y: np.ndarray,
+    n_train: int,
+    n_val: int,
+    n_test: int,
+) -> dict[str, np.ndarray]:
+    """Cut arrays into contiguous train / val / test blocks by row count.
+
+    The three blocks are contiguous and non-overlapping, so the partitions are
+    **index-disjoint by construction** -- the property design section 9.6.1
+    relies on in place of a duplicate-row guard. Callers wanting a shuffled
+    partition must shuffle before cutting; see :func:`shuffle_and_split_three_way`.
+
+    Args:
+        X: Feature array of shape ``(n_samples, ...)``.
+        y: Label array of shape ``(n_samples, ...)``.
+        n_train: Rows assigned to ``train``.
+        n_val: Rows assigned to ``val``.
+        n_test: Rows assigned to ``test``.
+
+    Returns:
+        Dictionary with keys ``X_train``, ``y_train``, ``X_val``, ``y_val``,
+        ``X_test`` and ``y_test``.
+
+    Raises:
+        ValueError: If ``X`` and ``y`` disagree on sample count, if any count
+            is negative, or if the three counts together exceed the rows
+            available. Rows beyond ``n_train + n_val + n_test`` are left
+            unused rather than silently folded into a partition.
+    """
+    if X.shape[0] != y.shape[0]:
+        raise ValueError(f"X and y must have the same number of samples. Got X.shape[0]={X.shape[0]}, y.shape[0]={y.shape[0]}")
+
+    for name, count in (("n_train", n_train), ("n_val", n_val), ("n_test", n_test)):
+        if count < 0:
+            raise ValueError(f"{name} must not be negative. Got {count}")
+
+    n_needed = n_train + n_val + n_test
+    if n_needed > X.shape[0]:
+        raise ValueError(f"Not enough rows to partition: need n_train + n_val + n_test = {n_train} + {n_val} + {n_test} = {n_needed}, got {X.shape[0]}")
+
+    val_start = n_train
+    test_start = n_train + n_val
+    test_end = test_start + n_test
+
+    return {
+        "X_train": X[:n_train],
+        "y_train": y[:n_train],
+        "X_val": X[val_start:test_start],
+        "y_val": y[val_start:test_start],
+        "X_test": X[test_start:test_end],
+        "y_test": y[test_start:test_end],
+    }
+
+
+def shuffle_and_split_three_way(
+    X: np.ndarray,
+    y: np.ndarray,
+    n_train: int,
+    n_val: int,
+    n_test: int,
+    seed: int | None = None,
+    shuffle: bool = True,
+) -> dict[str, np.ndarray]:
+    """Optionally shuffle, then cut into train / val / test by row count.
+
+    The three-partition counterpart of :func:`shuffle_and_split`. Shuffling
+    happens once over the whole array, so the resulting partitions remain
+    index-disjoint whatever the permutation.
+
+    Args:
+        X: Feature array of shape ``(n_samples, ...)``.
+        y: Label array of shape ``(n_samples, ...)``.
+        n_train: Rows assigned to ``train``.
+        n_val: Rows assigned to ``val``.
+        n_test: Rows assigned to ``test``.
+        seed: Random seed for reproducibility. If None, uses a
+            non-deterministic seed.
+        shuffle: Whether to shuffle before cutting. Defaults to True.
+
+    Returns:
+        Dictionary with keys ``X_train``, ``y_train``, ``X_val``, ``y_val``,
+        ``X_test`` and ``y_test``.
+
+    Raises:
+        ValueError: Propagated from :func:`split_three_way`.
+    """
+    if shuffle:
+        rng = np.random.default_rng(seed)
+        X, y = shuffle_data(X, y, rng)
+
+    return split_three_way(X, y, n_train, n_val, n_test)
+
+
 def temporal_split_index(n_samples: int, train_ratio: float) -> int:
     """Row index of the chronological (non-shuffled) train/test boundary.
 
