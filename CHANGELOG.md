@@ -55,6 +55,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`compute_shape_meta` reported `n_features = 2` whenever the train split was empty.** Empty
+  arrays still have a defined trailing axis (`(0, F)` and `(0, L, F)`), the same reason
+  `derive_sequence_meta` reads rank from an empty `X_train`. A `train_ratio` that rounded to zero
+  train rows would persist the wrong feature count — F=5 became 2, and a 3-D sequence with F=3
+  became 2 rather than 3. The route uses this helper for every dataset it creates. The trailing
+  axis is now used unconditionally.
+
 - **The feature normaliser was fit on the full set, including chronologically-later test rows.**
   `equities`, `equities_seq` and `csv_import` computed min/max over every row and then applied
   those statistics to the training features — look-ahead leakage, with the training data scaled by

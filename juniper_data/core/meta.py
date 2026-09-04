@@ -61,7 +61,9 @@ def compute_shape_meta(
     n_test = len(x_test)
     n_samples = n_train + n_test
     # Feature count is the trailing axis for both (N, F) and (W, L, F).
-    n_features = int(x_train.shape[-1]) if n_train > 0 else 2
+    # Empty splits still have a defined shape[-1]; do not special-case n_train == 0
+    # to a hardcoded 2 (that lied for F != 2, including 3-D sequence artifacts).
+    n_features = int(x_train.shape[-1])
 
     n_classes: int | None = None
     class_distribution: dict[str, int] | None = None

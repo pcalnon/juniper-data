@@ -111,6 +111,49 @@ def test_default_task_type_is_classification():
     assert m["class_distribution"] is not None
 
 
+def test_empty_train_2d_uses_trailing_feature_axis():
+    """An empty split still has a defined trailing axis. Hardcoding 2 is a lie when F != 2.
+
+    ``n_train == 0`` happens when ``train_ratio`` rounds to zero rows. The shape
+    ``(0, F)`` still carries F; ``derive_sequence_meta`` already reads rank from
+    an empty ``X_train`` for the same reason. Mutation: ``else 2`` reports 2.
+    """
+    arrays = {
+        "X_train": np.zeros((0, 5), np.float32),
+        "X_test": np.zeros((3, 5), np.float32),
+        "y_train": _onehot([], 3),
+        "y_test": _onehot([0, 1, 2], 3),
+    }
+    m = compute_shape_meta(arrays, "classification")
+    assert m["n_train"] == 0 and m["n_test"] == 3
+    assert m["n_features"] == 5
+
+
+def test_empty_train_3d_uses_trailing_feature_axis():
+    """Same contract in 3-D: F is the trailing axis, not lookback and not 2."""
+    arrays = {
+        "X_train": np.zeros((0, 7, 3), np.float32),
+        "X_test": np.zeros((2, 7, 3), np.float32),
+        "y_train": _onehot([], 2),
+        "y_test": _onehot([0, 1], 2),
+    }
+    m = compute_shape_meta(arrays, "classification")
+    assert m["n_features"] == 3  # F, not L == 7, not the empty-train default 2
+
+
+def test_empty_train_classification_reads_n_classes_from_y_test():
+    """n_classes already falls back to y_test; pin that so it cannot silently become 2."""
+    arrays = {
+        "X_train": np.zeros((0, 4), np.float32),
+        "X_test": np.zeros((3, 4), np.float32),
+        "y_train": _onehot([], 4),
+        "y_test": _onehot([0, 1, 2], 4),
+    }
+    m = compute_shape_meta(arrays, "classification")
+    assert m["n_classes"] == 4
+    assert m["class_distribution"] == {"0": 1, "1": 1, "2": 1}
+
+
 def test_derive_sequence_meta_tabular_2d():
     arrays = {"X_train": np.zeros((6, 4), np.float32), "X_test": np.zeros((2, 4), np.float32)}
     m = derive_sequence_meta(arrays, time_unit="calendar_days")
