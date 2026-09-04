@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`csv_import` sources are bounded, and an over-cap import must be authorised** (defect register
+  `APD-DATA-018`). Generation runs inside the request, so a source large enough to outlive the
+  client's socket timeout produces a request that cannot succeed however long the caller waits. The
+  remedy is to bound the input rather than move generation to an async job.
+
+  **The cap is 128 MiB, and it is measured rather than picked.**
+  `util/ad-hoc/2026-09-04_measure_csv_import_throughput.py` timed the whole `generate()` path — the
+  parse *and* the per-cell float conversion, which is a large share of the cost — at a median
+  **14.4 MB/s** (15.3 MB/s at 3.5 MB, degrading to 13.6 MB/s at 35 MB). 128 MiB is therefore ~8.9 s
+  of parsing, inside the ~30 s client budget with room for split, checksum and NPZ persist. Above
+  that size the binding constraint stops being time and becomes memory: `_load_csv` materialises one
+  Python dict per row before any array exists.
+
+  **An oversized source is refused, not silently truncated.** `POST /v1/datasets` answers **422**
+  naming the source size, the cap, and the remedy. 422 is deliberate — it is already on this API's
+  surface, so no new status code is introduced.
+
+  **Truncation is opt-in, through three surfaces.** `allow_truncation` as a request parameter, the
+  `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION` environment variable, or the matching `.env` entry. The
+  cap itself is `max_bytes` / `JUNIPER_DATA_CSV_IMPORT_MAX_BYTES`.
+
+  **The bound cannot be defeated by the party it bounds.** A request may only *lower* the cap — the
+  effective value is `min(requested, deployment)` — so `max_bytes: 10000000000` cannot skip it, and a
+  generated client that serialises schema defaults cannot silently raise a lower operator ceiling.
+  `allow_truncation` is a logical OR for the same reason in the same direction: a client cannot opt
+  *out* of an operator's choice. **`stat` is only a cheap pre-check, never the bound** — the read
+  itself is capped and re-checks what it actually got, so a FIFO (which reports `st_size == 0`) or a
+  file that grows between the stat and the open cannot slip past. `JUNIPER_DATA_CSV_IMPORT_MAX_BYTES`
+  is constrained `> 0`, because Python reads `read(n)` with `n < 0` as "read everything" — a mistyped
+  environment variable would otherwise invert the cap into its opposite.
+
+  **An authorised truncation is recorded permanently.** `DatasetMeta.truncation` carries
+  `truncated`, `reason`, `bytes_read`, `bytes_total`, `cap_bytes` and `records_imported`, and is
+  persisted with the artifact — so a trainer loading the NPZ months later still learns the data is a
+  prefix of its source. It is metadata, not a transient warning. `None` means complete, so the
+  field's presence alone answers the question.
+
+  **The cut lands on a record boundary.** A byte cap slices mid-record essentially always, so the
+  reader trims to the last newline, drops a partial multi-byte character, and discards a final row
+  left short — a newline *inside a quoted field* is legal CSV, so the newline trim alone is not
+  sufficient. A truncated JSON array decodes as many complete elements as fit rather than failing;
+  JSONL drops only an unparseable **final** line, so a corrupt line mid-file still raises instead of
+  importing as a short dataset.
+
 ### Fixed
 
 - **The feature normaliser was fit on the full set, including chronologically-later test rows.**
