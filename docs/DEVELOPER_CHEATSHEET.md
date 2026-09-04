@@ -142,6 +142,14 @@ All arrays `float32`. Keys: `X_train`, `y_train`, `X_test`, `y_test`, `X_full`, 
 
 ---
 
+## Empty-train shape metadata
+
+`compute_shape_meta` (called from `POST /v1/datasets` for every generator) takes `n_features` from `X_train.shape[-1]` even when `n_train == 0`. Empty arrays still have a defined trailing axis. Do not restore `else 2` — a 2-D import with F=5 or a 3-D sequence with F=3 would persist `n_features=2`. Classification `n_classes` already falls back to `y_test`. Pin: `test_meta_dispatch.py` empty-train cases (#340).
+
+> See: [REFERENCE.md -- Empty-Train Shape Metadata](REFERENCE.md#empty-train-shape-metadata)
+
+---
+
 ## Testing
 
 | Marker                                      | Scope                             |
