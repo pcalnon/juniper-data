@@ -19,12 +19,17 @@ It was masked in service use -- app startup imports the routes long before anyth
 what a test, a script, or an external consumer does. It broke pytest collection of
 ``test_csv_import_generator.py`` in isolation.
 
-EVERY TEST HERE RUNS IN A SUBPROCESS. A cycle is a property of a cold interpreter: once
+CYCLE PROPERTIES RUN IN A SUBPROCESS. A cycle is a property of a cold interpreter: once
 ``juniper_data`` is imported, ``sys.modules`` is populated and a same-process import succeeds
-regardless. An in-process assertion here would pass with the defect fully present, which is
+regardless. An in-process cycle assertion would pass with the defect fully present, which is
 worse than no test at all.
+
+``__getattr__`` / ``__dir__`` are the opposite: they are ordinary attribute lookup, and
+coverage.py does not follow the subprocesses, so those contracts are pinned in-process
+(``TestApiLazyPublicSurface``).
 """
 
+import pathlib
 import subprocess
 import sys
 
@@ -57,6 +62,12 @@ def _import_in_cold_interpreter(statement: str) -> subprocess.CompletedProcess:
     return subprocess.run([sys.executable, "-c", statement], capture_output=True, text=True, check=False)
 
 
+def _on_disk_generator_subpackages() -> list[str]:
+    """Public generator packages next to this test's source tree (skip ``_`` helpers)."""
+    root = pathlib.Path(__file__).resolve().parents[2] / "generators"
+    return sorted(p.name for p in root.iterdir() if p.is_dir() and not p.name.startswith("_") and (p / "__init__.py").exists())
+
+
 class TestGeneratorSubpackagesImportStandalone:
     @pytest.mark.parametrize("name", GENERATOR_SUBPACKAGES)
     def test_subpackage_imports_first_in_a_cold_interpreter(self, name):
@@ -70,6 +81,10 @@ class TestGeneratorSubpackagesImportStandalone:
         result = _import_in_cold_interpreter(statement)
         assert result.returncode == 0, result.stderr[-1500:]
         assert result.stdout.strip(), "VERSION resolved but is empty"
+
+    def test_parametrized_names_match_on_disk_subpackages(self):
+        """A 17th generator with a cycle would otherwise skip the net."""
+        assert sorted(GENERATOR_SUBPACKAGES) == _on_disk_generator_subpackages()
 
 
 class TestApiPackageStaysLazy:
@@ -105,3 +120,43 @@ class TestApiPackageStaysLazy:
         result = _import_in_cold_interpreter(statement)
         assert result.returncode == 0, result.stderr[-1500:]
         assert result.stdout.strip() == "AttributeError"
+
+    def test_importing_the_api_package_does_not_load_app(self):
+        """The lazy attribute is the mechanism; settings→routes is the symptom.
+
+        If ``api/__init__`` eagerly imports ``.app`` this fails even if the routes
+        later move, because ``api.app`` itself is what must stay deferred.
+        """
+        statement = "import sys; import juniper_data.api; print('juniper_data.api.app' in sys.modules)"
+        result = _import_in_cold_interpreter(statement)
+        assert result.returncode == 0, result.stderr[-1500:]
+        assert result.stdout.strip() == "False", "importing juniper_data.api should not load api.app"
+
+
+class TestApiLazyPublicSurface:
+    """In-process pins for ``__getattr__`` / ``__dir__``.
+
+    Cycle detection cannot live here (see module docstring). These do not prove the
+    cycle is gone; they prove the lazy public surface is the real factory, that
+    ``dir()`` advertises it, and that typos still name the missing attribute.
+    coverage.py does not follow the subprocess tests, so without this class the new
+    functions in ``api/__init__.py`` sit at 0% in-process coverage.
+    """
+
+    def test_dir_includes_lazy_create_app(self):
+        import juniper_data.api as api
+
+        assert "create_app" in dir(api)
+
+    def test_lazy_create_app_is_the_factory(self):
+        import juniper_data.api as api
+        from juniper_data.api.app import create_app as factory
+
+        assert api.create_app is factory
+
+    def test_unknown_attribute_message_names_the_typo(self):
+        import juniper_data.api as api
+
+        missing = "no_such_attribute"
+        with pytest.raises(AttributeError, match=missing):
+            getattr(api, missing)
