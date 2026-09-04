@@ -16,6 +16,7 @@
    - [Directory Structure](#directory-structure)
    - [Test Categories](#test-categories)
    - [Test File Inventory](#test-file-inventory)
+   - [Postgres model-derived schema](#postgres-model-derived-schema)
 3. [Running Tests](#running-tests)
    - [Basic Commands](#basic-commands)
    - [Marker-Based Selection](#marker-based-selection)
@@ -116,6 +117,7 @@ juniper_data/tests/
 | `test_middleware.py` | API | FastAPI middleware components |
 | `test_mnist_generator.py` | Generator | MNIST/Fashion-MNIST generator |
 | `test_observability.py` | API | Prometheus metrics and Sentry |
+| `test_postgres_schema_derivation.py` | Storage | Model-derived Postgres DDL/statements and round-trip (#343) |
 | `test_postgres_store.py` | Storage | PostgreSQL storage backend |
 | `test_redis_store.py` | Storage | Redis storage backend |
 | `test_security.py` | API | Security validations |
@@ -141,6 +143,14 @@ juniper_data/tests/
 |------|-------------|
 | `test_generator_benchmarks.py` | Generator throughput benchmarks |
 | `test_storage_benchmarks.py` | Storage operation benchmarks |
+
+### Postgres model-derived schema
+
+The Postgres store used to carry five independent transcriptions of `DatasetMeta`. No test asserted `_row_to_meta(_meta_to_row(m)) == m`, so the copies drifted: `n_classes` stayed `NOT NULL` after the model allowed None, and seven fields were dropped every round trip. #343 derives DDL, upsert, update, and both mappers from `model_fields`.
+
+Pin that contract in `test_postgres_schema_derivation.py` (no database — the mappers are pure). Mutation: re-introducing a hand-written column list, `ADD COLUMN ... NOT NULL` without DEFAULT, or `json.dumps(None)` is expected to fail those pins.
+
+> See: [REFERENCE.md -- Postgres Model-Derived Schema](../REFERENCE.md#postgres-model-derived-schema)
 
 ---
 

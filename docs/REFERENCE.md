@@ -12,6 +12,7 @@
 - [API Reference](#api-reference)
 - [Configuration Reference](#configuration-reference)
 - [Storage Backend Notes](#storage-backend-notes)
+- [Postgres Model-Derived Schema](#postgres-model-derived-schema)
 - [Command Reference](#command-reference)
 - [Test Reference](#test-reference)
 - [Code Quality Tools](#code-quality-tools)
@@ -214,6 +215,71 @@ If artifact finalization fails, the transaction is rolled back and the temp file
 - `artifact_path` must be writable by the service process.
 - Temp and final artifact files must be on the same filesystem for atomic rename semantics.
 - Install PostgreSQL backend dependency: `pip install psycopg2-binary`.
+- The `datasets` table schema is derived from `DatasetMeta` — see [Postgres Model-Derived Schema](#postgres-model-derived-schema). Do not hand-maintain a column list.
+
+---
+
+## Postgres Model-Derived Schema
+
+`PostgresDatasetStore` (`juniper_data/storage/postgres_store.py`) used to carry **five** hand-maintained copies of `DatasetMeta`'s field list: the DDL, `_meta_to_row`, `_row_to_meta`, the upsert, and the update. Each was transcribed independently, and every one had drifted (#320). #343 derives all five from `DatasetMeta.model_fields`.
+
+`create_app` still constructs `LocalFSDatasetStore`. This store is opt-in via `get_postgres_store()` and is **not** on the serving path — the defects below were latent.
+
+### Single source of truth
+
+| Builder / mapper | What it emits |
+|------------------|---------------|
+| `build_schema_sql` | `CREATE TABLE IF NOT EXISTS` plus `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` for every model field |
+| `build_upsert_sql` | `INSERT ... ON CONFLICT DO UPDATE` naming every column |
+| `build_update_sql` | `UPDATE ... WHERE dataset_id = ...` for every mutable column |
+| `_meta_to_row` / `_row_to_meta` | write / read of every field |
+
+Adding a field to `DatasetMeta` adds its column, INSERT, UPDATE, and read without a second edit. Do not re-introduce a hand-written column list. Deriving the mappers alone is not enough — the INSERT and UPDATE enumerate their own columns. Coverage assertions in `test_postgres_schema_derivation.py` are written against `DatasetMeta.model_fields`, not a hardcoded field count.
+
+### Nullability and the fields that used to vanish
+
+A column is nullable exactly when the model annotation admits `None`. Until #343:
+
+- `n_classes` and `class_distribution` were `NOT NULL` after WS-1 / #168 made both optional. The first **regression** dataset written would have failed the INSERT.
+- Seven fields were dropped on every round trip: `task_type`, `sequence`, `lookback`, `time_unit`, `dt_scaling`, `target_scaling`, `truncation`. Sequence and scaling metadata silently reset to defaults.
+- `_row_to_meta` raised `TypeError` on a NULL `class_distribution` (`json.loads(None)`).
+
+JSONB columns: `params`, `class_distribution`, `dt_scaling`, `target_scaling`, `truncation`. TEXT[]: `artifact_formats`, `tags`.
+
+### Migration and code-ahead-of-schema
+
+`SCHEMA_SQL` runs on every init when `auto_create_schema=True` (the default). Every non-PK column is emitted as `ADD COLUMN IF NOT EXISTS`, so a second boot does not error. A `NOT NULL` added column always carries a `DEFAULT` (`task_type`, `sequence`, `access_count`, `artifact_formats`, `tags`) — `ADD COLUMN ... NOT NULL` without one fails against a populated table.
+
+`_row_to_meta` omits a column that is absent or NULL where the model does not admit `None`, so the model's default applies (`task_type="classification"`, `sequence=False`). That is what makes a code-ahead-of-schema deploy survivable in either direction.
+
+`_meta_to_row` keeps Python `None` as SQL NULL. `json.dumps(None)` would store the string `"null"`.
+
+An upsert does **not** overwrite `created_at` (or the PK). A re-save is not a re-creation.
+
+### Identifier safety
+
+The builders interpolate a table name (default `datasets`). Values cannot be parameterised into an identifier position, so `_safe_identifier` admits only `[A-Za-z_][A-Za-z0-9_]*` — no quote, semicolon, comment marker, or whitespace. A hostile name raises `ValueError`. Column names come from `model_fields` and are never request-derived; all values stay driver-bound through `%(name)s`.
+
+### What not to do
+
+- Do not hand-maintain a column list in the DDL, mappers, INSERT, or UPDATE.
+- Do not put a `# nosec` comment on the `return f"""` line. That is inside the string and prepends the comment to every generated statement. Bind the string first; annotate the closing line.
+- Do not emit `ADD COLUMN ... NOT NULL` without a `DEFAULT`.
+- Do not `json.dumps(None)` for a JSONB field.
+
+### Pins
+
+These live in `juniper_data/tests/unit/test_postgres_schema_derivation.py` on #343. They are not on `main` until that PR lands. The mappers are pure functions — the file needs no database.
+
+| Test | Property |
+|------|----------|
+| `test_every_model_field_has_a_column` / `test_upsert_names_every_column` / `test_update_names_every_mutable_column` | every `DatasetMeta` field is in the DDL, INSERT, and UPDATE |
+| `test_n_classes_and_class_distribution_are_nullable` | regression INSERT is not rejected |
+| `test_meta_survives_a_round_trip` | `_row_to_meta(_meta_to_row(m)) == m` for classification and regression/sequence |
+| `test_a_row_from_an_older_table_still_loads` | missing columns fall back to the model default |
+| `test_a_not_null_added_column_always_carries_a_default` | migration-safe ALTER |
+| `test_a_hostile_table_name_is_refused` | `_safe_identifier` rejects injection-shaped names |
+| `test_no_python_comment_leaks_into_generated_sql` | `# nosec` cannot leak into SQL |
 
 ---
 
