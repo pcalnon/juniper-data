@@ -119,6 +119,20 @@ class TestCsvImportFitScope:
         for key in ("X_train", "X_test", "X_full", "y_train", "y_test", "y_full"):
             assert raw[key].shape == normed[key].shape, f"{key} shape moved"
 
+    def test_same_train_statistics_are_applied_to_every_partition(self, csv_dir):
+        """X_full is the original rows scaled by the same stats as train and test.
+
+        With shuffle=False the split is positional, so the leading block of X_full is
+        X_train and the remainder is X_test. Fitting each partition independently would
+        bound both blocks and break this identity. A full-matrix fit would still satisfy
+        it; the discriminating leak guard is ``test_test_partition_escapes_the_bound``.
+        """
+        out = CsvImportGenerator.generate(CsvImportParams(file_path="d.csv", label_column="label", normalize_features=True, shuffle=False, train_ratio=0.5, test_ratio=0.5))
+        n_train = out["X_train"].shape[0]
+        np.testing.assert_allclose(out["X_full"][:n_train], out["X_train"], rtol=1e-5, atol=1e-6)
+        np.testing.assert_allclose(out["X_full"][n_train:], out["X_test"], rtol=1e-5, atol=1e-6)
+        assert out["X_full"].max() > 1.0 + 1e-6
+
     def test_a_constant_column_does_not_divide_by_zero(self, csv_dir):
         """A zero-range feature gets a range of 1 rather than producing inf/nan."""
         out = CsvImportGenerator.generate(CsvImportParams(file_path="const.csv", label_column="label", normalize_features=True, shuffle=False))

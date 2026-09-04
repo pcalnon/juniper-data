@@ -167,14 +167,20 @@ class TestEquitiesSeqGenerator:
         that appear exclusively in train windows -- is an embargo, which this generator exposes
         separately and does not enable by default.
 
-        What must never happen is a row at or after the cut entering the fit; that is the
-        actual look-ahead. This pins the direction rather than the exact row count.
+        Discriminating assertion (shape+finite is true either way): multiply OHLCV after the
+        midpoint by 100. Those later rows never enter a train window's inputs, so the only way
+        they can move ``X_train`` is by leaking into the fit. A full-frame fit — or any cut
+        that includes a spiked row — fails this. ``train_ratio=0.5`` places the split at the
+        same midpoint the spike begins, so the comparison is live.
         """
-        normed = _generate(["AAPL"], {"AAPL": _ohlcv(seed=23)}, _shares(), normalize_features=True)
-        raw = _generate(["AAPL"], {"AAPL": _ohlcv(seed=23)}, _shares())
-        assert normed["X_train"].shape == raw["X_train"].shape, "normalisation must not change what is windowed"
-        assert normed["X_test"].shape == raw["X_test"].shape
-        assert np.isfinite(normed["X_train"]).all() and np.isfinite(normed["X_test"]).all()
+        clean = _ohlcv(seed=23)
+        spiked = clean.copy()
+        spiked.iloc[len(spiked) // 2 :] = spiked.iloc[len(spiked) // 2 :] * 100.0
+        kwargs = {"normalize_features": True, "train_ratio": 0.5, "test_ratio": 0.5}
+        baseline = _generate(["AAPL"], {"AAPL": clean}, _shares(), **kwargs)
+        shifted = _generate(["AAPL"], {"AAPL": spiked}, _shares(), **kwargs)
+        np.testing.assert_allclose(shifted["X_train"], baseline["X_train"], rtol=1e-5, atol=1e-6)
+        assert not np.allclose(shifted["X_test"], baseline["X_test"]), "the spike must land in test so the comparison is live"
 
     def test_get_schema_includes_lookback(self) -> None:
         schema = get_schema()

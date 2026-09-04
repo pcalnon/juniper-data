@@ -243,6 +243,23 @@ class TestEquitiesGenerator:
         arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=13), "MSFT": _ohlcv(seed=14)}, _shares(), normalize_features=True)
         assert arrays["X_test"].max() > 1.0 + 1e-6, "test rows should exceed the training range; a full-fit would clamp them to 1.0"
 
+    def test_post_cut_rows_do_not_move_train_statistics(self) -> None:
+        """Exact-cut identity: a row at or after n_train must not enter the fit.
+
+        ``X_test.max() > 1`` proves the fit is not the full matrix, but still passes if the
+        cut is merely *near* the split. Multiplying the later half of OHLCV by 100 leaves
+        train-row inputs unchanged; the only way ``X_train`` can move is if a spiked row
+        leaked into the statistics. ``train_ratio=0.5`` aligns the split with the spike.
+        """
+        clean = _ohlcv(seed=41)
+        spiked = clean.copy()
+        spiked.iloc[len(spiked) // 2 :] = spiked.iloc[len(spiked) // 2 :] * 100.0
+        kwargs = {"normalize_features": True, "train_ratio": 0.5, "test_ratio": 0.5}
+        baseline = _generate(["AAPL"], {"AAPL": clean}, _shares(), **kwargs)
+        shifted = _generate(["AAPL"], {"AAPL": spiked}, _shares(), **kwargs)
+        np.testing.assert_allclose(shifted["X_train"], baseline["X_train"], rtol=1e-5, atol=1e-6)
+        assert not np.allclose(shifted["X_test"], baseline["X_test"]), "the spike must land in test so the comparison is live"
+
     def test_unnormalised_output_is_unaffected(self) -> None:
         """``normalize_features`` defaults to False, so the common path must not move."""
         arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=13), "MSFT": _ohlcv(seed=14)}, _shares())
