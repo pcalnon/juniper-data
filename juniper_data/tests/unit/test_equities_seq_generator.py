@@ -197,6 +197,28 @@ class TestEquitiesSeqGeneratorBranches:
         arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=22), "MSFT": _ohlcv(seed=23)}, _shares(), lookback=5, normalize_features=True)
         assert arrays["X_full"].shape[0] > 0
 
+    def test_normalize_features_bounds_train_windows(self) -> None:
+        """TRAIN windows are bounded by [0, 1]; later windows are NOT (juniper-data#314).
+
+        ``equities_seq`` has its own fit path — concatenated per-ticker training rows
+        cut at ``temporal_split_index`` — independent of the flat generator. The previous
+        smoke test only asserted ``X_full.shape[0] > 0``, which holds under a full-matrix
+        fit and so could not catch a regression that reintroduced the leak here.
+        """
+        arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=22), "MSFT": _ohlcv(seed=23)}, _shares(), lookback=5, normalize_features=True)
+        train = arrays["X_train"]
+        assert train.min() >= -1e-6 and train.max() <= 1.0 + 1e-6, "the fitted partition's windows must be bounded"
+
+    def test_normaliser_is_fit_on_train_not_full(self) -> None:
+        """The seq regression guard. Would fail if the fit reverted to the full frames.
+
+        A full-matrix fit bounds EVERY window by construction, so an out-of-range test
+        window is positive evidence that the statistics came from the training rows
+        (the ``temporal_split_index`` cut) alone.
+        """
+        arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=22), "MSFT": _ohlcv(seed=23)}, _shares(), lookback=5, normalize_features=True)
+        assert arrays["X_test"].max() > 1.0 + 1e-6, "test windows should exceed the training range; a full-fit would clamp them to 1.0"
+
     def test_generate_skips_ticker_shorter_than_lookback(self) -> None:
         # MSFT conditions to ~7 rows (<= lookback + 1 = 21) so no window is built for it,
         # while AAPL (400 rows) produces windows -> the per-ticker skip branch fires.

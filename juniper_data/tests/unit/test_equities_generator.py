@@ -248,6 +248,18 @@ class TestEquitiesGenerator:
         arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=13), "MSFT": _ohlcv(seed=14)}, _shares())
         assert arrays["X_train"].max() > 1.0, "raw features are not in [0, 1]"
 
+    def test_empty_training_partition_falls_back_without_nan(self) -> None:
+        """When every ticker rounds to zero train rows, fit on full rather than emit NaN stats.
+
+        Two business days condition to one row (the last is dropped for the next-day target).
+        ``round(1 * 0.4) == 0`` empties train; the fallback must keep test/full finite.
+        """
+        arrays = _generate(["AAPL"], {"AAPL": _ohlcv(periods=2, seed=40)}, _shares(), normalize_features=True, train_ratio=0.4, test_ratio=0.6)
+        assert arrays["X_train"].shape[0] == 0
+        assert arrays["X_test"].shape[0] == 1
+        assert np.isfinite(arrays["X_test"]).all()
+        assert np.isfinite(arrays["X_full"]).all()
+
     def test_extra_arrays_survive_roundtrip(self, tmp_path) -> None:
         arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=15), "MSFT": _ohlcv(seed=16)}, _shares())
         path = tmp_path / "equities.npz"
