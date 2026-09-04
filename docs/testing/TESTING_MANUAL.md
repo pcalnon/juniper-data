@@ -36,6 +36,7 @@
    - [Marker Requirements](#marker-requirements)
    - [Async Tests](#async-tests)
    - [Test Organization](#test-organization)
+   - [Truncation-edge tests](#truncation-edge-tests)
 9. [Pre-commit Integration](#pre-commit-integration)
 10. [Troubleshooting](#troubleshooting)
 
@@ -415,6 +416,18 @@ async def test_health_endpoint(self):
 - Place benchmark tests in `tests/performance/`
 - Use `conftest.py` for shared fixtures; keep test-specific fixtures local
 - Use `@pytest.mark.slow` for tests that take more than a few seconds
+
+### Truncation-edge tests
+
+Authorised `csv_import` truncation has three silent failure modes that an ordinary under-cap / over-cap pair will not catch (#336):
+
+- A minified JSON array (`json.dumps(..., separators=(",", ":"))`, no newline) must import complete elements under a byte cap, not raise `No data found in file`.
+- A 2-column CSV whose unclosed `"` swallows later lines has no `None` fields; the quote scan must still drop that last row.
+- `bind_deployment_defaults` must put the *effective* cap and opt-in in `params.model_dump()` so `generate_dataset_id` does not hash Field defaults. Pin the API cache: a tight then wide deployment cap must not reuse `dataset_id`.
+
+These are on `test_csv_import_generator.py` and `test_api_routes.py` in #336.
+
+> See: [REFERENCE.md -- CSV Import Truncation Edges](../REFERENCE.md#csv-import-truncation-edges)
 
 ---
 

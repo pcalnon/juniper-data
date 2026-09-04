@@ -19,6 +19,7 @@
 - [Command Reference](#command-reference)
 - [File Structure Reference](#file-structure-reference)
 - [Warning Filters](#warning-filters)
+- [CSV import truncation-edge pins](#csv-import-truncation-edge-pins)
 
 ---
 
@@ -289,6 +290,21 @@ Configured in `pyproject.toml` `[tool.pytest.ini_options].filterwarnings`:
 | `ignore::DeprecationWarning` | `uvicorn.*` | Known uvicorn deprecation warnings |
 | `ignore::DeprecationWarning` | `httpx.*` | Known httpx deprecation warnings |
 | `ignore::PendingDeprecationWarning` | `pydantic.*` | Known pydantic pending deprecation warnings |
+
+---
+
+## CSV import truncation-edge pins
+
+`csv_import` authorised truncation (#336, stacked on the #326 byte cap). These are not the under-cap / over-cap / 422 pins.
+
+| Test | Property |
+|------|----------|
+| `test_truncated_minified_json_array_keeps_complete_elements` | One-line `json.dumps` prefix keeps complete elements — newline trim is CSV-only |
+| `test_unclosed_quote_drops_last_row_even_when_all_fields_are_present` | Dangling `"` dropped even when every `DictReader` field is populated |
+| `test_bind_deployment_defaults_puts_effective_policy_in_dump` | Cache key follows `_resolve_bounds`, not Field defaults |
+| `test_create_dataset_cache_does_not_reuse_tight_cap_after_operator_raises_it` | Tight then wide deployment caps produce different `dataset_id`s |
+
+> See: [REFERENCE.md -- CSV Import Truncation Edges](../REFERENCE.md#csv-import-truncation-edges)
 
 ---
 

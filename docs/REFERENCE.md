@@ -21,6 +21,7 @@
 - [Project Architecture Reference](#project-architecture-reference)
 - [API Design Reference](#api-design-reference)
 - [Storage Backend Reference](#storage-backend-reference)
+- [CSV Import Truncation Edges](#csv-import-truncation-edges)
 - [Prometheus Collector Reference](#prometheus-collector-reference)
 - [Docker Reference](#docker-reference)
 - [CI/CD Pipeline Reference](#cicd-pipeline-reference)
@@ -917,6 +918,50 @@ primary = LocalFSDatasetStore(path="./data")
 cache = InMemoryDatasetStore()
 store = CachedDatasetStore(primary=primary, cache=cache)
 ```
+
+---
+
+## CSV Import Truncation Edges
+
+Authorised `csv_import` truncation (`allow_truncation` / `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION`) still had three silent failure modes on the #326 path. #336 closes them. This section is only those edges — not the 128 MiB ceiling, the refusal default, or the read-enforced bound.
+
+### Newline trim is CSV-only
+
+On the #326 path, `_load_and_preprocess` always ran `_trim_to_record_boundary` on the capped prefix, then parsed CSV or JSON. `json.dumps` / `JSON.stringify` emit **one line**. `rfind("\n")` then returns `-1` and the helper returns empty text, so `_convert_to_arrays` raises `No data found in file`. The decoder never sees the complete objects that fit.
+
+#336 keeps the byte prefix for JSON / JSONL and lets `_parse_json_text(..., tolerate_truncated=True)` decode complete elements (`raw_decode` for arrays; drop only a final unparseable JSONL line). CSV still trims to the last newline. A CSV source with no newline inside the cap still yields empty text — that remains the correct CSV outcome, because not one whole record fits.
+
+### Unclosed quotes are not a short row
+
+`drop_trailing_partial` dropped a last CSV row only when some value was `None` (`DictReader`'s missing-column sentinel; an empty field is `""`). A 2-column file whose unclosed `"` swallows later lines still fills every column — the short-row guard cannot see it — and the fabricated `value` is later coerced to `0.0`.
+
+#336 scans `source_text` with `_has_unclosed_quote`. Doubled quotes (`""`) are the RFC 4180 escape and do not toggle state. The capped path passes `source_text`; the whole-file path does not (`drop_trailing_partial=False`).
+
+### Bind the effective policy before the cache key
+
+`POST /v1/datasets` hashes `params.model_dump()` via `generate_dataset_id`. Dump fills Field defaults, so an omitted `max_bytes` is stored as 128 MiB (`CSV_IMPORT_DEFAULT_MAX_BYTES`) even when generation used a tighter deployment ceiling. The same dump stores `allow_truncation=false` when the operator opted in globally.
+
+Raising the cap — or turning truncation off — then reuses the truncated artifact for the "same" request.
+
+#336 adds `CsvImportGenerator.bind_deployment_defaults`, which copies `_resolve_bounds` onto the params object. `create_dataset` calls it via `getattr(generator_class, "bind_deployment_defaults", None)` **before** hashing. Generators without the method are unchanged. `batch-create` reuses `create_dataset`.
+
+### What not to do
+
+- Do not run `_trim_to_record_boundary` on JSON / JSONL. One-line minified arrays become empty text.
+- Do not treat `DictReader` `None` as sufficient to drop a capped CSV row. An unclosed quote can populate every column.
+- Do not hash unbound params. Omitted `max_bytes` becomes 128 MiB in the dump.
+- Do not make `bind_deployment_defaults` a required generator ABC method. The route uses `getattr`.
+
+### Pins
+
+| Test | Property |
+|------|----------|
+| `test_truncated_minified_json_array_keeps_complete_elements` | A one-line `json.dumps` prefix imports complete elements, not empty text |
+| `test_unclosed_quote_drops_last_row_even_when_all_fields_are_present` | A 2-column dangling `"` is dropped even when every field is populated |
+| `test_bind_deployment_defaults_puts_effective_policy_in_dump` | Omitted `max_bytes` and the schema default both dump as the deployment ceiling; global `allow_truncation` appears in the dump |
+| `test_create_dataset_cache_does_not_reuse_tight_cap_after_operator_raises_it` | Tight then wide deployment caps produce different `dataset_id`s; the wide call is complete |
+
+These live in `tests/unit/test_csv_import_generator.py` and `tests/unit/test_api_routes.py` on #336. They are not on `main` until that PR lands.
 
 ---
 
