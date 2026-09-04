@@ -157,7 +157,7 @@ The spiral generator is the primary generator used by the Juniper ecosystem:
 |-----------|------|---------|-------------|
 | `n_spirals` | int | 2 | Number of spiral classes |
 | `n_points_per_spiral` | int | 100 | Points per spiral arm |
-| `seed` | int | None | Random seed for reproducibility |
+| `seed` | int or None | `42` | Random seed. Omit for the reproducible default; pass `null` to opt into a fresh draw. See [Generator Seed Defaults](REFERENCE.md#generator-seed-defaults). |
 | `algorithm` | string | `"modern"` | `"modern"` or `"legacy_cascor"` |
 | `noise` | float | 0.1 | Noise level |
 | `radius` | float | 10.0 | Maximum radius (legacy mode) |
@@ -167,6 +167,8 @@ The spiral generator is the primary generator used by the Juniper ecosystem:
 | `train_ratio` | float | 0.8 | Training set ratio |
 | `test_ratio` | float | 0.2 | Test set ratio |
 | `shuffle` | bool | true | Shuffle before splitting |
+
+`spiral` has always defaulted to `42` (`SPIRAL_DEFAULT_SEED`). The other 2-D generators (`xor`, `gaussian`, `circles`, `checkerboard`, `moon`) now share that numeric default via `DEFAULT_GENERATOR_SEED`, so omitting `seed` is reproducible. Passing `"seed": null` still requests a new draw. `spiral` does **not** read `JUNIPER_DATA_DEFAULT_GENERATOR_SEED` — that env var applies to the nine generators listed in [Generator Seed Defaults](REFERENCE.md#generator-seed-defaults).
 
 ### Other Generator Examples
 
@@ -468,6 +470,13 @@ Settings are managed by Pydantic `BaseSettings` in `juniper_data/api/settings.py
 | `JUNIPER_DATA_METRICS_ENABLED` | bool | `false` | Prometheus metrics |
 | `JUNIPER_DATA_SENTRY_DSN` | string | *(none)* | Sentry error tracking |
 
+Import-time (not `Settings` — set before `import juniper_data`):
+
+| Variable | Type | Fallback | Description |
+|----------|------|----------|-------------|
+| `JUNIPER_DATA_DEFAULT_GENERATOR_SEED` | int | `42` | Default `seed` for nine generators (not `spiral`) |
+| `JUNIPER_DATA_DEFAULT_MACKEY_GLASS_INIT_NOISE_STD` | float | `0.0` | Makes `mackey_glass` seed-sensitive when `> 0` |
+
 ---
 
 ## Integration with Juniper Ecosystem
@@ -537,6 +546,10 @@ Check the generator's parameter schema:
 ```bash
 curl http://localhost:8100/v1/generators/spiral/schema
 ```
+
+**Two identical requests produced different datasets:**
+
+Omitting `seed` is now reproducible (default `42`, or `JUNIPER_DATA_DEFAULT_GENERATOR_SEED` if set **before** the process starts). Passing `"seed": null` is the opt-out: each call draws fresh and the dataset ID includes a cache nonce, so you will not reuse a stale artifact. `equities` still changes day-to-day because `end_date` defaults to the wall clock. `mackey_glass` ignores `seed` unless `init_noise_std > 0`. Details: [Generator Seed Defaults](REFERENCE.md#generator-seed-defaults).
 
 ### Storage Issues
 

@@ -106,6 +106,7 @@ juniper_data/tests/
 | `test_circles_generator.py` | Generator | Concentric circles generator |
 | `test_csv_import_generator.py` | Generator | CSV/JSON file import |
 | `test_dataset_id.py` | Core | DatasetID class and validation |
+| `test_default_generator_seed.py` | Core / generators | Default `seed` is reproducible; explicit `None` still opts out; env override reaches the arrays (subprocess) |
 | `test_gaussian_generator.py` | Generator | Mixture of Gaussians generator |
 | `test_health_enhanced.py` | API | Health check endpoint |
 | `test_hf_store.py` | Storage | Hugging Face storage backend |
@@ -451,6 +452,8 @@ Code quality hooks (ruff, mypy, bandit) run on **pre-commit** stage and validate
 **Benchmark noise**: Run benchmarks in isolation (`pytest juniper_data/tests/performance/ --benchmark-enable`) to minimize interference from other tests.
 
 **Coverage below threshold**: Run `python scripts/check_module_coverage.py --run-tests` to see per-module breakdown and identify which modules need more tests.
+
+**Env-override seed tests pass in-process but would not catch a regression**: `DEFAULT_GENERATOR_SEED` is assigned at import. Tests that set `JUNIPER_DATA_DEFAULT_GENERATOR_SEED` after `import juniper_data` cannot fail. Use a subprocess (see `TestEnvironmentOverride` in `test_default_generator_seed.py`).
 
 **Deprecation warnings from dependencies**: These are filtered by default via `filterwarnings` in pyproject.toml for uvicorn, httpx, and pydantic.
 

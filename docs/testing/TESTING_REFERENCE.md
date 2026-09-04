@@ -124,6 +124,12 @@ Dataset dictionaries contain keys: `X_train`, `y_train`, `X_test`, `y_test`, `X_
 |---------|-------|---------|-------------|
 | `sample_arrays` | function | `dict[str, np.ndarray]` | `"X"` shape (10,2) and `"y"` shape (10,2), dtype `float32` |
 
+### Reproducibility pins (`test_default_generator_seed.py`)
+
+`seed` defaulted to `None` on nine generators before #322, so two default-config calls differed and `shuffle_and_split` re-drew the cut. The file pins four properties that cannot all be satisfied by making `seed` required: omitted `seed` is reproducible; explicit `None` still draws fresh; seedless IDs still get the BUG-JD-04 nonce.
+
+`JUNIPER_DATA_DEFAULT_GENERATOR_SEED` is proven in a **subprocess** because the constant resolves at import. `mackey_glass` is pinned separately: at default `init_noise_std=0` the seed is inert. Contract: [Generator Seed Defaults](../REFERENCE.md#generator-seed-defaults).
+
 ### Golden Dataset Files
 
 | File | Location | Description |

@@ -287,6 +287,15 @@ export JUNIPER_DATA_STORAGE_PATH=/path/to/datasets
 | `JUNIPER_DATA_URL` | juniper-cascor, juniper-canopy | URL for this service (default: `http://localhost:8100`) |
 | `JUNIPER_DATA_API_KEY` | juniper-cascor | API key for authentication |
 
+### Import-time generator defaults
+
+Not Pydantic `Settings`. Resolved in `juniper_data/core/constants.py` when the package is imported. Set them in the process environment **before** starting the service. A malformed, negative, or empty value falls back rather than refusing to import. Full contract: [Generator Seed Defaults](REFERENCE.md#generator-seed-defaults).
+
+| Variable | Type | Fallback | Description |
+|----------|------|----------|-------------|
+| `JUNIPER_DATA_DEFAULT_GENERATOR_SEED` | int | `42` | Default `seed` for `checkerboard`, `circles`, `gaussian`, `moon`, `xor`, `csv_import`, `mnist`, `arc_agi`, `equities`. `spiral` uses its own `42`. |
+| `JUNIPER_DATA_DEFAULT_MACKEY_GLASS_INIT_NOISE_STD` | float | `0.0` | Default `mackey_glass.init_noise_std`. At `0` that generator's `seed` has no effect. |
+
 ### Example: Development Environment
 
 ```bash

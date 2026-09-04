@@ -93,7 +93,14 @@ All use `JUNIPER_DATA_` prefix (pydantic-settings in `juniper_data/api/settings.
 
 **Add a setting:** Add field to `Settings` in `settings.py`, define `_JUNIPER_DATA_*` default constant. Auto-maps to `JUNIPER_DATA_<FIELD>` env var.
 
-> See: [REFERENCE.md -- Configuration](REFERENCE.md#configuration-reference)
+**Import-time generator defaults** (not `Settings`; read in `core/constants.py` before the package finishes importing):
+
+| Variable | Fallback | Description |
+|----------|----------|-------------|
+| `JUNIPER_DATA_DEFAULT_GENERATOR_SEED` | `42` | Default `seed` for nine generators. `spiral` stays on `SPIRAL_DEFAULT_SEED`. Mid-process env changes are ignored. |
+| `JUNIPER_DATA_DEFAULT_MACKEY_GLASS_INIT_NOISE_STD` | `0.0` | `mackey_glass` consumes `seed` only when this is `> 0`. |
+
+> See: [REFERENCE.md -- Generator Seed Defaults](REFERENCE.md#generator-seed-defaults)
 
 ---
 
@@ -208,6 +215,7 @@ pre-commit install --hook-type pre-push  # coverage gate (one-time)
 | Storage path error      | Dir missing        | Set `JUNIPER_DATA_STORAGE_PATH` to writable path         |
 | `ImportError: redis`    | Optional backend   | `pip install redis`                                      |
 | Coverage pre-push fails | Below threshold    | Add tests; see `scripts/check_module_coverage.py`        |
+| Same params, different data | Omitted `seed` used to be `None` | Default is now `42`. `"seed": null` is the opt-out. `equities` still follows `end_date` (wall clock). `mackey_glass` seed is inert at `init_noise_std=0`. |
 
 ---
 

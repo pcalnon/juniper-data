@@ -17,6 +17,7 @@
 - [Code Quality Tools](#code-quality-tools)
 - [Project Structure](#project-structure)
 - [Dependencies](#dependencies)
+- [Generator Seed Defaults](#generator-seed-defaults)
 - [Error Codes](#error-codes)
 - [Project Architecture Reference](#project-architecture-reference)
 - [API Design Reference](#api-design-reference)
@@ -110,6 +111,15 @@ All environment variables use the `JUNIPER_DATA_` prefix and are managed by Pyda
 |----------|---------|---------|-------------|
 | `JUNIPER_DATA_URL` | juniper-cascor, juniper-canopy | `http://localhost:8100` | URL for this service |
 | `JUNIPER_DATA_API_KEY` | juniper-cascor | *(none)* | API key for authentication |
+
+#### Import-time generator defaults (not `Settings`)
+
+These are read in `juniper_data/core/constants.py` **at import time**. They are not Pydantic `BaseSettings` fields; a mid-process `os.environ` change has no effect. See [Generator Seed Defaults](#generator-seed-defaults).
+
+| Variable | Type | Fallback | Description |
+|----------|------|----------|-------------|
+| `JUNIPER_DATA_DEFAULT_GENERATOR_SEED` | int | `42` | Default `seed` for the nine generators that previously defaulted to `None` |
+| `JUNIPER_DATA_DEFAULT_MACKEY_GLASS_INIT_NOISE_STD` | float | `0.0` | Default `mackey_glass.init_noise_std` (the knob that makes that generator's `seed` do anything) |
 
 ### pyproject.toml Tool Configuration
 
@@ -618,6 +628,64 @@ Heavy chain (pyarrow, pandas, pillow, huggingface-hub); deliberately extra-gated
 downloads from the Hub into the HF cache (`HF_HOME`); offline deployments need a seeded cache — see
 the README section "MNIST / Fashion-MNIST (optional extra)". The Docker image ships this extra via
 `requirements.lock`.
+
+---
+
+## Generator Seed Defaults
+
+Nine generators used to declare `seed: int | None = Field(default=None)`. Two identical calls at that documented default produced different data, and `shuffle_and_split` re-drew the train/test cut from OS entropy. `spiral` was the only 2-D generator with a concrete default (`SPIRAL_DEFAULT_SEED = 42`). juniper-data#319 / #322 adopted that value as the shared fallback.
+
+The field stays `int | None`. Only the **default** moved. Four properties have to hold at once; three of them are in tension:
+
+| # | Property | What it means |
+|---|----------|----------------|
+| 1 | Default is reproducible | Two calls at omitted `seed` return byte-identical `X_train` / `y_train` / `X_test` / `y_test` for the six 2-D generators |
+| 2 | Explicit `seed=None` still opts out | `MoonParams(seed=None).seed is None` and two such calls still differ |
+| 3 | Seedless IDs still get a nonce | `generate_dataset_id` adds the BUG-JD-04 UUID nonce when `params["seed"] is None`, so a seedless request cannot collide with a stale seedless artifact |
+| 4 | The env override reaches the arrays | `JUNIPER_DATA_DEFAULT_GENERATOR_SEED=7` makes `MoonParams().seed == 7` **and** `MoonGenerator.generate(MoonParams())` match `generate(MoonParams(seed=7))` |
+
+A fix that satisfied (1) by making `seed` non-optional would have broken (2) and (3).
+
+### Who reads which default
+
+| Surface | Default | Honours `JUNIPER_DATA_DEFAULT_GENERATOR_SEED`? |
+|---------|---------|------------------------------------------------|
+| `checkerboard`, `circles`, `gaussian`, `moon`, `xor`, `csv_import`, `mnist`, `arc_agi`, `equities` | `DEFAULT_GENERATOR_SEED` | **Yes** (resolved at import) |
+| `spiral` | `SPIRAL_DEFAULT_SEED` (`42`) | **No** — independent constant. The shared fallback is *numerically* 42 so they match when the env is unset |
+| `mackey_glass.seed` | `0` (`SyntheticSequenceParams`) | No |
+| `mackey_glass.init_noise_std` | `DEFAULT_MACKEY_GLASS_INIT_NOISE_STD` | Honours `JUNIPER_DATA_DEFAULT_MACKEY_GLASS_INIT_NOISE_STD` instead |
+
+`csv_import` / `mnist` / `arc_agi` pass `seed` into shuffle (and `arc_agi`'s RNG). `equities.seed` is unused for the temporal split; it is defaulted only for API parity. That generator's real non-reproducibility source is `end_date` defaulting to the **wall clock**.
+
+### Import-time resolution
+
+`DEFAULT_GENERATOR_SEED` and `DEFAULT_MACKEY_GLASS_INIT_NOISE_STD` are assigned at import from `_resolve_env_number` in `core/constants.py`. Import-time rather than a Pydantic `default_factory` keeps a concrete `default` in `model_json_schema()`, which published clients read.
+
+- Mid-process env changes do nothing. Set the variable **before** `import juniper_data`.
+- Malformed, negative, or empty values fall back (`42` / `0.0`) and never raise. A configuration error must not make the package unimportable.
+- Tests that claim an env override must run in a **subprocess**. Setting the variable after import proves nothing.
+
+### `mackey_glass`: seed is inert at the default
+
+`MackeyGlassGenerator` consumes `seed` only inside `if params.init_noise_std > 0`. At the default `0.0`, every seed produces byte-identical output. Raising `init_noise_std` (or the env default) is what makes that generator seed-sensitive. This is pinned, not a defect.
+
+### What not to do
+
+- Do not document `seed` default as `None`. The schema default is `42` (or the import-time override).
+- Do not make `seed` required to "fix" reproducibility — that removes the explicit-`None` escape hatch and the cache nonce.
+- Do not assume `spiral` or `mackey_glass.seed` honour `JUNIPER_DATA_DEFAULT_GENERATOR_SEED`.
+- Do not treat two `equities` calls on different UTC days as a seed bug.
+
+### Pins
+
+| Test | What it proves |
+|------|----------------|
+| `tests/unit/test_default_generator_seed.py::TestDefaultsAreReproducible` | Two default-config calls are byte-identical for the six 2-D generators + `spiral` |
+| `TestExplicitNoneStillOptsOut` | Explicit `None` is accepted, draws fresh, and still gets the cache nonce |
+| `TestEnvironmentOverride` | Subprocess: override changes the constant **and** the generated arrays; bad values fall back |
+| `TestMackeyGlassInitNoiseStd` | Default `init_noise_std` leaves `seed` inert; raising it makes `seed` matter |
+
+Do not weaken these to make a rewrite pass.
 
 ---
 

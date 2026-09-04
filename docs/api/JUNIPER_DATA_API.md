@@ -291,7 +291,7 @@ Create a new dataset or retrieve an existing one with matching parameters.
 | --------------------- | -------------- | ---------- | ------------------------------- |
 | `n_spirals`           | int            | 2          | Number of spiral classes        |
 | `n_points_per_spiral` | int            | 100        | Points per spiral               |
-| `seed`                | int            | None       | Random seed for reproducibility |
+| `seed`                | int or None    | `42`       | Random seed. Omit for the reproducible default; pass `null` for a fresh draw. `spiral` uses `SPIRAL_DEFAULT_SEED` (also 42) and does not read the env override. See [Generator Seed Defaults](../REFERENCE.md#generator-seed-defaults). |
 | `algorithm`           | string         | `"modern"` | `"modern"` or `"legacy_cascor"` |
 | `noise`               | float          | 0.1        | Noise level                     |
 | `radius`              | float          | 10.0       | Maximum radius (legacy mode)    |
