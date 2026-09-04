@@ -163,6 +163,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The `application/octet-stream` half was already fixed — `BINARY_MEDIA_TYPE` is `application/zip`
   and owns every call site.
 
+### Tests
+
+- **The remaining #319/#322 generators now pin a concrete default seed.**
+  `test_default_generator_seed.py` only generate-tested the 2-D synthetics. `csv_import` shuffles
+  by default and its existing `test_default_values` never mentioned `seed`, so reverting that
+  default to `None` would silently recreate the original defect — two identical imports of the
+  same file producing different splits — while every existing csv_import test stayed green.
+  New `tests/unit/test_default_seed_completeness.py` pins the default, that shuffle is on (otherwise
+  the seed is inert), two default-config generates of the same file are identical, explicit
+  `seed=None` still draws a fresh shuffle, and `arc_agi` / `equities` params still default to
+  `DEFAULT_GENERATOR_SEED`.
+
 ### Changed
 
 - **`juniper-service-core` ceiling raised to `<0.8.0`** so 0.7.0 can be adopted. 0.7.0 re-files
