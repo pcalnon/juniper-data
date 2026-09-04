@@ -1,7 +1,7 @@
 # JuniperData API Reference
 
 **Version:** 0.4.2
-**Last Updated:** 2026-04-01
+**Last Updated:** 2026-09-04
 **Base URL:** `http://localhost:8100`  
 **API Prefix:** `/v1`
 
@@ -302,6 +302,19 @@ Create a new dataset or retrieve an existing one with matching parameters.
 | `test_ratio`          | float          | 0.2        | Test set ratio                  |
 | `shuffle`             | bool           | true       | Shuffle before splitting        |
 
+**CSV Import Generator Parameters** (`generator: "csv_import"`):
+
+`file_path` is relative to `JUNIPER_DATA_IMPORT_DIR` (default `/data/imports`). The source is an on-disk file, not an HTTP upload. See [CSV Import Byte Cap](../REFERENCE.md#csv-import-byte-cap).
+
+| Parameter | Type | Default | Description |
+| --------- | ---- | ------- | ----------- |
+| `file_path` | string | *(required)* | Path relative to the import directory |
+| `file_format` | string | `"auto"` | `"csv"`, `"json"`, or `"auto"` |
+| `label_column` | string | `"label"` | Label column name |
+| `feature_columns` | array[string] \| null | `null` | Feature columns (`null` = all except the label) |
+| `max_bytes` | int | `134217728` (128 MiB) | Per-request byte cap. May only **lower** `JUNIPER_DATA_CSV_IMPORT_MAX_BYTES` (`min(request, deployment)`). A generated client that serialises schema defaults cannot raise a tighter operator ceiling. |
+| `allow_truncation` | bool | `false` | Accept a prefix when the source exceeds the cap. OR'd with `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION`. |
+
 **Response:**
 
 ```json
@@ -345,6 +358,7 @@ Create a new dataset or retrieve an existing one with matching parameters.
 
 - `201 Created` - Dataset created or retrieved
 - `400 Bad Request` - Unknown generator or invalid parameters
+- `422 Unprocessable Content` - Schema-invalid request **or** `csv_import` source over its byte cap without an opt-in. Schema failures carry `detail` as a **list**; the over-cap refusal carries `detail` as a **string** naming the size, the cap, and `allow_truncation`. See [CSV Import Byte Cap](../REFERENCE.md#csv-import-byte-cap).
 - `501 Not Implemented` - Generator's optional dependencies are missing in this deployment (the `detail` carries an actionable install hint, e.g. `pip install datasets` for `mnist`)
 
 **Caching Behavior:**
@@ -834,6 +848,8 @@ Get metadata for a specific dataset.
 }
 ```
 
+`meta.truncation` is omitted from the spiral example because it is `null` on a complete dataset. After an authorised `csv_import` prefix it is a dict (`truncated`, `reason`, `bytes_read`, `bytes_total`, `cap_bytes`, `records_imported`) persisted with the artifact. See [CSV Import Byte Cap](../REFERENCE.md#csv-import-byte-cap).
+
 **Status Codes:**
 
 - `200 OK` - Metadata returned
@@ -1017,7 +1033,7 @@ Most errors carry a human-readable **string**:
 }
 ```
 
-A `422` carries a **list of per-field error objects**, so a caller can report which field
+A schema `422` carries a **list of per-field error objects**, so a caller can report which field
 failed and why:
 
 ```json
@@ -1027,6 +1043,10 @@ failed and why:
   ]
 }
 ```
+
+An over-cap `csv_import` is also `422`, but `detail` is a **string** (the `InputTooLargeError`
+message: source size, cap, and `allow_truncation` as the remedy). Check the type of `detail`
+before iterating. `batch-create` copies that string into the per-item `error` field.
 
 This split is a known limitation, not an accident: unifying the two shapes requires a
 response envelope (RFC 9457 problem details), which is tracked separately. `juniper-data-client`
@@ -1042,7 +1062,7 @@ exception message while leaving the structure intact on `exc.detail`.
 | `204 No Content`            | Resource deleted                                 | —              |
 | `400 Bad Request`           | Schema-valid, but semantically wrong             | `str`          |
 | `404 Not Found`             | Resource not found                               | `str`          |
-| `422 Unprocessable Content` | Violates the declared request schema             | `list[object]` |
+| `422 Unprocessable Content` | Schema violation, **or** `csv_import` over its byte cap | `list[object]` (schema) or `str` (over-cap) |
 | `500 Internal Server Error` | Server error                                     | `str`          |
 | `501 Not Implemented`       | Generator's optional dependency is not installed | `str`          |
 
@@ -1052,6 +1072,8 @@ Both mean "the caller sent something wrong", and the boundary between them is de
 
 - **`422`** — the request violates the **declared schema**, and is rejected before the
   handler runs: a missing required field, `ttl_seconds: 0`, or `params` that is not an object.
+  **Exception:** an over-cap `csv_import` source also answers 422 (string `detail`) so the
+  API does not grow a new status code. See [CSV Import Byte Cap](../REFERENCE.md#csv-import-byte-cap).
 - **`400`** — the request is schema-valid but **semantically wrong for the generator it
   names**: an unknown generator, or params that the named generator rejects. `params` is
   typed as a free-form object, so only the resolved generator can validate its contents.

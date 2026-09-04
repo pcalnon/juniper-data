@@ -4,7 +4,7 @@
 
 **Version:** 0.4.2
 **Status:** Active
-**Last Updated:** March 3, 2026
+**Last Updated:** September 4, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -18,6 +18,7 @@
 - [Test Dependencies](#test-dependencies)
 - [Command Reference](#command-reference)
 - [File Structure Reference](#file-structure-reference)
+- [CSV Import Byte-Cap Tests](#csv-import-byte-cap-tests)
 - [Warning Filters](#warning-filters)
 
 ---
@@ -280,6 +281,24 @@ juniper_data/tests/          # Root test path (testpaths in pyproject.toml)
 
 ---
 
+## CSV Import Byte-Cap Tests
+
+On-disk `csv_import` sources are bounded (`APD-DATA-018` / #326). Tests must pin **refusal** and **loud truncation**, not a silent prefix.
+
+| Must | Must not |
+|------|----------|
+| Over-cap without opt-in raises `InputTooLargeError` (a `ValueError`); the route answers **422** not 500 | Let an oversized source reach the bare `except Exception` and surface as 500 |
+| Authorised truncation writes `DatasetMeta.truncation` as a dict; `records_imported` equals `X_full.shape[0]` | Store `{}` or omit the field for a partial dataset — `None` means complete |
+| Cut on a record boundary (CSV quoted-newline drop, JSON array `raw_decode`, JSONL **final** line only) | Parse a mid-record byte slice; drop a corrupt JSONL line that is not the last line |
+| Under-cap result has **no** `"truncation"` key | Put `{"truncated": false}` on a complete dataset |
+| Effective cap is `min(request, deployment)` — a huge request `max_bytes` still refuses | Let `model_fields_set` make the request win outright (the DoS bound would be caller-controlled) |
+| The **read** enforces the bound (`cap_bytes + 1`); `stat` is only a cheap pre-check | Trust `stat().st_size` then read to EOF (FIFO `st_size == 0`, TOCTOU growth) |
+| Cap is `gt=0`; `_read_capped_bytes` refuses `limit <= 0` | Accept a negative cap — Python `read(-1)` is unbounded |
+
+Pins: `TestCsvImportByteCap` in `tests/unit/test_csv_import_generator.py`; `test_create_dataset_over_byte_cap_returns_422_not_500` (and siblings) in `test_api_routes.py`. Contract: [CSV Import Byte Cap](../REFERENCE.md#csv-import-byte-cap).
+
+---
+
 ## Warning Filters
 
 Configured in `pyproject.toml` `[tool.pytest.ini_options].filterwarnings`:
@@ -292,6 +311,6 @@ Configured in `pyproject.toml` `[tool.pytest.ini_options].filterwarnings`:
 
 ---
 
-**Last Updated:** March 3, 2026
+**Last Updated:** September 4, 2026
 **Version:** 0.4.2
 **Maintainer:** Paul Calnon
