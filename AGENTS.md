@@ -5,7 +5,7 @@
 **Author**: Paul Calnon
 **License**: MIT License
 **Version**: 0.12.0
-**Last Updated**: 2026-08-31
+**Last Updated**: 2026-09-04
 
 ---
 
@@ -32,6 +32,16 @@ reference section in the same PR rather than waiving the budget gate.
   (I1 no cross-entity splice, I2 no future leak across the cut, I3 monotone Δt, I4 embargo purging,
   I5 strictly-positive horizon) and is the only thing standing between a plausible refactor and
   invalidated experiments — **do not weaken or skip it to make a rewrite pass**.
+- **Feature min-max is fit on the training partition only — never on the full matrix.**
+  `equities`, `equities_seq` and `csv_import` compute per-feature min/max **after the split**, from
+  training rows, then apply those statistics. Fitting on `X_full` (or normalising inside
+  `_load_and_preprocess` before the split exists) leaks later or held-out rows into train: the
+  training data is scaled by a maximum that exists only outside it, and every downstream result
+  inflates. `X_test` and `X_full` are **not** bounded by `[0, 1]`; only `X_train` is. A test that
+  asserts the bound on `X_full` pins the leak without naming it. The discriminating assertion is
+  that a **test** row escapes `[0, 1]`. `juniper_data/tests/unit/test_normaliser_fit_scope.py`
+  pins the contract — **do not weaken or skip it to make a rewrite pass**. Full rule:
+  [`docs/REFERENCE.md` § Feature Normaliser Fit Scope](docs/REFERENCE.md#feature-normaliser-fit-scope).
 
 ## Quick Reference
 

@@ -4,7 +4,7 @@
 
 **Version:** 0.4.2
 **Status:** Active
-**Last Updated:** March 3, 2026
+**Last Updated:** September 4, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -105,6 +105,9 @@ juniper_data/tests/
 | `test_checkerboard_generator.py` | Generator | Checkerboard pattern generator |
 | `test_circles_generator.py` | Generator | Concentric circles generator |
 | `test_csv_import_generator.py` | Generator | CSV/JSON file import |
+| `test_equities_generator.py` | Generator | Equities time-series; train-only normaliser fit |
+| `test_equities_seq_generator.py` | Generator | Windowed equities; fit-scope vs target-date split |
+| `test_normaliser_fit_scope.py` | Generator | `csv_import` min-max fit on train only (`X_test` must escape `[0, 1]`) |
 | `test_dataset_id.py` | Core | DatasetID class and validation |
 | `test_gaussian_generator.py` | Generator | Mixture of Gaussians generator |
 | `test_health_enhanced.py` | API | Health check endpoint |
@@ -451,6 +454,14 @@ Code quality hooks (ruff, mypy, bandit) run on **pre-commit** stage and validate
 **Benchmark noise**: Run benchmarks in isolation (`pytest juniper_data/tests/performance/ --benchmark-enable`) to minimize interference from other tests.
 
 **Coverage below threshold**: Run `python scripts/check_module_coverage.py --run-tests` to see per-module breakdown and identify which modules need more tests.
+
+**`normalize_features=true` and `[0, 1]` on `X_full`**: Do not assert that bound on `X_full` or `X_test`. Min-max is fit on **train** only; a full-set fit is the leak those tests used to pin. Assert `X_train` is bounded and that **`X_test` escapes `[0, 1]`** — a full-matrix fit cannot satisfy the second check.
+
+Pins: `test_normaliser_fit_scope.py`, `test_equities_generator.py::test_normaliser_is_fit_on_train_not_full`, `test_equities_seq_generator.py::test_normaliser_is_fit_on_train_rows_not_the_full_frame`. See [REFERENCE.md — Feature Normaliser Fit Scope](../REFERENCE.md#feature-normaliser-fit-scope).
+
+**`FileNotFoundError` in `csv_import` tests after setting `JUNIPER_DATA_IMPORT_DIR`**: `get_settings()` is cached. A per-test temp directory does not take effect — the first path is reused after the directory is gone. Use one **module-scoped** import dir and call `get_settings.cache_clear()` after mutating the env (and again in teardown).
+
+**Collecting `test_csv_import_generator.py` in isolation fails on import**: `juniper_data.generators.csv_import` currently hits a circular import through `api.routes.generators` (juniper-data#316). Import `juniper_data.api.routes.generators` first (as `test_normaliser_fit_scope.py` does via `importlib.import_module`) so collection order does not matter.
 
 **Deprecation warnings from dependencies**: These are filtered by default via `filterwarnings` in pyproject.toml for uvicorn, httpx, and pydantic.
 

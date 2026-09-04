@@ -2,7 +2,7 @@
 
 **Version:** 0.4.2
 **Status:** Active
-**Last Updated:** April 1, 2026
+**Last Updated:** September 4, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -106,8 +106,34 @@ curl http://localhost:8100/v1/health
 | `circles` | Concentric circles | 2 | 2 |
 | `checkerboard` | 2D checkerboard pattern | 2 | 2 |
 | `csv_import` | Import from CSV/JSON files | varies | varies |
+| `equities` | S&P 500 daily OHLCV + SEC fundamentals | 10 | next-day direction (one-hot) |
+| `equities_seq` | Windowed equities sequences | `(W, L, F)` | next-day direction (one-hot) |
 | `mnist` | MNIST / Fashion-MNIST | 784 (28x28) | 10 |
 | `arc_agi` | ARC-AGI visual reasoning tasks | varies | varies |
+
+`GET /v1/generators` is authoritative for the full catalogue (including `moon` and the numpy sequence synthetics). The rows above are the generators most often configured by hand.
+
+### Feature normalisation (`normalize_features`)
+
+`csv_import`, `equities`, and `equities_seq` accept `normalize_features` (default **`false`**): per-feature min-max scaling.
+
+**Fit on the training partition only**, then apply those statistics to train, test, and full. That is required (ecosystem partition design, decision 7). A full-set fit leaks later or held-out rows into train — the training data is scaled by a maximum that exists only outside it.
+
+**Consequence:** only `X_train` is bounded by `[0, 1]`. `X_test` and `X_full` may exceed it. That excursion is real out-of-sample movement, not a bug. Do not treat `[0, 1]` on the full matrix as a schema guarantee.
+
+```bash
+curl -X POST http://localhost:8100/v1/datasets \
+  -H "Content-Type: application/json" \
+  -d '{
+    "generator": "csv_import",
+    "params": {
+      "file_path": "data.csv",
+      "normalize_features": true
+    }
+  }'
+```
+
+Leave the flag off unless you need scaled features. The default path is unnormalised. Details and the `equities_seq` window-vs-row cut: [REFERENCE.md — Feature Normaliser Fit Scope](REFERENCE.md#feature-normaliser-fit-scope).
 
 ### Using Generators via API
 
@@ -366,6 +392,8 @@ Juniper Data guarantees:
 5. `y_*` arrays are valid one-hot encodings (each row sums to 1.0)
 6. `len(X_train) + len(X_test) == len(X_full)`
 
+`normalize_features=true` does **not** add a `[0, 1]` bound on `X_test` or `X_full`. Only the fitted partition (`X_train`) is bounded. See [Feature normalisation](#feature-normalisation-normalize_features).
+
 ### Loading Artifacts
 
 **From file:**
@@ -537,6 +565,10 @@ Check the generator's parameter schema:
 ```bash
 curl http://localhost:8100/v1/generators/spiral/schema
 ```
+
+**Test or full features outside `[0, 1]` with `normalize_features=true`:**
+
+Expected. Min-max is fit on the **training** rows only. Later or held-out rows that exceed the training range stay outside `[0, 1]`. Only `X_train` is bounded. See [Feature normalisation](#feature-normalisation-normalize_features).
 
 ### Storage Issues
 

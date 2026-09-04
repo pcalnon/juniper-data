@@ -2,7 +2,7 @@
 
 **Version:** 0.4.2
 **Status:** Active
-**Last Updated:** March 3, 2026
+**Last Updated:** September 4, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -15,6 +15,8 @@
 - [Command Reference](#command-reference)
 - [Test Reference](#test-reference)
 - [Code Quality Tools](#code-quality-tools)
+- [Development Workflow Reference](#development-workflow-reference)
+- [Feature Normaliser Fit Scope](#feature-normaliser-fit-scope)
 - [Project Structure](#project-structure)
 - [Dependencies](#dependencies)
 - [Error Codes](#error-codes)
@@ -70,6 +72,8 @@ Full REST API documentation is in [JUNIPER_DATA_API.md](api/JUNIPER_DATA_API.md)
 | `y_test` | `(n_test, n_classes)` | `float32` | Test labels (one-hot) |
 | `X_full` | `(n_samples, n_features)` | `float32` | Full dataset features |
 | `y_full` | `(n_samples, n_classes)` | `float32` | Full dataset labels (one-hot) |
+
+When `normalize_features=true` (`csv_import`, `equities`, `equities_seq`), only `X_train` is min-max bounded to `[0, 1]`. `X_test` and `X_full` may exceed that range. See [Feature Normaliser Fit Scope](#feature-normaliser-fit-scope).
 
 ---
 
@@ -486,8 +490,63 @@ Relocated verbatim from `AGENTS.md` (P3 of the shared-session-memory plan) so it
 5. Add unit tests in `tests/unit/test_<generator>_generator.py`
 6. Add integration test coverage
 7. Run full test suite
+8. If the generator min-max scales features, fit those statistics on the **training partition after the split** — never on the full matrix. See [Feature Normaliser Fit Scope](#feature-normaliser-fit-scope).
 
 ---
+
+## Feature Normaliser Fit Scope
+
+Optional per-feature min-max (`normalize_features`, default **`False`**) on `equities`, `equities_seq`, and `csv_import`. Contract: **fit on the training rows only, then apply**. Decision 7 of the ecosystem partition design; pinned by juniper-data#314 / #323.
+
+Fitting on every row and then scaling train is look-ahead (or held-out) leakage: training features are scaled by a maximum that exists only outside the training partition. Downstream metrics inflate and the model looks better. The leak does not announce itself.
+
+### What is in bounds
+
+| Array | After `normalize_features=True` |
+|-------|----------------------------------|
+| `X_train` | Bounded by `[0, 1]` (the fitted partition). A constant column is mapped to 0 (zero range is replaced by 1 so scaling does not divide by zero). |
+| `X_test`, `X_full` | **Not** bounded by `[0, 1]`. Rows outside the training range fall outside it. That excursion is real out-of-sample movement — scaling it away is exactly what the leak did. |
+
+Unnormalised output (`normalize_features=False`, the default) is unchanged.
+
+### Per generator
+
+| Generator | Split | Fit source | Apply |
+|-----------|-------|------------|-------|
+| `equities` | Per-ticker chronological `frame.iloc[:n_train]` | Concatenated **train** frames (fallback: `full` if every ticker rounds to zero train rows) | `_features` on full / train / test |
+| `equities_seq` | Same raw-row cut via `temporal_split_index`, reused rather than re-derived | Concatenated per-ticker `iloc[:cut]` rows (same empty-train fallback) | `_features` **before** windowing |
+| `csv_import` | `shuffle_and_split` (shuffle default `True` — held-out leakage, not necessarily temporal) | `_fit_minmax(X_train)` **after** the split | `_apply_minmax` on train / test / full |
+
+`csv_import` cannot fit on train inside `_load_and_preprocess`: that helper runs **before** the split exists, so statistics there are necessarily full-set. `generate` splits first, then fits. Do not move normalisation back into the loader.
+
+### `equities_seq`: two cuts, not one leak
+
+The fit uses raw rows `iloc[:temporal_split_index(...)]`. Windows are assigned by **target date** against `cut_ordinal` (`generators/_sequence.py`). Those are not the same partition: a window whose lookback straddles the boundary sits in test while some of its input rows are earlier than the cut — and those earlier rows **are** in the fit.
+
+That is intended and is not look-ahead. Every row in the fit is chronologically earlier than the split; nothing at or after the cut reaches the training statistics. Purging the final `lookback` rows so the fit sees only rows that appear exclusively in train windows is an **embargo**, which this generator exposes separately and does not enable by default. Making the fit unconditionally embargoed would diverge from the flat generator.
+
+### Empty training partition
+
+If train is empty (every ticker rounding to zero train rows, or `X_train.shape[0] == 0`), the fit falls back to the full matrix rather than emitting all-NaN statistics. A degenerate request has no training distribution to learn from.
+
+### What not to do
+
+- Do not fit on `pd.concat(conditioned.values())` / `full` / `X` and then apply to train.
+- Do not assert `X_full.min() >= 0` and `X_full.max() <= 1` when `normalize_features=True`. That assertion holds **only** under a full-set fit, so it pins the leak without naming it.
+- "`X_train` is in `[0, 1]`" holds under both the correct and the broken implementation. The discriminating assertion is the opposite: a **test** row that escapes `[0, 1]`. A full-matrix fit cannot satisfy that.
+- Keep the Pydantic `Field` description in lockstep with the fit source. A schema string that still says "fit on the full set" will re-teach the leak through `/v1/generators/{name}/schema`.
+- `KaggleDatasetStore.load_kaggle_dataset(normalize_features=True)` still min-maxes the loaded matrix **before** it slices train/test. That is a storage loader, not these three generators, and it is not covered by this contract.
+
+### Tests that pin the contract
+
+| Test | What it proves |
+|------|----------------|
+| `tests/unit/test_normaliser_fit_scope.py` | `csv_import`: train bounded; **test escapes**; shapes unchanged; constant column finite; default path stays raw |
+| `tests/unit/test_equities_generator.py::test_normaliser_is_fit_on_train_not_full` | Discriminating `X_test.max() > 1` |
+| `tests/unit/test_equities_seq_generator.py::test_normaliser_is_fit_on_train_rows_not_the_full_frame` | Same for the sequence generator (separate fit path — the flat test does not cover it) |
+| `tests/unit/test_equities_seq_generator.py::test_fit_excludes_every_row_at_or_after_the_split` | Direction of the raw-row cut (nothing at or after the split), not an exact row count |
+
+Do not weaken or skip these to make a rewrite pass. See also the AGENTS.md hazard **Feature min-max is fit on the training partition only**.
 
 ---
 
@@ -503,13 +562,15 @@ juniper-data/
 │   │   ├── dataset_id.py         # Deterministic ID generation
 │   │   ├── models.py             # Pydantic data models
 │   │   └── split.py              # Train/test splitting
-│   ├── generators/               # 8 dataset generators
+│   ├── generators/               # Dataset generators
 │   │   ├── spiral/               # Multi-spiral (primary)
 │   │   ├── xor/                  # XOR classification
 │   │   ├── gaussian/             # Gaussian mixture
 │   │   ├── circles/              # Concentric circles
 │   │   ├── checkerboard/         # 2D checkerboard
 │   │   ├── csv_import/           # CSV/JSON import
+│   │   ├── equities/             # S&P 500 daily time-series
+│   │   ├── equities_seq/         # Windowed equities sequences
 │   │   ├── mnist/                # MNIST/Fashion-MNIST
 │   │   └── arc_agi/              # ARC-AGI tasks
 │   ├── storage/                  # 8 storage backends
@@ -674,6 +735,7 @@ juniper-data/
 │   │   ├── checkerboard/           # 2D checkerboard pattern
 │   │   ├── csv_import/             # CSV/JSON file import
 │   │   ├── equities/               # S&P 500 equities time-series (Yahoo Finance + SEC EDGAR)
+│   │   ├── equities_seq/           # Windowed (3-D) equities; reuses flat fetch/condition/normaliser
 │   │   ├── mnist/                  # MNIST / Fashion-MNIST (HuggingFace)
 │   │   └── arc_agi/                # ARC-AGI visual reasoning (optional)
 │   ├── storage/                    # Dataset persistence (7 backends)
@@ -755,8 +817,9 @@ juniper-data/
 | `generators/circles/` | Concentric circles binary classification |
 | `generators/moon/` | Two interleaving half-moons binary classification |
 | `generators/checkerboard/` | 2D grid pattern with alternating classes |
-| `generators/csv_import/` | Import datasets from CSV/JSON files |
+| `generators/csv_import/` | Import datasets from CSV/JSON files (`normalize_features` fits on `X_train` after the split) |
 | `generators/equities/` | S&P 500 equities daily time-series (OHLCV + SEC fundamentals; dual next-day targets) |
+| `generators/equities_seq/` | Windowed equities sequences; normaliser fit reuses the per-ticker `temporal_split_index` cut |
 | `generators/mnist/` | MNIST and Fashion-MNIST via HuggingFace Hub |
 | `generators/arc_agi/` | ARC-AGI visual reasoning tasks (optional dependency) |
 | `storage/constants.py` | Storage-layer constants (filenames, metadata keys, table/column names, default size limits) |
@@ -1074,6 +1137,6 @@ Rollout and rationale: [juniper-ml#434](https://github.com/pcalnon/juniper-ml/is
 
 ---
 
-**Last Updated:** April 1, 2026
+**Last Updated:** September 4, 2026
 **Version:** 0.4.2
 **Maintainer:** Paul Calnon

@@ -1,7 +1,7 @@
 # JuniperData API Reference
 
 **Version:** 0.4.2
-**Last Updated:** 2026-04-01
+**Last Updated:** 2026-09-04
 **Base URL:** `http://localhost:8100`  
 **API Prefix:** `/v1`
 
@@ -940,6 +940,8 @@ The NPZ artifact is the primary data contract between JuniperData and its consum
 | `X_full`  | `(n_samples, n_features)` | `float32` | Full dataset features         |
 | `y_full`  | `(n_samples, n_classes)`  | `float32` | Full dataset labels (one-hot) |
 
+When `normalize_features=true` on `csv_import`, `equities`, or `equities_seq`, only `X_train` is min-max bounded to `[0, 1]`. `X_test` and `X_full` may exceed that range — that is the train-only fit, not a contract break. See [REFERENCE.md — Feature Normaliser Fit Scope](../REFERENCE.md#feature-normaliser-fit-scope).
+
 ### Spiral Dataset Specifics
 
 For spiral datasets:
@@ -999,6 +1001,8 @@ JuniperData guarantees:
 4. `y_*` arrays have shape `(n, n_classes)`
 5. `y_*` arrays are valid one-hot encodings (each row sums to 1.0)
 6. `len(X_train) + len(X_test) == len(X_full)`
+
+`normalize_features=true` does not add a `[0, 1]` bound on `X_test` or `X_full`.
 
 ---
 

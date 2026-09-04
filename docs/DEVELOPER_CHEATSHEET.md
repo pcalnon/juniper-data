@@ -1,6 +1,6 @@
 # Developer Cheatsheet -- juniper-data
 
-**Version**: 0.4.2 | **Date**: 2026-03-15 | **Project**: juniper-data -- Dataset Generation REST Service (FastAPI)
+**Version**: 0.4.2 | **Date**: 2026-09-04 | **Project**: juniper-data -- Dataset Generation REST Service (FastAPI)
 
 ---
 
@@ -119,7 +119,9 @@ Default filesystem layout: `{JUNIPER_DATA_STORAGE_PATH}/{dataset_id}.meta.json` 
 
 ## Generator Registration
 
-Generators: `spiral`, `xor`, `gaussian`, `circles`, `checkerboard`, `csv_import`, `mnist`, `arc_agi`.
+Generators: `spiral`, `xor`, `gaussian`, `circles`, `moon`, `checkerboard`, `csv_import`, `equities`, `equities_seq`, `mnist`, `arc_agi`, plus numpy sequence synthetics. `GET /v1/generators` is authoritative.
+
+Optional `normalize_features` (`csv_import`, `equities`, `equities_seq`; default `false`): **fit min-max on the training partition after the split**, then apply. Only `X_train` is bounded by `[0, 1]`; `X_test` / `X_full` may exceed it. Do not fit on `X_full`. Do not put `csv_import` normalisation back inside `_load_and_preprocess`. See [REFERENCE.md — Feature Normaliser Fit Scope](REFERENCE.md#feature-normaliser-fit-scope).
 
 **Add a new generator:**
 
@@ -129,14 +131,15 @@ Generators: `spiral`, `xor`, `gaussian`, `circles`, `checkerboard`, `csv_import`
 4. Add routes or use existing `/v1/datasets` with new generator name
 5. Output must conform to NPZ contract below
 6. Add tests and schema
+7. If min-max scaling features: fit on **train after the split**, never on the full matrix
 
-> See: `juniper_data/generators/__init__.py` | [AGENTS.md -- Adding New Generators](../AGENTS.md#adding-new-generators)
+> See: `juniper_data/generators/__init__.py` | [REFERENCE.md -- Feature Normaliser Fit Scope](REFERENCE.md#feature-normaliser-fit-scope)
 
 ---
 
 ## Data Contract (NPZ)
 
-All arrays `float32`. Keys: `X_train`, `y_train`, `X_test`, `y_test`, `X_full`, `y_full`. Shapes: features `(n, n_features)`, labels `(n, n_classes)` one-hot encoded.
+All arrays `float32`. Keys: `X_train`, `y_train`, `X_test`, `y_test`, `X_full`, `y_full`. Shapes: features `(n, n_features)`, labels `(n, n_classes)` one-hot encoded. Optional min-max does **not** bound `X_test` / `X_full` to `[0, 1]`.
 
 > See: [REFERENCE.md -- NPZ Artifact Keys](REFERENCE.md#npz-artifact-keys)
 
@@ -208,6 +211,8 @@ pre-commit install --hook-type pre-push  # coverage gate (one-time)
 | Storage path error      | Dir missing        | Set `JUNIPER_DATA_STORAGE_PATH` to writable path         |
 | `ImportError: redis`    | Optional backend   | `pip install redis`                                      |
 | Coverage pre-push fails | Below threshold    | Add tests; see `scripts/check_module_coverage.py`        |
+| `X_test` / `X_full` > 1 with `normalize_features=true` | Train-only min-max fit | Expected. Only `X_train` is bounded by `[0, 1]`. Asserting the bound on `X_full` pins the leak. |
+| `FileNotFoundError` in `csv_import` tests after changing `JUNIPER_DATA_IMPORT_DIR` | `get_settings()` cache | Call `get_settings.cache_clear()` after mutating the env; use one module-scoped import dir |
 
 ---
 

@@ -4,7 +4,7 @@
 
 **Version:** 0.4.2
 **Status:** Active
-**Last Updated:** March 3, 2026
+**Last Updated:** September 4, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -14,6 +14,7 @@
 - [Pytest Markers](#pytest-markers)
 - [Pytest Configuration](#pytest-configuration)
 - [Fixtures Reference](#fixtures-reference)
+- [Normaliser Fit-Scope Tests](#normaliser-fit-scope-tests)
 - [Coverage Configuration](#coverage-configuration)
 - [Test Dependencies](#test-dependencies)
 - [Command Reference](#command-reference)
@@ -132,6 +133,21 @@ Dataset dictionaries contain keys: `X_train`, `y_train`, `X_test`, `y_test`, `X_
 | `2_spiral_metadata.json` | `tests/fixtures/golden_datasets/` | Generation parameters |
 | `3_spiral.npz` | `tests/fixtures/golden_datasets/` | Reference 3-spiral dataset |
 | `3_spiral_metadata.json` | `tests/fixtures/golden_datasets/` | Generation parameters |
+
+---
+
+## Normaliser Fit-Scope Tests
+
+Optional `normalize_features` on `csv_import`, `equities`, and `equities_seq` is fit on the **training partition after the split**. Tests must not re-pin the old leak.
+
+| Must | Must not |
+|------|----------|
+| Assert `X_train` is in `[0, 1]` (with a small epsilon) | Assert `X_full` or `X_test` is in `[0, 1]` — that holds only under a full-set fit |
+| Assert a **test** row escapes `[0, 1]` (`X_test.max() > 1`) | Rely on "train is bounded" alone — that is true for both the correct and the broken implementation |
+| Keep `csv_import` import-dir fixtures **module-scoped** and `get_settings.cache_clear()` after env mutation | Swap a per-test `TemporaryDirectory` into `JUNIPER_DATA_IMPORT_DIR` without clearing the settings cache |
+| Import `juniper_data.api.routes.generators` before `csv_import` when a file may be collected first (juniper-data#316) | Collect `test_csv_import_generator.py` in isolation and treat the circular import as a fixture bug |
+
+Canonical pins (land with #323): `tests/unit/test_normaliser_fit_scope.py`, `test_equities_generator.py::test_normaliser_is_fit_on_train_not_full`, `test_equities_seq_generator.py::test_normaliser_is_fit_on_train_rows_not_the_full_frame`. Contract: [REFERENCE.md — Feature Normaliser Fit Scope](../REFERENCE.md#feature-normaliser-fit-scope).
 
 ---
 
@@ -292,6 +308,6 @@ Configured in `pyproject.toml` `[tool.pytest.ini_options].filterwarnings`:
 
 ---
 
-**Last Updated:** March 3, 2026
+**Last Updated:** September 4, 2026
 **Version:** 0.4.2
 **Maintainer:** Paul Calnon
