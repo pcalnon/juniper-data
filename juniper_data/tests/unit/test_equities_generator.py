@@ -640,3 +640,35 @@ class TestUniverseSymbolCap:
         """
         assert eq_limits.EQUITIES_DEFAULT_MAX_SYMBOLS == 14
         assert eq_limits.EQUITIES_DEFAULT_ALLOW_TRUNCATION is False
+
+    def test_bind_deployment_defaults_puts_effective_policy_in_dump(self) -> None:
+        """The cache key must follow the resolved cap and opt-in, not Field defaults.
+
+        omit-max_symbols and an explicit 14 schema default resolve to the SAME
+        effective cap (the deployment ceiling, after the clamp). Binding must
+        record that ceiling -- otherwise a later restart that raises the cap
+        reuses the truncated artifact. Global allow_truncation must appear in
+        the dump for the same reason.
+        """
+        settings = MagicMock()
+        settings.equities_max_symbols = 7
+        settings.equities_allow_truncation = False
+        with patch("juniper_data.api.settings.get_settings", return_value=settings):
+            omitted = eq_gen.EquitiesGenerator.bind_deployment_defaults(EquitiesParams(allow_truncation=True))
+            explicit_default = eq_gen.EquitiesGenerator.bind_deployment_defaults(EquitiesParams(allow_truncation=True, max_symbols=eq_limits.EQUITIES_DEFAULT_MAX_SYMBOLS))
+        assert omitted.max_symbols == 7
+        assert explicit_default.max_symbols == 7
+        assert omitted.model_dump()["max_symbols"] == explicit_default.model_dump()["max_symbols"]
+
+        settings.equities_max_symbols = eq_limits.EQUITIES_DEFAULT_MAX_SYMBOLS
+        with patch("juniper_data.api.settings.get_settings", return_value=settings):
+            omitted_wide = eq_gen.EquitiesGenerator.bind_deployment_defaults(EquitiesParams(allow_truncation=True))
+        assert omitted_wide.max_symbols == eq_limits.EQUITIES_DEFAULT_MAX_SYMBOLS
+        assert omitted.model_dump()["max_symbols"] != omitted_wide.model_dump()["max_symbols"]
+
+        settings.equities_max_symbols = 7
+        settings.equities_allow_truncation = True
+        with patch("juniper_data.api.settings.get_settings", return_value=settings):
+            inherited = eq_gen.EquitiesGenerator.bind_deployment_defaults(EquitiesParams())
+        assert inherited.allow_truncation is True
+        assert inherited.model_dump()["allow_truncation"] is True

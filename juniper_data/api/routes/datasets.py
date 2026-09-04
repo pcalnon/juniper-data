@@ -129,6 +129,14 @@ async def create_dataset(
     # precisely the "the split falls out of the MRO, not design" finding.
     try:
         params = params_class(**request.params)
+        # APD-DATA-018: bind the effective cap / truncation opt-in before the
+        # cache hash. ``model_dump()`` fills Field defaults, so an omitted
+        # ``max_symbols`` hashed as 14 (or ``max_bytes`` as 128 MiB) even when
+        # generation used a tighter deployment ceiling -- and a later restart
+        # that raised the cap reused the truncated artifact.
+        binder = getattr(generator_class, "bind_deployment_defaults", None)
+        if callable(binder):
+            params = binder(params)
     except ValueError as e:
         record_dataset_post(
             generator=request.generator,
@@ -279,7 +287,7 @@ async def create_dataset(
     # truncation descriptor out BEFORE checksum + NPZ persist so the stored
     # arrays stay array-only. None for every generator that did not truncate,
     # which is all of them except a csv_import run that was explicitly
-    # authorised to produce a partial dataset.
+    # authorised to produce a partial dataset (csv_import or equities*).
     truncation_meta = pop_truncation_meta(arrays)
 
     checksum = compute_checksum(arrays)

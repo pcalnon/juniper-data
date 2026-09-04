@@ -87,6 +87,12 @@ class EquitiesSeqGenerator:
         return 'The "equities" extra is required. Install with: pip install "juniper-data[equities]"'
 
     @staticmethod
+    def bind_deployment_defaults(params: EquitiesSeqParams) -> EquitiesSeqParams:
+        """Same bind as the flat generator -- shared universe, shared cache-key obligation."""
+        bound = EquitiesGenerator.bind_deployment_defaults(params)
+        return bound  # EquitiesSeqParams is a subclass; model_copy preserves the type.
+
+    @staticmethod
     def generate(params: EquitiesSeqParams) -> dict[str, np.ndarray]:
         """Generate the windowed equities sequence dataset.
 

@@ -589,6 +589,48 @@ class TestGeneratorAvailability:
         assert response.status_code == 201
         assert response.json()["meta"]["truncation"] is None
 
+    def test_create_dataset_cache_does_not_reuse_tight_symbol_cap_after_operator_raises_it(self, client: TestClient, tmp_path: Path) -> None:
+        """A persisted truncation under a tight deployment cap must not be served
+        after the operator raises the cap. ``model_dump()`` fills Field defaults,
+        so omit-max_symbols hashed as 14 even when generation used 7.
+        """
+        import numpy as np
+
+        from juniper_data.core.limits import EQUITIES_DEFAULT_MAX_SYMBOLS, TRUNCATION_META_KEY
+        from juniper_data.generators.equities.generator import EquitiesGenerator
+
+        def _arrays(*, n: int, truncated: bool) -> dict:
+            x = np.zeros((n, 2), dtype=np.float32)
+            y = np.zeros((n, 2), dtype=np.float32)
+            y[:, 0] = 1.0
+            payload: dict = {
+                "X_train": x[: max(n - 1, 1)],
+                "y_train": y[: max(n - 1, 1)],
+                "X_test": x[max(n - 1, 1) :],
+                "y_test": y[max(n - 1, 1) :],
+                "X_full": x,
+                "y_full": y,
+            }
+            if truncated:
+                payload[TRUNCATION_META_KEY] = {"truncated": True, "reason": "universe_exceeded_symbol_cap", "unit": "symbols", "cap": n, "requested": 16, "imported": n, "records_imported": n}
+            return payload
+
+        request = {"generator": "equities", "params": {"symbols": [f"T{i:02d}" for i in range(16)], "allow_truncation": True}, "persist": True}
+        tight = Settings(storage_path=str(tmp_path), equities_max_symbols=7)
+        wide = Settings(storage_path=str(tmp_path), equities_max_symbols=EQUITIES_DEFAULT_MAX_SYMBOLS)
+
+        with patch("juniper_data.api.settings.get_settings", return_value=tight), patch.object(EquitiesGenerator, "generate", return_value=_arrays(n=7, truncated=True)):
+            first = client.post("/v1/datasets", json=request)
+        with patch("juniper_data.api.settings.get_settings", return_value=wide), patch.object(EquitiesGenerator, "generate", return_value=_arrays(n=14, truncated=True)):
+            second = client.post("/v1/datasets", json=request)
+
+        assert first.status_code == 201
+        assert second.status_code == 201
+        assert first.json()["dataset_id"] != second.json()["dataset_id"]
+        assert first.json()["meta"]["truncation"] is not None
+        assert first.json()["meta"]["n_samples"] == 7
+        assert second.json()["meta"]["n_samples"] == 14
+
     # ------------------------------------------------------------------
     # APD-DATA-004: the 501 detail must not echo an UNDECLARED ImportError.
     #

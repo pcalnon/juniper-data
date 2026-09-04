@@ -84,6 +84,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An equities cache hit ignored the effective symbol cap.** `POST /v1/datasets` hashed
+  `params.model_dump()`, which fills the Field default `max_symbols=14`. A request that omitted
+  the field under `JUNIPER_DATA_EQUITIES_MAX_SYMBOLS=7` (with truncation authorised) persisted a
+  7-symbol prefix, then a restart that raised the cap reused that artifact instead of regenerating.
+  The create route now binds the resolved cap and opt-in onto params before the hash — the same
+  obligation `csv_import` already documented for its byte cap.
+
 - **The Postgres store carried five hand-maintained copies of `DatasetMeta`'s field list, and every
   one had drifted.** The DDL, `_meta_to_row`, `_row_to_meta`, the upsert and the update each
   transcribed the same 30 fields independently. All five are now **derived from the model**, so a

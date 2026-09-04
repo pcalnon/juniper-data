@@ -326,6 +326,21 @@ class EquitiesGenerator:
         return cap, allow
 
     @staticmethod
+    def bind_deployment_defaults(params: EquitiesParams) -> EquitiesParams:
+        """Copy the effective symbol cap and truncation opt-in onto the params object.
+
+        ``generate_dataset_id`` hashes ``params.model_dump()``. Dump fills Field
+        defaults, so an omitted ``max_symbols`` is stored as 14 even when the
+        deployment cap is tighter (or ``allow_truncation`` is stored as false
+        even when the operator opted in globally). The create route binds first
+        so the cache key matches the policy that will actually run -- otherwise
+        a restart that raises the cap, or turns truncation off, keeps serving
+        the old truncated artifact for the same request.
+        """
+        cap, allow = EquitiesGenerator._resolve_bounds(params)
+        return params.model_copy(update={"max_symbols": cap, "allow_truncation": allow})
+
+    @staticmethod
     def _resolve_symbols(params: EquitiesParams, constituents: dict[str, dict[str, Any]]) -> tuple[list[str], dict[str, dict[str, Any]], dict[str, Any] | None]:
         """Resolve the ticker list and the ticker -> (name, cik) metadata map."""
         if params.symbols:
