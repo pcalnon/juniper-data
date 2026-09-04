@@ -133,12 +133,30 @@ class EquitiesSeqGenerator:
         vocab = sorted(conditioned)
         code_of = {ticker: code for code, ticker in enumerate(vocab)}
 
-        # Fit normalization on the full feature matrix across all tickers (the
-        # same statistic the flat generator uses), then window each ticker.
+        # Fit normalization on the TRAINING rows across all tickers (juniper-data#314),
+        # the same statistic the flat generator uses -- which was also fixed there.
+        #
+        # This previously fit on the concatenated FULL frames, including each ticker's
+        # chronologically-later test rows, and then applied those statistics to the training
+        # windows: look-ahead leakage. The per-ticker split boundary is already computed below
+        # as ``temporal_split_index(n_rows, params.train_ratio)``, so the training rows are
+        # available here and the same boundary is reused rather than re-derived.
+        #
+        # CONSEQUENCE, deliberate: test windows are no longer bounded by [0, 1]. Later rows
+        # legitimately exceed the training range, and that excursion is real signal rather
+        # than something to normalise away.
         norm = None
         if params.normalize_features:
-            full = pd.concat([conditioned[ticker] for ticker in vocab])
-            norm = EquitiesGenerator._fit_normalizer(full)
+            train_frames = []
+            for ticker in vocab:
+                frame = conditioned[ticker]
+                cut = temporal_split_index(len(frame), params.train_ratio)
+                if cut > 0:
+                    train_frames.append(frame.iloc[:cut])
+            # Every ticker rounding to zero training rows leaves nothing to fit on; fall back
+            # to the full frames rather than emitting all-NaN statistics.
+            fit_frames = train_frames if train_frames else [conditioned[ticker] for ticker in vocab]
+            norm = EquitiesGenerator._fit_normalizer(pd.concat(fit_frames))
 
         per_ticker: list[dict[str, dict[str, np.ndarray]]] = []
         for ticker in vocab:

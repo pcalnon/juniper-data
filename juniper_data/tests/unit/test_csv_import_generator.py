@@ -188,7 +188,13 @@ class TestCsvImportGenerator:
         assert result["y_full"].shape == (4, 1)
 
     def test_normalize_features(self, sample_csv_file: Path) -> None:
-        """Features should be normalized to [0, 1]."""
+        """The FITTED partition is normalized to [0, 1] (juniper-data#314).
+
+        This previously asserted the bound on ``X_full``, which held only because the
+        statistics were fit over every row -- test rows included -- and then applied to
+        train. Under a train-only fit the bound belongs to ``X_train``; rows outside the
+        training range legitimately fall outside [0, 1], and that is the point.
+        """
         params = CsvImportParams(
             file_path=sample_csv_file.name,
             normalize_features=True,
@@ -196,8 +202,8 @@ class TestCsvImportGenerator:
         )
         result = CsvImportGenerator.generate(params)
 
-        assert result["X_full"].min() >= 0.0
-        assert result["X_full"].max() <= 1.0
+        assert result["X_train"].min() >= 0.0
+        assert result["X_train"].max() <= 1.0 + 1e-6
 
     def test_file_not_found(self, import_dir: Path) -> None:
         """Should raise FileNotFoundError for missing file."""

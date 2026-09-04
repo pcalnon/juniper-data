@@ -219,9 +219,34 @@ class TestEquitiesGenerator:
         assert series.max() < 1e13
 
     def test_normalize_features_bounds(self) -> None:
+        """TRAIN is bounded by [0, 1]; later partitions are NOT (juniper-data#314).
+
+        This previously asserted the bound on ``X_full``, which passed only because the
+        normaliser was fit on the full matrix -- including the chronologically-later test
+        rows -- and then applied to train. That is look-ahead leakage, and the assertion was
+        pinning it in place without naming it.
+
+        Under a train-only fit the bound moves to ``X_train`` alone. Test rows exceeding the
+        training range is CORRECT: that excursion is real out-of-sample movement, and scaling
+        it away is exactly what the leak was doing.
+        """
         arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=13), "MSFT": _ohlcv(seed=14)}, _shares(), normalize_features=True)
-        matrix = arrays["X_full"]
-        assert matrix.min() >= -1e-6 and matrix.max() <= 1.0 + 1e-6
+        train = arrays["X_train"]
+        assert train.min() >= -1e-6 and train.max() <= 1.0 + 1e-6, "the fitted partition must be bounded"
+
+    def test_normaliser_is_fit_on_train_not_full(self) -> None:
+        """The regression guard. Would fail if the fit reverted to the full matrix.
+
+        A full-matrix fit bounds EVERY partition by construction, so an out-of-range test row
+        is positive evidence that the statistics came from train alone.
+        """
+        arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=13), "MSFT": _ohlcv(seed=14)}, _shares(), normalize_features=True)
+        assert arrays["X_test"].max() > 1.0 + 1e-6, "test rows should exceed the training range; a full-fit would clamp them to 1.0"
+
+    def test_unnormalised_output_is_unaffected(self) -> None:
+        """``normalize_features`` defaults to False, so the common path must not move."""
+        arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=13), "MSFT": _ohlcv(seed=14)}, _shares())
+        assert arrays["X_train"].max() > 1.0, "raw features are not in [0, 1]"
 
     def test_extra_arrays_survive_roundtrip(self, tmp_path) -> None:
         arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=15), "MSFT": _ohlcv(seed=16)}, _shares())

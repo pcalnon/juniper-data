@@ -69,12 +69,32 @@ class CsvImportGenerator:
             shuffle=params.shuffle,
         )
 
+        X_train = split_result["X_train"]
+        X_test = split_result["X_test"]
+        X_full = X
+
+        # Fit min-max on the TRAINING rows only, AFTER the split (juniper-data#314).
+        #
+        # This used to run inside ``_load_and_preprocess``, i.e. before the split existed, so
+        # the statistics were necessarily fit over every row -- test rows included -- and then
+        # applied to the training features. Splitting first is what makes a train-only fit
+        # possible at all here.
+        #
+        # CONSEQUENCE, deliberate: ``X_test`` and ``X_full`` are no longer bounded by [0, 1];
+        # rows outside the training range legitimately fall outside it. Only ``X_train`` is
+        # bounded. That is decision 7 of the ecosystem partition design.
+        if params.normalize_features:
+            minimum, scale = CsvImportGenerator._fit_minmax(X_train if X_train.shape[0] else X_full)
+            X_train = CsvImportGenerator._apply_minmax(X_train, minimum, scale)
+            X_test = CsvImportGenerator._apply_minmax(X_test, minimum, scale)
+            X_full = CsvImportGenerator._apply_minmax(X_full, minimum, scale)
+
         result: dict[str, Any] = {
-            "X_train": split_result["X_train"],
+            "X_train": X_train,
             "y_train": split_result["y_train"],
-            "X_test": split_result["X_test"],
+            "X_test": X_test,
             "y_test": split_result["y_test"],
-            "X_full": X,
+            "X_full": X_full,
             "y_full": y,
         }
 
@@ -112,6 +132,25 @@ class CsvImportGenerator:
         cap = params.max_bytes if "max_bytes" in params.model_fields_set else settings.csv_import_max_bytes
         allow = bool(params.allow_truncation or settings.csv_import_allow_truncation)
         return cap, allow
+
+    @staticmethod
+    def _fit_minmax(matrix: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Per-feature minimum and range for [0, 1] scaling, fit on the given rows.
+
+        A zero-range (constant) feature gets a range of 1 so scaling leaves it at 0 rather
+        than dividing by zero.
+        """
+        minimum = matrix.min(axis=0, keepdims=True)
+        scale = matrix.max(axis=0, keepdims=True) - minimum
+        scale[scale == 0] = 1
+        return minimum, scale
+
+    @staticmethod
+    def _apply_minmax(matrix: np.ndarray, minimum: np.ndarray, scale: np.ndarray) -> np.ndarray:
+        """Apply previously-fit statistics. Empty input passes through unchanged."""
+        if matrix.shape[0] == 0:
+            return matrix
+        return ((matrix - minimum) / scale).astype(np.float32)
 
     @staticmethod
     def _load_and_preprocess(params: CsvImportParams) -> tuple[np.ndarray, np.ndarray, dict[str, Any] | None]:
@@ -340,12 +379,10 @@ class CsvImportGenerator:
 
         X = np.array(features, dtype=np.float32)
 
-        if params.normalize_features:
-            X_min = X.min(axis=0, keepdims=True)
-            X_max = X.max(axis=0, keepdims=True)
-            X_range = X_max - X_min
-            X_range[X_range == 0] = 1
-            X = (X - X_min) / X_range
+        # NOTE (juniper-data#314): normalisation deliberately does NOT happen here.
+        # This function runs BEFORE ``shuffle_and_split``, so fitting here necessarily fits on
+        # every row including the test rows -- look-ahead leakage. ``generate`` now splits
+        # first and fits on the training rows only. See ``_fit_minmax`` / ``_apply_minmax``.
 
         unique_labels = sorted([str(lbl) for lbl in set(labels)])
         label_to_idx = {label: idx for idx, label in enumerate(unique_labels)}

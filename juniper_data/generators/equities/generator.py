@@ -211,8 +211,29 @@ class EquitiesGenerator:
         train = pd.concat(train_frames) if train_frames else full.iloc[:0]
         test = pd.concat(test_frames) if test_frames else full.iloc[:0]
 
-        # Fit normalization statistics on the full feature matrix (if requested).
-        norm = EquitiesGenerator._fit_normalizer(full) if params.normalize_features else None
+        # Fit normalization statistics on the TRAINING rows only (juniper-data#314).
+        #
+        # This previously fit on ``full`` -- every row, pooled across tickers, INCLUDING the
+        # chronologically-later test rows -- and then applied those statistics to ``train``.
+        # That is look-ahead leakage: the training features were scaled by a maximum that
+        # exists only in the future relative to them.
+        #
+        # Fitting on ``train`` is decision 7 of the ecosystem partition design
+        # (juniper-ml notes/JUNIPER_2026-08-29_JUNIPER-ECOSYSTEM_TRAIN-EVAL-TEST-PARTITION-DESIGN.md):
+        # no quantity derived from a later partition may reach the training data.
+        #
+        # CONSEQUENCE, deliberate: ``X_full`` and ``X_test`` are no longer guaranteed to lie
+        # within [0, 1]. They are scaled by train's statistics, and later rows legitimately
+        # exceed the training range -- that excursion IS the information the old code was
+        # leaking away. Only ``X_train`` is bounded now.
+        #
+        # ``train`` is empty only when train_ratio rounds every ticker to zero rows; fall back
+        # to ``full`` there rather than emitting all-NaN statistics, since a degenerate request
+        # has no training distribution to learn from and there is nothing to leak into.
+        norm = None
+        if params.normalize_features:
+            fit_frame = train if len(train) > 0 else full
+            norm = EquitiesGenerator._fit_normalizer(fit_frame)
 
         arrays: dict[str, np.ndarray] = {}
         for name, frame in (("full", full), ("train", train), ("test", test)):
