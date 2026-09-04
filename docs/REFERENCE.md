@@ -11,6 +11,7 @@
 
 - [API Reference](#api-reference)
 - [Configuration Reference](#configuration-reference)
+- [Rate-Limit Window](#rate-limit-window)
 - [Storage Backend Notes](#storage-backend-notes)
 - [Command Reference](#command-reference)
 - [Test Reference](#test-reference)
@@ -93,8 +94,9 @@ All environment variables use the `JUNIPER_DATA_` prefix and are managed by Pyda
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `JUNIPER_DATA_API_KEYS` | JSON list | *(none)* | `["key1", "key2"]` -- enables API key auth |
-| `JUNIPER_DATA_RATE_LIMIT_ENABLED` | bool | `false` | Enable request rate limiting |
-| `JUNIPER_DATA_RATE_LIMIT_REQUESTS_PER_MINUTE` | int | `60` | Requests per minute per client |
+| `JUNIPER_DATA_RATE_LIMIT_ENABLED` | bool | `true` | Enable request rate limiting |
+| `JUNIPER_DATA_RATE_LIMIT_REQUESTS_PER_MINUTE` | int | `60` | Max requests **per window** per client (name is historical) |
+| `JUNIPER_DATA_RATE_LIMIT_WINDOW_SECONDS` | int | `60` | Length of that window (`Settings.rate_limit_window_seconds`) |
 | `JUNIPER_DATA_CORS_ORIGINS` | JSON list | `["*"]` | Allowed CORS origins |
 
 #### Observability Settings
@@ -178,6 +180,69 @@ skips = ["B101", "B311"]
 
 - `B101`: Skip assert checks (used extensively in tests)
 - `B311`: Skip random usage warnings (used for data generation)
+
+---
+
+## Rate-Limit Window
+
+`RateLimiter` is a fixed-window, in-memory, single-process quota. It has always taken three constructor knobs — `enabled`, `requests_per_minute` (the count), and `window_seconds` (the duration) — and uses the window in three places: `self._window`, the `TTLCache` TTL, and the `window` property.
+
+Until APD-DATA-033 / #297, `create_app` passed only the first two, so the window was pinned to `DEFAULT_RATE_LIMIT_WINDOW_SECONDS` (60). That constant was never unwired; the gap was the missing operator-facing setting.
+
+`Settings.rate_limit_window_seconds` is now overridable as `JUNIPER_DATA_RATE_LIMIT_WINDOW_SECONDS`. The setting default is the same object as the `RateLimiter` constructor default, not a second literal.
+
+### What the names actually mean
+
+`rate_limit_requests_per_minute` is the **count per window**, not "per 60 seconds" when the window is not 60. Setting `JUNIPER_DATA_RATE_LIMIT_WINDOW_SECONDS=300` and leaving the count at 60 allows 60 requests every five minutes, not 60/min.
+
+There is no `Field(gt=0)` on the window (unlike `csv_import_max_bytes`). Keep it a positive integer. `0` makes `now - window_start >= self._window` true on every check, so the window never holds.
+
+### How a request is counted
+
+1. Exempt paths (`EXEMPT_PATHS`: `/v1/health`, `/v1/health/live`, `/v1/health/ready`, `/metrics`, `/metrics/`) skip **both** this limiter and the failed-auth throttle. `/docs` / `/redoc` are not mounted when keys are configured; `/openapi.json` is mounted and authenticated like any other route (APD-DATA-024) — it consumes quota.
+2. Key: `key:{api_key}` when a key authenticated the request, else `ip:{client_ip}`.
+3. First hit in a window: count 1, remaining `limit - 1`, reset `window` seconds.
+4. Over the count: HTTP **429** with `X-RateLimit-Limit`, `X-RateLimit-Remaining: 0`, `X-RateLimit-Reset`, and `Retry-After`. Allowed responses get the same three `X-RateLimit-*` headers.
+5. Cache: `TTLCache(maxsize=10_000, ttl=window_seconds)`. A one-shot warning fires at 80% occupancy.
+
+Default `rate_limit_enabled` is **true** (`_JUNIPER_DATA_API_RATELIMIT_ENABLED`). Disable with `JUNIPER_DATA_RATE_LIMIT_ENABLED=false`.
+
+### Not this knob
+
+`FailedAuthThrottle` is a separate pre-auth, IP-keyed budget (10 failures / 60 s). It is not wired to `Settings.rate_limit_window_seconds`. It only consumes budget on a **failed** credential. A 429 from the identity-keyed limiter is not recorded as an auth failure.
+
+### Operator usage
+
+```bash
+# Default: 60 requests per 60-second window, enabled.
+export JUNIPER_DATA_RATE_LIMIT_ENABLED=true
+export JUNIPER_DATA_RATE_LIMIT_REQUESTS_PER_MINUTE=60
+export JUNIPER_DATA_RATE_LIMIT_WINDOW_SECONDS=60
+
+# Stricter: 7 requests per 5-minute window (the pin in test_configured_window_reaches_the_live_rate_limiter).
+export JUNIPER_DATA_RATE_LIMIT_REQUESTS_PER_MINUTE=7
+export JUNIPER_DATA_RATE_LIMIT_WINDOW_SECONDS=300
+```
+
+In-process only. Multiple uvicorn workers do not share counters. Restarting the process resets every bucket.
+
+### What not to do
+
+- Do not treat `REQUESTS_PER_MINUTE` as a true per-minute rate when the window is not 60 s.
+- Do not expect `JUNIPER_DATA_RATE_LIMIT_WINDOW_SECONDS` to change the failed-auth throttle.
+- Do not set the window to `0` or a negative value — there is no settings-layer reject.
+- Do not assume a second replica sees the first replica's counts.
+
+### Pins (on `main`)
+
+| Test | File | Guards |
+|------|------|--------|
+| `test_window_default_matches_the_limiter_constructor_default` | `tests/unit/test_api_settings.py` | Setting default is `DEFAULT_RATE_LIMIT_WINDOW_SECONDS`, not a second literal |
+| `test_window_is_settable_from_the_environment` | same | `JUNIPER_DATA_RATE_LIMIT_WINDOW_SECONDS=300` parses |
+| `test_configured_window_reaches_the_live_rate_limiter` | same | `create_app` passes the window onto the live `RateLimiter` (count 7, window 300) |
+| `test_window_property_returns_configured_seconds` | `tests/unit/test_security.py` | Constructor window is readable |
+| `test_check_resets_after_window_expiry` | same | Count resets once `now - window_start >= window` |
+| `test_call_raises_429_when_over_limit` | same | Over-limit path is 429 |
 
 ---
 

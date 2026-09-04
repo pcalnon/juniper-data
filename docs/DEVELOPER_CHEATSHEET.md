@@ -86,7 +86,8 @@ All use `JUNIPER_DATA_` prefix (pydantic-settings in `juniper_data/api/settings.
 | `JUNIPER_DATA_LOG_FORMAT`                     | `text`            | `text` or `json` (structured JSON logging)    |
 | `JUNIPER_DATA_API_KEYS`                       | *(none)*          | Comma-separated API keys; unset = open access |
 | `JUNIPER_DATA_RATE_LIMIT_ENABLED`             | `true`            | Enable rate limiting                          |
-| `JUNIPER_DATA_RATE_LIMIT_REQUESTS_PER_MINUTE` | `60`              | Max requests/min per client                   |
+| `JUNIPER_DATA_RATE_LIMIT_REQUESTS_PER_MINUTE` | `60`              | Max requests **per window** per client        |
+| `JUNIPER_DATA_RATE_LIMIT_WINDOW_SECONDS`      | `60`              | Window length (`APD-DATA-033`)                |
 | `JUNIPER_DATA_CORS_ORIGINS`                   | `[]`              | Allowed CORS origins                          |
 | `JUNIPER_DATA_METRICS_ENABLED`                | `false`           | Prometheus `/metrics` endpoint                |
 | `JUNIPER_DATA_SENTRY_DSN`                     | *(none)*          | Sentry DSN for error tracking                 |
@@ -94,6 +95,21 @@ All use `JUNIPER_DATA_` prefix (pydantic-settings in `juniper_data/api/settings.
 **Add a setting:** Add field to `Settings` in `settings.py`, define `_JUNIPER_DATA_*` default constant. Auto-maps to `JUNIPER_DATA_<FIELD>` env var.
 
 > See: [REFERENCE.md -- Configuration](REFERENCE.md#configuration-reference)
+
+---
+
+## Rate-limit window
+
+The identity-keyed limiter is a fixed window. `JUNIPER_DATA_RATE_LIMIT_REQUESTS_PER_MINUTE` is the **count per window**, not a true per-minute rate when the window is not 60 s. Set the duration with `JUNIPER_DATA_RATE_LIMIT_WINDOW_SECONDS` (default 60; APD-DATA-033 / #297). Default `JUNIPER_DATA_RATE_LIMIT_ENABLED` is `true`. This knob does not move the failed-auth throttle (10 failures / 60 s, IP-keyed, only on 401). In-memory, per process.
+
+```bash
+export JUNIPER_DATA_RATE_LIMIT_REQUESTS_PER_MINUTE=7
+export JUNIPER_DATA_RATE_LIMIT_WINDOW_SECONDS=300   # 7 requests / 5 minutes
+```
+
+429 responses carry `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, and `Retry-After`.
+
+> See: [REFERENCE.md -- Rate-Limit Window](REFERENCE.md#rate-limit-window)
 
 ---
 
@@ -204,7 +220,7 @@ pre-commit install --hook-type pre-push  # coverage gate (one-time)
 |-------------------------|--------------------|----------------------------------------------------------|
 | `ruff` not found        | Dev extras missing | `pip install -e ".[dev]"`                                |
 | 401 Unauthorized        | API keys set       | Pass `X-API-Key` header or unset `JUNIPER_DATA_API_KEYS` |
-| 429 Too Many Requests   | Rate limiter       | Wait, or `JUNIPER_DATA_RATE_LIMIT_ENABLED=false`         |
+| 429 Too Many Requests   | Rate limiter (or failed-auth throttle) | Wait `Retry-After`; or raise `JUNIPER_DATA_RATE_LIMIT_WINDOW_SECONDS` / count; or `JUNIPER_DATA_RATE_LIMIT_ENABLED=false`. The failed-auth 429 is a different budget (10/60 s on 401s). See [Rate-Limit Window](REFERENCE.md#rate-limit-window). |
 | Storage path error      | Dir missing        | Set `JUNIPER_DATA_STORAGE_PATH` to writable path         |
 | `ImportError: redis`    | Optional backend   | `pip install redis`                                      |
 | Coverage pre-push fails | Below threshold    | Add tests; see `scripts/check_module_coverage.py`        |
