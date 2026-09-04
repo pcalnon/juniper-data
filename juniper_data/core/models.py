@@ -59,6 +59,18 @@ class DatasetMeta(BaseModel):
     dt_scaling: dict[str, Any] | None = None
     target_scaling: dict[str, Any] | None = None
 
+    # APD-DATA-018: PERMANENT record that this dataset is partial.
+    #
+    # None means complete. A dict means the source exceeded its byte cap and the
+    # caller authorised a partial import; it carries `truncated`, `reason`,
+    # `bytes_read`, `bytes_total`, `cap_bytes` and `records_imported`.
+    #
+    # This is metadata, not a warning: it is persisted with the artifact and
+    # survives every later read, so a consumer that never saw the HTTP response
+    # -- a trainer loading the NPZ months later -- still learns the data is a
+    # prefix of its source. The HTTP response is transient; this is not.
+    truncation: dict[str, Any] | None = None
+
     # Artifacts
     artifact_formats: list[str] = Field(default_factory=lambda: ["npz"])
 
