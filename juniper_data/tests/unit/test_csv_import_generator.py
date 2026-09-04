@@ -560,3 +560,76 @@ class TestInputByteCap:
     def test_pop_truncation_meta_returns_none_when_absent(self) -> None:
         """None, not {} -- so ``meta.truncation`` alone answers "is this partial"."""
         assert pop_truncation_meta({"X_full": np.zeros((1, 1), dtype=np.float32)}) is None
+
+    # ------------------------------------------------------------------
+    # The bound must not be defeatable by the party it exists to bound.
+    # Both arms below pin a finding raised in review on juniper-data#326.
+    # ------------------------------------------------------------------
+
+    def test_request_cannot_RAISE_the_deployment_cap(self, bounded_import_dir) -> None:
+        """A request may only lower the cap. Otherwise the DoS bound is caller-controlled.
+
+        The first draft let an explicitly-supplied ``max_bytes`` win outright,
+        so ``max_bytes: 10000000000`` skipped the cap entirely -- and a
+        generated client that serialises schema defaults would have silently
+        raised a *lower* operator ceiling on every request. The existing
+        override arm only covers tightening, which is why this one exists.
+        """
+        directory, _ = bounded_import_dir
+        self._wide_csv(directory)
+        with pytest.raises(InputTooLargeError) as excinfo:
+            CsvImportGenerator.generate(CsvImportParams(file_path="wide.csv", max_bytes=10_000_000_000))
+        # The operator's ceiling is what governs, not the caller's request.
+        assert excinfo.value.cap_bytes == TINY_CAP_BYTES
+
+    def test_a_lying_stat_does_not_bypass_the_cap(self, bounded_import_dir) -> None:
+        """The READ enforces the bound; ``stat`` is only a cheap pre-check.
+
+        A FIFO reports ``st_size == 0``, and a file in a shared ``import_dir``
+        can grow between the stat and the open. Either takes the under-cap
+        branch on stat's word alone, so the ingestion path must re-check what it
+        actually read rather than trusting the number it was told.
+        """
+        directory, _ = bounded_import_dir
+        path = self._wide_csv(directory)
+        real_stat = Path.stat
+
+        class _FakeStat:
+            """Reports st_size == 0 the way a FIFO does, delegating everything else."""
+
+            def __init__(self, real) -> None:  # noqa: ANN001
+                self._real = real
+                self.st_size = 0
+
+            def __getattr__(self, item):  # noqa: ANN001, ANN204
+                return getattr(self._real, item)
+
+        def lying_stat(self, *args, **kwargs):  # noqa: ANN001, ANN202
+            result = real_stat(self, *args, **kwargs)
+            return _FakeStat(result) if self.name == path.name else result
+
+        with patch.object(Path, "stat", lying_stat), pytest.raises(InputTooLargeError):
+            CsvImportGenerator.generate(CsvImportParams(file_path="wide.csv"))
+
+    def test_non_positive_cap_is_refused_rather_than_inverting_read(self) -> None:
+        """``read(n)`` with n < 0 means "read everything" -- the cap's exact opposite.
+
+        Reachable only through operator misconfiguration, which is why
+        ``Settings.csv_import_max_bytes`` carries ``gt=0``; this is the second
+        line of that defence, at the one place bytes are actually ingested.
+        """
+        with pytest.raises(ValueError, match="must be positive"):
+            CsvImportGenerator._read_capped_bytes(Path("/dev/null"), -1)
+        with pytest.raises(ValueError, match="must be positive"):
+            CsvImportGenerator._read_capped_bytes(Path("/dev/null"), 0)
+
+    def test_settings_reject_a_non_positive_cap(self) -> None:
+        """A mistyped env var must fail deployment loudly, not silently unbound the read."""
+        from pydantic import ValidationError
+
+        from juniper_data.api.settings import Settings
+
+        with pytest.raises(ValidationError):
+            Settings(csv_import_max_bytes=-1)
+        with pytest.raises(ValidationError):
+            Settings(csv_import_max_bytes=0)

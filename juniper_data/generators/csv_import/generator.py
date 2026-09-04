@@ -113,23 +113,33 @@ class CsvImportGenerator:
     def _resolve_bounds(params: CsvImportParams) -> tuple[int, bool]:
         """Resolve the effective byte cap and truncation opt-in for this request.
 
-        Precedence is *request over deployment*, and it is asymmetric on purpose:
+        **A request may only LOWER the cap, never raise it.** The deployment
+        value is a ceiling, and the effective cap is the minimum of the two.
 
-        * ``max_bytes`` -- an explicitly-supplied request value wins; otherwise
-          the deployment default applies. ``model_fields_set`` is what
-          distinguishes "the caller asked for the schema default" from "the
-          caller said nothing", which a plain equality check against the default
-          cannot do.
-        * ``allow_truncation`` -- a logical OR. Either the caller opts in for
-          this request, or the deployment has opted in for every request. There
-          is no way to opt *out* of a deployment-wide opt-in, because the
-          deployment operator is the more privileged party.
+        This was not the first design, and the first one was wrong. It let an
+        explicitly-supplied ``max_bytes`` win outright, which made the DoS bound
+        caller-controlled: ``max_bytes: 10000000000`` on a request skipped the
+        cap entirely. It also inverted the privilege model used one line below
+        for ``allow_truncation`` -- there the operator's choice cannot be undone
+        by a client, and there is no reason the byte bound should be weaker.
+
+        The subtler half is why ``model_fields_set`` alone cannot carry this:
+        **a generated client that serialises schema defaults sends
+        ``max_bytes=134217728`` on every request**, which marks the field as
+        explicitly set and would override a *lower* operator ceiling without
+        anyone intending it. Clamping makes that harmless.
+
+        ``allow_truncation`` stays a logical OR for the same reason in the same
+        direction: either the caller opts in for this request, or the deployment
+        has opted in for every request, and a client cannot opt *out* of the
+        operator's choice.
 
         Returns:
             ``(cap_bytes, allow_truncation)``.
         """
         settings = get_settings()
-        cap = params.max_bytes if "max_bytes" in params.model_fields_set else settings.csv_import_max_bytes
+        requested = params.max_bytes if "max_bytes" in params.model_fields_set else settings.csv_import_max_bytes
+        cap = min(requested, settings.csv_import_max_bytes)
         allow = bool(params.allow_truncation or settings.csv_import_allow_truncation)
         return cap, allow
 
@@ -187,35 +197,83 @@ class CsvImportGenerator:
             else:
                 raise ValueError(f"Cannot auto-detect format for extension: {suffix}")
 
-        # APD-DATA-018: decide the bound BEFORE reading a byte. stat() is O(1);
-        # discovering the size by reading the file is precisely the cost the cap
-        # exists to avoid.
+        # APD-DATA-018.
+        #
+        # ``stat()`` is a CHEAP PRE-CHECK, not the bound. It is consulted first
+        # because refusing an obviously-oversized source without reading it is
+        # free -- but nothing is ever ingested on its authority. **The read is
+        # what enforces the cap**, and it reads at most ``cap_bytes + 1``.
+        #
+        # An earlier draft trusted ``stat`` and, when it reported a size within
+        # the cap, handed the file to a loader that consumed to EOF. Three ways
+        # that bypasses the bound entirely:
+        #
+        # * **TOCTOU.** ``import_dir`` is shared and a copy may still be in
+        #   progress, so the file can grow or be replaced between the stat and
+        #   the open.
+        # * **FIFOs report ``st_size == 0``**, take the under-cap branch, and
+        #   then block or stream without limit.
+        # * **A negative cap inverts ``read()``** -- Python treats ``read(n)``
+        #   with ``n < 0`` as "read everything" -- reachable via a bad env var.
+        #   ``Settings.csv_import_max_bytes`` now carries ``gt=0`` so the value
+        #   cannot get here, and this path never calls ``read`` with the cap
+        #   unguarded anyway.
         cap_bytes, allow_truncation = CsvImportGenerator._resolve_bounds(params)
-        bytes_total = path.stat().st_size
+        stat_bytes = path.stat().st_size
 
-        if bytes_total <= cap_bytes:
-            data = CsvImportGenerator._load_csv(path, params) if file_format == "csv" else CsvImportGenerator._load_json(path, params)
+        # Cheap refusal: obviously over the cap, and no opt-in. No read at all.
+        if stat_bytes > cap_bytes and not allow_truncation:
+            raise InputTooLargeError(source=params.file_path, bytes_total=stat_bytes, cap_bytes=cap_bytes)
+
+        # One byte past the cap is what distinguishes "fits exactly" from
+        # "there is more"; without it a source of exactly cap_bytes and one of
+        # cap_bytes + 1 are indistinguishable.
+        raw = CsvImportGenerator._read_capped_bytes(path, cap_bytes + 1)
+        over_cap = len(raw) > cap_bytes
+
+        if not over_cap:
+            text = raw.decode(CHARSET_UTF8, errors="strict")
+            data = CsvImportGenerator._parse_csv_text(text, params, drop_trailing_partial=False) if file_format == "csv" else CsvImportGenerator._parse_json_text(text, tolerate_truncated=False)
             X, y = CsvImportGenerator._convert_to_arrays(data, params)
             return X, y, None
 
+        # Over the cap by the READ, whatever stat claimed. Catches the FIFO and
+        # the grew-after-stat cases, which the pre-check above cannot see.
         if not allow_truncation:
-            raise InputTooLargeError(source=params.file_path, bytes_total=bytes_total, cap_bytes=cap_bytes)
+            raise InputTooLargeError(source=params.file_path, bytes_total=max(stat_bytes, len(raw)), cap_bytes=cap_bytes)
 
-        chunk = CsvImportGenerator._read_capped_text(path, cap_bytes)
+        chunk = CsvImportGenerator._trim_to_record_boundary(raw[:cap_bytes])
         data = CsvImportGenerator._parse_csv_text(chunk, params, drop_trailing_partial=True) if file_format == "csv" else CsvImportGenerator._parse_json_text(chunk, tolerate_truncated=True)
 
         X, y = CsvImportGenerator._convert_to_arrays(data, params)
         truncation = build_truncation_meta(
             bytes_read=len(chunk.encode(CHARSET_UTF8)),
-            bytes_total=bytes_total,
+            # A source whose real size the stat under-reports (a FIFO) has no
+            # knowable total; report the larger of what stat said and what was
+            # actually observed, which is a true lower bound either way.
+            bytes_total=max(stat_bytes, len(raw)),
             cap_bytes=cap_bytes,
             records_imported=len(data),
         )
         return X, y, truncation
 
     @staticmethod
-    def _read_capped_text(path: Path, cap_bytes: int) -> str:
-        """Read at most ``cap_bytes`` and return text trimmed to a line boundary.
+    def _read_capped_bytes(path: Path, limit: int) -> bytes:
+        """Read at most ``limit`` bytes. The only ingestion path in this module.
+
+        ``limit`` is asserted positive rather than trusted: ``read(n)`` with
+        ``n < 0`` means "read everything" in Python, so a negative value here
+        would turn the cap into its own opposite. The settings field carries
+        ``gt=0``, and this is the second line of that defence.
+        """
+        if limit <= 0:
+            raise ValueError(f"csv_import byte cap must be positive, got {limit}. A non-positive cap would make read() unbounded.")
+        with open(path, "rb") as handle:
+            return handle.read(limit)
+
+    @staticmethod
+    def _trim_to_record_boundary(raw: bytes) -> str:
+        """Decode a capped chunk and discard anything after the final newline.
 
         Two distinct hazards are handled here, and both are silent if missed:
 
@@ -228,17 +286,9 @@ class CsvImportGenerator:
           ``_convert_to_arrays`` turns into the existing "No data found in file"
           error -- the correct outcome, since not one whole record fits.
         """
-        with open(path, "rb") as handle:
-            raw = handle.read(cap_bytes)
         text = raw.decode(CHARSET_UTF8, errors="ignore")
         cut = text.rfind("\n")
         return "" if cut == -1 else text[: cut + 1]
-
-    @staticmethod
-    def _load_csv(path: Path, params: CsvImportParams) -> list[dict]:
-        """Load data from CSV file (whole file; the source is within its cap)."""
-        with open(path, newline="", encoding=CHARSET_UTF8) as f:
-            return CsvImportGenerator._parse_csv_stream(f, params, drop_trailing_partial=False)
 
     @staticmethod
     def _parse_csv_text(text: str, params: CsvImportParams, *, drop_trailing_partial: bool) -> list[dict]:
@@ -285,12 +335,6 @@ class CsvImportGenerator:
             data.pop()
 
         return data
-
-    @staticmethod
-    def _load_json(path: Path, params: CsvImportParams) -> list[dict]:
-        """Load data from JSON file (whole file; the source is within its cap)."""
-        with open(path, encoding=CHARSET_UTF8) as f:
-            return CsvImportGenerator._parse_json_text(f.read(), tolerate_truncated=False)
 
     @staticmethod
     def _parse_json_text(content: str, *, tolerate_truncated: bool) -> list[dict]:

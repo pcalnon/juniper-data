@@ -58,7 +58,7 @@ TRUNCATION_META_KEY = "truncation"
 # degrading to 13.6 MB/s at 35 MB). 128 MiB is therefore ~8.9 s of parsing,
 # inside the ~30 s client budget with room for split, checksum and NPZ persist.
 #
-# The binding constraint above this size is memory, not time: ``_load_csv``
+# The binding constraint above this size is memory, not time: the CSV parser
 # materialises one Python dict per row before any array exists, so 128 MiB of
 # 20-feature rows is ~700k dicts and several GB of peak objects. Raising this
 # without also making the loader streaming trades a timeout for an OOM.

@@ -28,9 +28,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   **Truncation is opt-in, through three surfaces.** `allow_truncation` as a request parameter, the
   `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION` environment variable, or the matching `.env` entry. The
-  cap itself is `max_bytes` / `JUNIPER_DATA_CSV_IMPORT_MAX_BYTES`. An explicitly-supplied request
-  `max_bytes` overrides the deployment default; `allow_truncation` is a logical OR, because a
-  deployment operator opting in for every request is the more privileged party.
+  cap itself is `max_bytes` / `JUNIPER_DATA_CSV_IMPORT_MAX_BYTES`.
+
+  **The bound cannot be defeated by the party it bounds.** A request may only *lower* the cap — the
+  effective value is `min(requested, deployment)` — so `max_bytes: 10000000000` cannot skip it, and a
+  generated client that serialises schema defaults cannot silently raise a lower operator ceiling.
+  `allow_truncation` is a logical OR for the same reason in the same direction: a client cannot opt
+  *out* of an operator's choice. **`stat` is only a cheap pre-check, never the bound** — the read
+  itself is capped and re-checks what it actually got, so a FIFO (which reports `st_size == 0`) or a
+  file that grows between the stat and the open cannot slip past. `JUNIPER_DATA_CSV_IMPORT_MAX_BYTES`
+  is constrained `> 0`, because Python reads `read(n)` with `n < 0` as "read everything" — a mistyped
+  environment variable would otherwise invert the cap into its opposite.
 
   **An authorised truncation is recorded permanently.** `DatasetMeta.truncation` carries
   `truncated`, `reason`, `bytes_read`, `bytes_total`, `cap_bytes` and `records_imported`, and is

@@ -4,7 +4,7 @@
 from functools import lru_cache
 from typing import Any
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from juniper_data.api.constants import DEFAULT_RATE_LIMIT_WINDOW_SECONDS
@@ -204,7 +204,12 @@ class Settings(BaseSettings):
     # owner's three required opt-in surfaces at once: request parameter,
     # JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION environment variable, and the
     # matching .env / config-file entry.
-    csv_import_max_bytes: int = _JUNIPER_DATA_API_CSV_IMPORT_MAX_BYTES_DEFAULT
+    # ``gt=0`` is load-bearing, not decoration. Python's ``read(n)`` treats a
+    # NEGATIVE n as "read everything", so a cap of -1 arriving from a mistyped
+    # environment variable would turn the bound into its exact opposite --
+    # silently, and only on the ingestion path. Rejecting it at settings
+    # construction fails the deployment loudly instead.
+    csv_import_max_bytes: int = Field(default=_JUNIPER_DATA_API_CSV_IMPORT_MAX_BYTES_DEFAULT, gt=0)
     csv_import_allow_truncation: bool = _JUNIPER_DATA_API_CSV_IMPORT_ALLOW_TRUNCATION_DEFAULT
 
     rate_limit_enabled: bool = _JUNIPER_DATA_API_RATELIMIT_ACTIVE_DEFAULT
