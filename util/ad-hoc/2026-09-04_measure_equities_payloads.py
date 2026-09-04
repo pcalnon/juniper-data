@@ -96,7 +96,12 @@ def measure_sec(cik: int) -> tuple[float, int, int]:
         for unit_rows in payload.get("units", {}).values():
             facts += len(unit_rows)
     except json.JSONDecodeError:
-        pass
+        # The byte count and timing are still valid measurements -- they are what
+        # this function exists to report -- but a non-JSON body means the fact
+        # count is unknowable, and returning 0 silently would be reported as
+        # "an empty concept" rather than "a body we could not parse". Say so.
+        print(f"    CIK {cik}: response was not JSON ({len(raw)} bytes); fact count unavailable")
+        return elapsed, len(raw), -1
     return elapsed, len(raw), facts
 
 
