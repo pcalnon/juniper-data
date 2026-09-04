@@ -207,6 +207,20 @@ class Settings(BaseSettings):
     csv_import_max_bytes: int = _JUNIPER_DATA_API_CSV_IMPORT_MAX_BYTES_DEFAULT
     csv_import_allow_truncation: bool = _JUNIPER_DATA_API_CSV_IMPORT_ALLOW_TRUNCATION_DEFAULT
 
+    @field_validator("csv_import_max_bytes")
+    @classmethod
+    def _csv_import_max_bytes_must_be_positive(cls, v: int) -> int:
+        """Reject 0 and negative caps.
+
+        ``io.BufferedReader.read(n)`` with ``n < 0`` reads until EOF, so
+        ``JUNIPER_DATA_CSV_IMPORT_MAX_BYTES=-1`` plus truncation opt-in would
+        ingest the whole source unbounded -- the APD-DATA-018 failure mode
+        this setting exists to close.
+        """
+        if v <= 0:
+            raise ValueError("csv_import_max_bytes must be greater than 0")
+        return v
+
     rate_limit_enabled: bool = _JUNIPER_DATA_API_RATELIMIT_ACTIVE_DEFAULT
     rate_limit_requests_per_minute: int = _JUNIPER_DATA_API_RATELIMIT_DEFAULT
     rate_limit_window_seconds: int = _JUNIPER_DATA_API_RATELIMIT_WINDOW_DEFAULT

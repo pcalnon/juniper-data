@@ -588,6 +588,42 @@ class TestGeneratorAvailability:
         assert response.status_code == 201
         assert response.json()["meta"]["truncation"] is None
 
+    def test_create_dataset_cache_does_not_reuse_tight_cap_for_explicit_wide_cap(self, client: TestClient, tmp_path: Path) -> None:
+        """A persisted truncation under the deployment cap must not be served to
+        a later request that explicitly asked for the 128 MiB schema default.
+
+        ``model_dump()`` fills Field defaults, so omit-max_bytes and
+        explicit-128MiB hashed to the same dataset_id while the generator
+        treated them as different caps.
+        """
+        source = tmp_path / "big.csv"
+        source.write_text("feature1,feature2,label\n" + "".join(f"{i}.0,{i + 1}.0,A\n" for i in range(40)))
+
+        from juniper_data.core.limits import CSV_IMPORT_DEFAULT_MAX_BYTES
+
+        bounded = Settings(storage_path=str(tmp_path), import_dir=str(tmp_path), csv_import_max_bytes=120)
+        with patch("juniper_data.generators.csv_import.generator.get_settings", return_value=bounded):
+            tight = client.post(
+                "/v1/datasets",
+                json={"generator": "csv_import", "params": {"file_path": "big.csv", "allow_truncation": True}, "persist": True},
+            )
+            wide = client.post(
+                "/v1/datasets",
+                json={
+                    "generator": "csv_import",
+                    "params": {"file_path": "big.csv", "allow_truncation": True, "max_bytes": CSV_IMPORT_DEFAULT_MAX_BYTES},
+                    "persist": True,
+                },
+            )
+
+        assert tight.status_code == 201
+        assert wide.status_code == 201
+        assert tight.json()["dataset_id"] != wide.json()["dataset_id"]
+        assert tight.json()["meta"]["truncation"] is not None
+        assert tight.json()["meta"]["n_samples"] < 40
+        assert wide.json()["meta"]["truncation"] is None
+        assert wide.json()["meta"]["n_samples"] == 40
+
     # ------------------------------------------------------------------
     # APD-DATA-004: the 501 detail must not echo an UNDECLARED ImportError.
     #

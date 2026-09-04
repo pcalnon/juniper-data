@@ -74,6 +74,13 @@ class TestSettings:
             settings = Settings()
             assert settings.storage_path == "/env/path"
 
+    def test_csv_import_max_bytes_rejects_non_positive(self) -> None:
+        """A negative cap would make file.read(n) ingest the whole source."""
+        with pytest.raises(ValueError, match="greater than 0"):
+            Settings(csv_import_max_bytes=-1)
+        with pytest.raises(ValueError, match="greater than 0"):
+            Settings(csv_import_max_bytes=0)
+
 
 @pytest.mark.unit
 class TestGetSettings:

@@ -83,8 +83,8 @@ MUTATIONS = [
     Mutation(
         name="M2-record-boundary-trim-removed",
         path=GENERATOR,
-        old='        if drop_trailing_partial and data and any(value is None for value in data[-1].values()):\n            data.pop()',
-        new='        if False and data and any(value is None for value in data[-1].values()):\n            data.pop()',
+        old="        if drop_trailing_partial and data and (any(value is None for value in data[-1].values()) or (source_text is not None and CsvImportGenerator._has_unclosed_quote(source_text))):\n            data.pop()",
+        new="        if False and data and (any(value is None for value in data[-1].values()) or (source_text is not None and CsvImportGenerator._has_unclosed_quote(source_text))):\n            data.pop()",
         why="Lets a half-row through when the cap lands inside a quoted field.",
     ),
     Mutation(

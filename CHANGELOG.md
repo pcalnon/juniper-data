@@ -38,14 +38,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   prefix of its source. It is metadata, not a transient warning. `None` means complete, so the
   field's presence alone answers the question.
 
-  **The cut lands on a record boundary.** A byte cap slices mid-record essentially always, so the
-  reader trims to the last newline, drops a partial multi-byte character, and discards a final row
-  left short — a newline *inside a quoted field* is legal CSV, so the newline trim alone is not
-  sufficient. A truncated JSON array decodes as many complete elements as fit rather than failing;
-  JSONL drops only an unparseable **final** line, so a corrupt line mid-file still raises instead of
-  importing as a short dataset.
+  **The cut lands on a record boundary.** A byte cap slices mid-record essentially always. CSV
+  trims to the last newline, drops a partial multi-byte character, and discards a final row left
+  short — a newline *inside a quoted field* is legal CSV, so the newline trim alone is not
+  sufficient (including the case where the unclosed quote fills every column by swallowing later
+  lines). Newline trimming is CSV-only: a minified JSON array has no newlines, and the decoder
+  reads complete elements from the byte prefix. JSONL drops only an unparseable **final** line, so
+  a corrupt line mid-file still raises instead of importing as a short dataset.
 
 ### Fixed
+
+- **`csv_import` truncation of a minified JSON array discarded the whole prefix, a 2-column
+  unclosed quote kept a fabricated last row, and the dataset-id cache treated an omitted
+  `max_bytes` as 128 MiB.** `_read_capped_text` trimmed to the last newline before the parser
+  ran, so `json.dumps` / `JSON.stringify` (one line, no newlines) became empty text and raised
+  "No data found in file" instead of importing the complete elements that fit. Newline trimming
+  is now CSV-only. The `None`-column guard missed a 2-column row whose unclosed quote swallowed
+  later lines (every field populated); an unclosed-quote scan now drops it. The create route
+  binds the effective cap and truncation opt-in onto params before hashing, so a persisted
+  120-byte truncation cannot be served to a later request that asked for 128 MiB.
+  `JUNIPER_DATA_CSV_IMPORT_MAX_BYTES` of 0 or negative is refused: `file.read(-1)` reads until
+  EOF and would defeat the bound.
 
 - **The feature normaliser was fit on the full set, including chronologically-later test rows.**
   `equities`, `equities_seq` and `csv_import` computed min/max over every row and then applied

@@ -129,6 +129,9 @@ async def create_dataset(
     # precisely the "the split falls out of the MRO, not design" finding.
     try:
         params = params_class(**request.params)
+        binder = getattr(generator_class, "bind_deployment_defaults", None)
+        if callable(binder):
+            params = binder(params)
     except ValueError as e:
         record_dataset_post(
             generator=request.generator,
