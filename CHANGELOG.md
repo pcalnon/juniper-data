@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The feature normaliser was fit on the full set, including chronologically-later test rows.**
+  `equities`, `equities_seq` and `csv_import` computed min/max over every row and then applied
+  those statistics to the training features — look-ahead leakage, with the training data scaled by
+  a maximum that exists only in its future. The fit now comes from the **training rows only**,
+  which is decision 7 of the ecosystem partition design.
+
+  `csv_import` needed a structural change rather than a one-line one: it normalised inside
+  `_load_and_preprocess`, which runs *before* the split exists, so a train-only fit was not merely
+  wrong there but impossible. It now splits first and fits on `X_train`.
+
+  **Deliberate consequence:** `X_test` and `X_full` are no longer bounded by `[0, 1]`. Only the
+  fitted partition is. Rows outside the training range legitimately fall outside it, and that
+  excursion is real out-of-sample movement — scaling it away is precisely what the leak was doing.
+
+  Two existing tests asserted the `[0, 1]` bound on `X_full` and so were pinning the leak in place
+  without naming it; both now assert the bound on `X_train`, and a new discriminating test asserts
+  that `X_test` **escapes** the bound — an assertion a full-matrix fit cannot satisfy.
+
+  This is opt-in: `normalize_features` defaults to `False`, and the one persisted equities artifact
+  carries `false`.
+
 - **Nine generators were not reproducible at their documented defaults.** `checkerboard`,
   `circles`, `gaussian`, `moon`, `xor`, `csv_import`, `mnist`, `arc_agi` and `equities` declared
   `seed: int | None = Field(default=None)`, so two identical calls at the default configuration
