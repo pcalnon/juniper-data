@@ -42,6 +42,7 @@ try:
 except ImportError:  # pragma: no cover - exercised only without the equities extra
     pd = None  # type: ignore[assignment]
 
+from juniper_data.core.limits import TRUNCATION_META_KEY
 from juniper_data.core.split import temporal_split_index
 from juniper_data.generators._sequence import _yyyymmdd_to_ordinal, window_one_ticker
 from juniper_data.generators.equities.generator import EQUITIES_DEPS_AVAILABLE, EquitiesGenerator
@@ -110,7 +111,7 @@ class EquitiesSeqGenerator:
         # the sibling generator -- keeps a single source of truth for fetching,
         # conditioning, and normalization; the 2-D generator is not modified).
         constituents = EquitiesGenerator._load_constituents()
-        symbols, meta_map = EquitiesGenerator._resolve_symbols(params, constituents)
+        symbols, meta_map, truncation = EquitiesGenerator._resolve_symbols(params, constituents)
         end_date = params.end_date or datetime.now(UTC).strftime("%Y-%m-%d")
 
         conditioned: dict[str, Any] = {}
@@ -187,6 +188,19 @@ class EquitiesSeqGenerator:
 
         arrays = EquitiesSeqGenerator._assemble(per_ticker)
         arrays["ticker_vocab"] = np.array(vocab, dtype=np.str_)
+
+        # APD-DATA-018: this generator reuses the flat one's universe resolution,
+        # so it inherits the symbol cap -- and must therefore also carry the
+        # annotation. Inheriting the bound while dropping the record of it is the
+        # worse of the two halves to skip: the dataset would be silently partial
+        # with nothing anywhere saying so.
+        #
+        # ``EquitiesSeqParams`` subclasses ``EquitiesParams``, so ``max_symbols``
+        # and ``allow_truncation`` need no redeclaration here.
+        if truncation is not None:
+            truncation["records_imported"] = int(arrays["X_full"].shape[0])
+            arrays[TRUNCATION_META_KEY] = truncation
+
         return arrays
 
     @staticmethod

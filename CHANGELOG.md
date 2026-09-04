@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`equities` is bounded to 14 symbols, and the silent slice is gone** (defect register
+  `APD-DATA-018`, second half — the row is now closed). `EQUITIES_DEFAULT_MAX_SYMBOLS` was `None`,
+  meaning **all 503 bundled S&P 500 constituents**, which measurement puts at **18–34 minutes**
+  against a 30 s request budget. Worse, `generators/equities/generator.py` cut the universe with a
+  bare `ordered[: params.max_symbols]` — it **truncated silently**, recorded nothing, and returned a
+  dataset indistinguishable from a complete one.
+
+  **The cap is in SYMBOLS, not bytes, and that is the load-bearing choice.** Measurement on
+  2026-09-04 (`util/ad-hoc/2026-09-04_measure_equities_payloads.py`) found **163× the payload costs
+  1.16× the time**, because ingest cost is per *request*: ~1.85 s per Yahoo call plus 1–2 SEC XBRL
+  calls. One symbol over 26 years is 210 KB and ~2 s; the Russell 3000 over **one day** is 92 KB and
+  1.7–3.2 h. A byte cap would admit the expensive request and reject the cheap one — it is not
+  merely the wrong unit, it runs *counter* to the cost.
+
+  **14 = 30 s ÷ 2.1 s per symbol.** Same contract as `csv_import`: an oversized universe is
+  **refused with 422** until the caller opts in via `allow_truncation`,
+  `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION`, or the matching `.env` entry; a request may only *lower*
+  the cap (`min(requested, deployment)`), and `max_symbols=None` means "no request-side limit", not
+  "unbounded". The surviving prefix is deterministic, so a truncated dataset is reproducible.
+
+  **`equities_seq` inherits all of it**, because it reuses the same universe resolution — including
+  the annotation, since inheriting a bound while dropping the record of it is the worse half to skip.
+
+- **The truncation descriptor is now one shape for every generator.** `DatasetMeta.truncation`
+  carries `reason`, `unit` (`bytes` or `symbols`), `cap`, `requested`, `imported` and
+  `records_imported`, replacing the byte-specific `cap_bytes` / `bytes_total` / `bytes_read` of the
+  entry below. A consumer can now answer "is this partial, and by how much" without knowing which
+  generator produced it. Unreleased-to-unreleased change; no published artifact carries the old keys.
+
 - **`csv_import` sources are bounded, and an over-cap import must be authorised** (defect register
   `APD-DATA-018`). Generation runs inside the request, so a source large enough to outlive the
   client's socket timeout produces a request that cannot succeed however long the caller waits. The
