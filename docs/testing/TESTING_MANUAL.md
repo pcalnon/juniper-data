@@ -4,7 +4,7 @@
 
 **Version:** 0.4.2
 **Status:** Active
-**Last Updated:** March 3, 2026
+**Last Updated:** September 4, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -104,7 +104,7 @@ juniper_data/tests/
 | `test_cached_store.py` | Storage | Cached dataset storage |
 | `test_checkerboard_generator.py` | Generator | Checkerboard pattern generator |
 | `test_circles_generator.py` | Generator | Concentric circles generator |
-| `test_csv_import_generator.py` | Generator | CSV/JSON file import |
+| `test_csv_import_generator.py` | Generator | CSV/JSON file import; byte-cap refusal and truncation annotation |
 | `test_dataset_id.py` | Core | DatasetID class and validation |
 | `test_gaussian_generator.py` | Generator | Mixture of Gaussians generator |
 | `test_health_enhanced.py` | API | Health check endpoint |
@@ -453,6 +453,8 @@ Code quality hooks (ruff, mypy, bandit) run on **pre-commit** stage and validate
 **Coverage below threshold**: Run `python scripts/check_module_coverage.py --run-tests` to see per-module breakdown and identify which modules need more tests.
 
 **Deprecation warnings from dependencies**: These are filtered by default via `filterwarnings` in pyproject.toml for uvicorn, httpx, and pydantic.
+
+**`csv_import` over-cap must be 422, not 500, and must not be silent.** Default is refusal (`InputTooLargeError`). An authorised prefix must land `DatasetMeta.truncation` as a dict (`None` means complete). Cuts land on a record boundary; a JSONL corrupt line mid-file still raises. Pins: `TestCsvImportByteCap` in `test_csv_import_generator.py`, plus the three `test_api_routes.py` APD-DATA-018 cases. Contract: [CSV Import Byte Cap](../REFERENCE.md#csv-import-byte-cap).
 
 ---
 
