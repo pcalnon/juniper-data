@@ -280,6 +280,21 @@ juniper_data/tests/          # Root test path (testpaths in pyproject.toml)
 
 ---
 
+## Equities symbol-cap pins
+
+Pins for APD-DATA-018's equities half (`max_symbols`). All live in `juniper_data/tests/unit/test_equities_generator.py`. No live Yahoo/SEC.
+
+| Test | Asserts | Mutation that must go red |
+|------|---------|---------------------------|
+| `test_resolve_symbols_respects_max_symbols` | `{A,B,C}` + `max_symbols=2` → `["A", "B"]` | Drop the slice, or sort by something other than ticker |
+| `test_resolve_symbols_defaults_to_full_universe` | omitted cap → every constituent, sorted | A hidden default cap, or unstable order |
+| `test_resolve_symbols_uses_sec_map_for_unknown` | caller ticker not in the snapshot still kept | Cap applied before SEC map, or unknown names dropped |
+| `test_generate_skips_ticker_whose_download_raises` | one exploded download → remaining ticker in `ticker_vocab` | Abort-the-batch on a single failure |
+
+`equities_seq` reuses `_resolve_symbols`. Do not add a second resolver without a matching pin.
+
+---
+
 ## Warning Filters
 
 Configured in `pyproject.toml` `[tool.pytest.ini_options].filterwarnings`:

@@ -23,6 +23,7 @@
 - [Storage Backend Reference](#storage-backend-reference)
 - [Prometheus Collector Reference](#prometheus-collector-reference)
 - [Docker Reference](#docker-reference)
+- [Equities Symbol Cap](#equities-symbol-cap)
 - [CI/CD Pipeline Reference](#cicd-pipeline-reference)
 - [Additional Resources](#additional-resources)
 
@@ -958,6 +959,81 @@ All `JUNIPER_DATA_*` variables (see [Configuration](../AGENTS.md#configuration))
 ### Docker Compose
 
 Full-stack orchestration is in the `juniper-deploy` repository. JuniperData runs as a service alongside juniper-cascor and JuniperCanopy.
+
+---
+
+---
+
+## Equities Symbol Cap
+
+`equities` / `equities_seq` have no input file. `generate()` fans out HTTP, **one ticker at a time**, to the two upstreams the generator actually uses: Yahoo daily OHLCV (`yfinance.download`, chart) and SEC EDGAR XBRL `companyconcept` (`_fetch_shares`). APD-DATA-018 therefore bounds this half on **symbol count**, not bytes. The csv_import half is a file and took a byte cap (`CSV_IMPORT_DEFAULT_MAX_BYTES` in `juniper_data/core/limits.py`).
+
+**Why not bytes.** Call count is `O(symbols)`, not `O(rows)`. Horizon (`start_date` → `end_date`) grows the Yahoo payload; it does not add requests. A 1-day × large-universe request is small on the wire and long on the wall; a 1-symbol × 26-year request is the opposite. A byte cap would accept the slow request and refuse the cheap one.
+
+**The knob is off by default.** `EquitiesParams.max_symbols` defaults to `EQUITIES_DEFAULT_MAX_SYMBOLS`, which is `None` (no cap). There is no `Settings` / `JUNIPER_DATA_*` ceiling — unlike csv_import, a request is the only way to bound the fan-out. `equities_seq` inherits the same field (`EquitiesSeqParams` subclasses `EquitiesParams`) and the same resolver.
+
+### What `_resolve_symbols` does
+
+1. If `params.symbols` is set: strip, uppercase, keep **caller order**. Unknown tickers get a CIK from SEC `company_tickers.json` (cached) or `cik=None`.
+2. Else: the bundled snapshot `generators/equities/sp500_constituents.csv` (**503** names), ordered by `sorted(constituents)` — alphabetical ticker, not market cap.
+3. If `max_symbols` is an int (`ge=1`): `ordered = ordered[: params.max_symbols]`. Prefix only.
+
+The slice is **silent**. It does not raise `InputTooLargeError`, does not return HTTP 422, and does not write `DatasetMeta.truncation`. Dropped tickers never appear in `ticker_vocab`. A later download failure is also silent (`_logger.warning` + skip); only an empty conditioned set raises `ValueError`.
+
+### Per-symbol work (cold cache)
+
+For each remaining ticker, `_condition_one` does:
+
+- one `yf.download(...)` (class shares mapped `BRK.B` → `BRK-B`)
+- if a CIK is known: 1–2 SEC GETs (`dei.EntityCommonStockSharesOutstanding`, then `us-gaap.CommonStockSharesOutstanding`), spaced by `_SEC_MIN_INTERVAL = 0.12` s (SEC's published 10 req/s)
+- 52-week rolling window, cost basis, next-day targets
+
+`use_cache` defaults `True` (`~/.cache/juniper_data/equities`, override `JUNIPER_DATA_EQUITIES_CACHE_DIR`). The timeout risk is the **uncached** path. Generation still runs inside the HTTP request; `core/limits.py` sized the csv_import half against a ~30 s client budget. Uncached full-universe S&P 500 does not fit that budget.
+
+Yahoo is `download` only — the generator does not call `Ticker.info` / `quoteSummary`. Missing SEC facts return `None` (404 is not an error); `total_shares` is NaN and default `fundamentals_fill="zero"` writes `0.0`. The artifact looks complete.
+
+Requires `pip install "juniper-data[equities]"`. Unavailable extra → `501` from the route.
+
+### Operator usage
+
+```python
+from juniper_data.generators.equities.params import EquitiesParams
+from juniper_data.generators.equities.generator import EquitiesGenerator
+
+# Cold path: bound the fan-out. Two alphabetical S&P names if symbols is omitted.
+params = EquitiesParams(max_symbols=2, start_date="2024-01-01", end_date="2024-06-01")
+arrays = EquitiesGenerator.generate(params)
+
+# Explicit list, then cap (keeps caller order): AAPL, MSFT — not AMZN.
+EquitiesParams(symbols=["AAPL", "MSFT", "AMZN"], max_symbols=2)
+```
+
+Via `POST /v1/datasets`: `"generator": "equities"` / `"equities_seq"` and `"params": {"max_symbols": 8}`. Omitting the field is the full resolved universe.
+
+### What not to do
+
+- Do not add a byte cap to this generator. Wire size and wall time do not scale together.
+- Do not treat omitted `max_symbols` as safe on a cold cache against the bundled 503 names.
+- Do not assume the default-universe slice is the largest names — it is alphabetical.
+- Do not expect 422 or `meta.truncation` when the universe is shortened. That channel is csv_import's byte-cap annotation.
+- Do not raise `InputTooLargeError` from `_resolve_symbols`. The route's 422 mapping is for csv_import.
+- Do not call `Ticker.info` to "enrich" a row. The generator's Yahoo path is `yf.download` only.
+- Do not take `total_shares == 0` as "the company has no shares" under default fill — it is also "SEC returned no facts".
+
+### Pins (on `main`)
+
+| Test | File | Guards |
+|------|------|--------|
+| `test_resolve_symbols_respects_max_symbols` | `tests/unit/test_equities_generator.py` | Prefix slice of `sorted(constituents)` |
+| `test_resolve_symbols_defaults_to_full_universe` | same | `max_symbols=None` keeps every name, sorted |
+| `test_resolve_symbols_uses_sec_map_for_unknown` | same | Caller-supplied tickers not in the snapshot still resolve |
+| `test_generate_skips_ticker_whose_download_raises` | same | One failed download does not abort the batch |
+
+`equities_seq` is covered by calling `EquitiesGenerator._resolve_symbols` — there is no second resolver.
+
+### Re-measuring the unit
+
+PR #348 adds two ad-hoc scripts (not on `main` until that PR merges). They separate wire bytes from wall time on a handful of tickers and project across index universes. Re-run them before changing `EQUITIES_DEFAULT_MAX_SYMBOLS` off `None`. They must stay gentle: few tickers, and SEC spacing must keep using `_SEC_MIN_INTERVAL`. Full analysis: juniper-ml `notes/JUNIPER_2026-09-04_JUNIPER-DATA_EQUITIES-INGEST-SIZING-AND-FIELD-AVAILABILITY.md`.
 
 ---
 

@@ -142,6 +142,19 @@ All arrays `float32`. Keys: `X_train`, `y_train`, `X_test`, `y_test`, `X_full`, 
 
 ---
 
+## Equities symbol cap
+
+`equities` / `equities_seq` fan out one Yahoo `download` plus 1–2 SEC `companyconcept` calls **per ticker**. APD-DATA-018's bound is `max_symbols`, not bytes. Default `EQUITIES_DEFAULT_MAX_SYMBOLS` is `None` (unbounded). No env-var ceiling. The slice is a silent prefix of caller order, or of `sorted(constituents)` (503 bundled S&P names, alphabetical). No 422, no `meta.truncation`. Cold cache is the timeout path (`JUNIPER_DATA_EQUITIES_CACHE_DIR`). Extra: `pip install "juniper-data[equities]"`.
+
+```python
+EquitiesParams(max_symbols=8)                    # first 8 alphabetical S&P names
+EquitiesParams(symbols=["AAPL", "MSFT", "AMZN"], max_symbols=2)  # AAPL, MSFT
+```
+
+> See: [REFERENCE.md -- Equities Symbol Cap](REFERENCE.md#equities-symbol-cap)
+
+---
+
 ## Testing
 
 | Marker                                      | Scope                             |
@@ -208,6 +221,8 @@ pre-commit install --hook-type pre-push  # coverage gate (one-time)
 | Storage path error      | Dir missing        | Set `JUNIPER_DATA_STORAGE_PATH` to writable path         |
 | `ImportError: redis`    | Optional backend   | `pip install redis`                                      |
 | Coverage pre-push fails | Below threshold    | Add tests; see `scripts/check_module_coverage.py`        |
+| Equities generate hangs / times out | Uncached full S&P 500 (`max_symbols=None`) | Set `params.max_symbols`; confirm `use_cache=True`; extra is `juniper-data[equities]` |
+| Equities `total_shares` all zeros | SEC returned no facts; default `fundamentals_fill="zero"` | Check CIK / logs; try `fundamentals_fill="nan"`; do not read 0 as "no shares" |
 
 ---
 

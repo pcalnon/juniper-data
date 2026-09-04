@@ -106,6 +106,8 @@ juniper_data/tests/
 | `test_circles_generator.py` | Generator | Concentric circles generator |
 | `test_csv_import_generator.py` | Generator | CSV/JSON file import |
 | `test_dataset_id.py` | Core | DatasetID class and validation |
+| `test_equities_generator.py` | Generator | Flat equities; `max_symbols` prefix slice (APD-DATA-018) |
+| `test_equities_seq_generator.py` | Generator | Windowed equities; same `_resolve_symbols` as flat |
 | `test_gaussian_generator.py` | Generator | Mixture of Gaussians generator |
 | `test_health_enhanced.py` | API | Health check endpoint |
 | `test_hf_store.py` | Storage | Hugging Face storage backend |
@@ -415,6 +417,10 @@ async def test_health_endpoint(self):
 - Place benchmark tests in `tests/performance/`
 - Use `conftest.py` for shared fixtures; keep test-specific fixtures local
 - Use `@pytest.mark.slow` for tests that take more than a few seconds
+
+### Equities symbol-cap tests
+
+`test_resolve_symbols_respects_max_symbols` is the pin for APD-DATA-018's equities half. It asserts `EquitiesParams(max_symbols=2)` against constituents `{A,B,C}` returns `["A", "B"]` — alphabetical prefix, not a byte bound, not a 422. Do not replace it with a generate-level timing assertion (those hit Yahoo/SEC). `equities_seq` must keep calling `EquitiesGenerator._resolve_symbols`; a second resolver would need its own pin.
 
 ---
 
