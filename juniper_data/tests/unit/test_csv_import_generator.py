@@ -560,3 +560,79 @@ class TestInputByteCap:
     def test_pop_truncation_meta_returns_none_when_absent(self) -> None:
         """None, not {} -- so ``meta.truncation`` alone answers "is this partial"."""
         assert pop_truncation_meta({"X_full": np.zeros((1, 1), dtype=np.float32)}) is None
+
+    def test_source_exactly_at_cap_is_complete(self, import_dir: Path) -> None:
+        """A source whose size equals the cap is complete, not over it.
+
+        ``bytes_total <= cap_bytes`` is the contract. Mutating it to ``<``
+        would refuse a file that fits, which is an off-by-one that turns a
+        valid import into a 422 -- or, with opt-in, a false truncation
+        annotation on a complete dataset.
+        """
+        path = self._wide_csv(import_dir, rows=4)
+        cap = path.stat().st_size
+        result = CsvImportGenerator.generate(CsvImportParams(file_path="wide.csv", max_bytes=cap, shuffle=False))
+        assert TRUNCATION_META_KEY not in result
+        assert result["X_full"].shape[0] == 4
+
+    def test_request_cannot_opt_out_of_deployment_allow_truncation(self, bounded_import_dir) -> None:
+        """The OR is asymmetric: a request cannot override a deployment-wide opt-in.
+
+        The deployment operator is the more privileged party. If a caller
+        could pass ``allow_truncation=false`` and undo ``JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION``,
+        the env-var surface the owner required for CLI callers would be a
+        suggestion rather than a bound.
+        """
+        directory, mock_settings = bounded_import_dir
+        self._wide_csv(directory)
+        mock_settings.csv_import_allow_truncation = True
+        result = CsvImportGenerator.generate(CsvImportParams(file_path="wide.csv", allow_truncation=False))
+        assert result[TRUNCATION_META_KEY]["truncated"] is True
+
+    def test_explicit_schema_default_max_bytes_overrides_tighter_deployment(self, bounded_import_dir) -> None:
+        """``model_fields_set`` distinguishes 'asked for the schema default' from 'said nothing'.
+
+        ``bounded_import_dir`` is 120 bytes. An omitted ``max_bytes`` must inherit
+        that (already pinned by the refusal tests). An *explicit* ``max_bytes``
+        equal to the 128 MiB schema default must still win -- equality-to-default
+        is not 'unset'.
+        """
+        directory, _ = bounded_import_dir
+        self._wide_csv(directory)
+        result = CsvImportGenerator.generate(CsvImportParams(file_path="wide.csv", max_bytes=CSV_IMPORT_DEFAULT_MAX_BYTES, shuffle=False))
+        assert TRUNCATION_META_KEY not in result
+        assert result["X_full"].shape[0] == 40
+
+    def test_no_newline_inside_cap_fails_closed(self, bounded_import_dir) -> None:
+        """A cut that contains not one whole record must not import a half-row.
+
+        ``_read_capped_text`` discards everything after the last newline; a
+        source with no newline inside the cap yields empty text, which
+        ``_convert_to_arrays`` refuses. Returning the unterminated bytes
+        instead would let DictReader materialise a short row as data.
+        """
+        directory, _ = bounded_import_dir
+        (directory / "oneline.csv").write_text("feature1,feature2,label," + ("x" * 200), encoding="utf-8")
+        with pytest.raises(ValueError, match="No data found"):
+            CsvImportGenerator.generate(CsvImportParams(file_path="oneline.csv", allow_truncation=True))
+
+    def test_utf8_split_character_does_not_raise(self, import_dir: Path) -> None:
+        """A cap that lands inside a multi-byte UTF-8 sequence must not 500.
+
+        The cap is a byte offset and UTF-8 is variable-width, so the final
+        character is routinely cut in half. ``errors='ignore'`` drops that
+        partial sequence; a strict decode would raise ``UnicodeDecodeError``
+        and the route's bare re-raise would surface it as a 500 -- a caller
+        error reported as a server fault. The complete records before the
+        cut must still import.
+        """
+        complete = "feature1,feature2,label\n1.0,2.0,A\n"
+        remainder = "€,2.0,B\n"
+        raw = complete.encode("utf-8") + remainder.encode("utf-8")
+        (import_dir / "split.csv").write_bytes(raw)
+        cap = len(complete.encode("utf-8")) + 1  # first byte of U+20AC only
+        assert cap < len(raw)
+
+        result = CsvImportGenerator.generate(CsvImportParams(file_path="split.csv", max_bytes=cap, allow_truncation=True, shuffle=False))
+        assert result["X_full"].shape[0] == 1
+        assert result[TRUNCATION_META_KEY]["truncated"] is True

@@ -588,6 +588,45 @@ class TestGeneratorAvailability:
         assert response.status_code == 201
         assert response.json()["meta"]["truncation"] is None
 
+    def test_create_dataset_truncation_survives_persist_and_stays_out_of_npz(self, client: TestClient, tmp_path: Path) -> None:
+        """The annotation is permanent metadata; the artifact stays array-only.
+
+        ``persist=False`` only proves the HTTP response. The owner's obligation
+        is that a trainer loading the stored artifact months later -- who never
+        saw this response -- still learns the data is a prefix, AND that the
+        NPZ itself never grows a non-array ``truncation`` key (pop must happen
+        before checksum + persist, not after).
+        """
+        import io
+
+        import numpy as np
+
+        source = tmp_path / "big.csv"
+        source.write_text("feature1,feature2,label\n" + "".join(f"{i}.0,{i + 1}.0,A\n" for i in range(40)))
+
+        bounded = Settings(storage_path=str(tmp_path), import_dir=str(tmp_path), csv_import_max_bytes=120)
+        with patch("juniper_data.generators.csv_import.generator.get_settings", return_value=bounded):
+            created = client.post(
+                "/v1/datasets",
+                json={"generator": "csv_import", "params": {"file_path": "big.csv", "allow_truncation": True}, "persist": True},
+            )
+
+        assert created.status_code == 201
+        dataset_id = created.json()["dataset_id"]
+
+        meta = client.get(f"/v1/datasets/{dataset_id}")
+        assert meta.status_code == 200
+        truncation = meta.json()["truncation"]
+        assert truncation is not None
+        assert truncation["truncated"] is True
+        assert truncation["cap_bytes"] == 120
+
+        artifact = client.get(f"/v1/datasets/{dataset_id}/artifact")
+        assert artifact.status_code == 200
+        with np.load(io.BytesIO(artifact.content)) as npz:
+            assert "truncation" not in npz.files
+            assert set(npz.files) <= {"X_train", "y_train", "X_test", "y_test", "X_full", "y_full"}
+
     # ------------------------------------------------------------------
     # APD-DATA-004: the 501 detail must not echo an UNDECLARED ImportError.
     #

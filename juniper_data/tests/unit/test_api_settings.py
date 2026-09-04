@@ -13,6 +13,7 @@ from juniper_data.api.settings import (
     Settings,
     get_settings,
 )
+from juniper_data.core.limits import CSV_IMPORT_DEFAULT_ALLOW_TRUNCATION, CSV_IMPORT_DEFAULT_MAX_BYTES
 
 
 @pytest.mark.unit
@@ -73,6 +74,24 @@ class TestSettings:
         with patch.dict(os.environ, {"JUNIPER_DATA_STORAGE_PATH": "/env/path"}):
             settings = Settings()
             assert settings.storage_path == "/env/path"
+
+    def test_csv_import_bounds_default_to_core_constants(self) -> None:
+        """APD-DATA-018: the deployment knobs default to the single core definition."""
+        env = {k: v for k, v in os.environ.items() if not k.startswith("JUNIPER_DATA_")}
+        with patch.dict(os.environ, env, clear=True):
+            settings = Settings()
+            assert settings.csv_import_max_bytes == CSV_IMPORT_DEFAULT_MAX_BYTES
+            assert settings.csv_import_allow_truncation is CSV_IMPORT_DEFAULT_ALLOW_TRUNCATION
+
+    def test_csv_import_bounds_are_settable_from_the_environment(self) -> None:
+        """The owner-required CLI / .env surface: JUNIPER_DATA_CSV_IMPORT_*."""
+        env = {k: v for k, v in os.environ.items() if not k.startswith("JUNIPER_DATA_")}
+        env["JUNIPER_DATA_CSV_IMPORT_MAX_BYTES"] = "4096"
+        env["JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION"] = "true"
+        with patch.dict(os.environ, env, clear=True):
+            settings = Settings()
+            assert settings.csv_import_max_bytes == 4096
+            assert settings.csv_import_allow_truncation is True
 
 
 @pytest.mark.unit
