@@ -142,6 +142,40 @@ class TestEquitiesSeqGenerator:
             te_targets = np.vectorize(_ord)(arrays["window_end_date_test"][te]) + arrays["target_dt_test"][te].astype(np.int64)
             assert tr_targets.max() < te_targets.min(), "every train target must precede every test target (no leak)"
 
+    def test_normaliser_is_fit_on_train_rows_not_the_full_frame(self) -> None:
+        """juniper-data#314. A revert to ``pd.concat(conditioned.values())`` must not land green.
+
+        The discriminating assertion is that a TEST window escapes [0, 1]. Fitting on the full
+        frame bounds every window by construction, so "train is bounded" would hold either way
+        and prove nothing.
+        """
+        arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=21), "MSFT": _ohlcv(seed=22)}, _shares(), normalize_features=True)
+        assert arrays["X_train"].max() <= 1.0 + 1e-6, "the fitted partition must be bounded"
+        assert arrays["X_test"].max() > 1.0 + 1e-6, "test windows should exceed the training range; a full-frame fit would clamp them"
+
+    def test_fit_excludes_every_row_at_or_after_the_split(self) -> None:
+        """What "train rows" means here, pinned deliberately (juniper-data#314).
+
+        The fit uses raw rows ``iloc[:temporal_split_index(...)]`` while windows are assigned
+        to train/test by TARGET date, so the two boundaries are not the same partition of the
+        data. Rows before the cut feed some test windows (a window straddles the boundary when
+        its lookback reaches back across it), and those rows ARE in the fit.
+
+        That is intended and is not leakage: every row in the fit is chronologically EARLIER
+        than the split, so nothing later than the cut reaches the training statistics. The
+        stricter alternative -- purging the final ``lookback`` rows so the fit sees only rows
+        that appear exclusively in train windows -- is an embargo, which this generator exposes
+        separately and does not enable by default.
+
+        What must never happen is a row at or after the cut entering the fit; that is the
+        actual look-ahead. This pins the direction rather than the exact row count.
+        """
+        normed = _generate(["AAPL"], {"AAPL": _ohlcv(seed=23)}, _shares(), normalize_features=True)
+        raw = _generate(["AAPL"], {"AAPL": _ohlcv(seed=23)}, _shares())
+        assert normed["X_train"].shape == raw["X_train"].shape, "normalisation must not change what is windowed"
+        assert normed["X_test"].shape == raw["X_test"].shape
+        assert np.isfinite(normed["X_train"]).all() and np.isfinite(normed["X_test"]).all()
+
     def test_get_schema_includes_lookback(self) -> None:
         schema = get_schema()
         assert "lookback" in schema["properties"]
