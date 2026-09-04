@@ -55,6 +55,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The Postgres store carried five hand-maintained copies of `DatasetMeta`'s field list, and every
+  one had drifted.** The DDL, `_meta_to_row`, `_row_to_meta`, the upsert and the update each
+  transcribed the same 30 fields independently. All five are now **derived from the model**, so a
+  new field appears in the schema, the INSERT, the UPDATE and the read without anyone remembering
+  to add it.
+
+  Three defects fell out of that drift, all latent because the store is not yet wired into the
+  serving path:
+
+  - `n_classes` and `class_distribution` were declared `NOT NULL` long after the model made both
+    nullable for regression and sequence artifacts (WS-1 / #168) — **the first regression dataset
+    written would have failed the INSERT.**
+  - Seven fields were silently dropped on every round trip: `task_type`, `sequence`, `lookback`,
+    `time_unit`, `dt_scaling`, `target_scaling` and `truncation`. (The issue named six; `truncation`
+    was missed there too.)
+  - `_row_to_meta` raised `TypeError` on a NULL `class_distribution`, because its
+    `isinstance(..., dict) else json.loads(...)` fallback did not admit `None`.
+
+  `_row_to_meta` now also tolerates a **column that is absent or NULL** where the model supplies a
+  default, so a code-ahead-of-schema deploy loads rather than raising `KeyError`. Added columns are
+  emitted as `ADD COLUMN IF NOT EXISTS`, and any that is `NOT NULL` carries a `DEFAULT` — without
+  one, an `ADD COLUMN` against a populated table fails.
+
+  **No test asserted `_row_to_meta(_meta_to_row(m)) == m`**, which is why five copies could drift
+  apart unnoticed. That round trip is now pinned for classification, regression and sequence
+  artifacts, alongside schema and statement coverage of every model field.
+
 - **`juniper_data.generators.csv_import` could not be imported on its own.** A circular import
   raised `ImportError: cannot import name 'VERSION'`:
 
