@@ -158,6 +158,16 @@ Coverage thresholds: **80% aggregate** (default; set in `pyproject.toml` `[tool.
 
 ---
 
+## Standalone generator imports
+
+A generator subpackage must import in a **cold interpreter** (`import juniper_data.generators.csv_import` with nothing else loaded). `create_app` is lazy on `juniper_data.api` (PEP 562) so `from juniper_data.api.settings import get_settings` does not pull the routes. Restoring `from .app import create_app` in `api/__init__.py` re-opens the cycle (#316 / #333).
+
+Do not import `juniper_data.api.app` or `juniper_data.api.routes` from generator code. Do not pre-import routes to make a test collect. Pin with `pytest juniper_data/tests/unit/test_no_import_cycles.py` — every assertion there is a **subprocess**; an in-process check cannot fail.
+
+> See: [REFERENCE.md -- API Package Import Graph](REFERENCE.md#api-package-import-graph)
+
+---
+
 ## Code Quality (Ruff)
 
 juniper-data uses **ruff** (NOT black/isort/flake8). Config in `pyproject.toml`: line-length 320, target Python 3.12+ (py312), rule sets E, W, F, B, C4, I, UP, SIM, T20.
@@ -208,6 +218,7 @@ pre-commit install --hook-type pre-push  # coverage gate (one-time)
 | Storage path error      | Dir missing        | Set `JUNIPER_DATA_STORAGE_PATH` to writable path         |
 | `ImportError: redis`    | Optional backend   | `pip install redis`                                      |
 | Coverage pre-push fails | Below threshold    | Add tests; see `scripts/check_module_coverage.py`        |
+| `ImportError: cannot import name 'VERSION'` collecting a generator test in isolation | `api/__init__.py` eagerly imported `create_app` | Keep `create_app` lazy. Do not pre-import routes. See [API Package Import Graph](REFERENCE.md#api-package-import-graph) |
 
 ---
 

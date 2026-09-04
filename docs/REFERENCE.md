@@ -19,6 +19,7 @@
 - [Dependencies](#dependencies)
 - [Error Codes](#error-codes)
 - [Project Architecture Reference](#project-architecture-reference)
+- [API Package Import Graph](#api-package-import-graph)
 - [API Design Reference](#api-design-reference)
 - [Storage Backend Reference](#storage-backend-reference)
 - [Prometheus Collector Reference](#prometheus-collector-reference)
@@ -780,6 +781,58 @@ juniper-data/
 | `api/routes/datasets.py` | Dataset CRUD, batch, versioning, lifecycle, filtering |
 
 ---
+
+## API Package Import Graph
+
+`create_app` is exposed **lazily** from `juniper_data.api` (PEP 562 `__getattr__` in `api/__init__.py`). Eagerly importing it there made `juniper_data.generators.csv_import` unimportable on its own (juniper-data#316 / #333).
+
+The cycle:
+
+```
+csv_import/__init__
+  -> csv_import.generator          imports juniper_data.api.settings
+  -> juniper_data.api/__init__     eagerly imported .app
+  -> api.app                       imports .routes.datasets / .routes.generators
+  -> api.routes.generators         imports juniper_data.generators.csv_import  (still initialising)
+  -> ImportError: cannot import name 'VERSION'
+```
+
+Importing any submodule initialises its parent package first. So `from juniper_data.api.settings import get_settings` — a leaf import — dragged in the FastAPI app and every route.
+
+`csv_import.generator` imports `get_settings` because `_load_and_preprocess` resolves `file_path` against `Settings.import_dir`. That leaf import is legitimate. The defect was the parent package pulling routes.
+
+### Why it was invisible in production
+
+Service startup imports the routes long before anything touches `csv_import`. The cycle fires only when the generator subpackage is imported **first**: a test file collected in isolation, a script, or an external consumer. It broke `pytest juniper_data/tests/unit/test_csv_import_generator.py` as a standalone collection.
+
+### The bargain
+
+| Name | When it loads | Why |
+|------|---------------|-----|
+| `Settings`, `get_settings` | Eager, from `api/__init__.py` | Leaves. `api.settings` imports only `api.constants` and `core.secrets`. |
+| `create_app` | Lazy, via `__getattr__` | Importing `.app` pulls every route, which pull every generator. |
+| `from juniper_data.api import create_app` | Still works | Public surface. Callers today import `juniper_data.api.app` directly. `__dir__` lists it for tab-completion. |
+
+Deferring `create_app` closes the **class**, not just the `csv_import` instance: nothing that merely wants settings pulls the routes any more. Today only `csv_import` of the 16 registered generators imports `api.settings`. A later generator that does the same stays importable as long as this bargain holds.
+
+### What not to do
+
+- Do not restore `from .app import create_app` in `api/__init__.py`. That re-opens the cycle for every generator that touches settings.
+- Do not import `juniper_data.api.app` or `juniper_data.api.routes` from a generator. `api.settings` is the allowed API surface from generator code.
+- Do not "fix" a collection-order `ImportError: cannot import name 'VERSION'` by pre-importing `api.routes.generators` in the test. That workaround landed in `test_normaliser_fit_scope.py` and is gone; bringing it back hides the cycle.
+- Do not assert import-graph properties in-process. Once `juniper_data` is in `sys.modules`, a same-process import succeeds with the defect fully present.
+
+### Pins
+
+`tests/unit/test_no_import_cycles.py` runs every assertion in a **subprocess**:
+
+- all 16 registered generator subpackages (`ar_p`, `arc_agi`, `checkerboard`, `circles`, `csv_import`, `delay_product`, `equities`, `equities_seq`, `gaussian`, `irregular_sine`, `mackey_glass`, `mnist`, `moon`, `multi_sine`, `spiral`, `xor`) import standalone
+- `csv_import` public names (`VERSION` was the one that failed) resolve
+- importing `api.settings` does **not** load `api.routes.generators`
+- `create_app` remains importable from the package; `Settings` / `get_settings` stay eager
+- a genuine typo still raises `AttributeError` (the module `__getattr__` must not swallow it)
+
+On #333, reverting `api/__init__.py` to the eager import failed exactly three: the `csv_import` standalone import, its public-name resolution, and the routes-not-loaded property. The other 15 subpackages stayed green.
 
 ---
 
