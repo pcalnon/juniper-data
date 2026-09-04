@@ -174,6 +174,14 @@ Metrics use `juniper_data_` namespace. Pattern: `juniper_data_<subsystem>_<name>
 
 ---
 
+## Artifact streaming
+
+`GET /v1/datasets/{id}/artifact` streams via `DatasetStore.open_artifact_stream` (APD-DATA-016 / #313). The method is **not** abstract: the base default is a whole `get_artifact_bytes` yielded as one chunk. Only `LocalFSDatasetStore` reads incrementally (1 MiB). `create_app` uses LocalFS; wrapping it in Cached silently reverts to a whole read. Absence must return `None` from the call — a check inside the generator becomes 200 + empty body. Content-Type is `application/zip` (`BINARY_MEDIA_TYPE`).
+
+> See: [REFERENCE.md -- Artifact Streaming](REFERENCE.md#artifact-streaming)
+
+---
+
 ## CI/CD and Pre-commit
 
 | Hook                 | Stage        | Tool                                                                 |
@@ -206,6 +214,8 @@ pre-commit install --hook-type pre-push  # coverage gate (one-time)
 | 401 Unauthorized        | API keys set       | Pass `X-API-Key` header or unset `JUNIPER_DATA_API_KEYS` |
 | 429 Too Many Requests   | Rate limiter       | Wait, or `JUNIPER_DATA_RATE_LIMIT_ENABLED=false`         |
 | Storage path error      | Dir missing        | Set `JUNIPER_DATA_STORAGE_PATH` to writable path         |
+| Artifact RSS scales with NPZ size | Store inherits base `open_artifact_stream` | Use LocalFS (default API store), or override like LocalFS; do not wrap LocalFS in Cached |
+| Artifact 200 with empty body | Existence check moved inside the generator | Return `None` from `open_artifact_stream` before yielding |
 | `ImportError: redis`    | Optional backend   | `pip install redis`                                      |
 | Coverage pre-push fails | Below threshold    | Add tests; see `scripts/check_module_coverage.py`        |
 

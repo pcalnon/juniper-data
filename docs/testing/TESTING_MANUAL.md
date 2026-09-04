@@ -16,6 +16,7 @@
    - [Directory Structure](#directory-structure)
    - [Test Categories](#test-categories)
    - [Test File Inventory](#test-file-inventory)
+   - [Artifact streaming](#artifact-streaming)
 3. [Running Tests](#running-tests)
    - [Basic Commands](#basic-commands)
    - [Marker-Based Selection](#marker-based-selection)
@@ -101,6 +102,8 @@ juniper_data/tests/
 | `test_api_settings.py` | API | Pydantic settings and environment variables |
 | `test_arc_agi_generator.py` | Generator | ARC-AGI dataset generator |
 | `test_artifacts.py` | Core | Artifact class and file handling |
+| `test_artifact_streaming.py` | Storage | Chunked `open_artifact_stream` (APD-DATA-016) |
+| `test_binary_media_types.py` | API | `BINARY_MEDIA_TYPE` is `application/zip` |
 | `test_cached_store.py` | Storage | Cached dataset storage |
 | `test_checkerboard_generator.py` | Generator | Checkerboard pattern generator |
 | `test_circles_generator.py` | Generator | Concentric circles generator |
@@ -141,6 +144,12 @@ juniper_data/tests/
 |------|-------------|
 | `test_generator_benchmarks.py` | Generator throughput benchmarks |
 | `test_storage_benchmarks.py` | Storage operation benchmarks |
+
+### Artifact streaming
+
+`test_artifact_streaming.py` pins APD-DATA-016 / #313. A whole-file read still round-trips, so the decisive LocalFS arm is that a small `chunk_size` yields more than one chunk. The base default must yield exactly one chunk (honest whole-read). Absence must be `None` from the *call* — a generator object here becomes 200 with an empty body. `test_binary_media_types.py` pins the published `application/zip` type.
+
+> See: [REFERENCE.md -- Artifact Streaming](../REFERENCE.md#artifact-streaming)
 
 ---
 
