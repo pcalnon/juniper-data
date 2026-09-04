@@ -20,7 +20,6 @@ train-only fit was not merely wrong there but impossible until the order was cha
 """
 
 import csv
-import importlib
 import os
 import pathlib
 import tempfile
@@ -28,16 +27,12 @@ import tempfile
 import numpy as np
 import pytest
 
-# Load-bearing side effect, NOT an unused import. ``juniper_data.generators.csv_import``
-# cannot be imported on its own -- it hits a circular import through
-# ``api.routes.generators`` (juniper-data#316) -- and pytest may collect this file before
-# anything else has completed that cycle. Importing the routes module first closes it.
-#
-# Written as an explicit ``import_module`` call rather than a bare import with ``# noqa: F401``
-# because the noqa satisfied ruff but not CodeQL, which correctly flagged an unused NAME.
-importlib.import_module("juniper_data.api.routes.generators")
+from juniper_data.generators.csv_import import CsvImportGenerator, CsvImportParams
 
-from juniper_data.generators.csv_import import CsvImportGenerator, CsvImportParams  # noqa: E402
+# NOTE: this used to require pre-importing ``juniper_data.api.routes.generators`` for its side
+# effect, because ``csv_import`` could not be imported on its own (juniper-data#316). That
+# workaround is gone -- the cycle was broken by deferring ``create_app`` in
+# ``juniper_data/api/__init__.py``. If this import starts failing again, the cycle is back.
 
 pytestmark = pytest.mark.unit
 

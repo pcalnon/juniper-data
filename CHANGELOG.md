@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`juniper_data.generators.csv_import` could not be imported on its own.** A circular import
+  raised `ImportError: cannot import name 'VERSION'`:
+
+  ```
+  csv_import/__init__ -> csv_import.generator  (imports juniper_data.api.settings)
+                      -> juniper_data.api/__init__  (eagerly imported .app)
+                      -> api.app -> api.routes.generators
+                      -> juniper_data.generators.csv_import   # still initialising
+  ```
+
+  Importing a submodule initialises its parent package first, so the ordinary leaf import
+  `from juniper_data.api.settings import get_settings` dragged the entire FastAPI app and every
+  route into the cycle.
+
+  Fixed by exposing `create_app` **lazily** from `juniper_data/api/__init__.py` via a module
+  `__getattr__` (PEP 562). `Settings` and `get_settings` stay eager — they are leaves. Nothing
+  that merely wants settings pulls the routes in any more, so this closes the whole class rather
+  than only the `csv_import` instance. `from juniper_data.api import create_app` is unchanged.
+
+  The defect was **masked in service use** — app startup imports the routes long before anything
+  touches `csv_import` — and surfaced only when the subpackage was imported *first*, which is what
+  a test, script or external consumer does. It broke pytest collection of
+  `test_csv_import_generator.py` in isolation.
+
+  A new `tests/unit/test_no_import_cycles.py` asserts every one of the 16 registered generator
+  subpackages imports standalone, and that importing `api.settings` does not load the route
+  modules. All of it runs in **subprocesses**: a cycle is a property of a cold interpreter, and an
+  in-process assertion would pass with the defect fully present.
+
 - **The feature normaliser was fit on the full set, including chronologically-later test rows.**
   `equities`, `equities_seq` and `csv_import` computed min/max over every row and then applied
   those statistics to the training features — look-ahead leakage, with the training data scaled by
