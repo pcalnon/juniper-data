@@ -18,6 +18,7 @@
 - [Test Dependencies](#test-dependencies)
 - [Command Reference](#command-reference)
 - [File Structure Reference](#file-structure-reference)
+- [Equities symbol-cap pins](#equities-symbol-cap-pins)
 - [Warning Filters](#warning-filters)
 
 ---
@@ -277,6 +278,25 @@ juniper_data/tests/          # Root test path (testpaths in pyproject.toml)
 | Coverage HTML | `htmlcov/` | `--cov-report=html` |
 | Coverage XML | `coverage.xml` | `--cov-report=xml` |
 | Coverage JSON | `reports/coverage.json` | `check_module_coverage.py` |
+
+---
+
+## Equities symbol-cap pins
+
+Pins for APD-DATA-018's equities half (land with #354). Live in `juniper_data/tests/unit/test_equities_generator.py` (`TestUniverseSymbolCap`). No live Yahoo/SEC.
+
+| Test | Asserts | Mutation that must go red |
+|------|---------|---------------------------|
+| `test_oversized_universe_is_refused_by_default` | 40 names, no opt-in → `InputTooLargeError` (cap 14, unit `symbols`) | Restore the silent slice, or default `allow_truncation` on |
+| `test_opt_in_truncates_and_annotates` | authorised cut → 14 names + `universe_exceeded_symbol_cap` | Bound without the descriptor |
+| `test_the_kept_prefix_is_deterministic` | reversed dict → same `sorted(universe)[:14]` | Iteration-order prefix |
+| `test_request_cannot_RAISE_the_deployment_cap` | `max_symbols=9999` / `None` still clamp to 14 | Request wins over the ceiling |
+| `test_generate_puts_the_annotation_on_the_returned_arrays` | channel key on `generate()` output; `records_imported` is a real row count | Resolver annotates, `generate()` drops the key |
+| `test_generate_refuses_an_oversized_universe` | `generate()` itself raises | Only `_resolve_symbols` refuses |
+| `test_generate_omits_the_key_entirely_when_nothing_was_cut` | under-cap has no `"truncation"` key | Write `{}` for complete |
+| `test_default_cap_matches_the_measured_budget` | constant is 14; opt-in default is `false` | Move the number without re-measuring |
+
+`equities_seq` reuses `_resolve_symbols` and attaches the same channel key. Do not add a second resolver without a matching pin.
 
 ---
 

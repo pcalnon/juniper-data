@@ -49,6 +49,7 @@
 | **CI/CD reference** | [CICD_REFERENCE.md](ci_cd/CICD_REFERENCE.md) | docs/ci_cd/ |
 | **See version history** | [CHANGELOG.md](../CHANGELOG.md) | Root |
 | **Quick-reference dev tasks** | [DEVELOPER_CHEATSHEET.md](DEVELOPER_CHEATSHEET.md) | docs/ |
+| **Bound an equities generate (14-symbol cap)** | [REFERENCE.md -- Equities Symbol Cap](REFERENCE.md#equities-symbol-cap) | docs/ |
 | **Contribute code** | [AGENTS.md](../AGENTS.md) | Root |
 
 ---

@@ -142,6 +142,24 @@ All arrays `float32`. Keys: `X_train`, `y_train`, `X_test`, `y_test`, `X_full`, 
 
 ---
 
+## Equities symbol cap
+
+`equities` / `equities_seq` fan out one Yahoo `download` plus 1–2 SEC `companyconcept` calls **per ticker**. APD-DATA-018's bound is `max_symbols` (default **14**), not bytes.
+
+An oversized universe is **refused with 422** unless `allow_truncation`, `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION`, or the matching `.env` entry is set. A request may only *lower* the cap (`min(requested, JUNIPER_DATA_EQUITIES_MAX_SYMBOLS)`); `max_symbols=None` means "no request-side limit", not unbounded.
+
+Default `EquitiesParams()` is the 503-name snapshot and **refuses**. Authorised cuts write `DatasetMeta.truncation` (`unit=symbols`, `reason=universe_exceeded_symbol_cap`). Prefix is alphabetical (or caller order). Extra: `pip install "juniper-data[equities]"`.
+
+```python
+EquitiesParams(symbols=["AAPL", "MSFT"])                         # fits; no annotation
+EquitiesParams(allow_truncation=True)                            # first 14 alphabetical S&P names + meta.truncation
+EquitiesParams(symbols=["AAPL", "MSFT", "AMZN"], max_symbols=2, allow_truncation=True)
+```
+
+> See: [REFERENCE.md -- Equities Symbol Cap](REFERENCE.md#equities-symbol-cap)
+
+---
+
 ## Testing
 
 | Marker                                      | Scope                             |
@@ -208,6 +226,9 @@ pre-commit install --hook-type pre-push  # coverage gate (one-time)
 | Storage path error      | Dir missing        | Set `JUNIPER_DATA_STORAGE_PATH` to writable path         |
 | `ImportError: redis`    | Optional backend   | `pip install redis`                                      |
 | Coverage pre-push fails | Below threshold    | Add tests; see `scripts/check_module_coverage.py`        |
+| Equities `422` / `InputTooLargeError` | Default universe is 503 names; cap is 14 | Pass `symbols` ≤ cap, or set `allow_truncation=true` / `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION` |
+| Equities generate hangs / times out | Uncached fan-out still costs ~2.1 s/symbol | Keep `use_cache=True`; do not raise the cap without re-measuring |
+| Equities `total_shares` all zeros | SEC returned no facts; default `fundamentals_fill="zero"` | Check CIK / logs; try `fundamentals_fill="nan"`; do not read 0 as "no shares" |
 
 ---
 
