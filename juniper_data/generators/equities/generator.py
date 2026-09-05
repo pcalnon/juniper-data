@@ -49,7 +49,7 @@ from typing import Any
 
 import numpy as np
 
-from juniper_data.core.limits import REASON_SYMBOL_CAP, TRUNCATION_META_KEY, UNIT_SYMBOLS, InputTooLargeError, build_truncation_meta
+from juniper_data.core.limits import DATA_QUALITY_META_KEY, INCOMPLETE_ACCEPT, INCOMPLETE_DROP, INCOMPLETE_FAIL, REASON_SYMBOL_CAP, TRUNCATION_META_KEY, UNIT_SYMBOLS, IncompleteDataError, InputTooLargeError, build_data_quality_meta, build_truncation_meta
 
 from .defaults import CONSTITUENTS_FILENAME, EQUITIES_FEATURE_COLUMNS
 from .params import EquitiesParams
@@ -80,6 +80,43 @@ _SHARES_OUTLIER_FACTOR = 100.0
 
 # XBRL shares-outstanding concepts, tried in order (dei cover-page first).
 _SHARES_CONCEPTS = (("dei", "EntityCommonStockSharesOutstanding"), ("us-gaap", "CommonStockSharesOutstanding"))
+
+# THE RESCUE LADDER, walked only when ``companyconcept`` yields nothing.
+#
+# Measured 2026-09-05 over the 37 S&P 500 constituents that ``companyconcept``
+# reported as empty (``util/ad-hoc/2026-09-05_probe_shares_rescue_paths.py``):
+# **18 of them have the SAME dei concept, fully populated, in companyfacts** --
+# KO among them, with 71 facts and a current count of 4.30 billion shares. The
+# two SEC endpoints disagree for the same CIK, taxonomy and tag, so this was
+# never missing data; it was the wrong endpoint.
+#
+# The mechanism, for whoever meets it next: both endpoints return only facts
+# with NO dimensional qualifiers. A multi-class filer tags shares outstanding
+# per share class (``us-gaap:StatementClassOfStockAxis``), and those facts carry
+# a dimension. companyfacts happens to surface a usable undimensioned series for
+# most of them anyway; companyconcept does not.
+#
+# Rung 3 is SEMANTICALLY WEAKER and is why provenance is recorded: a period
+# average is not a point-in-time count, so a market cap derived from it is not
+# the same quantity. It rescues 10 more (META, RL, HRL, MKC, LEN, UHS, ABNB,
+# TTD, TKO, XYZ). One name (STZ) has no share concept at all in companyfacts.
+#
+# companyfacts costs ~1.15 s and ~5 MB against companyconcept's ~0.20 s and
+# ~600 B, so it must stay a FALLBACK: paying it for every symbol would cut the
+# 14-symbol cap to ~9.
+_SHARES_FACTS_LADDER = (
+    ("dei", "EntityCommonStockSharesOutstanding", "point_in_time"),
+    ("us-gaap", "CommonStockSharesOutstanding", "point_in_time"),
+    ("us-gaap", "WeightedAverageNumberOfSharesOutstandingBasic", "period_average"),
+)
+_SEC_FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"
+
+# Provenance values recorded on the shares frame and surfaced in DatasetMeta.
+SHARES_SOURCE_CONCEPT = "companyconcept"
+SHARES_SOURCE_FACTS = "companyfacts"
+SHARES_QUALITY_POINT_IN_TIME = "point_in_time"
+SHARES_QUALITY_PERIOD_AVERAGE = "period_average"
+SHARES_QUALITY_UNRESCUED = "unrescued"
 
 _CONSTITUENTS_PATH = Path(__file__).resolve().parent / CONSTITUENTS_FILENAME
 _CACHE_DIR = Path(os.environ.get("JUNIPER_DATA_EQUITIES_CACHE_DIR", str(Path.home() / ".cache" / "juniper_data" / "equities")))
@@ -196,6 +233,47 @@ class EquitiesGenerator:
         if not conditioned:
             raise ValueError("No data could be retrieved for the requested symbols.")
 
+        # APD-DATA-018 follow-up: classify what came back BEFORE assembling it.
+        #
+        # Two distinct problems, kept apart because a consumer has to ask about
+        # them separately: `degraded` recovered a value from a weaker source (a
+        # period average is not a point-in-time share count, so its market_cap is
+        # a different quantity); `unrescued` recovered nothing at all, and under
+        # fundamentals_fill="zero" would ship a market cap of 0.0 -- a number no
+        # listed company can have.
+        degraded: dict[str, str] = {}
+        unrescued: dict[str, str] = {}
+        for ticker, frame in conditioned.items():
+            quality = str(frame["shares_quality"].iloc[0]) if "shares_quality" in frame.columns and len(frame) else SHARES_QUALITY_UNRESCUED
+            if quality == SHARES_QUALITY_UNRESCUED:
+                unrescued[ticker] = "no shares-outstanding concept in companyconcept or companyfacts"
+            elif quality != SHARES_QUALITY_POINT_IN_TIME:
+                degraded[ticker] = quality
+
+        rows_affected = sum(len(conditioned[ticker]) for ticker in unrescued)
+        policy = EquitiesGenerator._resolve_incomplete_policy(params, bool(unrescued))
+
+        if unrescued:
+            _logger.warning("equities: %d symbol(s) have no shares data after every rescue path: %s", len(unrescued), ", ".join(sorted(unrescued)))
+        if policy == INCOMPLETE_FAIL:
+            raise IncompleteDataError(
+                detail="Shares outstanding could not be resolved for part of the requested universe, so total_shares and market_cap would be fabricated for those rows.",
+                unrescued=sorted(unrescued),
+                rows_affected=rows_affected,
+                opt_in_env="JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION",
+            )
+        if policy == INCOMPLETE_DROP:
+            for ticker in unrescued:
+                conditioned.pop(ticker, None)
+            _logger.warning("equities: dropped %d symbol(s) with unresolvable shares data per incomplete_rows='drop'", len(unrescued))
+            if not conditioned:
+                raise IncompleteDataError(
+                    detail="Every requested symbol had unresolvable shares data, so dropping them leaves no dataset.",
+                    unrescued=sorted(unrescued),
+                    rows_affected=rows_affected,
+                    opt_in_env="JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION",
+                )
+
         vocab = sorted(conditioned)
         code_of = {ticker: code for code, ticker in enumerate(vocab)}
 
@@ -269,6 +347,22 @@ class EquitiesGenerator:
             truncation["records_imported"] = int(len(full))
             arrays[TRUNCATION_META_KEY] = truncation
 
+        # The permanent data-quality annotation. Absent entirely when nothing is
+        # wrong, so its presence alone answers "is anything degraded here".
+        # DROP still annotates. The symbols are gone from the arrays, but a
+        # dataset that quietly contains fewer symbols than were asked for is the
+        # same silent-partial-data problem in a different costume -- the record of
+        # WHAT was dropped is the whole point. Only `rows_affected` goes to zero,
+        # because those rows are genuinely not in the dataset to be affected.
+        quality_meta = build_data_quality_meta(
+            unrescued=unrescued,
+            degraded=degraded,
+            rows_affected=0 if policy == INCOMPLETE_DROP else rows_affected,
+            policy=policy,
+        )
+        if quality_meta is not None:
+            arrays[DATA_QUALITY_META_KEY] = quality_meta
+
         return arrays
 
     # ------------------------------------------------------------------ #
@@ -328,6 +422,39 @@ class EquitiesGenerator:
         cap = min(requested, ceiling)
         allow = bool(params.allow_truncation or settings.equities_allow_truncation)
         return cap, allow
+
+    @staticmethod
+    def _resolve_incomplete_policy(params: EquitiesParams, has_unrescued: bool) -> str:
+        """Decide fail / accept / drop for rows that no rescue path recovered.
+
+        Two knobs, because the owner's spec needs two different shapes from one
+        contract:
+
+        * ``allow_truncation`` is the **gate** -- the same boolean that governs an
+          over-cap universe, and settable the same three ways (request parameter,
+          ``JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION``, matching ``.env`` entry).
+          Unset means **fail**, which is the default and the safe direction: a
+          dataset silently carrying a fabricated market cap is the failure this
+          area exists to prevent.
+        * ``incomplete_rows`` says what to do once the gate is open -- ``accept``
+          the affected rows or ``drop`` them. An interactive consumer maps its
+          three choices onto these two knobs; a command-line consumer that only
+          sets the boolean gets ``accept``, which is the documented CLI behaviour.
+
+        Returns ``INCOMPLETE_ACCEPT`` unchanged when nothing is wrong, so a clean
+        dataset never depends on either knob.
+        """
+        if not has_unrescued:
+            return INCOMPLETE_ACCEPT
+
+        from juniper_data.api.settings import get_settings
+
+        settings = get_settings()
+        allowed = bool(params.allow_truncation or settings.equities_allow_truncation)
+        if not allowed:
+            return INCOMPLETE_FAIL
+        choice = params.incomplete_rows or settings.equities_incomplete_rows
+        return INCOMPLETE_DROP if choice == INCOMPLETE_DROP else INCOMPLETE_ACCEPT
 
     @staticmethod
     def _resolve_symbols(params: EquitiesParams, constituents: dict[str, dict[str, Any]]) -> tuple[list[str], dict[str, dict[str, Any]], dict[str, Any] | None]:
@@ -478,6 +605,8 @@ class EquitiesGenerator:
             known = known.set_index("filed").sort_index()
             known = known[~known.index.duplicated(keep="last")]
 
+            frame["shares_quality"] = str(shares["shares_quality"].iloc[0]) if "shares_quality" in shares.columns else SHARES_QUALITY_POINT_IN_TIME
+            frame["shares_origin"] = str(shares["shares_origin"].iloc[0]) if "shares_origin" in shares.columns else SHARES_SOURCE_CONCEPT
             if len(known):
                 union = frame.index.union(known.index)
                 frame["total_shares"] = known["shares"].reindex(union).sort_index().ffill().reindex(frame.index).astype("float64")
@@ -489,8 +618,12 @@ class EquitiesGenerator:
         else:
             frame["total_shares"] = np.nan
             frame["report_date"] = pd.NaT
+            frame["shares_quality"] = SHARES_QUALITY_UNRESCUED
+            frame["shares_origin"] = SHARES_QUALITY_UNRESCUED
 
         if frame["total_shares"].isna().all():
+            frame["shares_quality"] = SHARES_QUALITY_UNRESCUED
+            frame["shares_origin"] = SHARES_QUALITY_UNRESCUED
             # SAY SO. Under the default fundamentals_fill="zero" this ticker's
             # total_shares and market_cap become 0.0 for every row -- a value no
             # listed company can have, and one nothing downstream distinguishes
@@ -574,6 +707,44 @@ class EquitiesGenerator:
         return frame
 
     @staticmethod
+    def _fetch_shares_from_facts(cik: int) -> tuple[dict[str, Any] | None, str]:
+        """Rescue rung: find a shares series in ``companyfacts``.
+
+        ``companyconcept`` returns a present-but-EMPTY concept for a substantial
+        minority of filers -- 37 of the 503 bundled S&P 500 constituents -- while
+        ``companyfacts`` carries the identical concept, populated, for 18 of them.
+        KO is the worked example: ``companyconcept`` says 0 facts,
+        ``companyfacts`` says 71, current count 4.30 billion shares. Same CIK,
+        same taxonomy, same tag.
+
+        Walks :data:`_SHARES_FACTS_LADDER` in order and returns the first rung
+        with facts, reshaped to look exactly like a ``companyconcept`` payload so
+        the caller's parsing is unchanged.
+
+        Returns:
+            ``(payload_or_None, quality)`` where ``quality`` distinguishes a
+            point-in-time count from a period average -- the two are not the same
+            quantity and a market cap built on each means something different.
+        """
+        payload = _sec_get(_SEC_FACTS_URL.format(cik=int(cik)))
+        if not payload or not payload.get("facts"):
+            return None, SHARES_QUALITY_POINT_IN_TIME
+
+        for taxonomy, tag, quality in _SHARES_FACTS_LADDER:
+            entry = payload["facts"].get(taxonomy, {}).get(tag)
+            if not entry or not any(entry.get("units", {}).values()):
+                continue
+            if quality == SHARES_QUALITY_PERIOD_AVERAGE:
+                _logger.warning(
+                    "equities: cik=%s has no point-in-time shares concept; falling back to %s/%s (a PERIOD AVERAGE, not a point-in-time count) -- market_cap for this symbol is not directly comparable with the others",
+                    cik,
+                    taxonomy,
+                    tag,
+                )
+            return {"units": entry["units"]}, quality
+        return None, SHARES_QUALITY_POINT_IN_TIME
+
+    @staticmethod
     def _fetch_shares(cik: int, use_cache: bool) -> Any:
         """Fetch shares outstanding AND their filing dates from SEC EDGAR.
 
@@ -599,6 +770,8 @@ class EquitiesGenerator:
                 data = json.loads(cache.read_text())
             except (OSError, json.JSONDecodeError):
                 data = None
+        quality = SHARES_QUALITY_POINT_IN_TIME
+        origin = SHARES_SOURCE_CONCEPT
         if data is None:
             for taxonomy, tag in _SHARES_CONCEPTS:
                 payload = _sec_get(_SEC_CONCEPT_URL.format(cik=int(cik), taxonomy=taxonomy, tag=tag))
@@ -619,6 +792,14 @@ class EquitiesGenerator:
                 if payload and any(payload.get("units", {}).values()):
                     data = payload
                     break
+
+            if data is None:
+                # RESCUE RUNG. companyconcept found nothing; companyfacts often
+                # has the very same concept populated. Costs ~1.15 s and ~5 MB,
+                # which is why it runs only here.
+                data, quality = EquitiesGenerator._fetch_shares_from_facts(cik)
+                origin = SHARES_SOURCE_FACTS if data is not None else origin
+
             if data and use_cache:
                 cache.parent.mkdir(parents=True, exist_ok=True)
                 with contextlib.suppress(OSError):
@@ -652,6 +833,12 @@ class EquitiesGenerator:
             return None
 
         frame = series.to_frame(name="shares")
+        # Provenance rides ALONG with the values, as a constant column, so it
+        # survives every reindex/ffill downstream without a second return value
+        # or a fragile ``.attrs``. A consumer must be able to tell a market cap
+        # built on point-in-time shares from one built on a period average.
+        frame["shares_quality"] = quality
+        frame["shares_origin"] = origin
         # A point with no ``filed`` (rare, older filings) becomes NaT rather than
         # a guess -- the consumer sees "unknown", not a fabricated date.
         frame["filed"] = pd.to_datetime(pd.Series({pd.Timestamp(end): filed_on.get(end) for end in best}, dtype="object")).reindex(frame.index)

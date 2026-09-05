@@ -58,11 +58,24 @@ from typing import Any
 # so the stored arrays stay array-only -- exactly as ``SCALING_META_KEY`` is.
 TRUNCATION_META_KEY = "truncation"
 
+# Reserved key for the data-quality descriptor, popped by the route exactly as
+# the truncation one is so the stored arrays stay array-only.
+DATA_QUALITY_META_KEY = "data_quality"
+
 UNIT_BYTES = "bytes"
 UNIT_SYMBOLS = "symbols"
 
 REASON_BYTE_CAP = "source_exceeded_byte_cap"
 REASON_SYMBOL_CAP = "universe_exceeded_symbol_cap"
+
+# What to do when part of a dataset cannot be produced correctly and no rescue
+# path recovered it. Default is to REFUSE: a dataset silently missing a
+# fundamental is the failure mode this whole area exists to prevent.
+INCOMPLETE_FAIL = "fail"
+INCOMPLETE_ACCEPT = "accept"
+INCOMPLETE_DROP = "drop"
+
+EQUITIES_DEFAULT_INCOMPLETE_ROWS = INCOMPLETE_ACCEPT
 
 # The per-generator caps live HERE rather than in each generator's
 # ``defaults.py`` because ``api/settings.py`` needs them as its deployment
@@ -127,6 +140,68 @@ class InputTooLargeError(ValueError):
         self.cap = cap
         self.actual = actual
         super().__init__(f"{source} is {_describe(unit, actual)}, over the {_describe(unit, cap)} cap. Re-submit with allow_truncation=true (or set {opt_in_env}=true) to import the first {_describe(unit, cap)}. The resulting dataset will be permanently annotated as truncated.")
+
+
+class IncompleteDataError(ValueError):
+    """Part of the dataset could not be produced, and the caller did not allow it.
+
+    Sibling of :class:`InputTooLargeError` and mapped to the same **422**: both
+    say "what you asked for cannot be delivered as asked", and both are
+    caller-fixable by opting in. Subclasses ``ValueError`` for the same reason --
+    a missed catch lands on 400, not a 500.
+
+    Attributes:
+        unrescued: identifiers that could not be recovered by any rescue path.
+        rows_affected: dataset rows those identifiers account for.
+    """
+
+    def __init__(self, *, detail: str, unrescued: list[str], rows_affected: int, opt_in_env: str) -> None:
+        self.unrescued = list(unrescued)
+        self.rows_affected = int(rows_affected)
+        shown = ", ".join(self.unrescued[:8]) + ("…" if len(self.unrescued) > 8 else "")
+        super().__init__(
+            f"{detail} Affected ({len(self.unrescued)}): {shown}. {rows_affected:,} row(s) would carry fabricated values. Re-submit with allow_truncation=true (or set {opt_in_env}=true) to accept them, or with incomplete_rows='drop' to exclude them. Either choice is recorded permanently in the dataset's metadata."
+        )
+
+
+def build_data_quality_meta(
+    *,
+    unrescued: dict[str, str],
+    degraded: dict[str, str],
+    rows_affected: int,
+    policy: str,
+) -> dict[str, Any] | None:
+    """Build the permanent data-quality descriptor, or None when nothing is wrong.
+
+    Companion to :func:`build_truncation_meta`, travelling the same reserved-key
+    route into ``DatasetMeta``. Where truncation says *how much is missing*, this
+    says *what is wrong with what is present* -- and they are different questions
+    a consumer has to be able to ask separately.
+
+    Two categories, deliberately not merged:
+
+    * ``degraded`` -- a value WAS recovered, but from a weaker source than the
+      primary one. A ``market_cap`` computed from a period-average share count is
+      not the same quantity as one computed from point-in-time shares, and a
+      consumer comparing across symbols has to be able to see which is which.
+    * ``unrescued`` -- no source produced a value at all. Under
+      ``INCOMPLETE_ACCEPT`` those rows carry the fill value, which for the
+      ``"zero"`` policy is an impossible number; under ``INCOMPLETE_DROP`` they
+      are gone. Either way the dataset says so.
+
+    Returns ``None`` when both are empty, so the field's presence alone answers
+    "is anything wrong with this dataset" -- the same contract
+    ``DatasetMeta.truncation`` keeps.
+    """
+    if not unrescued and not degraded:
+        return None
+    return {
+        "complete": False,
+        "unrescued": dict(sorted(unrescued.items())),
+        "degraded": dict(sorted(degraded.items())),
+        "rows_affected": int(rows_affected),
+        "policy": policy,
+    }
 
 
 def build_truncation_meta(
