@@ -31,7 +31,7 @@ from typing import Any
 
 import numpy as np
 
-from juniper_data.core.limits import TRUNCATION_META_KEY
+from juniper_data.core.limits import DATA_QUALITY_META_KEY, TRUNCATION_META_KEY
 from juniper_data.core.scaling import SCALING_META_KEY
 
 #: The only task type that populates n_classes / class_distribution.
@@ -192,3 +192,17 @@ def pop_truncation_meta(arrays: dict[str, Any]) -> dict[str, Any] | None:
         The truncation descriptor, or ``None`` when nothing was truncated.
     """
     return arrays.pop(TRUNCATION_META_KEY, None) or None
+
+
+def pop_data_quality_meta(arrays: dict[str, Any]) -> dict[str, Any] | None:
+    """Pop the reserved data-quality channel key from a generator's return dict.
+
+    Third member of the same family as :func:`pop_scaling_meta` and
+    :func:`pop_truncation_meta`, and popped for the same reason: the descriptor
+    is a plain dict, and everything left in ``arrays`` must be an ndarray by the
+    time it reaches ``compute_checksum`` and the NPZ writer.
+
+    Returns ``None`` when the dataset is clean, so ``DatasetMeta.data_quality``
+    can be tested for presence alone.
+    """
+    return arrays.pop(DATA_QUALITY_META_KEY, None) or None

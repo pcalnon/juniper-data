@@ -98,6 +98,10 @@ class EquitiesParams(BaseModel):
         ge=1,
         description="Cap on the number of symbols (after ordering), APD-DATA-018. A universe larger than this is REFUSED unless allow_truncation is set. Omit to use the deployment default (JUNIPER_DATA_EQUITIES_MAX_SYMBOLS); None means unbounded and is honoured only up to that deployment ceiling.",
     )
+    incomplete_rows: Literal["accept", "drop"] | None = Field(
+        default=None,
+        description="What to do with rows whose fundamentals no rescue path could resolve, once allow_truncation has opened the gate: 'accept' keeps them (filled per fundamentals_fill) or 'drop' excludes those symbols entirely. Either way the dataset is PERMANENTLY annotated in DatasetMeta.data_quality. None inherits the deployment default (JUNIPER_DATA_EQUITIES_INCOMPLETE_ROWS). Without allow_truncation this has no effect -- the request is refused instead.",
+    )
     allow_truncation: bool = Field(
         default=EQUITIES_DEFAULT_ALLOW_TRUNCATION,
         description="Accept a partial universe when it exceeds max_symbols. Default false: an oversized universe is refused with 422 rather than silently truncated to the first N tickers. When true, the leading max_symbols symbols are imported and the dataset is PERMANENTLY annotated as truncated in its metadata. Can also be enabled deployment-wide via JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION or the matching .env entry.",
