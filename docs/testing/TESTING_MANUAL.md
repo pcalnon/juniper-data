@@ -16,6 +16,7 @@
    - [Directory Structure](#directory-structure)
    - [Test Categories](#test-categories)
    - [Test File Inventory](#test-file-inventory)
+   - [Empty-train shape metadata](#empty-train-shape-metadata)
 3. [Running Tests](#running-tests)
    - [Basic Commands](#basic-commands)
    - [Marker-Based Selection](#marker-based-selection)
@@ -114,6 +115,7 @@ juniper_data/tests/
 | `test_kaggle_store.py` | Storage | Kaggle storage backend |
 | `test_lifecycle.py` | Core | Dataset lifecycle management |
 | `test_main.py` | Core | CLI entry point (`__main__.py`) |
+| `test_meta_dispatch.py` | Core | Shape metadata: trailing-axis `n_features`, task_type dispatch, empty-train (#340) |
 | `test_middleware.py` | API | FastAPI middleware components |
 | `test_mnist_generator.py` | Generator | MNIST/Fashion-MNIST generator |
 | `test_no_import_cycles.py` | API / generators | Cold-interpreter standalone import of every generator subpackage (#316 / #333) |
@@ -143,6 +145,14 @@ juniper_data/tests/
 |------|-------------|
 | `test_generator_benchmarks.py` | Generator throughput benchmarks |
 | `test_storage_benchmarks.py` | Storage operation benchmarks |
+
+### Empty-train shape metadata
+
+`compute_shape_meta` is on the create-dataset path for every generator. An empty train split still has a defined `shape[-1]`; hardcoding `n_features = 2` when `n_train == 0` lied for F ≠ 2 (including 3-D sequence F). `test_classification_3d_uses_trailing_feature_axis` only covers non-empty train, so restoring `else 2` stayed green until #340.
+
+Pin empty train in `test_meta_dispatch.py`: 2-D F=5, 3-D F=3 (not lookback), and classification `n_classes` from `y_test`. Mutation: putting `else 2` back fails exactly those two n_features tests.
+
+> See: [REFERENCE.md -- Empty-Train Shape Metadata](../REFERENCE.md#empty-train-shape-metadata)
 
 ---
 

@@ -15,6 +15,7 @@
 - [Pytest Configuration](#pytest-configuration)
 - [Fixtures Reference](#fixtures-reference)
 - [Coverage Configuration](#coverage-configuration)
+- [Empty-train shape-meta pins](#empty-train-shape-meta-pins)
 - [Test Dependencies](#test-dependencies)
 - [Command Reference](#command-reference)
 - [Import-cycle pins](#import-cycle-pins)
@@ -186,6 +187,22 @@ Dataset dictionaries contain keys: `X_train`, `y_train`, `X_val`, `y_val`, `X_te
 |-----------|-------|--------|-------------|
 | Aggregate | 80% | `COVERAGE_FAIL_UNDER` env var / `pyproject.toml` | CI `unit-tests` job, `--cov-fail-under` flag |
 | Per-module | 85% | `scripts/check_module_coverage.py` | CI `unit-tests` job, pre-push hook |
+
+---
+
+## Empty-train shape-meta pins
+
+`juniper_data/tests/unit/test_meta_dispatch.py` (juniper-data#340). `n_features` is `X_train.shape[-1]` even when `n_train == 0`. The existing 3-D trailing-axis test only covers non-empty train.
+
+| Test | Property |
+|------|----------|
+| `test_empty_train_2d_uses_trailing_feature_axis` | `(0, 5)` reports `n_features=5`, not 2 |
+| `test_empty_train_3d_uses_trailing_feature_axis` | `(0, 7, 3)` reports `n_features=3`, not lookback 7, not 2 |
+| `test_empty_train_classification_reads_n_classes_from_y_test` | empty-train 4-class artifact reports `n_classes=4` from `y_test` |
+
+Restoring `n_features = … if n_train > 0 else 2` is expected to fail the two n_features tests and leave the rest of this file green. These pins are on #340; they are not on `main` until that PR lands.
+
+> See: [REFERENCE.md -- Empty-Train Shape Metadata](../REFERENCE.md#empty-train-shape-metadata)
 
 ---
 

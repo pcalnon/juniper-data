@@ -22,6 +22,7 @@
 - [Project Architecture Reference](#project-architecture-reference)
 - [API Package Import Graph](#api-package-import-graph)
 - [API Design Reference](#api-design-reference)
+- [Empty-Train Shape Metadata](#empty-train-shape-metadata)
 - [Storage Backend Reference](#storage-backend-reference)
 - [Prometheus Collector Reference](#prometheus-collector-reference)
 - [Docker Reference](#docker-reference)
@@ -1032,6 +1033,43 @@ Responses use typed Pydantic models (defined in `core/models.py` and `api/models
 - `BatchDeleteResponse` -- deleted, not_found, total_deleted
 - `DatasetStats` -- total_datasets, total_samples, by_generator, by_tag
 - `ReadinessResponse` -- status, version, service, timestamp, dependencies
+
+---
+
+## Empty-Train Shape Metadata
+
+`compute_shape_meta` (`juniper_data/core/meta.py`) derives the shape fields `POST /v1/datasets` writes onto `DatasetMeta` for **every** generator. `n_features` is the **trailing** axis of `X_train`: `shape[-1]` for both 2-D tabular `(N, F)` and 3-D sequence `(W, L, F)`. That matches `derive_sequence_meta`, which already reads rank from an empty `X_train` because an empty split still has a defined shape.
+
+Until #340, empty train (`n_train == 0` — a `train_ratio` that rounds to zero rows, or a generator that emits an empty train split) abandoned that contract and hardcoded `n_features = 2`:
+
+- a 2-D import with F=5 persisted `n_features=2`
+- a 3-D sequence with lookback 7 and F=3 persisted `n_features=2` (neither lookback nor F)
+
+That wrong count is stored in metadata and served to every consumer. The route uses this helper for every artifact it creates, so the empty-train arm is not a niche path.
+
+#340 uses `int(x_train.shape[-1])` unconditionally. Empty `(0, 5)` reports 5; empty `(0, 7, 3)` reports 3.
+
+### Classification `n_classes` on empty train
+
+`_classification_meta` already falls back to `y_test.shape[1]` when `n_train == 0`. That is existing behaviour; #340 pins it so a later "simplify" cannot turn a 4-class empty-train artifact into `n_classes=2`. The remaining last-resort `n_classes = 2` applies only when **both** splits are empty — #340 does not change that arm.
+
+Regression artifacts still leave `n_classes` / `class_distribution` as `None`.
+
+### What not to do
+
+- Do not restore `n_features = … if n_train > 0 else 2`. Empty arrays still have `shape[-1]`. Mutation: putting `else 2` back fails the two new n_features tests (`2 == 5` and `2 == 3`) and leaves the rest of `test_meta_dispatch.py` green.
+- Do not use `shape[1]` (lookback) as `n_features` for 3-D artifacts. The trailing axis is F.
+- Do not special-case empty train in the route. The helper is the single derivation; `create_dataset` already calls it for every generator, including `batch-create`.
+
+### Pins
+
+These live in `tests/unit/test_meta_dispatch.py` on #340. They are not on `main` until that PR lands. The existing `test_classification_3d_uses_trailing_feature_axis` only covers **non-empty** train, so restoring `else 2` stayed green on the suite before these pins.
+
+| Test | Property |
+|------|----------|
+| `test_empty_train_2d_uses_trailing_feature_axis` | `(0, 5)` reports `n_features=5`, not 2 |
+| `test_empty_train_3d_uses_trailing_feature_axis` | `(0, 7, 3)` reports `n_features=3`, not lookback 7, not 2 |
+| `test_empty_train_classification_reads_n_classes_from_y_test` | empty-train 4-class artifact reports `n_classes=4` from `y_test` |
 
 ---
 
