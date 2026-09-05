@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import urllib.error
 from contextlib import contextmanager
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -31,10 +32,13 @@ pytest.importorskip("yfinance")
 from juniper_data.core.artifacts import load_npz, save_npz  # noqa: E402
 from juniper_data.generators.equities import VERSION, EquitiesGenerator, EquitiesParams, get_schema  # noqa: E402
 from juniper_data.generators.equities import generator as eq_gen  # noqa: E402
+from juniper_data.generators.equities.defaults import EQUITIES_FEATURE_COLUMNS  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.generators]
 
-_FEATURES = ["open", "high", "low", "close", "volume", "week52_high", "week52_low", "total_shares", "market_cap", "cost_basis"]
+# Derived from the constant, not restated. This list was a hand-maintained copy
+# and went stale the moment the matrix widened from 10 to 16 columns.
+_FEATURES = list(EQUITIES_FEATURE_COLUMNS)
 
 
 def _ohlcv(start: str = "2008-01-01", periods: int = 600, seed: int = 0):
@@ -51,10 +55,17 @@ def _ohlcv(start: str = "2008-01-01", periods: int = 600, seed: int = 0):
 
 
 def _shares(start: str = "2009-06-30"):
-    """Synthetic shares-outstanding step series (first filing ~mid-2009)."""
-    series = pd.Series({pd.Timestamp(start): 1_000_000_000.0, pd.Timestamp("2010-06-30"): 1_100_000_000.0})
-    series.index = pd.to_datetime(series.index)
-    return series
+    """Synthetic shares-outstanding history, as ``_fetch_shares`` now returns it.
+
+    A DataFrame of ``shares`` + ``filed``, not a bare Series: the filing date is
+    what feeds ``report_date`` / ``days_since_report``, and it is deliberately
+    LATER than the period end it describes, because that lag is the thing those
+    columns exist to represent.
+    """
+    return pd.DataFrame(
+        {"shares": [1_000_000_000.0, 1_100_000_000.0], "filed": [pd.Timestamp("2009-08-14"), pd.Timestamp("2010-08-13")]},
+        index=pd.to_datetime([pd.Timestamp(start), pd.Timestamp("2010-06-30")]),
+    )
 
 
 @contextmanager
@@ -88,7 +99,7 @@ class TestEquitiesGenerator:
             assert key in arrays, f"missing {key}"
 
         n = arrays["X_full"].shape[0]
-        assert arrays["X_full"].shape == (n, 10)
+        assert arrays["X_full"].shape == (n, len(EQUITIES_FEATURE_COLUMNS))
         assert arrays["y_full"].shape == (n, 2)
         assert arrays["y_reg_full"].shape == (n, 1)
         assert arrays["X_full"].dtype == np.float32
@@ -215,10 +226,15 @@ class TestEquitiesGenerator:
             }
         }
         with patch.object(eq_gen, "_sec_get", return_value=payload):
-            series = EquitiesGenerator._fetch_shares(320193, use_cache=False)
-        assert series is not None
-        assert len(series) == 3, "the 1e15 outlier should be dropped"
-        assert series.max() < 1e13
+            frame = EquitiesGenerator._fetch_shares(320193, use_cache=False)
+        assert frame is not None
+        assert len(frame) == 3, "the 1e15 outlier should be dropped"
+        assert frame["shares"].max() < 1e13
+        # The filing date rides along on the same payload -- that is what makes
+        # report_date / days_since_report cost no extra request. It must be the
+        # FILED date, not the period end, and here it is a day later.
+        assert frame["filed"].iloc[0] == pd.Timestamp("2009-07-01")
+        assert frame.index[0] == pd.Timestamp("2009-06-30")
 
     def test_normalize_features_bounds(self) -> None:
         """TRAIN is bounded by [0, 1]; later partitions are NOT (juniper-data#314).
@@ -410,6 +426,43 @@ class TestEquitiesGeneratorInternals:
         assert len(series) == 2
         assert (tmp_path / "shares" / "0000999999.json").exists()
 
+    def test_an_empty_concept_does_not_suppress_the_fallback(self, monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+        """A present-but-EMPTY dei concept must not stop the us-gaap fallback.
+
+        SEC answers 200 with ``{"units": {"shares": {}}}`` for some filers -- KO,
+        ABT and others. The guard was ``if payload and payload.get("units")``, and
+        that dict is **truthy**, so the loop accepted the empty concept and broke
+        before trying the fallback. BIIB has 42 usable facts under us-gaap and was
+        getting none of them: ``total_shares`` and ``market_cap`` silently became
+        0.0 under the default ``fundamentals_fill="zero"``, indistinguishable
+        downstream from a real measurement.
+
+        Truthiness is the wrong test for "has data" whenever the API can return an
+        empty container.
+        """
+        monkeypatch.setattr(eq_gen, "_CACHE_DIR", tmp_path)
+        empty_dei: dict[str, Any] = {"units": {"shares": {}}}
+        populated_gaap: dict[str, Any] = {"units": {"shares": [{"end": "2009-06-30", "val": 1.0e9, "filed": "2009-08-14"}]}}
+
+        calls: list[str] = []
+
+        def fake_get(url: str) -> dict[str, Any]:
+            calls.append(url)
+            return empty_dei if "dei" in url else populated_gaap
+
+        monkeypatch.setattr(eq_gen, "_sec_get", fake_get)
+        frame = eq_gen.EquitiesGenerator._fetch_shares(875045, use_cache=False)
+
+        assert len(calls) == 2, "the empty dei concept must not short-circuit the fallback"
+        assert frame is not None and len(frame) == 1
+        assert frame["shares"].iloc[0] == 1.0e9
+
+    def test_an_all_empty_concept_set_still_returns_none(self, monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+        """When every tag is empty there genuinely is no data -- KO's real shape."""
+        monkeypatch.setattr(eq_gen, "_CACHE_DIR", tmp_path)
+        monkeypatch.setattr(eq_gen, "_sec_get", lambda _url: {"units": {"shares": {}}})
+        assert eq_gen.EquitiesGenerator._fetch_shares(21344, use_cache=False) is None
+
     def test_fetch_shares_returns_none_when_no_concept_data(self, monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
         monkeypatch.setattr(eq_gen, "_CACHE_DIR", tmp_path)
         monkeypatch.setattr(eq_gen, "_sec_get", lambda *_a, **_k: None)
@@ -427,7 +480,7 @@ class TestEquitiesGeneratorInternals:
         eq_gen.EquitiesGenerator._normalize_ohlcv_columns(_ohlcv(periods=10)).to_csv(cache)
         result = eq_gen.EquitiesGenerator._download_ohlcv("AAPL", "2008-01-01", "2011-01-01", use_cache=True)
         assert result is not None
-        assert len(result) == 10
+        assert len(result) == 10, "10 ROWS from the cached frame -- not a feature count"
 
     def test_download_ohlcv_returns_none_when_normalized_empty(self, monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
         monkeypatch.setattr(eq_gen, "_CACHE_DIR", tmp_path)
@@ -513,7 +566,7 @@ class TestEquitiesGeneratorInternals:
 
     def test_static_array_helpers_handle_empty_frame(self) -> None:
         empty = pd.DataFrame()
-        assert eq_gen.EquitiesGenerator._features(empty, None).shape == (0, 10)
+        assert eq_gen.EquitiesGenerator._features(empty, None).shape == (0, len(EQUITIES_FEATURE_COLUMNS))
         assert eq_gen.EquitiesGenerator._direction_onehot(empty).shape == (0, 2)
         assert eq_gen.EquitiesGenerator._regression_target(empty, "next_close").shape == (0, 1)
         assert eq_gen.EquitiesGenerator._dates_yyyymmdd(empty).shape == (0,)
@@ -640,3 +693,153 @@ class TestUniverseSymbolCap:
         """
         assert eq_limits.EQUITIES_DEFAULT_MAX_SYMBOLS == 14
         assert eq_limits.EQUITIES_DEFAULT_ALLOW_TRUNCATION is False
+
+
+@pytest.mark.unit
+class TestFreeFields:
+    """The six columns added 2026-09-04 that cost no extra request.
+
+    Each was already being downloaded and discarded. The tests below check the
+    VALUES, not just the presence of a column -- a field that is present and
+    wrong is worse than one that is absent, because nothing downstream will
+    question it.
+    """
+
+    def test_the_matrix_widened_by_exactly_the_free_fields(self) -> None:
+        """Order is part of the contract: existing columns keep their positions."""
+        assert EQUITIES_FEATURE_COLUMNS[:10] == ["open", "high", "low", "close", "volume", "week52_high", "week52_low", "total_shares", "market_cap", "cost_basis"]
+        assert EQUITIES_FEATURE_COLUMNS[10:] == ["adj_close", "dividend", "split_ratio", "days_since_week52_high", "days_since_week52_low", "days_since_report"]
+
+    def test_splits_and_dividends_ride_the_same_download(self) -> None:
+        """``actions=True`` on the existing call -- no second request."""
+        captured = {}
+
+        def spy(symbol, **kwargs):
+            captured.update(kwargs)
+            return _ohlcv(seed=11)
+
+        with patch.object(eq_gen.yf, "download", side_effect=spy):
+            eq_gen.EquitiesGenerator._download_ohlcv("AAPL", "2008-01-01", "2011-01-01", use_cache=False)
+        assert captured.get("actions") is True
+
+    def test_absent_action_columns_mean_zero_not_missing(self) -> None:
+        """A ticker with no dividends or splits gets 0.0, never NaN.
+
+        yfinance omits the columns entirely in that case. Treating absent as
+        missing would put NaN into a float32 feature column for the majority of
+        rows of the majority of tickers.
+        """
+        arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=12)}, _shares())
+        for column in ("dividend", "split_ratio"):
+            values = arrays["X_full"][:, _FEATURES.index(column)]
+            assert not np.isnan(values).any()
+            assert np.all(values == 0.0)
+
+    def test_week52_dates_point_at_the_reported_extreme(self) -> None:
+        """The date must identify the row whose value ``week52_high`` reports.
+
+        This is the arm that would catch an off-by-one in the window alignment --
+        a date one row off still looks entirely plausible in isolation.
+        """
+        frame = _ohlcv(seed=13)
+        arrays = _generate(["AAPL"], {"AAPL": frame}, _shares())
+        highs = arrays["X_full"][:, _FEATURES.index("week52_high")]
+        dates = arrays["date_full"]
+        high_dates = arrays["week52_high_date_full"]
+        for row in (0, len(highs) // 3, len(highs) - 1):
+            position = int(np.where(dates == high_dates[row])[0][0])
+            assert arrays["X_full"][position, _FEATURES.index("high")] == pytest.approx(highs[row], rel=1e-6)
+
+    def test_days_since_week52_high_is_never_negative(self) -> None:
+        """A trailing window cannot place its extreme in the future."""
+        arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=14)}, _shares())
+        for column in ("days_since_week52_high", "days_since_week52_low"):
+            values = arrays["X_full"][:, _FEATURES.index(column)]
+            assert values.min() >= 0
+
+    def test_report_date_is_the_filing_date_not_the_period_end(self) -> None:
+        """The distinction is the whole point: only ``filed`` is safe to condition on.
+
+        ``_shares()`` reports period end 2009-06-30 filed 2009-08-14. A row after
+        the filing must carry the FILED date; using the period end would leak the
+        figure roughly six weeks before it was public.
+        """
+        arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=15)}, _shares())
+        reported = arrays["report_date_full"]
+        seen = {int(value) for value in reported if value != 0}
+        assert 20090814 in seen or 20100813 in seen
+        assert 20090630 not in seen, "period end must not be used as the reporting date"
+
+    def test_days_since_report_matches_the_dates(self) -> None:
+        """The derived column and the date array must agree, or one of them is wrong."""
+        arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=16)}, _shares())
+        ages = arrays["X_full"][:, _FEATURES.index("days_since_report")]
+        trade = arrays["date_full"]
+        report = arrays["report_date_full"]
+        for row in range(0, len(ages), max(1, len(ages) // 5)):
+            if report[row] == 0:
+                continue
+            expected = (pd.Timestamp(str(trade[row])) - pd.Timestamp(str(report[row]))).days
+            assert ages[row] == pytest.approx(expected)
+
+    def test_adj_close_is_carried_not_recomputed(self) -> None:
+        """``Adj Close`` was already in the response and dropped at the feature step."""
+        frame = _ohlcv(seed=17)
+        arrays = _generate(["AAPL"], {"AAPL": frame}, _shares())
+        adj = arrays["X_full"][:, _FEATURES.index("adj_close")]
+        np.testing.assert_allclose(adj, frame["Adj Close"].to_numpy()[: len(adj)], rtol=1e-5)
+
+    def test_rolling_extreme_positions_matches_a_naive_scan(self) -> None:
+        """The strided implementation must agree with the obvious O(n*w) one.
+
+        The fast version exists because ``rolling(...).apply()`` would add seconds
+        per ticker; correctness is pinned against the slow version rather than
+        assumed from the construction.
+        """
+        rng = np.random.default_rng(4)
+        values = rng.normal(size=120)
+        for window in (1, 5, 30, 250):
+            fast = eq_gen.EquitiesGenerator._rolling_extreme_positions(values, window, take_max=True)
+            naive = [int(np.argmax(values[max(0, i - min(window, len(values)) + 1) : i + 1])) + max(0, i - min(window, len(values)) + 1) for i in range(len(values))]
+            assert fast.tolist() == naive, f"window={window}"
+
+    def test_shares_are_not_visible_before_they_were_filed(self) -> None:
+        """No row may carry a figure that was not public on its own trade date.
+
+        The alignment used to key on the period END and forward-fill, so Apple's
+        quarter ending 2021-03-27 -- not filed until 2021-04-29 -- reached every
+        trade date in those five weeks, and `market_cap` inherited it. A live run
+        surfaced ``days_since_report`` at **-19 days**; a negative age is the leak
+        stating itself.
+
+        Same class as juniper-data#314's normalisation leak, and the same rule:
+        no quantity that was not knowable at a row's date may reach that row.
+        """
+        arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=18)}, _shares())
+        ages = arrays["X_full"][:, _FEATURES.index("days_since_report")]
+        assert ages.min() >= 0, "a negative filing age means the row saw its own future"
+
+        trade = arrays["date_full"]
+        report = arrays["report_date_full"]
+        future = [(int(t), int(r)) for t, r in zip(trade, report, strict=False) if r != 0 and r > t]
+        assert not future, f"report_date after the trade date on {len(future)} row(s): {future[:3]}"
+
+    def test_a_point_with_no_filing_date_is_dropped_not_guessed(self) -> None:
+        """Unknown publication time cannot be approximated by the period end.
+
+        Falling back to the period end is exactly the leak above. Dropping the
+        point is the honest alternative -- the row then has no shares figure,
+        which ``fundamentals_fill`` already handles.
+        """
+        undated = pd.DataFrame(
+            {"shares": [1_000_000_000.0], "filed": [pd.NaT]},
+            index=pd.to_datetime([pd.Timestamp("2009-06-30")]),
+        )
+        arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=19)}, undated)
+        shares = arrays["X_full"][:, _FEATURES.index("total_shares")]
+        assert np.all(shares == 0.0), "an undated filing must not populate total_shares"
+        assert np.all(arrays["report_date_full"] == 0)
+
+    def test_rolling_extreme_positions_rejects_an_ambiguous_request(self) -> None:
+        with pytest.raises(ValueError, match="exactly one"):
+            eq_gen.EquitiesGenerator._rolling_extreme_positions(np.zeros(3), 2, take_max=True, take_min=True)

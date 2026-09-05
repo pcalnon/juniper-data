@@ -248,6 +248,10 @@ class EquitiesGenerator:
             arrays[f"y_reg_{name}"] = EquitiesGenerator._regression_target(frame, params.regression_target)
             arrays[f"ticker_code_{name}"] = frame["ticker_code"].to_numpy(dtype=np.int32)
             arrays[f"date_{name}"] = EquitiesGenerator._dates_yyyymmdd(frame)
+            # The three new dates ship as their own row-aligned YYYYMMDD arrays,
+            # the same encoding as date_* -- 0 where unknown (no filing yet).
+            for column, key in (("week52_high_date", "week52_high_date"), ("week52_low_date", "week52_low_date"), ("report_date", "report_date")):
+                arrays[f"{key}_{name}"] = EquitiesGenerator._column_yyyymmdd(frame, column)
 
         arrays["ticker_vocab"] = np.array(vocab, dtype=np.str_)
 
@@ -415,9 +419,32 @@ class EquitiesGenerator:
         if frame is None or frame.empty:
             return None
 
+        # yfinance omits the action columns entirely for a ticker with no
+        # dividends or splits in range; absent means "none happened", which is
+        # 0.0, not missing.
+        for action_column in ("dividend", "split_ratio"):
+            if action_column not in frame.columns:
+                frame[action_column] = 0.0
+        frame[["dividend", "split_ratio"]] = frame[["dividend", "split_ratio"]].fillna(0.0)
+        if "adj_close" not in frame.columns:
+            frame["adj_close"] = frame["close"]
+
         window = params.week52_window
         frame["week52_high"] = frame["high"].rolling(window, min_periods=1).max()
         frame["week52_low"] = frame["low"].rolling(window, min_periods=1).min()
+
+        # WHEN the 52-week extreme happened, not just what it was. Free: it comes
+        # from the window already being computed one line above.
+        high_at = EquitiesGenerator._rolling_extreme_positions(frame["high"].to_numpy(dtype="float64"), window, take_max=True)
+        low_at = EquitiesGenerator._rolling_extreme_positions(frame["low"].to_numpy(dtype="float64"), window, take_min=True)
+        positions = np.arange(len(frame))
+        frame["week52_high_date"] = frame.index[high_at]
+        frame["week52_low_date"] = frame.index[low_at]
+        # Days SINCE is the model-usable form -- a raw YYYYMMDD in a float32
+        # feature column is a number whose magnitude means nothing. The dates
+        # themselves ship as their own row-aligned arrays.
+        frame["days_since_week52_high"] = (positions - high_at).astype("float64")
+        frame["days_since_week52_low"] = (positions - low_at).astype("float64")
 
         cik = info.get("cik")
         shares = None
@@ -427,16 +454,67 @@ class EquitiesGenerator:
             except Exception as exc:  # noqa: BLE001 - shares are best-effort; never drop price data over a SEC blip
                 _logger.warning("equities: shares fetch failed for %s (cik=%s): %s", ticker, cik, exc)
         if shares is not None and not shares.empty:
-            aligned = shares.reindex(frame.index.union(shares.index)).sort_index().ffill().reindex(frame.index)
-            frame["total_shares"] = aligned.astype("float64")
+            # ALIGN ON THE FILING DATE, NOT THE PERIOD END.
+            #
+            # This used to reindex on the period-end index and forward-fill, which
+            # is a look-ahead leak: Apple's quarter ending 2021-03-27 was not filed
+            # until 2021-04-29, so every trade date in those five weeks was handed
+            # a share count that did not exist publicly yet -- and `market_cap`,
+            # derived from it, inherited the leak. Measured on a live 2013-2021
+            # AAPL run, `days_since_report` came back as low as **-19 days**: a
+            # negative age is the leak stating itself out loud.
+            #
+            # It is the same class as the normalisation leak fixed in
+            # juniper-data#314, and the same rule from decision 7 of the ecosystem
+            # partition design: no quantity that was not knowable at a row's date
+            # may reach that row.
+            #
+            # Points with no `filed` are DROPPED rather than fallen back to their
+            # period end. When a figure became public is exactly what is unknown
+            # for them, and guessing reinstates the leak; if that empties the
+            # series the ticker simply has no shares data, which
+            # `fundamentals_fill` already handles.
+            known = shares.dropna(subset=["filed"])
+            known = known.set_index("filed").sort_index()
+            known = known[~known.index.duplicated(keep="last")]
+
+            if len(known):
+                union = frame.index.union(known.index)
+                frame["total_shares"] = known["shares"].reindex(union).sort_index().ffill().reindex(frame.index).astype("float64")
+                as_of = pd.Series(known.index, index=known.index).reindex(union).sort_index().ffill().reindex(frame.index)
+                frame["report_date"] = pd.to_datetime(as_of)
+            else:
+                frame["total_shares"] = np.nan
+                frame["report_date"] = pd.NaT
         else:
             frame["total_shares"] = np.nan
+            frame["report_date"] = pd.NaT
+
+        if frame["total_shares"].isna().all():
+            # SAY SO. Under the default fundamentals_fill="zero" this ticker's
+            # total_shares and market_cap become 0.0 for every row -- a value no
+            # listed company can have, and one nothing downstream distinguishes
+            # from a measurement. Roughly 4-6% of the bundled S&P 500 universe
+            # reports no shares concept to SEC at all (KO and ABT among them);
+            # before this line, that produced a silently zero-filled feature
+            # column and no signal anywhere.
+            _logger.warning("equities: %s has NO shares-outstanding data from SEC; total_shares/market_cap will be filled per fundamentals_fill=%r", ticker, params.fundamentals_fill)
+
         frame["market_cap"] = frame["close"] * frame["total_shares"]
 
         if params.fundamentals_fill == "zero":
             frame[["total_shares", "market_cap"]] = frame[["total_shares", "market_cap"]].fillna(0.0)
         elif params.fundamentals_fill == "drop":
             frame = frame.dropna(subset=["total_shares"])
+
+        # Days since the most recent filing. NaN where no filing precedes the row
+        # (pre-2009 for most names, and every row for a ticker SEC returns nothing
+        # for) -- filled per the same fundamentals_fill policy as total_shares,
+        # because it is missing for exactly the same reason.
+        age = (frame.index - frame["report_date"]).dt.days if frame["report_date"].notna().any() else pd.Series(np.nan, index=frame.index)
+        frame["days_since_report"] = pd.to_numeric(age, errors="coerce").astype("float64")
+        if params.fundamentals_fill == "zero":
+            frame["days_since_report"] = frame["days_since_report"].fillna(0.0)
 
         basis_field = params.basis_price_field if params.basis_price_field in frame.columns else "close"
         purchase = pd.to_datetime(params.purchase_date)
@@ -466,7 +544,10 @@ class EquitiesGenerator:
                 return cached
 
         # yfinance uses dashes for class shares (BRK.B -> BRK-B).
-        downloaded = yf.download(ticker.replace(".", "-"), start=start, end=end, interval="1d", auto_adjust=False, progress=False, threads=False)
+        # ``actions=True`` adds Dividends and Stock Splits to the SAME response --
+        # no extra request, no extra latency. Verified against AAPL: 7:1 on
+        # 2014-06-09 and 4:1 on 2020-08-31.
+        downloaded = yf.download(ticker.replace(".", "-"), start=start, end=end, interval="1d", auto_adjust=False, actions=True, progress=False, threads=False)
         if downloaded is None or len(downloaded) == 0:
             return None
         frame = EquitiesGenerator._normalize_ohlcv_columns(downloaded)
@@ -485,16 +566,32 @@ class EquitiesGenerator:
         if isinstance(frame.columns, pd.MultiIndex):
             frame = frame.copy()
             frame.columns = frame.columns.get_level_values(0)
-        rename = {"Open": "open", "High": "high", "Low": "low", "Close": "close", "Adj Close": "adj_close", "Volume": "volume"}
+        rename = {"Open": "open", "High": "high", "Low": "low", "Close": "close", "Adj Close": "adj_close", "Volume": "volume", "Dividends": "dividend", "Stock Splits": "split_ratio"}
         frame = frame.rename(columns=rename)
-        keep = [column for column in ["open", "high", "low", "close", "adj_close", "volume"] if column in frame.columns]
+        keep = [column for column in ["open", "high", "low", "close", "adj_close", "volume", "dividend", "split_ratio"] if column in frame.columns]
         frame = frame[keep].copy()
         frame.index = pd.to_datetime(frame.index)
         return frame
 
     @staticmethod
     def _fetch_shares(cik: int, use_cache: bool) -> Any:
-        """Fetch a shares-outstanding time series (Series[date -> shares]) from SEC EDGAR."""
+        """Fetch shares outstanding AND their filing dates from SEC EDGAR.
+
+        Returns a ``DataFrame`` indexed by period-end date with two columns:
+
+        * ``shares`` -- the outstanding share count (what this always returned).
+        * ``filed`` -- the date SEC received the filing that reported it.
+
+        ``filed`` is free: it is already in every fact of the payload this method
+        downloads, and was previously used only to pick the latest filing per
+        period-end and then discarded. Surfacing it is what makes the caller's
+        "reporting date" field cost no extra request.
+
+        The distinction between the two dates matters and is easy to lose: the
+        index is the period the figure DESCRIBES, ``filed`` is when it became
+        publicly knowable. Only the second is safe to condition on at a given
+        trade date -- using the period end would leak, sometimes by months.
+        """
         cache = _CACHE_DIR / "shares" / f"{int(cik):010d}.json"
         data = None
         if use_cache and cache.exists():
@@ -505,22 +602,41 @@ class EquitiesGenerator:
         if data is None:
             for taxonomy, tag in _SHARES_CONCEPTS:
                 payload = _sec_get(_SEC_CONCEPT_URL.format(cik=int(cik), taxonomy=taxonomy, tag=tag))
-                if payload and payload.get("units"):
+                # ACCEPT ONLY A CONCEPT THAT ACTUALLY HAS FACTS.
+                #
+                # This was `if payload and payload.get("units")`, and SEC returns
+                # a present-but-EMPTY concept for some filers: KO, ABT and others
+                # answer 200 with ``{"units": {"shares": {}}}``. That dict is
+                # truthy, so the loop accepted it and **broke before trying the
+                # us-gaap fallback** -- which for BIIB holds 42 perfectly good
+                # facts. The ticker then got no shares at all, and
+                # ``fundamentals_fill="zero"`` turned that into a total_shares of
+                # 0.0 and a market_cap of 0.0, indistinguishable downstream from
+                # a real measurement.
+                #
+                # Truthiness is the wrong test for "has data" whenever the API can
+                # return an empty container; count the facts instead.
+                if payload and any(payload.get("units", {}).values()):
                     data = payload
                     break
             if data and use_cache:
                 cache.parent.mkdir(parents=True, exist_ok=True)
                 with contextlib.suppress(OSError):
                     cache.write_text(json.dumps(data))
-        if not data or not data.get("units"):
+        if not data or not any(data.get("units", {}).values()):
             return None
 
-        # Keep the latest-filed value per period-end date.
+        # Keep the latest-filed value per period-end date, and the filing date
+        # that supplied it -- the sort key already orders by (end, filed), so the
+        # last write per end date wins and both facts come from the same point.
         best: dict[str, float] = {}
+        filed_on: dict[str, str] = {}
         for unit_points in data["units"].values():
             for point in sorted(unit_points, key=lambda item: (item.get("end", ""), item.get("filed", ""))):
                 if point.get("val") is not None and point.get("end"):
                     best[point["end"]] = float(point["val"])
+                    if point.get("filed"):
+                        filed_on[point["end"]] = point["filed"]
         if not best:
             return None
         series = pd.Series(best)
@@ -532,7 +648,14 @@ class EquitiesGenerator:
         median = float(series.median())
         if median > 0:
             series = series[(series >= median / _SHARES_OUTLIER_FACTOR) & (series <= median * _SHARES_OUTLIER_FACTOR)]
-        return series if len(series) else None
+        if not len(series):
+            return None
+
+        frame = series.to_frame(name="shares")
+        # A point with no ``filed`` (rare, older filings) becomes NaT rather than
+        # a guess -- the consumer sees "unknown", not a fabricated date.
+        frame["filed"] = pd.to_datetime(pd.Series({pd.Timestamp(end): filed_on.get(end) for end in best}, dtype="object")).reindex(frame.index)
+        return frame
 
     # ------------------------------------------------------------------ #
     # Array assembly                                                     #
@@ -598,11 +721,56 @@ class EquitiesGenerator:
         return values.astype(np.float32).reshape(-1, 1)
 
     @staticmethod
+    def _rolling_extreme_positions(values: np.ndarray, window: int, *, take_max: bool = False, take_min: bool = False) -> np.ndarray:
+        """Index of the max/min within each trailing window, as absolute positions.
+
+        Returns, for every row i, the position of the extreme value in
+        ``values[max(0, i-window+1) : i+1]`` -- the same window
+        ``Series.rolling(window, min_periods=1)`` uses, so the position this
+        returns always points at the value ``week52_high`` / ``week52_low``
+        reports.
+
+        Uses a strided view rather than ``rolling(...).apply()``: the latter is a
+        Python call per window, which on 6,708 rows x a 252-day window is ~1.7M
+        invocations per ticker. The per-symbol budget here is ~2 s of network, so
+        seconds of avoidable compute would be a real regression.
+
+        The front pad carries -inf (or +inf) so a padded slot can never win the
+        comparison, which makes the ramp-up rows -- where fewer than ``window``
+        observations exist -- fall out without a special case.
+        """
+        if take_max == take_min:
+            raise ValueError("_rolling_extreme_positions needs exactly one of take_max / take_min")
+        count = len(values)
+        if count == 0:
+            return np.zeros((0,), dtype=np.int64)
+        span = max(1, min(window, count))
+        fill = -np.inf if take_max else np.inf
+        padded = np.concatenate([np.full(span - 1, fill, dtype="float64"), values])
+        windows = np.lib.stride_tricks.sliding_window_view(padded, span)
+        offsets = windows.argmax(axis=1) if take_max else windows.argmin(axis=1)
+        return np.arange(count) - (span - 1) + offsets
+
+    @staticmethod
     def _dates_yyyymmdd(frame: Any) -> np.ndarray:
         """Row-aligned trade dates encoded as YYYYMMDD int32."""
         if frame.empty:
             return np.zeros((0,), dtype=np.int32)
         return frame.index.strftime("%Y%m%d").astype(np.int32).to_numpy()
+
+    @staticmethod
+    def _column_yyyymmdd(frame: Any, column: str) -> np.ndarray:
+        """A date COLUMN encoded as YYYYMMDD int32, with 0 for unknown.
+
+        0 rather than a sentinel date: it is out of range for any real trade date,
+        so it cannot be mistaken for one, and it survives the int32 round-trip
+        that a NaT would not.
+        """
+        if frame.empty or column not in frame.columns:
+            return np.zeros((0 if frame.empty else len(frame),), dtype=np.int32)
+        values = pd.to_datetime(frame[column], errors="coerce")
+        encoded = values.dt.strftime("%Y%m%d")
+        return pd.to_numeric(encoded, errors="coerce").fillna(0).astype(np.int32).to_numpy()
 
 
 def get_schema() -> dict:

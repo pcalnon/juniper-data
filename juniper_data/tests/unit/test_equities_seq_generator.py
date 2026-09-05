@@ -31,6 +31,7 @@ pd = pytest.importorskip("pandas")
 pytest.importorskip("yfinance")
 
 from juniper_data.generators.equities import generator as eq_gen  # noqa: E402
+from juniper_data.generators.equities.defaults import EQUITIES_FEATURE_COLUMNS  # noqa: E402
 from juniper_data.generators.equities_seq import EquitiesSeqGenerator, EquitiesSeqParams, get_schema  # noqa: E402
 from juniper_data.generators.equities_seq import generator as esq_gen  # noqa: E402
 
@@ -51,9 +52,17 @@ def _ohlcv(start: str = "2008-01-01", periods: int = 400, seed: int = 0):
 
 
 def _shares(start: str = "2009-06-30"):
-    series = pd.Series({pd.Timestamp(start): 1_000_000_000.0, pd.Timestamp("2010-06-30"): 1_100_000_000.0})
-    series.index = pd.to_datetime(series.index)
-    return series
+    """Synthetic shares-outstanding history, as ``_fetch_shares`` now returns it.
+
+    A DataFrame of ``shares`` + ``filed``, not a bare Series: the filing date is
+    what feeds ``report_date`` / ``days_since_report``, and it is deliberately
+    LATER than the period end it describes, because that lag is the thing those
+    columns exist to represent.
+    """
+    return pd.DataFrame(
+        {"shares": [1_000_000_000.0, 1_100_000_000.0], "filed": [pd.Timestamp("2009-08-14"), pd.Timestamp("2010-08-13")]},
+        index=pd.to_datetime([pd.Timestamp(start), pd.Timestamp("2010-06-30")]),
+    )
 
 
 @contextmanager
@@ -94,7 +103,7 @@ class TestEquitiesSeqGenerator:
         assert "ticker_vocab" in arrays
 
         n_windows = arrays["X_full"].shape[0]
-        assert arrays["X_full"].shape == (n_windows, lookback, 10)
+        assert arrays["X_full"].shape == (n_windows, lookback, len(EQUITIES_FEATURE_COLUMNS))
         assert arrays["X_full"].dtype == np.float32
         assert arrays["y_full"].shape == (n_windows, 2)
         assert arrays["y_reg_full"].shape == (n_windows, 1)
