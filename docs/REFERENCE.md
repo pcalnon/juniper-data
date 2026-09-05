@@ -18,6 +18,7 @@
 - [Project Structure](#project-structure)
 - [Dependencies](#dependencies)
 - [Error Codes](#error-codes)
+- [CSV Import Byte Cap](#csv-import-byte-cap)
 - [Project Architecture Reference](#project-architecture-reference)
 - [API Package Import Graph](#api-package-import-graph)
 - [API Design Reference](#api-design-reference)
@@ -104,6 +105,16 @@ All environment variables use the `JUNIPER_DATA_` prefix and are managed by Pyda
 |----------|------|---------|-------------|
 | `JUNIPER_DATA_METRICS_ENABLED` | bool | `false` | Enable Prometheus metrics endpoint |
 | `JUNIPER_DATA_SENTRY_DSN` | string | *(none)* | Sentry DSN for error tracking |
+
+#### CSV / JSON import (`csv_import`)
+
+On-disk sources, not the HTTP body. `file_path` is resolved inside `JUNIPER_DATA_IMPORT_DIR`. The 10 MB `RequestBodyLimitMiddleware` cap is a separate limit on the JSON request. See [CSV Import Byte Cap](#csv-import-byte-cap).
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `JUNIPER_DATA_IMPORT_DIR` | string | `/data/imports` | Root directory for `csv_import` files. Paths that resolve outside it are refused (path traversal). |
+| `JUNIPER_DATA_CSV_IMPORT_MAX_BYTES` | int | `134217728` (128 MiB) | Deployment **ceiling**. Effective cap is `min(request, this)`. Must be `> 0` (`gt=0`): Python `read(n)` with `n < 0` means "read everything". |
+| `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION` | bool | `false` | Deployment-wide opt-in to a partial import when the source exceeds the cap. Logical OR with the request `allow_truncation` flag; a request cannot opt *out* of a deployment-wide opt-in. |
 
 #### Integration Variables (Used by Consumers)
 
@@ -634,7 +645,7 @@ the README section "MNIST / Fashion-MNIST (optional extra)". The Docker image sh
 | `400 Bad Request` | Invalid parameters | Bad generator params |
 | `401 Unauthorized` | Missing/invalid API key | Auth enabled, no key sent |
 | `404 Not Found` | Resource not found | Unknown generator or dataset ID |
-| `422 Unprocessable Entity` | Validation error | Pydantic validation failure |
+| `422 Unprocessable Entity` | Validation error, or `csv_import` source over its byte cap | Pydantic schema failure (`detail` is a list), or `InputTooLargeError` (`detail` is a string). See [CSV Import Byte Cap](#csv-import-byte-cap). |
 | `429 Too Many Requests` | Rate limited | Exceeded requests/minute |
 | `500 Internal Server Error` | Server error | Unexpected exception |
 
@@ -645,6 +656,97 @@ the README section "MNIST / Fashion-MNIST (optional extra)". The Docker image sh
   "detail": "Error message describing what went wrong"
 }
 ```
+
+Schema `422`s instead carry `detail` as a **list** of per-field objects. The over-cap `csv_import` refusal is a `422` with a **string** `detail` (the `InputTooLargeError` message). Check the type before iterating.
+
+---
+
+## CSV Import Byte Cap
+
+Bound for on-disk `csv_import` sources (`APD-DATA-018`, lands with juniper-data#326). Generation runs **inside the request**, so a source large enough to outlive the client timeout cannot succeed however long the caller waits. The remedy is to bound the input, not to move generation to an async job.
+
+This is **not** the HTTP body limit. `RequestBodyLimitMiddleware` rejects JSON bodies over 10 MB. `csv_import` reads a file under `JUNIPER_DATA_IMPORT_DIR`; `file_path` is relative to that directory (absolute paths outside it fail as path traversal).
+
+### Why 128 MiB
+
+`CSV_IMPORT_DEFAULT_MAX_BYTES` in `juniper_data/core/limits.py` is `128 * 1024 * 1024`. The figure is measured, not round: `util/ad-hoc/2026-09-04_measure_csv_import_throughput.py` timed the whole `generate()` path (parse **and** per-cell float conversion) at a median **14.4 MB/s**. 128 MiB is therefore ~8.9 s of parsing, inside a ~30 s client budget with room for split, checksum, and NPZ persist.
+
+Above that size the binding constraint is memory, not time. `_parse_csv_stream` materialises one Python dict per row before any array exists, so raising the cap without a streaming loader trades a timeout for an OOM.
+
+### Surfaces and precedence
+
+| Surface | Cap (`max_bytes`) | Truncation opt-in (`allow_truncation`) |
+|---------|-------------------|----------------------------------------|
+| Request params (`CsvImportParams`) | May only **lower** the deployment ceiling: `min(requested, deployment)` | Per-request flag |
+| Environment / `.env` | `JUNIPER_DATA_CSV_IMPORT_MAX_BYTES` — **hard ceiling**, `gt=0` | `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION` |
+| Compiled default | 128 MiB | `false` |
+
+Precedence is asymmetric on purpose, and both sides treat the operator as the privileged party:
+
+- **`max_bytes`:** the effective cap is `min(requested, settings.csv_import_max_bytes)`. A request cannot raise the operator ceiling. Omitting the field uses the deployment value. `model_fields_set` still decides "was this sent", but even an explicit huge value is clamped. That clamp is load-bearing for generated clients: serialising schema defaults sends `max_bytes=134217728` on every request, which would otherwise override a *lower* operator ceiling with nobody intending it. The first design let an explicit request win outright (`max_bytes: 10000000000` skipped the cap); that inverted the privilege model used for `allow_truncation` and made the DoS bound caller-controlled.
+- **`allow_truncation`:** logical **OR**. Either the request opts in, or the deployment has opted in for every request. There is no way to opt *out* of a deployment-wide opt-in.
+
+Constants live in `juniper_data/core/limits.py` (not `csv_import/defaults.py`) so `api/settings.py` can import them without a package cycle. `defaults.py` re-exports the names.
+
+### The read is the bound
+
+`stat().st_size` is a **cheap pre-check**, not the bound. It can refuse an obviously-oversized source without reading, but nothing is ingested on its authority. Every path then calls `_read_capped_bytes(path, cap_bytes + 1)` and re-checks `len(raw)`. The extra byte distinguishes "fits exactly" from "there is more".
+
+An earlier draft trusted `stat` and, when it reported a size within the cap, read to EOF. Three bypasses that made the cap decorative:
+
+- **TOCTOU.** `import_dir` is shared; a file can grow or be replaced between `stat` and `open`.
+- **FIFOs report `st_size == 0`**, take the under-cap branch, then stream without limit.
+- **A negative cap inverts `read()`.** Python treats `read(n)` with `n < 0` as "read everything". `Settings.csv_import_max_bytes` carries `gt=0` so a mistyped env var fails deployment loudly; `_read_capped_bytes` refuses `limit <= 0` as the second line of that defence.
+
+There is no unbounded `_load_csv` / `_load_json` path. Those helpers were removed once the capped read replaced their only call sites. For a FIFO (or any source whose `stat` under-reports), `bytes_total` in the truncation descriptor is `max(stat_bytes, len(raw))` — a true lower bound.
+
+### Refusal vs authorised truncation
+
+Default is **refusal**. An over-cap source with neither opt-in raises `InputTooLargeError` (a `ValueError` subclass). `POST /v1/datasets` maps it to **HTTP 422** with a string `detail` that names the source size, the cap, and the remedy (`allow_truncation=true` or the env var). 422 is already on this API (schema validation); the string shape is the exception — schema 422s carry a list.
+
+Subclassing `ValueError` is load-bearing: a call path that forgets the 422 mapping still lands on the app-level `ValueError` handler's **400**, not a 500. `batch-create` reuses `create_dataset`, so the same 422/`HTTPException` becomes the per-item `error` string.
+
+### Record-boundary cuts
+
+A byte offset almost always lands mid-record. The authorised path:
+
+1. Reads at most `cap_bytes + 1` (`_read_capped_bytes`), then trims the first `cap_bytes` to a record boundary (`_trim_to_record_boundary`). Drops a split multi-byte UTF-8 sequence (`errors="ignore"`). Discards everything after the last newline. No newline inside the cap → empty text → existing "No data found in file".
+2. **CSV:** `_parse_csv_stream(..., drop_trailing_partial=True)` also drops a final row whose values include `None`. A newline *inside a quoted field* is legal CSV, so the newline trim alone is not enough. `DictReader` reports a missing column as `None` and an empty field as `""`.
+3. **JSON array:** `json.loads` cannot succeed without the closing `]`. `_decode_partial_json_array` uses `raw_decode` and keeps complete elements up to the first incomplete one.
+4. **JSONL:** drops only an unparseable **final** line. A corrupt line mid-file still raises — otherwise a truncated import would launder a broken source into a short dataset.
+
+### Permanent annotation
+
+When a partial import is authorised, the generator places a descriptor on the reserved `"truncation"` channel (`TRUNCATION_META_KEY`). The route pops it with `pop_truncation_meta` **before** checksum and NPZ persist, so stored arrays stay array-only — the same discipline as `pop_scaling_meta`.
+
+`DatasetMeta.truncation`:
+
+| Field | Meaning |
+|-------|---------|
+| `None` | Complete. Absence, not `{"truncated": false}` — a reader must not distinguish "complete" from "the generator forgot to report". |
+| dict | Partial. Keys: `truncated` (`true`), `reason` (`source_exceeded_byte_cap`), `bytes_read`, `bytes_total`, `cap_bytes`, `records_imported`. |
+
+This is persisted metadata, not a transient warning. A trainer loading the artifact later, who never saw the HTTP response, still learns the data is a prefix of its source. `records_imported` matches `X_full.shape[0]`.
+
+### What not to do
+
+- Do not default truncation on. Silence is the failure mode this bound was warned about.
+- Do not cut at an arbitrary byte and parse. The record-boundary trim is the product.
+- Do not leave the reserved `"truncation"` key in the NPZ. Pop it before checksum.
+- Do not store `{}` for "complete". `pop_truncation_meta` returns `None`.
+- Do not raise the 128 MiB default without a streaming loader. The next bottleneck is peak objects, not parse time.
+- Do not treat this cap as the 10 MB HTTP body limit, or as a substitute for `JUNIPER_DATA_IMPORT_DIR` path checks.
+- Do not let a request `max_bytes` raise the deployment ceiling. The effective cap is `min(requested, deployment)`.
+- Do not trust `stat().st_size` as the bound, or keep an under-cap path that reads to EOF. The read (`cap_bytes + 1`) is what enforces it.
+- Do not accept a non-positive cap. `read(-1)` is unbounded.
+
+### Pins
+
+| Test | What it pins |
+|------|----------------|
+| `tests/unit/test_csv_import_generator.py` (`TestCsvImportByteCap`) | Under-cap has no channel key; over-cap without opt-in raises `InputTooLargeError`; request and deployment opt-in annotate; a request **cannot raise** the deployment cap; a lying `stat` (`st_size == 0`) still refuses; non-positive cap is refused; CSV/JSON/JSONL record boundaries; JSONL mid-file still raises; `pop_truncation_meta` returns `None` when absent |
+| `tests/unit/test_api_routes.py` | `POST /v1/datasets` over-cap is **422** not 500; authorised truncation reaches `meta.truncation`; within-cap stores `None` |
+| `util/ad-hoc/2026-09-04_apd_data_018_mutation_check.py` | Mutation matrix (8/8), including M7 (request can raise the cap) and M8 (`stat` trusted over the read) |
 
 ---
 
@@ -744,6 +846,7 @@ juniper-data/
 | Component | Purpose |
 |-----------|---------|
 | `core/constants.py` | Core-layer constants (encoding strings like `utf-8`, magic numbers, fixed metadata keys) |
+| `core/limits.py` | `csv_import` byte-cap defaults, `InputTooLargeError`, reserved `"truncation"` channel (`TRUNCATION_META_KEY`) |
 | `core/models.py` | Pydantic models: DatasetMeta, CreateDatasetRequest/Response, batch models, filters, stats |
 | `core/dataset_id.py` | Deterministic SHA-256 based dataset ID generation |
 | `core/split.py` | Shuffle and split data into train/test sets |
@@ -756,7 +859,7 @@ juniper-data/
 | `generators/circles/` | Concentric circles binary classification |
 | `generators/moon/` | Two interleaving half-moons binary classification |
 | `generators/checkerboard/` | 2D grid pattern with alternating classes |
-| `generators/csv_import/` | Import datasets from CSV/JSON files |
+| `generators/csv_import/` | Import datasets from CSV/JSON files (on-disk sources bounded; over-cap refused unless truncation is opted in) |
 | `generators/equities/` | S&P 500 equities daily time-series (OHLCV + SEC fundamentals; dual next-day targets) |
 | `generators/mnist/` | MNIST and Fashion-MNIST via HuggingFace Hub |
 | `generators/arc_agi/` | ARC-AGI visual reasoning tasks (optional dependency) |
@@ -845,7 +948,7 @@ Relocated verbatim from `AGENTS.md` (P3 of the shared-session-memory plan) so it
 - Use nouns for resources: `/datasets`, `/generators`
 - All endpoints prefixed with `/v1/`
 - Use HTTP methods appropriately: GET, POST, PATCH, DELETE
-- Return proper status codes (200, 201, 204, 400, 404, 413, 429, 500)
+- Return proper status codes (200, 201, 204, 400, 404, 413, 422, 429, 500, 501)
 - Include pagination for list endpoints (limit, offset)
 
 ### Endpoint Catalog

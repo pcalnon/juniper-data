@@ -20,6 +20,15 @@ reference section in the same PR rather than waiving the budget gate.
   repository content — it is reaped when sessions, sandboxes or containers end, and the scripts are
   irrecoverable. Scratch *data* there is fine; source files are not. Permanent utilities live in
   `util/`, single-use ones in `util/ad-hoc/`. Full rule: § Script Placement.
+- **`csv_import` refuses an over-cap source unless the caller opts in — never silently
+  truncate.** Generation runs inside the request. A silent prefix is indistinguishable from a
+  complete dataset (the same gap that let `arc_agi` persist zero samples). Default is refusal
+  (`InputTooLargeError` → HTTP **422**). Truncation is opt-in (`allow_truncation`,
+  `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION`, or `.env`) and is recorded permanently on
+  `DatasetMeta.truncation` (`None` means complete). Cuts land on a record boundary. **A request
+  may only lower the cap** (`min(request, deployment)`); `stat` is a pre-check, the read is the
+  bound. Pins: `test_csv_import_generator.py`, `test_api_routes.py` (422 not 500). Full rule:
+  [`docs/REFERENCE.md` § CSV Import Byte Cap](docs/REFERENCE.md#csv-import-byte-cap).
 - **Sequence windowing is leak-free by CONSTRUCTION, not by a check — never vectorize it into a
   concat-then-slide.** `generators/_sequence.py` windows **one entity at a time** and assigns each
   window to a split by its **target date, not its row index**
@@ -358,8 +367,12 @@ All configuration uses the `JUNIPER_DATA_` environment variable prefix (via Pyda
 | `JUNIPER_DATA_RATE_LIMIT_REQUESTS_PER_MINUTE` | int | `60` | Rate limit per client per minute |
 | `JUNIPER_DATA_SENTRY_DSN` | str | `None` | Sentry DSN for error tracking |
 | `JUNIPER_DATA_METRICS_ENABLED` | bool | `false` | Enable Prometheus metrics at `/metrics` |
+| `JUNIPER_DATA_IMPORT_DIR` | str | `/data/imports` | Root for `csv_import` files (`file_path` is relative) |
+| `JUNIPER_DATA_CSV_IMPORT_MAX_BYTES` | int | `134217728` | `csv_import` byte-cap **ceiling** (128 MiB). Request `max_bytes` may only lower it |
+| `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION` | bool | `false` | Deployment-wide opt-in to a partial `csv_import`; OR'd with the request flag |
 
-Reference: `.env.example` provides a template with all variables.
+Reference: `.env.example` provides a template with all variables. See
+[`docs/REFERENCE.md` § CSV Import Byte Cap](docs/REFERENCE.md#csv-import-byte-cap).
 
 ---
 

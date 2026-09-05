@@ -4,7 +4,7 @@
 
 **Version:** 0.4.2
 **Status:** Active
-**Last Updated:** March 3, 2026
+**Last Updated:** September 4, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -105,7 +105,7 @@ juniper_data/tests/
 | `test_cached_store.py` | Storage | Cached dataset storage |
 | `test_checkerboard_generator.py` | Generator | Checkerboard pattern generator |
 | `test_circles_generator.py` | Generator | Concentric circles generator |
-| `test_csv_import_generator.py` | Generator | CSV/JSON file import |
+| `test_csv_import_generator.py` | Generator | CSV/JSON file import; byte-cap refusal and truncation annotation |
 | `test_dataset_id.py` | Core | DatasetID class and validation |
 | `test_gaussian_generator.py` | Generator | Mixture of Gaussians generator |
 | `test_health_enhanced.py` | API | Health check endpoint |
@@ -471,6 +471,8 @@ Code quality hooks (ruff, mypy, bandit) run on **pre-commit** stage and validate
 **Deprecation warnings from dependencies**: These are filtered by default via `filterwarnings` in pyproject.toml for uvicorn, httpx, and pydantic.
 
 **`ImportError: cannot import name 'VERSION'` collecting `test_csv_import_generator.py` in isolation**: `api/__init__.py` eagerly imported `create_app`, which loaded every route while `csv_import` was still initialising (#316 / #333). Keep `create_app` lazy. Do not pre-import `api.routes.generators` as a collection workaround. Pin: `test_no_import_cycles.py` (subprocess). See [REFERENCE.md -- API Package Import Graph](../REFERENCE.md#api-package-import-graph).
+
+**`csv_import` over-cap must be 422, not 500, and must not be silent.** Default is refusal (`InputTooLargeError`). An authorised prefix must land `DatasetMeta.truncation` as a dict (`None` means complete). Cuts land on a record boundary; a JSONL corrupt line mid-file still raises. A request `max_bytes` must not raise the deployment ceiling; `stat` must not be the bound. Pins: `TestCsvImportByteCap` in `test_csv_import_generator.py` (including `test_request_cannot_RAISE_the_deployment_cap` and `test_a_lying_stat_does_not_bypass_the_cap`), plus the three `test_api_routes.py` APD-DATA-018 cases. Contract: [CSV Import Byte Cap](../REFERENCE.md#csv-import-byte-cap).
 
 ---
 

@@ -1,6 +1,6 @@
 # Developer Cheatsheet -- juniper-data
 
-**Version**: 0.4.2 | **Date**: 2026-03-15 | **Project**: juniper-data -- Dataset Generation REST Service (FastAPI)
+**Version**: 0.4.2 | **Date**: 2026-09-04 | **Project**: juniper-data -- Dataset Generation REST Service (FastAPI)
 
 ---
 
@@ -90,6 +90,9 @@ All use `JUNIPER_DATA_` prefix (pydantic-settings in `juniper_data/api/settings.
 | `JUNIPER_DATA_CORS_ORIGINS`                   | `[]`              | Allowed CORS origins                          |
 | `JUNIPER_DATA_METRICS_ENABLED`                | `false`           | Prometheus `/metrics` endpoint                |
 | `JUNIPER_DATA_SENTRY_DSN`                     | *(none)*          | Sentry DSN for error tracking                 |
+| `JUNIPER_DATA_IMPORT_DIR`                     | `/data/imports`   | Root for `csv_import` files (`file_path` relative) |
+| `JUNIPER_DATA_CSV_IMPORT_MAX_BYTES`           | `134217728`       | `csv_import` byte-cap ceiling (128 MiB); request may only lower it |
+| `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION`    | `false`           | Deployment-wide opt-in to a partial import    |
 
 **Add a setting:** Add field to `Settings` in `settings.py`, define `_JUNIPER_DATA_*` default constant. Auto-maps to `JUNIPER_DATA_<FIELD>` env var.
 
@@ -219,6 +222,8 @@ pre-commit install --hook-type pre-push  # coverage gate (one-time)
 | `ImportError: redis`    | Optional backend   | `pip install redis`                                      |
 | Coverage pre-push fails | Below threshold    | Add tests; see `scripts/check_module_coverage.py`        |
 | `ImportError: cannot import name 'VERSION'` collecting a generator test in isolation | `api/__init__.py` eagerly imported `create_app` | Keep `create_app` lazy. Do not pre-import routes. See [API Package Import Graph](REFERENCE.md#api-package-import-graph) |
+| `csv_import` 422 naming MB + `allow_truncation` | Source over the byte cap | Pass `"allow_truncation": true`, or set `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION=true`. A huge request `max_bytes` cannot raise the deployment ceiling. `meta.truncation is None` means complete. See [CSV Import Byte Cap](REFERENCE.md#csv-import-byte-cap). |
+| Path traversal / file not found on `csv_import` | `file_path` outside `JUNIPER_DATA_IMPORT_DIR` | Put the file under the import dir and pass a relative path. This is not the 10 MB HTTP body limit. |
 
 ---
 

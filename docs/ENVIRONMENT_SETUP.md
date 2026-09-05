@@ -280,6 +280,16 @@ export JUNIPER_DATA_STORAGE_PATH=/path/to/datasets
 | `JUNIPER_DATA_METRICS_ENABLED` | bool | `false` | Enable Prometheus metrics |
 | `JUNIPER_DATA_SENTRY_DSN` | string | *(none)* | Sentry error tracking DSN |
 
+### CSV / JSON import (`csv_import`)
+
+On-disk sources under `JUNIPER_DATA_IMPORT_DIR`. Over-cap imports are refused unless truncation is opted in. This is not the 10 MB HTTP body limit. See [CSV Import Byte Cap](REFERENCE.md#csv-import-byte-cap).
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `JUNIPER_DATA_IMPORT_DIR` | string | `/data/imports` | Root directory for `csv_import` files |
+| `JUNIPER_DATA_CSV_IMPORT_MAX_BYTES` | int | `134217728` | Byte-cap **ceiling** (128 MiB). Request `max_bytes` may only lower it (`gt=0`) |
+| `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION` | bool | `false` | Deployment-wide opt-in to a partial import |
+
 ### Integration Configuration
 
 | Variable | Used By | Description |
