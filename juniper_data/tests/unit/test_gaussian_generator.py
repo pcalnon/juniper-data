@@ -85,7 +85,7 @@ class TestGaussianGenerator:
         params = GaussianParams(seed=42)
         result = GaussianGenerator.generate(params)
 
-        expected_keys = {"X_train", "y_train", "X_test", "y_test", "X_full", "y_full"}
+        expected_keys = {"X_train", "y_train", "X_val", "y_val", "X_test", "y_test", "X_full", "y_full"}
         assert set(result.keys()) == expected_keys
 
     def test_generate_shapes(self) -> None:
@@ -98,7 +98,10 @@ class TestGaussianGenerator:
         )
         result = GaussianGenerator.generate(params)
 
-        total_samples = 3 * 40
+        # 3 x 40 = 120 TRAIN samples under additive sizing, plus 48 val and 36 test.
+        n_train = 3 * 40
+        total_samples = n_train + 48 + 36
+        assert result["X_train"].shape == (n_train, 5)
         assert result["X_full"].shape == (total_samples, 5)
         assert result["y_full"].shape == (total_samples, 3)
 
@@ -150,7 +153,8 @@ class TestGaussianGenerator:
         result = GaussianGenerator.generate(params)
 
         class_counts = result["y_full"].sum(axis=0)
-        np.testing.assert_array_equal(class_counts, [50, 50, 50])
+        # 3 x 50 = 150 train + 60 val + 45 test = 255 realised rows, 85 per class.
+        np.testing.assert_array_equal(class_counts, [85, 85, 85])
 
     def test_train_test_split_ratio(self) -> None:
         """Train/test split should respect configured ratios."""
@@ -159,6 +163,8 @@ class TestGaussianGenerator:
             train_ratio=0.7,
             test_ratio=0.3,
             seed=42,
+            # Ratios divide a fixed N -- that is carve mode by definition.
+            sizing_mode="carve",
         )
         result = GaussianGenerator.generate(params)
 
@@ -182,8 +188,13 @@ class TestGaussianGenerator:
         )
         result = GaussianGenerator.generate(params)
 
-        class_0_samples = result["X_full"][:100]
-        class_1_samples = result["X_full"][100:]
+        # Select by CLASS rather than position: the per-class block size follows
+        # the realised row count, and a mask asks the question directly.
+        labels = np.argmax(result["y_full"], axis=1)
+        class_0_samples = result["X_full"][labels == 0]
+        class_1_samples = result["X_full"][labels == 1]
+
+        assert class_0_samples.shape[0] > 0 and class_1_samples.shape[0] > 0
 
         class_0_mean = class_0_samples.mean(axis=0)
         class_1_mean = class_1_samples.mean(axis=0)
@@ -249,10 +260,11 @@ class TestGaussianGenerator:
         )
         result = GaussianGenerator.generate(params)
 
+        labels = np.argmax(result["y_full"], axis=1)
         for i in range(4):
-            start = i * 100
-            end = start + 100
-            class_mean = result["X_full"][start:end].mean(axis=0)
+            class_rows = result["X_full"][labels == i]
+            assert class_rows.shape[0] > 0
+            class_mean = class_rows.mean(axis=0)
             distance_from_origin = np.linalg.norm(class_mean)
             np.testing.assert_almost_equal(distance_from_origin, 5.0, decimal=0)
 
@@ -266,7 +278,8 @@ class TestGaussianGenerator:
         )
         result = GaussianGenerator.generate(params)
 
-        assert result["X_full"].shape == (300, 2)
+        # 3 x 100 = 300 TRAIN samples, plus 120 val and 90 test.
+        assert result["X_full"].shape == (510, 2)
 
     def test_generate_single_feature(self) -> None:
         """Single feature should skip sin component in center placement."""
@@ -278,7 +291,8 @@ class TestGaussianGenerator:
         )
         result = GaussianGenerator.generate(params)
 
-        assert result["X_full"].shape == (100, 1)
+        # 100 TRAIN samples, plus 40 val and 30 test.
+        assert result["X_full"].shape == (170, 1)
 
     def test_get_stds_scalar(self) -> None:
         """Scalar class_std should return a list of repeated values."""

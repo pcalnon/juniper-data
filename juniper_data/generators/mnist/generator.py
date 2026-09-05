@@ -6,11 +6,11 @@ MNIST and Fashion-MNIST datasets from the Hugging Face Hub.
 
 import numpy as np
 
-from juniper_data.core.split import shuffle_and_split
+from juniper_data.core.split import partition_and_assemble, resolve_counts_for_params
 
 from .params import MnistParams
 
-VERSION = "1.0.1"
+VERSION = "2.0.0"
 
 try:
     from datasets import load_dataset as hf_load_dataset
@@ -89,23 +89,13 @@ class MnistGenerator:
 
         X, y = MnistGenerator._load_and_preprocess(params)
 
-        split_result = shuffle_and_split(
-            X=X,
-            y=y,
-            train_ratio=params.train_ratio,
-            test_ratio=params.test_ratio,
-            seed=params.seed,
-            shuffle=params.shuffle,
-        )
+        # Carve only: MNIST reads a fixed corpus, so there is no way to generate
+        # additional rows to honour a requested train count. The params model
+        # rejects additive sizing outright rather than accepting it and quietly
+        # carving anyway.
+        counts = resolve_counts_for_params(params, X.shape[0])
 
-        return {
-            "X_train": split_result["X_train"],
-            "y_train": split_result["y_train"],
-            "X_test": split_result["X_test"],
-            "y_test": split_result["y_test"],
-            "X_full": X,
-            "y_full": y,
-        }
+        return partition_and_assemble(X, y, counts, params.seed, params.shuffle)
 
     @staticmethod
     def _load_and_preprocess(params: MnistParams) -> tuple[np.ndarray, np.ndarray]:

@@ -65,7 +65,10 @@ class TestMnistParams:
         assert params.normalize is True
         assert params.one_hot_labels is True
         assert params.train_ratio == 0.8
-        assert params.test_ratio == 0.2
+        # The default carve is three-way now: 0.8 / 0.1 / 0.1.
+        assert params.val_ratio == 0.1
+        assert params.test_ratio == 0.1
+        assert params.sizing_mode == "carve"
 
     def test_fashion_mnist(self) -> None:
         """Fashion-MNIST variant is accepted."""
@@ -82,6 +85,10 @@ class TestMnistParams:
             seed=42,
             train_ratio=0.7,
             test_ratio=0.3,
+            # 0.7 + 0.3 already accounts for every row, so the validation share
+            # must be stated as 0 rather than left at the 0.1 default (which
+            # would over-subscribe the dataset at 1.1).
+            val_ratio=0.0,
         )
         assert params.n_samples == 100
         assert params.flatten is False
@@ -118,12 +125,17 @@ class TestMnistGenerator:
         params = MnistParams(seed=42)
         result = MnistGenerator.generate(params)
 
+        # Default carve is 0.8 / 0.1 / 0.1, and the last partition absorbs the
+        # rounding remainder so no row is dropped.
         n_total = 20
         n_train = int(n_total * 0.8)
-        n_test = n_total - n_train
+        n_val = int(n_total * 0.1)
+        n_test = n_total - n_train - n_val
 
         assert result["X_train"].shape[0] == n_train
+        assert result["X_val"].shape[0] == n_val
         assert result["X_test"].shape[0] == n_test
+        assert n_train + n_val + n_test == n_total
         assert result["X_full"].shape[0] == n_total
         assert result["y_full"].shape[0] == n_total
 

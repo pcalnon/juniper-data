@@ -2,9 +2,10 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from juniper_data.core.constants import DEFAULT_GENERATOR_SEED
+from juniper_data.core.partition_params import CarveOnlyPartitionParams
 
 from .defaults import (
     MNIST_DEFAULT_DATASET,
@@ -16,7 +17,7 @@ from .defaults import (
 )
 
 
-class MnistParams(BaseModel):
+class MnistParams(CarveOnlyPartitionParams):
     """Configuration parameters for MNIST dataset generation.
 
     Loads and preprocesses MNIST or Fashion-MNIST datasets from

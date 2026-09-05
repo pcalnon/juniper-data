@@ -12,7 +12,9 @@ Parameter Aliases:
 
 from typing import Literal
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
+from pydantic import AliasChoices, ConfigDict, Field
+
+from juniper_data.core.partition_params import PartitionParams
 
 from .defaults import (
     MAX_NOISE,
@@ -40,7 +42,7 @@ PARAMETER_ALIASES: dict[str, str] = {
 }
 
 
-class SpiralParams(BaseModel):
+class SpiralParams(PartitionParams):
     """Parameters for spiral dataset generation.
 
     Defines the configuration for generating multi-spiral classification datasets
@@ -129,13 +131,6 @@ class SpiralParams(BaseModel):
         default=(0.0, 0.0),
         description="Origin point (x, y) for spiral center",
     )
-
-    @model_validator(mode="after")
-    def validate_ratios_sum(self) -> "SpiralParams":
-        """Validate that train_ratio + test_ratio <= 1.0."""
-        if self.train_ratio + self.test_ratio > 1.0:
-            raise ValueError(f"train_ratio ({self.train_ratio}) + test_ratio ({self.test_ratio}) must be <= 1.0, got {self.train_ratio + self.test_ratio}")
-        return self
 
     def total_points(self) -> int:
         """Compute the total number of points in the dataset.

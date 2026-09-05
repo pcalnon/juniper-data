@@ -1,8 +1,9 @@
 """Parameters for the concentric circles dataset generator."""
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from juniper_data.core.constants import DEFAULT_GENERATOR_SEED
+from juniper_data.core.partition_params import PartitionParams
 
 from .defaults import (
     CIRCLES_DEFAULT_FACTOR,
@@ -17,7 +18,7 @@ from .defaults import (
 )
 
 
-class CirclesParams(BaseModel):
+class CirclesParams(PartitionParams):
     """Configuration parameters for concentric circles dataset generation.
 
     Generates a binary classification dataset with points on two concentric

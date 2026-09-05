@@ -2,9 +2,10 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from juniper_data.core.constants import DEFAULT_GENERATOR_SEED
+from juniper_data.core.partition_params import CarveOnlyPartitionParams
 
 from .defaults import (
     CSV_IMPORT_DEFAULT_ALLOW_TRUNCATION,
@@ -20,7 +21,7 @@ from .defaults import (
 )
 
 
-class CsvImportParams(BaseModel):
+class CsvImportParams(CarveOnlyPartitionParams):
     """Configuration parameters for CSV/JSON data import.
 
     Loads and preprocesses data from CSV or JSON files.

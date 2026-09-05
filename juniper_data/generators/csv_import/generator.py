@@ -15,11 +15,11 @@ import numpy as np
 from juniper_data.api.settings import get_settings
 from juniper_data.core.constants import CHARSET_UTF8
 from juniper_data.core.limits import REASON_BYTE_CAP, TRUNCATION_META_KEY, UNIT_BYTES, InputTooLargeError, build_truncation_meta
-from juniper_data.core.split import shuffle_and_split
+from juniper_data.core.split import partition_and_assemble, resolve_counts_for_params
 
 from .params import CsvImportParams
 
-VERSION = "1.0.0"
+VERSION = "2.0.0"
 
 
 class CsvImportGenerator:
@@ -60,18 +60,15 @@ class CsvImportGenerator:
         """
         X, y, truncation = CsvImportGenerator._load_and_preprocess(params)
 
-        split_result = shuffle_and_split(
-            X=X,
-            y=y,
-            train_ratio=params.train_ratio,
-            test_ratio=params.test_ratio,
-            seed=params.seed,
-            shuffle=params.shuffle,
-        )
+        # Carve only: an imported CSV is a fixed corpus, so there is no way to
+        # generate the extra rows additive sizing would promise.
+        counts = resolve_counts_for_params(params, X.shape[0])
+        split_result = partition_and_assemble(X, y, counts, params.seed, params.shuffle)
 
         X_train = split_result["X_train"]
+        X_val = split_result["X_val"]
         X_test = split_result["X_test"]
-        X_full = X
+        X_full = split_result["X_full"]
 
         # Fit min-max on the TRAINING rows only, AFTER the split (juniper-data#314).
         #
@@ -80,22 +77,30 @@ class CsvImportGenerator:
         # applied to the training features. Splitting first is what makes a train-only fit
         # possible at all here.
         #
-        # CONSEQUENCE, deliberate: ``X_test`` and ``X_full`` are no longer bounded by [0, 1];
-        # rows outside the training range legitimately fall outside it. Only ``X_train`` is
-        # bounded. That is decision 7 of the ecosystem partition design.
+        # CONSEQUENCE, deliberate: ``X_val``, ``X_test`` and ``X_full`` are no longer bounded
+        # by [0, 1]; rows outside the training range legitimately fall outside it. Only
+        # ``X_train`` is bounded. That is decision 7 of the ecosystem partition design.
+        #
+        # ``X_val`` takes the SAME train-fit statistics. Leaving it out would ship an
+        # unnormalised validation partition alongside normalised train and test ones -- an
+        # in-loop signal on a different scale from the data selecting against it, which is
+        # far worse than the leak decision 7 exists to prevent.
         if params.normalize_features:
             minimum, scale = CsvImportGenerator._fit_minmax(X_train if X_train.shape[0] else X_full)
             X_train = CsvImportGenerator._apply_minmax(X_train, minimum, scale)
+            X_val = CsvImportGenerator._apply_minmax(X_val, minimum, scale)
             X_test = CsvImportGenerator._apply_minmax(X_test, minimum, scale)
             X_full = CsvImportGenerator._apply_minmax(X_full, minimum, scale)
 
         result: dict[str, Any] = {
             "X_train": X_train,
             "y_train": split_result["y_train"],
+            "X_val": X_val,
+            "y_val": split_result["y_val"],
             "X_test": X_test,
             "y_test": split_result["y_test"],
             "X_full": X_full,
-            "y_full": y,
+            "y_full": split_result["y_full"],
         }
 
         # APD-DATA-018: hand the route the permanent truncation annotation over

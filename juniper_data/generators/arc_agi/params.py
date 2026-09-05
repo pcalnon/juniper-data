@@ -2,9 +2,10 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from juniper_data.core.constants import DEFAULT_GENERATOR_SEED
+from juniper_data.core.partition_params import CarveOnlyPartitionParams
 
 from .defaults import (
     ARC_AGI_DEFAULT_FLATTEN_PAIRS,
@@ -22,7 +23,7 @@ from .defaults import (
 )
 
 
-class ArcAgiParams(BaseModel):
+class ArcAgiParams(CarveOnlyPartitionParams):
     """Configuration parameters for ARC-AGI dataset loading.
 
     Loads ARC-AGI tasks from Hugging Face Hub or local JSON files.
