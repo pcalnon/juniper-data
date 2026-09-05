@@ -662,6 +662,95 @@ class TestGeneratorAvailability:
         assert "pip install datasets" in error
         assert "ref: " not in error
 
+    def test_create_dataset_cache_does_not_reuse_tight_symbol_cap_after_operator_raises_it(self, client: TestClient, tmp_path: Path) -> None:
+        """A persisted truncation under a tight deployment cap must not be served
+        after the operator raises the cap. ``model_dump()`` fills Field defaults,
+        so omit-max_symbols hashed as 14 even when generation used 7.
+        """
+        import numpy as np
+
+        from juniper_data.core.limits import EQUITIES_DEFAULT_MAX_SYMBOLS, TRUNCATION_META_KEY
+        from juniper_data.generators.equities.generator import EquitiesGenerator
+
+        def _arrays(*, n: int, truncated: bool) -> dict:
+            x = np.zeros((n, 2), dtype=np.float32)
+            y = np.zeros((n, 2), dtype=np.float32)
+            y[:, 0] = 1.0
+            payload: dict = {
+                "X_train": x[: max(n - 1, 1)],
+                "y_train": y[: max(n - 1, 1)],
+                "X_test": x[max(n - 1, 1) :],
+                "y_test": y[max(n - 1, 1) :],
+                "X_full": x,
+                "y_full": y,
+            }
+            if truncated:
+                payload[TRUNCATION_META_KEY] = {"truncated": True, "reason": "universe_exceeded_symbol_cap", "unit": "symbols", "cap": n, "requested": 16, "imported": n, "records_imported": n}
+            return payload
+
+        request = {"generator": "equities", "params": {"symbols": [f"T{i:02d}" for i in range(16)], "allow_truncation": True}, "persist": True}
+        tight = Settings(storage_path=str(tmp_path), equities_max_symbols=7)
+        wide = Settings(storage_path=str(tmp_path), equities_max_symbols=EQUITIES_DEFAULT_MAX_SYMBOLS)
+
+        with patch("juniper_data.api.settings.get_settings", return_value=tight), patch.object(EquitiesGenerator, "generate", return_value=_arrays(n=7, truncated=True)):
+            first = client.post("/v1/datasets", json=request)
+        with patch("juniper_data.api.settings.get_settings", return_value=wide), patch.object(EquitiesGenerator, "generate", return_value=_arrays(n=14, truncated=True)):
+            second = client.post("/v1/datasets", json=request)
+
+        assert first.status_code == 201
+        assert second.status_code == 201
+        assert first.json()["dataset_id"] != second.json()["dataset_id"]
+        assert first.json()["meta"]["truncation"] is not None
+        assert first.json()["meta"]["n_samples"] == 7
+        assert second.json()["meta"]["n_samples"] == 14
+
+    def test_create_dataset_truncation_survives_persist_and_stays_out_of_npz(self, client: TestClient, tmp_path: Path) -> None:
+        """The annotation is permanent metadata; the artifact stays array-only.
+
+        ``persist=False`` only proves the HTTP response. The owner's obligation
+        is that a trainer loading the stored artifact months later -- who never
+        saw this response -- still learns the data is a prefix, AND that the
+        NPZ itself never grows a non-array ``truncation`` key (pop must happen
+        before checksum + persist, not after).
+        """
+        import io
+
+        import numpy as np
+
+        source = tmp_path / "big.csv"
+        source.write_text("feature1,feature2,label\n" + "".join(f"{i}.0,{i + 1}.0,A\n" for i in range(40)))
+
+        bounded = Settings(storage_path=str(tmp_path), import_dir=str(tmp_path), csv_import_max_bytes=120)
+        with patch("juniper_data.generators.csv_import.generator.get_settings", return_value=bounded):
+            created = client.post(
+                "/v1/datasets",
+                json={"generator": "csv_import", "params": {"file_path": "big.csv", "allow_truncation": True}, "persist": True},
+            )
+
+        assert created.status_code == 201
+        dataset_id = created.json()["dataset_id"]
+
+        meta = client.get(f"/v1/datasets/{dataset_id}")
+        assert meta.status_code == 200
+        truncation = meta.json()["truncation"]
+        assert truncation is not None
+        assert truncation["truncated"] is True
+        # `cap_bytes` on the harvest branch; the unified descriptor renamed it to
+        # `cap` with a `unit` saying how to read it, so one consumer shape serves
+        # both generators. Assert the unit too -- a bare `cap` of 120 would read
+        # the same whether it counted bytes or symbols.
+        assert truncation["unit"] == "bytes"
+        assert truncation["cap"] == 120
+
+        artifact = client.get(f"/v1/datasets/{dataset_id}/artifact")
+        assert artifact.status_code == 200
+        with np.load(io.BytesIO(artifact.content)) as npz:
+            assert "truncation" not in npz.files
+            # The allow-list gained X_val / y_val on 2026-09-04. The property this pins
+            # is "the truncation annotation is metadata and must not reach the NPZ";
+            # writing the list as the TWO-way set would fail on a correct artifact.
+            assert set(npz.files) <= {"X_train", "y_train", "X_val", "y_val", "X_test", "y_test", "X_full", "y_full"}
+
 
 @pytest.mark.unit
 class TestHealthEndpoint:

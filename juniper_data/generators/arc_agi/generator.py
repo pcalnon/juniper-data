@@ -107,9 +107,13 @@ class ArcAgiGenerator:
         # has no way to produce the extra rows it would promise.
         counts = resolve_counts_for_params(params, X.shape[0])
 
-        split_result = partition_and_assemble(X, y, counts, params.seed, params.shuffle)
-        split_result["task_ids"] = task_ids
-        return split_result
+        # `task_ids` must ride THROUGH the split, not be stapled on after it.
+        # `partition_and_assemble` shuffles and rebuilds `X_full` from the shuffled
+        # partitions; assigning the raw generation-order ids to that result made
+        # `task_ids[i]` name a different grid than `X_full[i]` for almost every i, with
+        # nothing downstream able to detect it -- both arrays are the right length and
+        # every id is a real task.
+        return partition_and_assemble(X, y, counts, params.seed, params.shuffle, extras={"task_ids": task_ids})
 
     @staticmethod
     def _load_from_huggingface(params: ArcAgiParams) -> list[dict]:

@@ -471,6 +471,27 @@ class EquitiesGenerator:
         return INCOMPLETE_DROP if choice == INCOMPLETE_DROP else INCOMPLETE_ACCEPT
 
     @staticmethod
+    def bind_deployment_defaults(params: EquitiesParams) -> EquitiesParams:
+        """Copy the effective symbol cap and truncation opt-in onto the params object.
+
+        The equities half of the cache-key defect ``csv_import`` fixed for bytes.
+        ``generate_dataset_id`` hashes ``params.model_dump()``, and dump fills Field
+        defaults -- so an omitted ``max_symbols`` is stored as its schema default even
+        when the deployment ceiling is tighter, and ``allow_truncation`` is stored as
+        false even when the operator opted in globally. Two requests that will run under
+        DIFFERENT policies therefore hash to the SAME dataset_id, and a restart that
+        raises the ceiling keeps serving the artifact truncated under the old one.
+
+        The create route calls this through a ``getattr`` hook, so a generator opts in
+        simply by defining it; there is no registry to keep in step.
+
+        Idempotent: ``_resolve_bounds`` clamps with ``min(requested, ceiling)`` and ORs
+        the opt-in, so re-binding an already-bound params object returns the same values.
+        """
+        cap, allow = EquitiesGenerator._resolve_bounds(params)
+        return params.model_copy(update={"max_symbols": cap, "allow_truncation": allow})
+
+    @staticmethod
     def _resolve_symbols(params: EquitiesParams, constituents: dict[str, dict[str, Any]]) -> tuple[list[str], dict[str, dict[str, Any]], dict[str, Any] | None]:
         """Resolve the ticker list and the ticker -> (name, cik) metadata map."""
         if params.symbols:

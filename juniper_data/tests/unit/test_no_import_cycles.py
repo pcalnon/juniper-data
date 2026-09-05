@@ -25,6 +25,7 @@ regardless. An in-process assertion here would pass with the defect fully presen
 worse than no test at all.
 """
 
+import pathlib
 import subprocess
 import sys
 
@@ -57,6 +58,12 @@ def _import_in_cold_interpreter(statement: str) -> subprocess.CompletedProcess:
     return subprocess.run([sys.executable, "-c", statement], capture_output=True, text=True, check=False)
 
 
+def _on_disk_generator_subpackages() -> list[str]:
+    """Public generator packages next to this test's source tree (skip ``_`` helpers)."""
+    root = pathlib.Path(__file__).resolve().parents[2] / "generators"
+    return sorted(p.name for p in root.iterdir() if p.is_dir() and not p.name.startswith("_") and (p / "__init__.py").exists())
+
+
 class TestGeneratorSubpackagesImportStandalone:
     @pytest.mark.parametrize("name", GENERATOR_SUBPACKAGES)
     def test_subpackage_imports_first_in_a_cold_interpreter(self, name):
@@ -70,6 +77,10 @@ class TestGeneratorSubpackagesImportStandalone:
         result = _import_in_cold_interpreter(statement)
         assert result.returncode == 0, result.stderr[-1500:]
         assert result.stdout.strip(), "VERSION resolved but is empty"
+
+    def test_parametrized_names_match_on_disk_subpackages(self):
+        """A 17th generator with a cycle would otherwise skip the net."""
+        assert sorted(GENERATOR_SUBPACKAGES) == _on_disk_generator_subpackages()
 
 
 class TestLazyAttributeMechanicsInProcess:

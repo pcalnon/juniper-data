@@ -306,6 +306,46 @@ class TestEquitiesGenerator:
         with patch.object(eq_gen, "EQUITIES_DEPS_AVAILABLE", False):
             assert EquitiesGenerator.is_available() is False
 
+    def test_post_cut_rows_do_not_move_train_statistics(self) -> None:
+        """Exact-cut identity: a row at or after n_train must not enter the fit.
+
+        ``X_test.max() > 1`` proves the fit is not the full matrix, but still passes if the
+        cut is merely *near* the split. Multiplying the later half of OHLCV by 100 leaves
+        train-row inputs unchanged; the only way ``X_train`` can move is if a spiked row
+        leaked into the statistics. ``train_ratio=0.5`` aligns the split with the spike.
+        """
+        clean = _ohlcv(seed=41)
+        spiked = clean.copy()
+        spiked.iloc[len(spiked) // 2 :] = spiked.iloc[len(spiked) // 2 :] * 100.0
+        kwargs = {"normalize_features": True, "train_ratio": 0.5, "val_ratio": 0.0, "test_ratio": 0.5}
+        baseline = _generate(["AAPL"], {"AAPL": clean}, _shares(), **kwargs)
+        shifted = _generate(["AAPL"], {"AAPL": spiked}, _shares(), **kwargs)
+        np.testing.assert_allclose(shifted["X_train"], baseline["X_train"], rtol=1e-5, atol=1e-6)
+        assert not np.allclose(shifted["X_test"], baseline["X_test"]), "the spike must land in test so the comparison is live"
+
+    def test_empty_training_partition_falls_back_without_nan(self) -> None:
+        """When every ticker rounds to zero train rows, fit on full rather than emit NaN stats.
+
+        Two business days condition to one row (the last is dropped for the next-day target).
+        ``round(1 * 0.4) == 0`` empties train; the fallback must keep test/full finite.
+
+        The shares frame is filed BEFORE the price rows on purpose. The module ``_shares()``
+        fixture files in 2009-2010, which is after this two-day 2008 window -- and under the
+        point-in-time alignment that lands NO shares at all, so the run dies on
+        ``IncompleteDataError`` before the normaliser is ever reached. That guard is correct;
+        it is simply not what this test is about, and satisfying it with
+        ``allow_truncation=True`` would have changed the scenario rather than the fixture.
+        """
+        early_shares = pd.DataFrame(
+            {"shares": [1_000_000_000.0], "filed": [pd.Timestamp("2007-08-14")]},
+            index=pd.to_datetime([pd.Timestamp("2007-06-30")]),
+        )
+        arrays = _generate(["AAPL"], {"AAPL": _ohlcv(periods=2, seed=40)}, early_shares, normalize_features=True, train_ratio=0.4, val_ratio=0.0, test_ratio=0.6)
+        assert arrays["X_train"].shape[0] == 0
+        assert arrays["X_test"].shape[0] == 1
+        assert np.isfinite(arrays["X_test"]).all()
+        assert np.isfinite(arrays["X_full"]).all()
+
 
 class TestEquitiesParams:
     """Validation behavior of EquitiesParams."""
@@ -726,6 +766,38 @@ class TestUniverseSymbolCap:
         """
         assert eq_limits.EQUITIES_DEFAULT_MAX_SYMBOLS == 14
         assert eq_limits.EQUITIES_DEFAULT_ALLOW_TRUNCATION is False
+
+    def test_bind_deployment_defaults_puts_effective_policy_in_dump(self) -> None:
+        """The cache key must follow the resolved cap and opt-in, not Field defaults.
+
+        omit-max_symbols and an explicit 14 schema default resolve to the SAME
+        effective cap (the deployment ceiling, after the clamp). Binding must
+        record that ceiling -- otherwise a later restart that raises the cap
+        reuses the truncated artifact. Global allow_truncation must appear in
+        the dump for the same reason.
+        """
+        settings = MagicMock()
+        settings.equities_max_symbols = 7
+        settings.equities_allow_truncation = False
+        with patch("juniper_data.api.settings.get_settings", return_value=settings):
+            omitted = eq_gen.EquitiesGenerator.bind_deployment_defaults(EquitiesParams(allow_truncation=True))
+            explicit_default = eq_gen.EquitiesGenerator.bind_deployment_defaults(EquitiesParams(allow_truncation=True, max_symbols=eq_limits.EQUITIES_DEFAULT_MAX_SYMBOLS))
+        assert omitted.max_symbols == 7
+        assert explicit_default.max_symbols == 7
+        assert omitted.model_dump()["max_symbols"] == explicit_default.model_dump()["max_symbols"]
+
+        settings.equities_max_symbols = eq_limits.EQUITIES_DEFAULT_MAX_SYMBOLS
+        with patch("juniper_data.api.settings.get_settings", return_value=settings):
+            omitted_wide = eq_gen.EquitiesGenerator.bind_deployment_defaults(EquitiesParams(allow_truncation=True))
+        assert omitted_wide.max_symbols == eq_limits.EQUITIES_DEFAULT_MAX_SYMBOLS
+        assert omitted.model_dump()["max_symbols"] != omitted_wide.model_dump()["max_symbols"]
+
+        settings.equities_max_symbols = 7
+        settings.equities_allow_truncation = True
+        with patch("juniper_data.api.settings.get_settings", return_value=settings):
+            inherited = eq_gen.EquitiesGenerator.bind_deployment_defaults(EquitiesParams())
+        assert inherited.allow_truncation is True
+        assert inherited.model_dump()["allow_truncation"] is True
 
 
 @pytest.mark.unit

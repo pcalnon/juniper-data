@@ -13,6 +13,8 @@ def shuffle_data(
     X: np.ndarray,
     y: np.ndarray,
     rng: np.random.Generator,
+    *,
+    extras: dict[str, np.ndarray] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Shuffle X and y arrays together using the same permutation.
 
@@ -20,17 +22,30 @@ def shuffle_data(
         X: Feature array of shape (n_samples, ...).
         y: Label array of shape (n_samples, ...).
         rng: NumPy random generator for reproducibility.
+        extras: Optional mapping of name -> row-aligned array, permuted IN PLACE with
+            the SAME permutation. This is for per-row metadata that describes the rows
+            rather than being part of them -- ARC-AGI's ``task_ids`` is the case that
+            motivated it. Metadata carried outside the shuffle keeps its GENERATION
+            order, so after the shuffle every entry names a different sample's origin,
+            and nothing downstream can tell. There is no third return value because a
+            varying arity would be a breaking change for the existing callers.
 
     Returns:
         Tuple of shuffled (X, y) arrays with the same permutation applied.
 
     Raises:
-        ValueError: If X and y have different number of samples.
+        ValueError: If X and y -- or any array in ``extras`` -- have different numbers
+            of samples.
     """
     if X.shape[0] != y.shape[0]:
         raise ValueError(f"X and y must have the same number of samples. Got X.shape[0]={X.shape[0]}, y.shape[0]={y.shape[0]}")
 
     permutation = rng.permutation(X.shape[0])
+    if extras is not None:
+        for name, array in list(extras.items()):
+            if array.shape[0] != X.shape[0]:
+                raise ValueError(f"extras[{name!r}] must have the same number of samples as X. Got {array.shape[0]}, expected {X.shape[0]}")
+            extras[name] = array[permutation]
     return X[permutation], y[permutation]
 
 
@@ -257,6 +272,8 @@ def shuffle_and_split_three_way(
     n_test: int,
     seed: int | None = None,
     shuffle: bool = True,
+    *,
+    extras: dict[str, np.ndarray] | None = None,
 ) -> dict[str, np.ndarray]:
     """Optionally shuffle, then cut into train / val / test by row count.
 
@@ -273,6 +290,9 @@ def shuffle_and_split_three_way(
         seed: Random seed for reproducibility. If None, uses a
             non-deterministic seed.
         shuffle: Whether to shuffle before cutting. Defaults to True.
+        extras: Optional per-row metadata, permuted IN PLACE alongside the rows it
+            describes. See :func:`shuffle_data`. Untouched when ``shuffle`` is False,
+            because the rows are not reordered either.
 
     Returns:
         Dictionary with keys ``X_train``, ``y_train``, ``X_val``, ``y_val``,
@@ -283,7 +303,7 @@ def shuffle_and_split_three_way(
     """
     if shuffle:
         rng = np.random.default_rng(seed)
-        X, y = shuffle_data(X, y, rng)
+        X, y = shuffle_data(X, y, rng, extras=extras)
 
     return split_three_way(X, y, n_train, n_val, n_test)
 
@@ -469,6 +489,26 @@ def resolve_partition_counts(
     if abs(train_ratio + val_ratio + test_ratio - 1.0) < 1e-9:
         n_test = n_native - n_train - n_val
 
+        # Independently-rounded train and val can TOGETHER exceed n_native, which makes the
+        # absorbed remainder negative. 0.7 / 0.3 / 0.0 over 5 rows is the concrete case:
+        # np.round(3.5) = 4 and np.round(1.5) = 2, so n_test = 5 - 4 - 2 = -1 and
+        # `split_three_way` raises on a request the params model accepted as valid.
+        #
+        # The overflow trim below cannot catch it: with n_test already negative the sum is
+        # exactly n_native, so `overflow` is 0 and the trim never fires. A guard that keys on
+        # the TOTAL cannot see a negative PART -- the sum is the wrong unit for the question.
+        #
+        # Absorb the shortfall from the END, val before train, matching the trim order below
+        # and for the same reason: shrinking train silently moves the partition every existing
+        # baseline is measured against.
+        if n_test < 0:
+            deficit = -n_test
+            n_test = 0
+            take = min(deficit, n_val)
+            n_val -= take
+            deficit -= take
+            n_train -= deficit
+
     # A carve invents no rows, so an over-subscribed request is trimmed from the
     # END -- test first, then val. Trimming train would silently shrink the
     # partition every existing baseline is measured against.
@@ -547,6 +587,8 @@ def partition_and_assemble(
     counts: dict[str, int],
     seed: int | None,
     shuffle: bool,
+    *,
+    extras: dict[str, np.ndarray] | None = None,
 ) -> dict[str, np.ndarray]:
     """Cut into train / val / test and assemble the legacy ``*_full`` pair.
 
@@ -566,10 +608,17 @@ def partition_and_assemble(
         counts: the dict from :func:`resolve_counts_for_params`.
         seed: random seed for the shuffle.
         shuffle: whether to shuffle before cutting.
+        extras: optional per-row metadata arrays, keyed by the name they should carry
+            in the result. Each is permuted with the SAME permutation as the rows and
+            then truncated to ``X_full``'s length, so ``result[name][i]`` describes
+            ``result["X_full"][i]``. A generator that attaches such metadata AFTER the
+            split instead is attaching generation-order values to shuffled rows.
 
     Returns:
-        The six partition keys plus ``X_full`` / ``y_full``.
+        The six partition keys plus ``X_full`` / ``y_full``, and one key per ``extras``
+        entry.
     """
+    aligned = dict(extras or {})
     split = shuffle_and_split_three_way(
         X,
         y,
@@ -578,7 +627,14 @@ def partition_and_assemble(
         counts["n_test"],
         seed=seed,
         shuffle=shuffle,
+        extras=aligned,
     )
     split["X_full"] = np.vstack([split["X_train"], split["X_val"], split["X_test"]])
     split["y_full"] = np.vstack([split["y_train"], split["y_val"], split["y_test"]])
+    # `split_three_way` slices contiguously in train | val | test order, so `X_full` is
+    # exactly the first `n_train + n_val + n_test` shuffled rows. Any surplus the
+    # generator produced is dropped from the shuffled TAIL, and the metadata is cut at
+    # the same place for the same reason.
+    for name, array in aligned.items():
+        split[name] = array[: split["X_full"].shape[0]]
     return split
