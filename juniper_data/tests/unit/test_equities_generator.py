@@ -68,6 +68,27 @@ def _shares(start: str = "2009-06-30"):
     )
 
 
+def _shares_quarterly(periods: int = 40, restated: int | None = None, restated_filed_with: int | None = None):
+    """A realistic multi-year shares history, optionally with a same-day restatement.
+
+    ``_shares()`` has two rows and the second is filed past the mocked frame's last
+    trade date, so only ONE filing is ever reachable -- which leaves every ordering
+    and de-duplication path structurally unexercised. This builds ``periods``
+    quarterly filings, each disclosed 32 days after the period it describes.
+
+    When ``restated`` is given, that row's ``filed`` is moved onto the same day as
+    ``restated_filed_with``'s, reproducing the real shape that broke the alignment:
+    an 8-K restating an old period lands the same day as the current 10-Q. Both
+    rows then collapse to one under ``duplicated(keep="last")``, and only the
+    LATER period end is the right survivor.
+    """
+    ends = pd.to_datetime([f"{2001 + index // 4}-{1 + 3 * (index % 4):02d}-20" for index in range(periods)])
+    filed = [end + pd.Timedelta(days=32) for end in ends]
+    if restated is not None and restated_filed_with is not None:
+        filed[restated] = filed[restated_filed_with]
+    return pd.DataFrame({"shares": 1_000_000_000.0 + np.arange(periods) * 1_000_000.0, "filed": filed}, index=ends)
+
+
 @contextmanager
 def _mocked(ohlcv_map: dict, shares):
     """Patch yfinance.download and SEC share fetching for the duration."""
@@ -911,16 +932,30 @@ class TestFreeFields:
     def test_shares_are_not_visible_before_they_were_filed(self) -> None:
         """No row may carry a figure that was not public on its own trade date.
 
-        The alignment used to key on the period END and forward-fill, so Apple's
-        quarter ending 2021-03-27 -- not filed until 2021-04-29 -- reached every
-        trade date in those five weeks, and `market_cap` inherited it. A live run
-        surfaced ``days_since_report`` at **-19 days**; a negative age is the leak
-        stating itself.
+        The alignment used to key on the period END and forward-fill, so a figure
+        reached every trade date between the period it described and the filing
+        that disclosed it, and `market_cap` inherited that. A live 2013-2021 AAPL
+        run surfaced ``days_since_report`` at **-19 days** -- a negative age is the
+        leak stating itself -- on 325 of 2,266 rows (14.3%).
+
+        ``end`` on the dei cover-page tag is an AS-OF date, not a fiscal period
+        end. An earlier version of this docstring said AAPL's quarter ending
+        2021-03-27 went unfiled until 2021-04-29, "five weeks": AAPL's series has
+        no 2021-03 point at all, and that filing carries ``end=2021-04-16``, a
+        13-day gap. The -19 comes from four 2015-2016 filings. The leak was real;
+        the worked example was not.
 
         Same class as juniper-data#314's normalisation leak, and the same rule:
         no quantity that was not knowable at a row's date may reach that row.
+
+        THE THIRD ARM IS THE LOAD-BEARING ONE. The first two read only
+        ``report_date``, so an implementation that keeps a correct filing date
+        while shifting ``total_shares`` itself into the future -- a look-ahead in
+        the exact quantity this test is named for -- passes both of them. Only a
+        check of the VALUE against what had actually been filed catches it.
         """
-        arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=18)}, _shares())
+        shares = _shares_quarterly()
+        arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=18)}, shares)
         ages = arrays["X_full"][:, _FEATURES.index("days_since_report")]
         assert ages.min() >= 0, "a negative filing age means the row saw its own future"
 
@@ -928,6 +963,56 @@ class TestFreeFields:
         report = arrays["report_date_full"]
         future = [(int(t), int(r)) for t, r in zip(trade, report, strict=False) if r != 0 and r > t]
         assert not future, f"report_date after the trade date on {len(future)} row(s): {future[:3]}"
+
+        published = shares.dropna(subset=["filed"]).sort_values("filed")
+        observed = arrays["X_full"][:, _FEATURES.index("total_shares")]
+        checked = 0
+        for row in range(len(trade)):
+            day = pd.Timestamp(str(trade[row]))
+            visible = published[published["filed"] <= day]
+            if visible.empty:
+                continue
+            expected = float(visible["shares"].iloc[-1])
+            assert observed[row] == pytest.approx(expected, rel=1e-9), f"row {row} ({day.date()}) carries {observed[row]:,.0f} shares; only {expected:,.0f} had been filed by then"
+            checked += 1
+        assert checked > 100, f"only {checked} rows had a published figure to compare against -- the arm is vacuous"
+
+    def test_a_same_day_restatement_keeps_the_current_period(self) -> None:
+        """Two facts filed the same day: the LATER period end must survive.
+
+        An 8-K restating an old quarter can be filed on the same day as the
+        current 10-Q. Only one survives ``duplicated(keep="last")``, and what
+        "shares outstanding" means on that filing date is the current period's
+        figure, not the restated old one.
+
+        This used to be resolved by ``set_index("filed").sort_index()``, which is
+        correct only if the re-sort preserves the incoming ``end``-ascending order
+        among ties. ``sort_index()`` defaults to ``kind="quicksort"``, which is not
+        stable, so it did not. Measured over the 485-payload SEC cache: 54 tickers
+        have such a collision and **15, across 9 tickers, kept the restated OLD
+        figure** -- DVA by 10.4%, O'Reilly by 6.8%, KO by 0.9%, and ADSK, which
+        sits at position 12 of the DEFAULT 14-symbol universe, by 0.26%. Each is a
+        silently wrong ``market_cap`` on every row until the next filing.
+
+        The fixture reproduces that misordering against the old implementation.
+        The assertion states the INVARIANT rather than the misordering, so it keeps
+        its meaning if a future numpy happens to order this particular case right.
+        """
+        shares = _shares_quarterly(restated=0, restated_filed_with=32)
+        tie = shares["filed"].iloc[32]
+        current = float(shares["shares"].iloc[32])
+        restated = float(shares["shares"].iloc[0])
+        assert tie == shares["filed"].iloc[0], "fixture must put both filings on one day"
+
+        arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=19)}, shares)
+        trade = arrays["date_full"]
+        observed = arrays["X_full"][:, _FEATURES.index("total_shares")]
+        next_filing = min(value for value in shares["filed"] if value > tie)
+        window = [row for row in range(len(trade)) if tie <= pd.Timestamp(str(trade[row])) < next_filing]
+        assert window, "fixture must leave trade rows between the tied filing and the next one"
+
+        for row in window:
+            assert observed[row] == pytest.approx(current, rel=1e-9), f"row {row} ({pd.Timestamp(str(trade[row])).date()}) carries {observed[row]:,.0f} -- the RESTATED {restated:,.0f}, not the current period's {current:,.0f}"
 
     def test_a_point_with_no_filing_date_is_dropped_not_guessed(self) -> None:
         """Unknown publication time cannot be approximated by the period end.

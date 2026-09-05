@@ -619,12 +619,23 @@ class EquitiesGenerator:
             # ALIGN ON THE FILING DATE, NOT THE PERIOD END.
             #
             # This used to reindex on the period-end index and forward-fill, which
-            # is a look-ahead leak: Apple's quarter ending 2021-03-27 was not filed
-            # until 2021-04-29, so every trade date in those five weeks was handed
-            # a share count that did not exist publicly yet -- and `market_cap`,
-            # derived from it, inherited the leak. Measured on a live 2013-2021
-            # AAPL run, `days_since_report` came back as low as **-19 days**: a
-            # negative age is the leak stating itself out loud.
+            # is a look-ahead leak: every trade date between a figure's `end` and
+            # the filing that disclosed it was handed a share count that was not
+            # public yet -- and `market_cap`, derived from it, inherited the leak.
+            # Measured on a live 2013-2021 AAPL run, `days_since_report` came back
+            # as low as **-19 days**: a negative age is the leak stating itself
+            # out loud. Over the whole AAPL series 325 of 2,266 rows (14.3%)
+            # carried a negative age; after this change, zero do.
+            #
+            # `end` ON THIS TAG IS AN AS-OF DATE, NOT A FISCAL PERIOD END --
+            # SEC's own description is "as stated on cover of related periodic
+            # report". An earlier version of this comment claimed AAPL's quarter
+            # ending 2021-03-27 was not filed until 2021-04-29, "five weeks". That
+            # is wrong twice: AAPL's dei series has no 2021-03 point at all, and
+            # the 2021-04-29 filing carries `end=2021-04-16` -- a 13-day gap. The
+            # -19 comes from 2015-2016 (four filings tie at 19 days); 2021's widest
+            # gap is 14. The genuine outlier is a 10-K/A: `end=2009-10-16` filed
+            # 2010-01-25, **101 days**. The leak was real; only the example was not.
             #
             # It is the same class as the normalisation leak fixed in
             # juniper-data#314, and the same rule from decision 7 of the ecosystem
@@ -636,8 +647,30 @@ class EquitiesGenerator:
             # for them, and guessing reinstates the leak; if that empties the
             # series the ticker simply has no shares data, which
             # `fundamentals_fill` already handles.
+            # BREAK SAME-DAY TIES ON THE PERIOD END, EXPLICITLY.
+            #
+            # Two facts can share one `filed`: an 8-K restating an old quarter
+            # lands the same day as the current 10-Q. Only one survives
+            # `duplicated(keep="last")`, and the right one is the LATER period --
+            # it is what "shares outstanding" means on that filing date.
+            #
+            # This used to be `set_index("filed").sort_index()`, which got the
+            # right answer only by accident: rows arrive `end`-ascending from
+            # `_fetch_shares`, so `keep="last"` picked the later period ONLY if
+            # the re-sort preserved that order among ties. `sort_index()` defaults
+            # to `kind="quicksort"`, which is not stable, so it did not. Measured
+            # over the 485-payload SEC cache: 54 tickers have such a collision and
+            # **15 of them, across 9 tickers, kept the restated OLD figure** --
+            # DVA by 10.4% (2013-03-01), O'Reilly by 6.8%, KO by 0.9%, and ADSK --
+            # which sits at position 12 of the default 14-symbol universe -- by
+            # 0.26%. Every one of those is a silently wrong `market_cap`.
+            #
+            # Sorting on (filed, end) states the tie-break instead of inheriting
+            # it. pandas resolves a multi-column `sort_values` with `np.lexsort`,
+            # which is stable regardless of `kind`, so this no longer depends on
+            # an upstream ordering invariant that a refactor could quietly drop.
             known = shares.dropna(subset=["filed"])
-            known = known.set_index("filed").sort_index()
+            known = known.rename_axis("end").reset_index().sort_values(["filed", "end"]).set_index("filed")
             known = known[~known.index.duplicated(keep="last")]
 
             frame["shares_quality"] = str(shares["shares_quality"].iloc[0]) if "shares_quality" in shares.columns else SHARES_QUALITY_POINT_IN_TIME
