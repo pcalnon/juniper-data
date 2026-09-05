@@ -85,6 +85,23 @@ EQUITIES_DEFAULT_REGRESSION_TARGET: Literal["next_close", "return", "log_return"
 CONSTITUENTS_FILENAME = "sp500_constituents.csv"
 
 # Ordered numeric columns that form the X feature matrix (all float32).
+# Ordered numeric columns that form the X feature matrix (all float32).
+#
+# ORDER IS PART OF THE CONTRACT. Existing columns keep their positions so a
+# consumer indexing by position (X[:, 3] is close) is unaffected; the six added
+# 2026-09-04 are appended, never interleaved.
+#
+# All six were already being downloaded and thrown away -- none costs an extra
+# request:
+#   adj_close               already parsed out of the response, then dropped
+#   dividend, split_ratio   arrive on the same call once actions=True is set
+#   days_since_week52_*     fall out of the rolling window already computed
+#   days_since_report       the `filed` date already in the SEC shares payload
+#
+# The three underlying DATES ship separately as row-aligned YYYYMMDD arrays
+# (week52_high_date_*, week52_low_date_*, report_date_*) rather than as feature
+# columns, because a raw date in a float32 matrix is a number whose magnitude
+# carries no meaning. "Days since" is the form a model can use.
 EQUITIES_FEATURE_COLUMNS = [
     "open",
     "high",
@@ -96,4 +113,10 @@ EQUITIES_FEATURE_COLUMNS = [
     "total_shares",
     "market_cap",
     "cost_basis",
+    "adj_close",
+    "dividend",
+    "split_ratio",
+    "days_since_week52_high",
+    "days_since_week52_low",
+    "days_since_report",
 ]

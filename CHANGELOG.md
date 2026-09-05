@@ -9,6 +9,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Six `equities` feature columns that cost no extra request** — the matrix goes 10 → 16. Every one
+  was already being downloaded and thrown away:
+
+  | Column | Where it was already coming from |
+  |---|---|
+  | `adj_close` | parsed out of the Yahoo response, then dropped at the feature step |
+  | `dividend`, `split_ratio` | arrive on the **same** call once `actions=True` is set |
+  | `days_since_week52_high`, `days_since_week52_low` | fall out of the rolling window already computed |
+  | `days_since_report` | the `filed` date already inside the SEC shares payload |
+
+  **Order is part of the contract**: the existing ten keep their positions, so a consumer indexing by
+  position is unaffected; the six are appended.
+
+  The three underlying **dates** ship as their own row-aligned YYYYMMDD arrays —
+  `week52_high_date_*`, `week52_low_date_*`, `report_date_*` — rather than as feature columns,
+  because a raw date in a float32 matrix is a number whose magnitude means nothing. "Days since" is
+  the form a model can use. Verified live against AAPL 2013–2021: 34 dividends, and both real splits
+  (7:1 on 2014-06-09, 4:1 on 2020-08-31).
+
+### Fixed
+
+- **Look-ahead leak: shares outstanding were visible before they were filed.** The SEC series was
+  aligned on the **period end** and forward-filled, so Apple's quarter ending 2021-03-27 — not filed
+  until 2021-04-29 — reached every trade date in those five weeks, and `market_cap`, derived from it,
+  inherited the leak. A live run surfaced the new `days_since_report` at **−19 days**; a negative
+  filing age is the leak stating itself out loud.
+
+  Alignment is now on the **filing date**. A point with no `filed` is **dropped rather than guessed**:
+  when a figure became public is exactly what is unknown for it, and substituting the period end
+  reinstates the leak. Same class as the normalisation leak fixed in juniper-data#314, and the same
+  rule from decision 7 of the ecosystem partition design — no quantity that was not knowable at a
+  row's date may reach that row.
+
+- **A present-but-empty SEC concept suppressed the shares fallback.** SEC answers `200` with
+  `{"units": {"shares": {}}}` for some filers — `KO` and `ABT` among them. The guard was
+  `if payload and payload.get("units")`, and that dict is **truthy**, so the loop accepted the empty
+  concept and **broke before trying the `us-gaap` fallback**. `BIIB` has 42 usable facts there and
+  was getting none of them: `total_shares` and `market_cap` silently became `0.0` under the default
+  `fundamentals_fill="zero"` — a value no listed company can have, and one nothing downstream
+  distinguishes from a measurement. The guard now counts facts instead of testing truthiness.
+
+- **A ticker with no shares data at all now says so.** Roughly 4–6% of the bundled S&P 500 universe
+  reports no shares concept to SEC under either tag (`KO`, `ABT`, `ABNB`, `AMT`, `BG` confirmed).
+  That is not a bug to fix upstream, but it was completely silent: the generator warned only when the
+  fetch *raised*, never when it returned nothing. It now logs a warning naming the ticker and the
+  `fundamentals_fill` policy that will paper over the gap.
+
 - **`equities` is bounded to 14 symbols, and the silent slice is gone** (defect register
   `APD-DATA-018`, second half — the row is now closed). `EQUITIES_DEFAULT_MAX_SYMBOLS` was `None`,
   meaning **all 503 bundled S&P 500 constituents**, which measurement puts at **18–34 minutes**
