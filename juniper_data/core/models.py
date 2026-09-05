@@ -78,6 +78,21 @@ class DatasetMeta(BaseModel):
     # prefix of its source. The HTTP response is transient; this is not.
     truncation: dict[str, Any] | None = None
 
+    # PERMANENT record that something in this dataset is degraded or missing.
+    #
+    # None means clean. A dict means at least one of:
+    #   `degraded`  -- a value was recovered from a WEAKER source than the primary
+    #                  one (e.g. a period-average share count rather than a
+    #                  point-in-time one, which makes market_cap a different
+    #                  quantity for those symbols);
+    #   `unrescued` -- no source produced a value, so those rows carry the fill.
+    # plus `rows_affected` and the `policy` (accept / drop) that was applied.
+    #
+    # Separate from `truncation` on purpose: truncation says how much is MISSING,
+    # this says what is WRONG with what is present. A consumer has to be able to
+    # ask those independently.
+    data_quality: dict[str, Any] | None = None
+
     # Artifacts
     artifact_formats: list[str] = Field(default_factory=lambda: ["npz"])
 

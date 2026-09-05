@@ -191,7 +191,9 @@ class TestEquitiesGenerator:
         assert np.isnan(shares_col).any(), "nan mode leaves pre-filing rows missing"
 
     def test_no_shares_data_yields_zero_fundamentals(self) -> None:
-        arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=12)}, shares=None, fundamentals_fill="zero")
+        # allow_truncation opts in to the zero-fill this test is ABOUT. Without it
+        # the generator now refuses, which is the point of the new contract.
+        arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=12)}, shares=None, fundamentals_fill="zero", allow_truncation=True)
         shares_col = arrays["X_full"][:, _FEATURES.index("total_shares")]
         assert np.all(shares_col == 0), "no SEC data -> all shares zero under zero-fill"
 
@@ -206,7 +208,7 @@ class TestEquitiesGenerator:
             return frame.copy() if symbol == "AAPL" else pd.DataFrame()
 
         with patch.object(eq_gen.yf, "download", side_effect=fake_download), patch.object(eq_gen.EquitiesGenerator, "_fetch_shares", staticmethod(boom)):
-            arrays = EquitiesGenerator.generate(EquitiesParams(symbols=["AAPL"], start_date="2008-01-01", end_date="2011-01-01", use_cache=False, fundamentals_fill="zero"))
+            arrays = EquitiesGenerator.generate(EquitiesParams(symbols=["AAPL"], start_date="2008-01-01", end_date="2011-01-01", use_cache=False, fundamentals_fill="zero", allow_truncation=True))
 
         assert arrays["ticker_vocab"].tolist() == ["AAPL"]
         assert arrays["X_full"].shape[0] > 0
@@ -548,13 +550,17 @@ class TestEquitiesGeneratorInternals:
             return good.copy()
 
         with patch.object(eq_gen.yf, "download", side_effect=fake_download), patch.object(eq_gen.EquitiesGenerator, "_fetch_shares", staticmethod(lambda *_a: None)):
-            arrays = EquitiesGenerator.generate(EquitiesParams(symbols=["AAPL", "MSFT"], start_date="2008-01-01", end_date="2011-01-01", use_cache=False, fundamentals_fill="zero"))
+            arrays = EquitiesGenerator.generate(EquitiesParams(symbols=["AAPL", "MSFT"], start_date="2008-01-01", end_date="2011-01-01", use_cache=False, fundamentals_fill="zero", allow_truncation=True))
         assert arrays["ticker_vocab"].tolist() == ["AAPL"]
 
     def test_generate_clips_test_split_when_rounding_overshoots(self) -> None:
         # 8 business days condition to 7 rows; train=test=0.5 -> round(3.5)=4 each
         # -> 4 + 4 > 7, exercising the ``n_test = n_rows - n_train`` clip.
-        arrays = _generate(["AAPL"], {"AAPL": _ohlcv(periods=8, seed=31)}, _shares(), train_ratio=0.5, test_ratio=0.5)
+        # allow_truncation: this window is 8 business days from 2008-01-01, entirely
+        # BEFORE the first filing in _shares() (2009-08-14), so under filed-date
+        # alignment there is genuinely no shares data for these rows and the
+        # generator now refuses by default. Split arithmetic is what is under test.
+        arrays = _generate(["AAPL"], {"AAPL": _ohlcv(periods=8, seed=31)}, _shares(), train_ratio=0.5, test_ratio=0.5, allow_truncation=True)
         n = arrays["X_full"].shape[0]
         assert n == 7
         assert arrays["X_train"].shape[0] + arrays["X_test"].shape[0] == n
@@ -835,7 +841,7 @@ class TestFreeFields:
             {"shares": [1_000_000_000.0], "filed": [pd.NaT]},
             index=pd.to_datetime([pd.Timestamp("2009-06-30")]),
         )
-        arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=19)}, undated)
+        arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=19)}, undated, allow_truncation=True)
         shares = arrays["X_full"][:, _FEATURES.index("total_shares")]
         assert np.all(shares == 0.0), "an undated filing must not populate total_shares"
         assert np.all(arrays["report_date_full"] == 0)
@@ -843,3 +849,110 @@ class TestFreeFields:
     def test_rolling_extreme_positions_rejects_an_ambiguous_request(self) -> None:
         with pytest.raises(ValueError, match="exactly one"):
             eq_gen.EquitiesGenerator._rolling_extreme_positions(np.zeros(3), 2, take_max=True, take_min=True)
+
+
+@pytest.mark.unit
+class TestUnresolvableFundamentals:
+    """The fail / accept / drop contract for rows no rescue path could recover.
+
+    The owner's direction (2026-09-05): a zero-filled fundamental is acceptable
+    only as a **warning** when the value can be rescued. When it cannot, the
+    caller must take an explicit path — and the default is to refuse, because a
+    dataset silently carrying `market_cap = 0.0` is exactly the failure this
+    whole area exists to prevent.
+    """
+
+    @staticmethod
+    def _no_shares(seed: int = 40):
+        return {"AAPL": _ohlcv(seed=seed), "MSFT": _ohlcv(seed=seed + 1)}
+
+    def test_default_is_refusal(self) -> None:
+        """Unset gate ⇒ the data load fails, with a message naming the remedy."""
+        with pytest.raises(eq_limits.IncompleteDataError) as excinfo:
+            _generate(["AAPL", "MSFT"], self._no_shares(), shares=None)
+        message = str(excinfo.value)
+        assert "allow_truncation" in message
+        assert "incomplete_rows" in message
+        assert "JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION" in message
+        assert excinfo.value.unrescued == ["AAPL", "MSFT"]
+        assert excinfo.value.rows_affected > 0
+
+    def test_refusal_is_a_value_error(self) -> None:
+        """So a missed catch lands on 400, never a 500."""
+        with pytest.raises(ValueError):
+            _generate(["AAPL"], {"AAPL": _ohlcv(seed=42)}, shares=None)
+
+    def test_accept_keeps_the_rows_and_annotates_them(self) -> None:
+        """Canopy's choice 1 / the CLI's opted-in path."""
+        arrays = _generate(["AAPL", "MSFT"], self._no_shares(43), shares=None, allow_truncation=True)
+        quality = arrays[eq_limits.DATA_QUALITY_META_KEY]
+        assert quality["complete"] is False
+        assert quality["policy"] == "accept"
+        assert sorted(quality["unrescued"]) == ["AAPL", "MSFT"]
+        assert quality["rows_affected"] == arrays["X_full"].shape[0]
+        assert len(arrays["ticker_vocab"]) == 2, "accept must not remove the symbols"
+
+    def test_drop_removes_the_symbols_and_says_so(self) -> None:
+        """Canopy's choice 2 — the rows are gone, and the record of that is not."""
+        good = _shares()
+        ohlcv = {"AAPL": _ohlcv(seed=44), "MSFT": _ohlcv(seed=45)}
+
+        def selective(cik, _use_cache):  # noqa: ANN001, ANN202
+            return good if cik == 320193 else None
+
+        params = EquitiesParams(symbols=["AAPL", "MSFT"], start_date="2008-01-01", end_date="2011-01-01", use_cache=False, allow_truncation=True, incomplete_rows="drop")
+        with patch.object(eq_gen.yf, "download", side_effect=lambda symbol, **_k: ohlcv[symbol].copy()), patch.object(eq_gen.EquitiesGenerator, "_fetch_shares", staticmethod(selective)):
+            arrays = EquitiesGenerator.generate(params)
+
+        assert arrays["ticker_vocab"].tolist() == ["AAPL"], "the unresolvable symbol must be gone"
+        quality = arrays[eq_limits.DATA_QUALITY_META_KEY]
+        assert quality["policy"] == "drop"
+        # Dropping still annotates. A dataset that quietly contains fewer symbols
+        # than were asked for is the same silent-partial-data problem wearing a
+        # different costume -- naming what went is the point.
+        assert list(quality["unrescued"]) == ["MSFT"]
+        assert quality["rows_affected"] == 0, "dropped rows are not IN the dataset to be affected"
+
+    def test_drop_that_empties_the_dataset_still_fails(self) -> None:
+        """Dropping everything is not a successful load of nothing."""
+        with pytest.raises(eq_limits.IncompleteDataError, match="leaves no dataset"):
+            _generate(["AAPL"], {"AAPL": _ohlcv(seed=46)}, shares=None, allow_truncation=True, incomplete_rows="drop")
+
+    def test_a_clean_dataset_carries_no_annotation(self) -> None:
+        """Absence is the signal, exactly as for truncation."""
+        arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=47)}, _shares())
+        assert eq_limits.DATA_QUALITY_META_KEY not in arrays
+
+    def test_a_clean_dataset_does_not_depend_on_the_gate(self) -> None:
+        """The knobs must not change a dataset that has nothing wrong with it."""
+        without = _generate(["AAPL"], {"AAPL": _ohlcv(seed=48)}, _shares())
+        with_gate = _generate(["AAPL"], {"AAPL": _ohlcv(seed=48)}, _shares(), allow_truncation=True)
+        np.testing.assert_array_equal(without["X_full"], with_gate["X_full"])
+
+    def test_deployment_gate_works_without_a_request_parameter(self) -> None:
+        """The env-var / .env surface, for a command-line caller."""
+        settings = MagicMock()
+        settings.equities_max_symbols = 14
+        settings.equities_allow_truncation = True
+        settings.equities_incomplete_rows = "accept"
+        with patch("juniper_data.api.settings.get_settings", return_value=settings):
+            arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=49)}, shares=None)
+        assert arrays[eq_limits.DATA_QUALITY_META_KEY]["policy"] == "accept"
+
+    def test_a_degraded_rescue_is_recorded_separately_from_an_absent_one(self) -> None:
+        """A period average is a RESCUE, not a gap -- and not the same as a real one.
+
+        A market cap built on a period-average share count is a different quantity
+        from one built on point-in-time shares. Merging the two categories would
+        hide that from anyone comparing symbols.
+        """
+        degraded_shares = _shares()
+        degraded_shares["shares_quality"] = eq_gen.SHARES_QUALITY_PERIOD_AVERAGE
+        degraded_shares["shares_origin"] = eq_gen.SHARES_SOURCE_FACTS
+
+        arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=50)}, degraded_shares)
+        quality = arrays[eq_limits.DATA_QUALITY_META_KEY]
+        assert quality["degraded"] == {"AAPL": "period_average"}
+        assert quality["unrescued"] == {}
+        # Degraded alone must NOT trip the refusal -- the value was recovered.
+        assert quality["policy"] == "accept"

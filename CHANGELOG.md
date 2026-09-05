@@ -9,6 +9,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A rescue ladder for shares outstanding — 37 unresolvable tickers become 1.** The 2026-09-04
+  census found 37 of 503 S&P 500 constituents returning nothing from either shares concept, so their
+  `total_shares` and `market_cap` were zero-filled. **It was never missing data; it was the wrong
+  endpoint.** SEC's `companyconcept` and `companyfacts` disagree for the same CIK, taxonomy and tag:
+  for `KO`, `companyconcept` returns 636 bytes and **0 facts** while `companyfacts` returns **71**,
+  with a current count of 4.30 billion shares.
+
+  When `companyconcept` yields nothing, the generator now walks `companyfacts`:
+
+  | Rung | Concept | Meaning | Rescues |
+  |---|---|---|---:|
+  | 1–2 | `dei:EntityCommonStockSharesOutstanding`, `us-gaap:CommonStockSharesOutstanding` | point-in-time | **18** |
+  | 3 | `us-gaap:WeightedAverageNumberOfSharesOutstandingBasic` | **period average — not the same quantity** | **10** |
+  | — | none | genuinely absent (`STZ`) | 1 |
+
+  `companyfacts` costs ~1.15 s and ~5 MB against `companyconcept`'s ~0.20 s and ~600 B, so it stays a
+  **fallback**: paying it per symbol would cut the 14-symbol cap to ~9.
+
+  **Rung 3 is recorded, not hidden.** A market cap built on a period-average share count is a
+  different quantity from one built on point-in-time shares, so those symbols are annotated
+  `degraded` and logged — never silently mixed in with the rest.
+
+- **`DatasetMeta.data_quality` — the permanent record of what is wrong with what is present.**
+  Sibling of `truncation` (which says how much is *missing*), carrying `degraded`, `unrescued`,
+  `rows_affected` and the `policy` applied. `None` when the dataset is clean, so presence alone
+  answers the question. Travels the same reserved-channel route, popped before checksum and NPZ
+  persist.
+
+### Changed
+
+- **A dataset whose fundamentals cannot be resolved is now REFUSED by default.** Previously
+  `fundamentals_fill="zero"` turned an unresolvable share count into `total_shares = 0.0` and
+  `market_cap = 0.0` — a value no listed company can have — and shipped it silently. The caller now
+  takes an explicit path:
+
+  | Gate | `incomplete_rows` | Outcome |
+  |---|---|---|
+  | unset *(default)* | — | **422**, naming the affected symbols, the row count, and both remedies |
+  | set | `accept` *(default)* | rows kept and filled, dataset annotated |
+  | set | `drop` | those symbols excluded, **dataset still annotated with what went** |
+
+  The gate is the existing `allow_truncation` — request parameter,
+  `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION`, or the matching `.env` entry. `incomplete_rows` adds the
+  accept-vs-drop refinement an interactive consumer needs, via
+  `JUNIPER_DATA_EQUITIES_INCOMPLETE_ROWS`. Dropping every symbol fails rather than succeeding with an
+  empty dataset.
+
 - **Six `equities` feature columns that cost no extra request** — the matrix goes 10 → 16. Every one
   was already being downloaded and thrown away:
 

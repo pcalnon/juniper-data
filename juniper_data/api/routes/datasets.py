@@ -28,8 +28,8 @@ from juniper_data.api.observability import record_dataset_generation, record_dat
 from juniper_data.core.artifacts import compute_checksum
 from juniper_data.core.constants import TAGS_MATCH_DEFAULT, TAGS_MATCH_PATTERN
 from juniper_data.core.dataset_id import generate_dataset_id
-from juniper_data.core.limits import InputTooLargeError
-from juniper_data.core.meta import compute_shape_meta, derive_sequence_meta, pop_scaling_meta, pop_truncation_meta
+from juniper_data.core.limits import IncompleteDataError, InputTooLargeError
+from juniper_data.core.meta import compute_shape_meta, derive_sequence_meta, pop_data_quality_meta, pop_scaling_meta, pop_truncation_meta
 from juniper_data.core.models import (
     BatchCreateRequest,
     BatchCreateResponse,
@@ -174,14 +174,15 @@ async def create_dataset(
     try:
         # arrays = generator_class.generate(params)
         arrays = await asyncio.to_thread(generator_class.generate, params)
-    except InputTooLargeError as e:
+    except (InputTooLargeError, IncompleteDataError) as e:
         record_dataset_generation(generator=request.generator, status=GENERATION_STATUS_ERROR, duration=time.monotonic() - gen_start)
         record_dataset_post(
             generator=request.generator,
             status=GENERATION_STATUS_ERROR,
             cache=POST_CACHE_MISS,
         )
-        # APD-DATA-018: the caller's source is over its byte cap and neither the
+        # APD-DATA-018: the caller's input exceeds its cap, or part of the dataset
+        # could not be produced correctly, and neither the
         # request nor the deployment authorised a partial import. This is a
         # caller-fixable condition with a deterministic remedy, so it must not
         # reach the bare re-raise below and surface as a 500.
@@ -282,6 +283,10 @@ async def create_dataset(
     # authorised to produce a partial dataset.
     truncation_meta = pop_truncation_meta(arrays)
 
+    # Same reserved-channel discipline: pull the data-quality descriptor out
+    # before checksum + NPZ persist. None for a clean dataset.
+    data_quality_meta = pop_data_quality_meta(arrays)
+
     checksum = compute_checksum(arrays)
 
     # WS-1 (#168): dispatch shape/class metadata on the generator's declared
@@ -320,6 +325,7 @@ async def create_dataset(
         dt_scaling=scaling_meta["dt_scaling"],
         target_scaling=scaling_meta["target_scaling"],
         truncation=truncation_meta,
+        data_quality=data_quality_meta,
         artifact_formats=["npz"],
         created_at=now,
         checksum=checksum,
