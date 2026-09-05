@@ -46,7 +46,18 @@ _IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _PRIMARY_KEY = "dataset_id"
 
 #: Columns that carry a JSON document. Stored JSONB, dumped on write, loaded on read.
-_JSONB_FIELDS = frozenset({"params", "class_distribution", "dt_scaling", "target_scaling", "truncation"})
+#:
+#: This set is transcribed by hand ON PURPOSE. ``_sql_type_for`` already falls back to the
+#: annotation origin, so a new ``dict`` field gets a JSONB *column* automatically -- and then
+#: silently skips the dump, the ``::jsonb`` cast on both statements, and the load, because all
+#: four of those gate on membership HERE. Deriving this set from the model would close the drift
+#: and simultaneously make `test_jsonb_set_is_every_dict_field` compare the model against itself.
+#: The redundancy IS the gate; keep it, and keep the test that reads it.
+#:
+#: ``data_quality`` was added to ``DatasetMeta`` without being added here: its column was created
+#: JSONB, its value was handed to psycopg as a bare Python dict, neither statement cast it, and a
+#: read never decoded it.
+_JSONB_FIELDS = frozenset({"params", "class_distribution", "data_quality", "dt_scaling", "target_scaling", "truncation"})
 
 #: Columns that carry a list of strings. Stored as a native TEXT[] rather than JSON so the
 #: existing ``tags`` containment queries keep working.
