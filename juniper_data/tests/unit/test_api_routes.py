@@ -573,8 +573,9 @@ class TestGeneratorAvailability:
         truncation = response.json()["meta"]["truncation"]
         assert truncation is not None
         assert truncation["truncated"] is True
-        assert truncation["cap_bytes"] == 120
-        assert truncation["bytes_total"] == source.stat().st_size
+        assert truncation["unit"] == "bytes"
+        assert truncation["cap"] == 120
+        assert truncation["requested"] == source.stat().st_size
 
     def test_create_dataset_within_cap_records_no_truncation(self, client: TestClient, tmp_path: Path) -> None:
         """A complete dataset stores None -- so ``meta.truncation`` alone answers the question."""

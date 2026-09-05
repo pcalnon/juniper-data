@@ -153,7 +153,8 @@ class TestDatasetsEndpoint:
         assert "meta" in data
         assert data["generator"] == "spiral"
         assert data["meta"]["generator"] == "spiral"
-        assert data["meta"]["n_samples"] == 100
+        # n_samples spans all three partitions: 100 train + 40 val + 30 test.
+        assert data["meta"]["n_samples"] == 170
 
     def test_create_returns_artifact_url(self, client: TestClient, spiral_request: dict) -> None:
         """Response includes artifact_url."""

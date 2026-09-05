@@ -31,7 +31,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.generators]
 
 def _assert_irregular_sequence_contract(arrays: dict, *, lookback: int, horizon: int) -> None:
     """Shared assertions for the irregular-Δt 3-D regression NPZ contract (non-uniform dt)."""
-    for split in ("train", "test", "full"):
+    for split in ("train", "val", "test", "full"):
         for key in ("X", "y", "dt", "target_dt", "observed_mask"):
             assert f"{key}_{split}" in arrays, f"missing {key}_{split}"
 
@@ -50,8 +50,12 @@ def _assert_irregular_sequence_contract(arrays: dict, *, lookback: int, horizon:
     mask = arrays["observed_mask_full"]
     assert mask.shape == (n_windows, lookback) and mask.dtype == np.uint8 and np.all(mask == 1)
 
-    assert n_windows == arrays["X_train"].shape[0] + arrays["X_test"].shape[0]
-    np.testing.assert_array_equal(arrays["X_full"], np.concatenate([arrays["X_train"], arrays["X_test"]]))
+    # full == train + val + test, chronological. The non-empty check comes first
+    # deliberately: the three-way identity also holds when val rounds to zero rows,
+    # so without it this assertion would pass on exactly the defect it exists to catch.
+    assert arrays["X_val"].shape[0] > 0, "val partition must be non-empty"
+    assert n_windows == arrays["X_train"].shape[0] + arrays["X_val"].shape[0] + arrays["X_test"].shape[0]
+    np.testing.assert_array_equal(arrays["X_full"], np.concatenate([arrays["X_train"], arrays["X_val"], arrays["X_test"]]))
 
     shape_meta = compute_shape_meta(arrays, "regression")
     assert shape_meta["n_features"] == 1
@@ -81,10 +85,17 @@ class TestDelayProductGenerator:
         lookback, lag1, lag2 = 16, 1, 7
         arrays = DelayProductGenerator.generate(DelayProductParams(n_steps=300, lookback=lookback, horizon=1, lag1=lag1, lag2=lag2, jitter=0.5, seed=3))
         p1, p2 = lookback - 1 - lag1, lookback - 1 - lag2
-        x = arrays["X_full"]
-        np.testing.assert_array_equal(arrays["y_full"][:, 0], x[:, p1, 0] * x[:, p2, 0])
+        # Per split, not just on full. The generator overwrites the forecast target
+        # window_timed_series emits with the delay product, split by split; a split
+        # omitted from that loop keeps the forecast target, and X/y for that split
+        # then describe two different problems. Checking only y_full would miss it
+        # entirely -- full is a separate block that gets its own overwrite.
+        for split in ("train", "val", "test", "full"):
+            x = arrays[f"X_{split}"]
+            assert x.shape[0] > 0, f"{split} partition must be non-empty"
+            np.testing.assert_array_equal(arrays[f"y_{split}"][:, 0], x[:, p1, 0] * x[:, p2, 0])
         # And the per-split products concatenate to the full target (no split-boundary drift).
-        np.testing.assert_array_equal(arrays["y_full"], np.concatenate([arrays["y_train"], arrays["y_test"]]))
+        np.testing.assert_array_equal(arrays["y_full"], np.concatenate([arrays["y_train"], arrays["y_val"], arrays["y_test"]]))
         assert np.all(np.isfinite(arrays["y_full"]))
 
     def test_closed_form_known_answer_product(self) -> None:

@@ -35,12 +35,46 @@ EQUITIES_DEFAULT_FUNDAMENTALS_FILL: Literal["zero", "nan", "drop"] = "zero"
 EQUITIES_DEFAULT_WEEK52_WINDOW = 252
 
 EQUITIES_DEFAULT_NORMALIZE_FEATURES = False
-EQUITIES_DEFAULT_MAX_SYMBOLS: int | None = None
 EQUITIES_DEFAULT_USE_CACHE = True
+
+# APD-DATA-018 -- re-exported, not defined here (see juniper_data/core/limits.py
+# for the value's derivation and for why it cannot live in this module).
+#
+# This was ``None`` -- every one of the 503 bundled S&P 500 constituents -- which
+# measurement put at 18-34 minutes against a 30 s request budget. The cap is in
+# SYMBOLS rather than bytes because the cost is per request: 163x the payload
+# costs 1.16x the time, so bytes would bound the wrong quantity here.
+from juniper_data.core.limits import (  # noqa: E402  (re-export, kept beside the other defaults)
+    EQUITIES_DEFAULT_ALLOW_TRUNCATION,
+    EQUITIES_DEFAULT_MAX_SYMBOLS,
+)
+
+__all__ = [
+    "CONSTITUENTS_FILENAME",
+    "EQUITIES_DEFAULT_ALLOW_TRUNCATION",
+    "EQUITIES_DEFAULT_BASIS_PRICE_FIELD",
+    "EQUITIES_DEFAULT_END_DATE",
+    "EQUITIES_DEFAULT_FUNDAMENTALS_FILL",
+    "EQUITIES_DEFAULT_MAX_SYMBOLS",
+    "EQUITIES_DEFAULT_NORMALIZE_FEATURES",
+    "EQUITIES_DEFAULT_PURCHASE_DATE",
+    "EQUITIES_DEFAULT_REGRESSION_TARGET",
+    "EQUITIES_DEFAULT_START_DATE",
+    "EQUITIES_DEFAULT_TEST_RATIO",
+    "EQUITIES_DEFAULT_VAL_RATIO",
+    "EQUITIES_DEFAULT_TRAIN_RATIO",
+    "EQUITIES_DEFAULT_USE_CACHE",
+    "EQUITIES_DEFAULT_WEEK52_WINDOW",
+    "EQUITIES_FEATURE_COLUMNS",
+]
 
 # Temporal split: train = earlier dates, test = later dates (per ticker).
 EQUITIES_DEFAULT_TRAIN_RATIO = 0.8
-EQUITIES_DEFAULT_TEST_RATIO = 0.2
+# The three-way default is 0.8 / 0.1 / 0.1: test halves to make room for the
+# in-loop partition rather than train shrinking, because every existing
+# baseline is measured against the train count.
+EQUITIES_DEFAULT_VAL_RATIO = 0.1
+EQUITIES_DEFAULT_TEST_RATIO = 0.1
 
 # Regression-target (y_reg) representation. The raw next-day close is
 # non-stationary (it trends with the price level), which a bounded-memory
@@ -56,6 +90,23 @@ EQUITIES_DEFAULT_REGRESSION_TARGET: Literal["next_close", "return", "log_return"
 CONSTITUENTS_FILENAME = "sp500_constituents.csv"
 
 # Ordered numeric columns that form the X feature matrix (all float32).
+# Ordered numeric columns that form the X feature matrix (all float32).
+#
+# ORDER IS PART OF THE CONTRACT. Existing columns keep their positions so a
+# consumer indexing by position (X[:, 3] is close) is unaffected; the six added
+# 2026-09-04 are appended, never interleaved.
+#
+# All six were already being downloaded and thrown away -- none costs an extra
+# request:
+#   adj_close               already parsed out of the response, then dropped
+#   dividend, split_ratio   arrive on the same call once actions=True is set
+#   days_since_week52_*     fall out of the rolling window already computed
+#   days_since_report       the `filed` date already in the SEC shares payload
+#
+# The three underlying DATES ship separately as row-aligned YYYYMMDD arrays
+# (week52_high_date_*, week52_low_date_*, report_date_*) rather than as feature
+# columns, because a raw date in a float32 matrix is a number whose magnitude
+# carries no meaning. "Days since" is the form a model can use.
 EQUITIES_FEATURE_COLUMNS = [
     "open",
     "high",
@@ -67,4 +118,10 @@ EQUITIES_FEATURE_COLUMNS = [
     "total_shares",
     "market_cap",
     "cost_basis",
+    "adj_close",
+    "dividend",
+    "split_ratio",
+    "days_since_week52_high",
+    "days_since_week52_low",
+    "days_since_report",
 ]

@@ -5,9 +5,208 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.13.0] - 2026-09-05
 
 ### Added
+
+- **Every dataset is partitioned three ways: `train`, `val`, `test`.** `X_val` / `y_val` are new
+  NPZ keys and are **not optional**. `val` is the in-loop split — early stopping, candidate
+  selection; `test` is touched once, at the end. A consumer that early-stops on `test` because
+  `val` was absent is selecting on the split it reports, and its reported score is no longer held
+  out. That was the actual state of the ecosystem before this release.
+
+  Two sizing models, selected by `sizing_mode`:
+
+  | Mode | Native size knob means | val / test sized by |
+  |---|---|---|
+  | `additive` *(default)* | the **train** row count | `val_percent` / `test_percent`, as a percentage of train (40 / 30) |
+  | `carve` | the **total** row count | `train_ratio` / `val_ratio` / `test_ratio` |
+
+  Under `additive`, asking for more validation data does not take rows away from training:
+  `n_points_per_spiral=97` yields 194 train + 78 val + 58 test. `mnist`, `csv_import` and `arc_agi`
+  accept **only** `carve` and refuse `additive` — their row count is not ours to choose, so
+  pretending they have a native size knob would be a lie the caller cannot see.
+
+- **`DatasetMeta.n_val`**, defaulted to `0` so an existing stored record still loads.
+
+- **A rescue ladder for shares outstanding — 37 unresolvable tickers become 1.** The 2026-09-04
+  census found 37 of 503 S&P 500 constituents returning nothing from either shares concept, so their
+  `total_shares` and `market_cap` were zero-filled. **It was never missing data; it was the wrong
+  endpoint.** SEC's `companyconcept` and `companyfacts` disagree for the same CIK, taxonomy and tag:
+  for `KO`, `companyconcept` returns 636 bytes and **0 facts** while `companyfacts` returns **71**,
+  with a current count of 4.30 billion shares.
+
+  When `companyconcept` yields nothing, the generator now walks `companyfacts`:
+
+  | Rung | Concept | Meaning | Rescues |
+  |---|---|---|---:|
+  | 1–2 | `dei:EntityCommonStockSharesOutstanding`, `us-gaap:CommonStockSharesOutstanding` | point-in-time | **18** |
+  | 3 | `us-gaap:WeightedAverageNumberOfSharesOutstandingBasic` | **period average — not the same quantity** | **10** |
+  | — | none | genuinely absent (`STZ`) | 1 |
+
+  `companyfacts` costs ~1.15 s and ~5 MB against `companyconcept`'s ~0.20 s and ~600 B, so it stays a
+  **fallback**: paying it per symbol would cut the 14-symbol cap to ~9.
+
+  **Rung 3 is recorded, not hidden.** A market cap built on a period-average share count is a
+  different quantity from one built on point-in-time shares, so those symbols are annotated
+  `degraded` and logged — never silently mixed in with the rest.
+
+- **`DatasetMeta.data_quality` — the permanent record of what is wrong with what is present.**
+  Sibling of `truncation` (which says how much is *missing*), carrying `degraded`, `unrescued`,
+  `rows_affected` and the `policy` applied. `None` when the dataset is clean, so presence alone
+  answers the question. Travels the same reserved-channel route, popped before checksum and NPZ
+  persist.
+
+### Changed
+
+- **BREAKING — `len(X_train) + len(X_test) == len(X_full)` is false.** The identity is now
+  `len(X_train) + len(X_val) + len(X_test) == len(X_full)`. It was published as a numbered
+  *guarantee* in `docs/api/JUNIPER_DATA_API.md` and `docs/USER_MANUAL.md`, so consumers were
+  entitled to rely on it; both now state the three-way form. Any consumer still asserting the
+  two-way form fails against every artifact this release produces.
+
+  Two further contract corrections in the same place:
+
+  - "All arrays are 2-dimensional" was **never** true of the six sequence generators, whose `X` is
+    `(n, lookback, n_features)`. Dispatch on `meta.sequence`, not on `X.ndim`.
+  - `y_*` is `(n, 1)` for regression targets, not only `(n, n_classes)` one-hot.
+
+- **BREAKING — every generator's `generator_version` is now `2.0.0`.** All sixteen. `dataset_id`
+  hashes that version, so a seeded request that previously produced a two-way artifact **cannot**
+  resolve to a cached two-way artifact now. This is the deliberate mitigation for stale cache
+  reads, not an incidental bump.
+
+- **Sequence windowing splits on two boundaries.** `window_regular_series` and
+  `window_timed_series` take a required keyword-only `val_ratio`; `window_one_ticker` takes
+  `val_cut_ordinal` alongside `cut_ordinal` and routes each window by which interval its **target**
+  time falls in. `val_ratio` is required rather than defaulted so a call site that forgets it fails
+  loudly instead of silently emitting an empty validation split.
+
+  The no-future-leak invariant is now **transitive**: every train target precedes every val target,
+  which precedes every test target. Checking only `train < test` would leave `val` free to overlap
+  either neighbour — and `val` is the split early stopping reads. Test takes the *remainder* rather
+  than its own rounded share, so no row is lost to independent rounding (`0.8 / 0.1 / 0.1` over four
+  rows rounds to `3 + 0 + 0` and discards 25% of the dataset).
+
+- **`equities` splits three ways per ticker**, with `val_ratio` defaulting to `0.1` and
+  `test_ratio` reduced `0.2 → 0.1`. Rounding overflow is trimmed from test first, then val, and
+  **never** from train — shrinking train to fund a rounding artifact would change what the model was
+  fit on. A `train_ratio` + `test_ratio` pair that summed to exactly `1.0` is now refused, because
+  the validation share comes out of the same 1.0; state `val_ratio=0.0` to get the old division.
+
+- **A dataset whose fundamentals cannot be resolved is now REFUSED by default.** Previously
+  `fundamentals_fill="zero"` turned an unresolvable share count into `total_shares = 0.0` and
+  `market_cap = 0.0` — a value no listed company can have — and shipped it silently. The caller now
+  takes an explicit path:
+
+  | Gate | `incomplete_rows` | Outcome |
+  |---|---|---|
+  | unset *(default)* | — | **422**, naming the affected symbols, the row count, and both remedies |
+  | set | `accept` *(default)* | rows kept and filled, dataset annotated |
+  | set | `drop` | those symbols excluded, **dataset still annotated with what went** |
+
+  The gate is the existing `allow_truncation` — request parameter,
+  `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION`, or the matching `.env` entry. `incomplete_rows` adds the
+  accept-vs-drop refinement an interactive consumer needs, via
+  `JUNIPER_DATA_EQUITIES_INCOMPLETE_ROWS`. Dropping every symbol fails rather than succeeding with an
+  empty dataset.
+
+- **Six `equities` feature columns that cost no extra request** — the matrix goes 10 → 16. Every one
+  was already being downloaded and thrown away:
+
+  | Column | Where it was already coming from |
+  |---|---|
+  | `adj_close` | parsed out of the Yahoo response, then dropped at the feature step |
+  | `dividend`, `split_ratio` | arrive on the **same** call once `actions=True` is set |
+  | `days_since_week52_high`, `days_since_week52_low` | fall out of the rolling window already computed |
+  | `days_since_report` | the `filed` date already inside the SEC shares payload |
+
+  **Order is part of the contract**: the existing ten keep their positions, so a consumer indexing by
+  position is unaffected; the six are appended.
+
+  The three underlying **dates** ship as their own row-aligned YYYYMMDD arrays —
+  `week52_high_date_*`, `week52_low_date_*`, `report_date_*` — rather than as feature columns,
+  because a raw date in a float32 matrix is a number whose magnitude means nothing. "Days since" is
+  the form a model can use. Verified live against AAPL 2013–2021: 34 dividends, and both real splits
+  (7:1 on 2014-06-09, 4:1 on 2020-08-31).
+
+- **`juniper-service-core` ceiling raised to `<0.8.0`** so 0.7.0 can be adopted. 0.7.0 re-files
+  juniper-ml#1332 under `Added` — it introduces `WorkerCoordinator.release_worker_tasks`, which
+  reclaims a worker's in-flight tasks on a clean `/ws/workers` disconnect or a mid-result abort
+  instead of waiting out `task_reassignment_timeout`. juniper-data does not import
+  `juniper_service_core.workers` or `.websocket`, so this is a ceiling raise for adoptability, not
+  a behaviour change here. The lockfile still pins `==0.6.0` and is refreshed separately once 0.7.0
+  publishes — constraint-mode `Lockfile Freshness` asks only whether the lock still *satisfies*
+  pyproject, so it stays green while stale and nothing prompts the adoption.
+
+### Fixed
+
+- **`delay_product` paired its validation windows with the wrong target.** The generator overwrites
+  the forecast target `window_timed_series` emits with the in-window delay product, split by split —
+  and its split list omitted `val`. So `X_val` held delay-product windows while `y_val` kept the
+  forecast target: features and target from two different problems, on the split early stopping
+  reads. The test asserted the product identity on `y_full` only, which is a separate block with its
+  own overwrite, so it passed. It now asserts per split.
+
+- **`_classification_meta` under-counted when `y_full` was absent**, stacking only train + test.
+
+- **`csv_import` shipped an unnormalised `X_val`** — it was missing from the train-fit min-max
+  application.
+
+- **Look-ahead leak: shares outstanding were visible before they were filed.** The SEC series was
+  aligned on the **period end** and forward-filled, so Apple's quarter ending 2021-03-27 — not filed
+  until 2021-04-29 — reached every trade date in those five weeks, and `market_cap`, derived from it,
+  inherited the leak. A live run surfaced the new `days_since_report` at **−19 days**; a negative
+  filing age is the leak stating itself out loud.
+
+  Alignment is now on the **filing date**. A point with no `filed` is **dropped rather than guessed**:
+  when a figure became public is exactly what is unknown for it, and substituting the period end
+  reinstates the leak. Same class as the normalisation leak fixed in juniper-data#314, and the same
+  rule from decision 7 of the ecosystem partition design — no quantity that was not knowable at a
+  row's date may reach that row.
+
+- **A present-but-empty SEC concept suppressed the shares fallback.** SEC answers `200` with
+  `{"units": {"shares": {}}}` for some filers — `KO` and `ABT` among them. The guard was
+  `if payload and payload.get("units")`, and that dict is **truthy**, so the loop accepted the empty
+  concept and **broke before trying the `us-gaap` fallback**. `BIIB` has 42 usable facts there and
+  was getting none of them: `total_shares` and `market_cap` silently became `0.0` under the default
+  `fundamentals_fill="zero"` — a value no listed company can have, and one nothing downstream
+  distinguishes from a measurement. The guard now counts facts instead of testing truthiness.
+
+- **A ticker with no shares data at all now says so.** Roughly 4–6% of the bundled S&P 500 universe
+  reports no shares concept to SEC under either tag (`KO`, `ABT`, `ABNB`, `AMT`, `BG` confirmed).
+  That is not a bug to fix upstream, but it was completely silent: the generator warned only when the
+  fetch *raised*, never when it returned nothing. It now logs a warning naming the ticker and the
+  `fundamentals_fill` policy that will paper over the gap.
+
+- **`equities` is bounded to 14 symbols, and the silent slice is gone** (defect register
+  `APD-DATA-018`, second half — the row is now closed). `EQUITIES_DEFAULT_MAX_SYMBOLS` was `None`,
+  meaning **all 503 bundled S&P 500 constituents**, which measurement puts at **18–34 minutes**
+  against a 30 s request budget. Worse, `generators/equities/generator.py` cut the universe with a
+  bare `ordered[: params.max_symbols]` — it **truncated silently**, recorded nothing, and returned a
+  dataset indistinguishable from a complete one.
+
+  **The cap is in SYMBOLS, not bytes, and that is the load-bearing choice.** Measurement on
+  2026-09-04 (`util/ad-hoc/2026-09-04_measure_equities_payloads.py`) found **163× the payload costs
+  1.16× the time**, because ingest cost is per *request*: ~1.85 s per Yahoo call plus 1–2 SEC XBRL
+  calls. One symbol over 26 years is 210 KB and ~2 s; the Russell 3000 over **one day** is 92 KB and
+  1.7–3.2 h. A byte cap would admit the expensive request and reject the cheap one — it is not
+  merely the wrong unit, it runs *counter* to the cost.
+
+  **14 = 30 s ÷ 2.1 s per symbol.** Same contract as `csv_import`: an oversized universe is
+  **refused with 422** until the caller opts in via `allow_truncation`,
+  `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION`, or the matching `.env` entry; a request may only *lower*
+  the cap (`min(requested, deployment)`), and `max_symbols=None` means "no request-side limit", not
+  "unbounded". The surviving prefix is deterministic, so a truncated dataset is reproducible.
+
+  **`equities_seq` inherits all of it**, because it reuses the same universe resolution — including
+  the annotation, since inheriting a bound while dropping the record of it is the worse half to skip.
+
+- **The truncation descriptor is now one shape for every generator.** `DatasetMeta.truncation`
+  carries `reason`, `unit` (`bytes` or `symbols`), `cap`, `requested`, `imported` and
+  `records_imported`, replacing the byte-specific `cap_bytes` / `bytes_total` / `bytes_read` of the
+  entry below. A consumer can now answer "is this partial, and by how much" without knowing which
+  generator produced it. Unreleased-to-unreleased change; no published artifact carries the old keys.
 
 - **`csv_import` sources are bounded, and an over-cap import must be authorised** (defect register
   `APD-DATA-018`). Generation runs inside the request, so a source large enough to outlive the
@@ -52,8 +251,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sufficient. A truncated JSON array decodes as many complete elements as fit rather than failing;
   JSONL drops only an unparseable **final** line, so a corrupt line mid-file still raises instead of
   importing as a short dataset.
-
-### Fixed
 
 - **The Postgres store carried five hand-maintained copies of `DatasetMeta`'s field list, and every
   one had drifted.** The DDL, `_meta_to_row`, `_row_to_meta`, the upsert and the update each
@@ -218,17 +415,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   belongs to `APD-DATA-017`, which is part of the owner-routed REST group and is not touched here.
   The `application/octet-stream` half was already fixed — `BINARY_MEDIA_TYPE` is `application/zip`
   and owns every call site.
-
-### Changed
-
-- **`juniper-service-core` ceiling raised to `<0.8.0`** so 0.7.0 can be adopted. 0.7.0 re-files
-  juniper-ml#1332 under `Added` — it introduces `WorkerCoordinator.release_worker_tasks`, which
-  reclaims a worker's in-flight tasks on a clean `/ws/workers` disconnect or a mid-result abort
-  instead of waiting out `task_reassignment_timeout`. juniper-data does not import
-  `juniper_service_core.workers` or `.websocket`, so this is a ceiling raise for adoptability, not
-  a behaviour change here. The lockfile still pins `==0.6.0` and is refreshed separately once 0.7.0
-  publishes — constraint-mode `Lockfile Freshness` asks only whether the lock still *satisfies*
-  pyproject, so it stays green while stale and nothing prompts the adoption.
 
 ## [0.12.0] - 2026-08-30
 

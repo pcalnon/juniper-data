@@ -4,8 +4,8 @@
 **Repository**: pcalnon/juniper-data
 **Author**: Paul Calnon
 **License**: MIT License
-**Version**: 0.12.0
-**Last Updated**: 2026-08-31
+**Version**: 0.13.0
+**Last Updated**: 2026-09-05
 
 ---
 
@@ -394,7 +394,7 @@ juniper-deploy --> Docker Compose orchestration
 
 - **Port**: 8100 (default)
 - **Feature Flag**: `JUNIPER_DATA_URL` environment variable enables JuniperData mode in consumers
-- **Data Contract**: NPZ artifacts with keys `X_train`, `y_train`, `X_test`, `y_test`, `X_full`, `y_full` (all `float32`)
+- **Data Contract**: NPZ artifacts with keys `X_train`, `y_train`, `X_val`, `y_val`, `X_test`, `y_test`, `X_full`, `y_full` (all `float32`)
 - **API Prefix**: `/v1/`
 - **Client Library**: `juniper-data-client>=0.3.0` on PyPI
 - **Consumers**: juniper-cascor, JuniperCanopy (via `juniper-data-client`)

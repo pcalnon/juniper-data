@@ -31,7 +31,7 @@ from typing import Any
 
 import numpy as np
 
-from juniper_data.core.limits import TRUNCATION_META_KEY
+from juniper_data.core.limits import DATA_QUALITY_META_KEY, TRUNCATION_META_KEY
 from juniper_data.core.scaling import SCALING_META_KEY
 
 #: The only task type that populates n_classes / class_distribution.
@@ -46,12 +46,13 @@ def compute_shape_meta(
 
     Args:
         arrays: NPZ array dict with at least ``X_train`` / ``X_test`` and, for
-            classification, one-hot ``y_train`` / ``y_test`` (``y_full`` optional).
+            classification, one-hot ``y_train`` / ``y_test``. ``X_val`` / ``y_val``
+            and ``y_full`` are optional.
         task_type: dataset task type; only ``"classification"`` populates
             ``n_classes`` and ``class_distribution``.
 
     Returns:
-        Dict with ``n_samples``, ``n_features``, ``n_train``, ``n_test``,
+        Dict with ``n_samples``, ``n_features``, ``n_train``, ``n_val``, ``n_test``,
         ``n_classes`` (``int | None``), and ``class_distribution``
         (``dict[str, int] | None``).
     """
@@ -59,9 +60,22 @@ def compute_shape_meta(
     x_test = arrays["X_test"]
     n_train = len(x_train)
     n_test = len(x_test)
-    n_samples = n_train + n_test
-    # Feature count is the trailing axis for both (N, F) and (W, L, F).
-    n_features = int(x_train.shape[-1]) if n_train > 0 else 2
+    # `X_val` is presence-conditional: a two-partition artifact predating the
+    # third partition simply has none, and reports 0 rather than failing.
+    n_val = len(arrays["X_val"]) if "X_val" in arrays else 0
+    n_samples = n_train + n_val + n_test
+    # Feature count is the trailing axis for both (N, F) and (W, L, F) -- INCLUDING when the
+    # train partition is empty. `train_ratio = 0.0` is explicitly permitted (`split.py:60`
+    # validates `0.0 <= train_ratio <= 1.0`, and `:70` then rounds `n_train` to 0), and this
+    # helper runs on every dataset create (`api/routes/datasets.py:292`), so the old
+    # `else 2` persisted and served a fabricated feature count for every such artifact:
+    # a `(0, 5)` train partition reported 2, and a `(0, 7, 3)` sequence partition also
+    # reported 2. An empty partition still carries its true trailing axis.
+    #
+    # The `ndim >= 2` arm keeps 1-D / 0-d inputs on the previous fallback rather than
+    # widening the fix: `shape[-1]` on a 1-D `(N,)` array is the SAMPLE count, not a
+    # feature count, so reading it there would trade one wrong answer for another.
+    n_features = int(x_train.shape[-1]) if (n_train > 0 or x_train.ndim >= 2) else 2
 
     n_classes: int | None = None
     class_distribution: dict[str, int] | None = None
@@ -72,6 +86,7 @@ def compute_shape_meta(
         "n_samples": n_samples,
         "n_features": n_features,
         "n_train": n_train,
+        "n_val": n_val,
         "n_test": n_test,
         "n_classes": n_classes,
         "class_distribution": class_distribution,
@@ -93,7 +108,15 @@ def _classification_meta(
 
     y_full = arrays.get("y_full")
     if y_full is None:
-        y_full = np.vstack([arrays["y_train"], arrays["y_test"]])
+        # Every partition present must be stacked. Omitting `y_val` here would
+        # under-count the distribution silently -- and would do so ONLY on
+        # artifacts without `y_full`, which is precisely what decision 11 makes
+        # the normal case.
+        parts = [arrays["y_train"]]
+        if "y_val" in arrays:
+            parts.append(arrays["y_val"])
+        parts.append(arrays["y_test"])
+        y_full = np.vstack(parts)
     class_labels = np.argmax(y_full, axis=1)
     unique, counts = np.unique(class_labels, return_counts=True)
     class_distribution = {str(int(k)): int(v) for k, v in zip(unique, counts)}
@@ -169,3 +192,17 @@ def pop_truncation_meta(arrays: dict[str, Any]) -> dict[str, Any] | None:
         The truncation descriptor, or ``None`` when nothing was truncated.
     """
     return arrays.pop(TRUNCATION_META_KEY, None) or None
+
+
+def pop_data_quality_meta(arrays: dict[str, Any]) -> dict[str, Any] | None:
+    """Pop the reserved data-quality channel key from a generator's return dict.
+
+    Third member of the same family as :func:`pop_scaling_meta` and
+    :func:`pop_truncation_meta`, and popped for the same reason: the descriptor
+    is a plain dict, and everything left in ``arrays`` must be an ndarray by the
+    time it reaches ``compute_checksum`` and the NPZ writer.
+
+    Returns ``None`` when the dataset is clean, so ``DatasetMeta.data_quality``
+    can be tested for presence alone.
+    """
+    return arrays.pop(DATA_QUALITY_META_KEY, None) or None

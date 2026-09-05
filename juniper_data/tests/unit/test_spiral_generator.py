@@ -24,28 +24,39 @@ class TestSpiralShapes:
         """Verify X is (200, 2) and y is (200, 2) for n_spirals=2, n_points=100."""
         result = SpiralGenerator.generate(two_spiral_params)
 
-        assert result["X_full"].shape == (200, 2)
-        assert result["y_full"].shape == (200, 2)
+        # 2 x 100 = 200 TRAIN points under additive sizing, plus 80 val and 60 test.
+        assert result["X_train"].shape == (200, 2)
+        assert result["X_val"].shape == (80, 2)
+        assert result["X_test"].shape == (60, 2)
+        assert result["X_full"].shape == (340, 2)
+        assert result["y_full"].shape == (340, 2)
 
     def test_3_spiral_shapes(self, three_spiral_params: SpiralParams) -> None:
         """Verify X is (150, 2) and y is (150, 3) for n_spirals=3, n_points=50."""
         result = SpiralGenerator.generate(three_spiral_params)
 
-        assert result["X_full"].shape == (150, 2)
-        assert result["y_full"].shape == (150, 3)
+        # 3 x 50 = 150 TRAIN points, plus 60 val and 45 test.
+        assert result["X_full"].shape == (255, 2)
+        assert result["y_full"].shape == (255, 3)
 
     def test_train_test_split_sizes(self, two_spiral_params: SpiralParams) -> None:
         """Verify train/test sizes match ratios within ±1."""
         result = SpiralGenerator.generate(two_spiral_params)
 
+        # Additive sizing honours the requested train count LITERALLY -- the size
+        # knob is the train count, not a total to be divided -- so this is an
+        # equality now rather than a +/-1 rounding tolerance.
         total_points = two_spiral_params.total_points()
-        expected_train = int(np.round(total_points * two_spiral_params.train_ratio))
-        expected_test = int(np.round(total_points * two_spiral_params.test_ratio))
+        expected_train = total_points
+        expected_val = int(round(total_points * two_spiral_params.val_percent / 100.0))
+        expected_test = int(round(total_points * two_spiral_params.test_percent / 100.0))
 
-        assert abs(result["X_train"].shape[0] - expected_train) <= 1
-        assert abs(result["y_train"].shape[0] - expected_train) <= 1
-        assert abs(result["X_test"].shape[0] - expected_test) <= 1
-        assert abs(result["y_test"].shape[0] - expected_test) <= 1
+        assert result["X_train"].shape[0] == expected_train
+        assert result["y_train"].shape[0] == expected_train
+        assert result["X_val"].shape[0] == expected_val
+        assert result["y_val"].shape[0] == expected_val
+        assert result["X_test"].shape[0] == expected_test
+        assert result["y_test"].shape[0] == expected_test
 
     def test_custom_split_ratios(self) -> None:
         """Verify custom train/test ratios are honored."""
@@ -55,6 +66,8 @@ class TestSpiralShapes:
             train_ratio=0.6,
             test_ratio=0.3,
             seed=42,
+            # Ratios divide a fixed N -- that is carve mode by definition.
+            sizing_mode="carve",
         )
         result = SpiralGenerator.generate(params)
 
@@ -67,7 +80,7 @@ class TestSpiralShapes:
 
     def test_output_keys_present(self, generated_minimal_dataset: dict[str, np.ndarray]) -> None:
         """Verify all expected keys are present in output."""
-        expected_keys = {"X_train", "y_train", "X_test", "y_test", "X_full", "y_full"}
+        expected_keys = {"X_train", "y_train", "X_val", "y_val", "X_test", "y_test", "X_full", "y_full"}
         assert set(generated_minimal_dataset.keys()) == expected_keys
 
 
@@ -98,7 +111,8 @@ class TestOneHotEncoding:
         y_full = result["y_full"]
         class_counts = y_full.sum(axis=0).astype(int)
 
-        expected_counts = np.array([50, 50, 50])
+        # 3 x 50 = 150 train + 60 val + 45 test = 255 realised rows, 85 per spiral.
+        expected_counts = np.array([85, 85, 85])
         np.testing.assert_array_equal(class_counts, expected_counts)
 
     def test_dtype_is_float32(self, generated_two_spiral_dataset: dict[str, np.ndarray]) -> None:
@@ -333,8 +347,9 @@ class TestSpiralGeneratorLegacyMode:
         )
         result = SpiralGenerator.generate(params)
 
-        assert result["X_full"].shape == (100, 2)
-        assert result["y_full"].shape == (100, 2)
+        # 100 TRAIN points, plus 40 val and 30 test.
+        assert result["X_full"].shape == (170, 2)
+        assert result["y_full"].shape == (170, 2)
         assert result["X_train"].shape[1] == 2
         assert result["y_train"].shape[1] == 2
 
@@ -551,8 +566,9 @@ class TestParameterAliases:
         params = SpiralParams.model_validate({"n_points": 25, "noise_level": 0.15, "n_spirals": 2, "seed": 42})
         result = SpiralGenerator.generate(params)
 
-        assert result["X_full"].shape == (50, 2)
-        assert result["y_full"].shape == (50, 2)
+        # 50 TRAIN points, plus 20 val and 15 test.
+        assert result["X_full"].shape == (85, 2)
+        assert result["y_full"].shape == (85, 2)
 
     def test_alias_determinism(self) -> None:
         """Verify same seed produces same results regardless of alias usage."""

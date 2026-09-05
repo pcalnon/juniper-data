@@ -41,7 +41,7 @@ import datetime as _dt
 
 import numpy as np
 
-from juniper_data.core.split import temporal_split_index
+from juniper_data.core.split import temporal_split_indices
 
 # Per-window keys produced for every entity (observed_mask is added separately
 # because it is derived from the window count rather than accumulated per step).
@@ -67,6 +67,7 @@ def window_one_ticker(
     *,
     lookback: int,
     cut_ordinal: int,
+    val_cut_ordinal: int,
     embargo: bool = False,
 ) -> dict[str, dict[str, np.ndarray]]:
     """Build fixed-length lookback windows for one entity, split by target time.
@@ -84,13 +85,22 @@ def window_one_ticker(
         y_reg: ``(N, R)`` regression target, same alignment.
         ticker_code: integer code identifying this entity.
         lookback: window length ``L`` (number of steps per window).
-        cut_ordinal: first test-period date as an ordinal; a window is train iff
-            its target time is strictly before this cut.
-        embargo: when true, drop test windows whose lookback reaches before the
-            cut (a purged/embargoed split), enforcing strict row-disjointness.
+        cut_ordinal: first VALIDATION-period date as an ordinal; a window is
+            train iff its target time is strictly before this cut.
+        val_cut_ordinal: first TEST-period date as an ordinal. Windows whose
+            target time falls in ``[cut_ordinal, val_cut_ordinal)`` are
+            validation; later ones are test. Validation sits between train and
+            test in time, so early stopping never sees data from after the
+            reported window.
+        embargo: when true, drop windows whose lookback reaches back across the
+            cut that PRECEDES their own split (a purged/embargoed split),
+            enforcing strict row-disjointness. Applied at both boundaries --
+            embargoing only the train/test edge would leave the validation
+            partition sharing rows with train, which is the leak the embargo
+            exists to prevent.
 
     Returns:
-        ``{"train": {...}, "test": {...}}`` where each split maps the window keys
+        ``{"train": {...}, "val": {...}, "test": {...}}`` where each split maps the window keys
         (``X``, ``y``, ``y_reg``, ``date``, ``dt``, ``target_dt``,
         ``window_end_date``, ``ticker_code``, ``observed_mask``) to stacked
         arrays. Empty splits keep their canonical rank so per-entity blocks
@@ -106,14 +116,23 @@ def window_one_ticker(
     if n > 1 and not np.all(np.diff(ords) > 0):
         raise ValueError("dates must be strictly increasing within an entity")
 
-    cols: dict[str, dict[str, list]] = {k: {"train": [], "test": []} for k in _WINDOW_KEYS}
+    cols: dict[str, dict[str, list]] = {k: {"train": [], "val": [], "test": []} for k in _WINDOW_KEYS}
+
+    # The cut each split's lookback must not reach back across. Train has none:
+    # it is the earliest partition, so there is nothing before it to leak from.
+    preceding_cut = {"val": cut_ordinal, "test": val_cut_ordinal}
 
     for i in range(lookback - 1, n - 1):  # window end at i; target at day i + 1
         lo = i - lookback + 1
         target_time = int(ords[i + 1])
-        split = "train" if target_time < cut_ordinal else "test"
-        if split == "test" and embargo and int(ords[lo]) < cut_ordinal:
-            continue  # purge windows whose lookback straddles the cut
+        if target_time < cut_ordinal:
+            split = "train"
+        elif target_time < val_cut_ordinal:
+            split = "val"
+        else:
+            split = "test"
+        if embargo and split in preceding_cut and int(ords[lo]) < preceding_cut[split]:
+            continue  # purge windows whose lookback straddles the preceding cut
 
         win_ords = ords[lo : i + 1].astype(np.float32)
         dt = np.empty(lookback, dtype=np.float32)
@@ -158,7 +177,7 @@ def window_one_ticker(
         return np.asarray(items, dtype=dtypes[key])
 
     out: dict[str, dict[str, np.ndarray]] = {}
-    for split in ("train", "test"):
+    for split in ("train", "val", "test"):
         block = {key: _stack(key, split) for key in _WINDOW_KEYS}
         # Trading-day-native: every emitted step is a real observation, so
         # observed_mask is all-ones; dt alone carries the irregularity (notes §6.2).
@@ -174,6 +193,7 @@ def window_regular_series(
     horizon: int,
     sample_dt: float,
     train_ratio: float,
+    val_ratio: float,
 ) -> dict[str, np.ndarray]:
     """Window a single regular-Δt series into the additive 3-D sequence contract.
 
@@ -186,10 +206,13 @@ def window_regular_series(
     (index ``i + horizon``); valid ``i`` runs over ``[lookback - 1, T - 1 - horizon]``.
 
     Windows are emitted in chronological order and split at
-    :func:`~juniper_data.core.split.temporal_split_index`, so every train target
-    strictly precedes every test target -- the same no-future-leak guarantee as
-    the per-entity windower, here structural because there is a single series and
-    a single chronological cut. ``full`` is ``train`` followed by ``test``.
+    :func:`~juniper_data.core.split.temporal_split_indices`, so every train target
+    strictly precedes every validation target and every validation target precedes
+    every test target -- the same no-future-leak guarantee as the per-entity
+    windower, here structural because there is a single series and two chronological
+    cuts. Validation sits BETWEEN train and test in time, so early stopping never
+    sees data from after the reported window. ``full`` is ``train``, then ``val``,
+    then ``test``.
 
     Args:
         series: ``(T, F)`` (or ``(T,)``) float series, ascending in time.
@@ -198,13 +221,17 @@ def window_regular_series(
             window end), ``>= 1``.
         sample_dt: constant per-step elapsed time, ``> 0`` (the regular Δt).
         train_ratio: fraction of the earliest windows used for training, ``(0, 1]``.
+        val_ratio: fraction used for in-loop validation, taken from the windows
+            immediately after train, ``[0, 1)``. Test is every later window.
 
     Returns:
-        Flat NPZ dict mapping ``{X, y, dt, target_dt, observed_mask}_{train,test,full}``:
+        Flat NPZ dict mapping ``{X, y, dt, target_dt, observed_mask}_{train,val,test,full}``:
         ``X`` ``(W, L, F)`` f32; ``y`` ``(W, F)`` f32 (the series value at the
         horizon step); ``dt`` ``(W, L)`` f32 ``[0, sample_dt, ...]``; ``target_dt``
         ``(W,)`` f32 ``= horizon * sample_dt``; ``observed_mask`` ``(W, L)`` uint8
-        all-ones. ``X_full == concatenate([X_train, X_test])``.
+        all-ones. ``X_full == concatenate([X_train, X_val, X_test])`` -- the
+        identity spans THREE partitions now, and ``test`` takes the remainder so
+        no window is lost to rounding.
 
     Raises:
         ValueError: if ``lookback < 1``, ``horizon < 1``, ``sample_dt <= 0``, the
@@ -246,12 +273,13 @@ def window_regular_series(
     target_dt = np.full(n_windows, np.float32(horizon * sample_dt), dtype=np.float32)
     observed_mask = np.ones((n_windows, lookback), dtype=np.uint8)
 
-    cut = temporal_split_index(n_windows, train_ratio)
+    train_end, val_end = temporal_split_indices(n_windows, train_ratio, val_ratio)
 
     out: dict[str, np.ndarray] = {}
     for key, full in (("X", x), ("y", y), ("dt", dt), ("target_dt", target_dt), ("observed_mask", observed_mask)):
-        out[f"{key}_train"] = full[:cut]
-        out[f"{key}_test"] = full[cut:]
+        out[f"{key}_train"] = full[:train_end]
+        out[f"{key}_val"] = full[train_end:val_end]
+        out[f"{key}_test"] = full[val_end:]
         out[f"{key}_full"] = full
     return out
 
@@ -263,6 +291,7 @@ def window_timed_series(
     lookback: int,
     horizon: int,
     train_ratio: float,
+    val_ratio: float,
 ) -> dict[str, np.ndarray]:
     """Window an irregularly-sampled series (explicit per-step times) into the 3-D contract.
 
@@ -275,9 +304,9 @@ def window_timed_series(
     uses steps ``[i - lookback + 1 .. i]`` and predicts the value ``horizon`` steps
     later (index ``i + horizon``).
 
-    Windows are split at :func:`~juniper_data.core.split.temporal_split_index` --
+    Windows are split at :func:`~juniper_data.core.split.temporal_split_indices` --
     the same no-future-leak guarantee as :func:`window_regular_series`. ``full`` is
-    ``train`` followed by ``test``.
+    ``train`` followed by ``val`` followed by ``test``.
 
     Args:
         values: ``(T, F)`` (or ``(T,)``) float series, ascending in time.
@@ -286,13 +315,17 @@ def window_timed_series(
         lookback: window length ``L`` (steps per window), ``>= 1``.
         horizon: forecast horizon ``h`` in steps, ``>= 1``.
         train_ratio: fraction of the earliest windows used for training, ``(0, 1]``.
+        val_ratio: fraction used for in-loop validation, taken from the windows
+            immediately after train, ``[0, 1)``. Test is every later window.
 
     Returns:
-        Flat NPZ dict mapping ``{X, y, dt, target_dt, observed_mask}_{train,test,full}``:
+        Flat NPZ dict mapping ``{X, y, dt, target_dt, observed_mask}_{train,val,test,full}``:
         ``X`` ``(W, L, F)`` f32; ``y`` ``(W, F)`` f32; ``dt`` ``(W, L)`` f32
         ``[0, diff(window times)]`` (non-uniform); ``target_dt`` ``(W,)`` f32
         ``= times[i + horizon] - times[i]``; ``observed_mask`` ``(W, L)`` uint8
-        all-ones. ``X_full == concatenate([X_train, X_test])``.
+        all-ones. ``X_full == concatenate([X_train, X_val, X_test])`` -- the
+        identity spans THREE partitions now, and ``test`` takes the remainder so
+        no window is lost to rounding.
 
     Raises:
         ValueError: if ``lookback < 1``, ``horizon < 1``, ``values`` is not
@@ -339,11 +372,12 @@ def window_timed_series(
     target_dt = (t[ends + horizon] - t[ends]).astype(np.float32)
     observed_mask = np.ones((n_windows, lookback), dtype=np.uint8)
 
-    cut = temporal_split_index(n_windows, train_ratio)
+    train_end, val_end = temporal_split_indices(n_windows, train_ratio, val_ratio)
 
     out: dict[str, np.ndarray] = {}
     for key, full in (("X", x), ("y", y), ("dt", dt), ("target_dt", target_dt), ("observed_mask", observed_mask)):
-        out[f"{key}_train"] = full[:cut]
-        out[f"{key}_test"] = full[cut:]
+        out[f"{key}_train"] = full[:train_end]
+        out[f"{key}_val"] = full[train_end:val_end]
+        out[f"{key}_test"] = full[val_end:]
         out[f"{key}_full"] = full
     return out

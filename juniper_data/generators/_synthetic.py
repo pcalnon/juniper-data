@@ -4,7 +4,7 @@ The ``multi_sine`` / ``mackey_glass`` / ``ar_p`` generators are the recurse CLI
 "hello-world" datasets ([OQ-5]): deterministic, seeded, offline, numpy-only
 real-valued **regression** sequences (``task_type="regression"``). They share the
 windowing knobs (``n_steps`` raw length, ``lookback`` / ``horizon`` /
-``sample_dt`` / ``train_ratio``) and differ only in the process that produces the
+``sample_dt`` / ``train_ratio`` / ``val_ratio``) and differ only in the process that produces the
 raw series; each generator subclasses :class:`SyntheticSequenceParams`, adds its
 process-specific fields, builds a ``(T, F)`` series, and hands it to
 :func:`build_sequence_arrays` (which windows it and attaches the advisory
@@ -53,23 +53,37 @@ class SyntheticSequenceParams(BaseModel):
     ``sample_dt`` apart and is windowed into fixed-length ``lookback`` sequences
     predicting ``horizon`` steps ahead; every field is deterministic given
     ``seed``. The number of windows is ``W = n_steps - lookback - horizon + 1``,
-    which the model validator pins at ``>= 2`` so both splits are non-empty.
+    which the model validator pins at ``>= 3`` so all three splits are non-empty.
     """
 
     n_steps: int = Field(default=2000, ge=8, le=1_000_000, description="Length T of the raw series before windowing.")
     lookback: int = Field(default=32, ge=2, le=512, description="Window length L (number of steps per sequence window).")
     horizon: int = Field(default=1, ge=1, le=512, description="Forecast horizon h (the target is h steps after the window end).")
     sample_dt: float = Field(default=1.0, gt=0, description="Constant per-step elapsed time (the regular Δt), measured in the generator's time_unit.")
-    train_ratio: float = Field(default=0.8, gt=0, le=1, description="Fraction of the earliest windows used for training; the test split is every later window.")
+    train_ratio: float = Field(default=0.8, gt=0, le=1, description="Fraction of the earliest windows used for training.")
+    val_ratio: float = Field(default=0.1, ge=0, lt=1, description="Fraction of windows used for in-loop validation, taken from the windows immediately after train; the test split is every later window.")
     seed: int = Field(default=0, ge=0, description="Random seed for reproducibility (the synthetics are deterministic given the seed).")
     scaling: Literal["identity", "standardize"] = Field(default="identity", description="Advisory scaling reported in DatasetMeta: 'identity' (raw, no transform) or 'standardize' (train-split mean/std/min/max of dt + target). The NPZ stays RAW either way.")
 
     @model_validator(mode="after")
     def _validate_window_budget(self) -> SyntheticSequenceParams:
-        """Ensure the raw series yields at least two windows (W = T - L - h + 1 >= 2)."""
+        """Ensure the raw series yields at least three windows (W = T - L - h + 1 >= 3).
+
+        Three, not two, since the third partition: a two-window series cannot
+        express train / val / test with every partition non-empty, and an empty
+        validation split would silently disable early stopping while the artifact
+        still advertises the key.
+        """
         n_windows = self.n_steps - self.lookback - self.horizon + 1
-        if n_windows < 2:
-            raise ValueError(f"n_steps={self.n_steps} with lookback={self.lookback} and horizon={self.horizon} yields {n_windows} window(s); need >= 2 (n_steps >= lookback + horizon + 1).")
+        if n_windows < 3:
+            raise ValueError(f"n_steps={self.n_steps} with lookback={self.lookback} and horizon={self.horizon} yields {n_windows} window(s); need >= 3 for a non-empty train/val/test split (n_steps >= lookback + horizon + 2).")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_split_ratios(self) -> SyntheticSequenceParams:
+        """train + val must leave room for a test split."""
+        if self.train_ratio + self.val_ratio >= 1.0:
+            raise ValueError(f"train_ratio ({self.train_ratio}) + val_ratio ({self.val_ratio}) must be < 1.0 to leave a test split, got {self.train_ratio + self.val_ratio}.")
         return self
 
 
@@ -80,7 +94,7 @@ def build_sequence_arrays(series: np.ndarray, params: SyntheticSequenceParams) -
     :func:`~juniper_data.generators._sequence.window_regular_series`, then attaches
     the advisory scaling channel (:func:`attach_scaling`) -- so every regular-Δt
     synthetic emits the same additive 3-D contract
-    (``{X, y, dt, target_dt, observed_mask}_{train,test,full}``) plus the reserved
+    (``{X, y, dt, target_dt, observed_mask}_{train,val,test,full}``) plus the reserved
     ``"scaling"`` meta key.
     """
     arrays = window_regular_series(
@@ -89,6 +103,7 @@ def build_sequence_arrays(series: np.ndarray, params: SyntheticSequenceParams) -
         horizon=params.horizon,
         sample_dt=params.sample_dt,
         train_ratio=params.train_ratio,
+        val_ratio=params.val_ratio,
     )
     return attach_scaling(arrays, params.scaling)
 
