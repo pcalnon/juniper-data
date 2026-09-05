@@ -247,8 +247,19 @@ class CsvImportGenerator:
         if not allow_truncation:
             raise InputTooLargeError(source=f"Source {params.file_path!r}", unit=UNIT_BYTES, cap=cap_bytes, actual=max(stat_bytes, len(raw)), opt_in_env="JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION")
 
-        chunk = CsvImportGenerator._trim_to_record_boundary(raw[:cap_bytes])
-        data = CsvImportGenerator._parse_csv_text(chunk, params, drop_trailing_partial=True) if file_format == "csv" else CsvImportGenerator._parse_json_text(chunk, tolerate_truncated=True)
+        # The record boundary for CSV is a NEWLINE; for JSON there is none.
+        # `json.dumps` / `JSON.stringify` emit a single line, so trimming a minified
+        # array to its last newline yields the EMPTY STRING and the import fails with
+        # "No data found in file" -- `_parse_json_text(tolerate_truncated=True)` never
+        # sees the prefix it is built to decode. Hand JSON the byte prefix directly and
+        # let `raw_decode` keep the complete elements.
+        prefix = raw[:cap_bytes]
+        if file_format == "csv":
+            chunk = CsvImportGenerator._trim_to_record_boundary(prefix)
+            data = CsvImportGenerator._parse_csv_text(chunk, params, drop_trailing_partial=True)
+        else:
+            chunk = prefix.decode(CHARSET_UTF8, errors="ignore")
+            data = CsvImportGenerator._parse_json_text(chunk, tolerate_truncated=True)
 
         X, y = CsvImportGenerator._convert_to_arrays(data, params)
         truncation = build_truncation_meta(
@@ -300,10 +311,51 @@ class CsvImportGenerator:
     @staticmethod
     def _parse_csv_text(text: str, params: CsvImportParams, *, drop_trailing_partial: bool) -> list[dict]:
         """Parse CSV held in memory (the capped path)."""
-        return CsvImportGenerator._parse_csv_stream(io.StringIO(text, newline=""), params, drop_trailing_partial=drop_trailing_partial)
+        return CsvImportGenerator._parse_csv_stream(io.StringIO(text, newline=""), params, drop_trailing_partial=drop_trailing_partial, source_text=text)
 
     @staticmethod
-    def _parse_csv_stream(stream: TextIO, params: CsvImportParams, *, drop_trailing_partial: bool) -> list[dict]:
+    def _has_unclosed_quote(text: str, quotechar: str = '"') -> bool:
+        """Return True if ``text`` ends inside a quoted CSV field.
+
+        Doubled quotes (``""``) are the RFC 4180 escape and do not toggle state.
+        Needed because a 2-column row whose unclosed quote swallows later lines
+        still populates every field -- ``DictReader`` reports no ``None``, so
+        the short-row guard cannot see the damage.
+        """
+        in_quote = False
+        i = 0
+        length = len(text)
+        while i < length:
+            if text[i] != quotechar:
+                i += 1
+                continue
+            if in_quote and i + 1 < length and text[i + 1] == quotechar:
+                i += 2
+                continue
+            in_quote = not in_quote
+            i += 1
+        return in_quote
+
+    @staticmethod
+    def bind_deployment_defaults(params: CsvImportParams) -> CsvImportParams:
+        """Copy the effective cap and truncation opt-in onto the params object.
+
+        ``generate_dataset_id`` hashes ``params.model_dump()``. Dump fills Field
+        defaults, so an omitted ``max_bytes`` is stored as 128 MiB even when the
+        deployment cap is tighter (or ``allow_truncation`` is stored as false
+        even when the operator opted in globally). The create route binds first
+        so the cache key matches the policy that will actually run -- otherwise
+        a restart that raises the cap, or turns truncation off, keeps serving
+        the old truncated artifact for the same request.
+
+        Idempotent: ``_resolve_bounds`` clamps with ``min(requested, ceiling)``,
+        so re-binding an already-bound params object returns the same values.
+        """
+        cap, allow = CsvImportGenerator._resolve_bounds(params)
+        return params.model_copy(update={"max_bytes": cap, "allow_truncation": allow})
+
+    @staticmethod
+    def _parse_csv_stream(stream: TextIO, params: CsvImportParams, *, drop_trailing_partial: bool, source_text: str | None = None) -> list[dict]:
         """Parse CSV rows from a text stream.
 
         Both the whole-file and the capped path go through here so the two
@@ -338,7 +390,10 @@ class CsvImportGenerator:
 
         data.extend(iter(reader))
 
-        if drop_trailing_partial and data and any(value is None for value in data[-1].values()):
+        # The `None` half alone is blind to a cut inside a quoted field: the row still
+        # has every column, so `DictReader` reports no `None`. The quote state of the
+        # source text is the only thing that can see it.
+        if drop_trailing_partial and data and (any(value is None for value in data[-1].values()) or (source_text is not None and CsvImportGenerator._has_unclosed_quote(source_text))):
             data.pop()
 
         return data
