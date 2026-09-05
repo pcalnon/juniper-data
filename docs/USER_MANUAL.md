@@ -1,8 +1,8 @@
 # Juniper Data User Manual
 
-**Version:** 0.4.2
+**Version:** 0.4.3
 **Status:** Active
-**Last Updated:** April 1, 2026
+**Last Updated:** September 4, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -188,11 +188,43 @@ curl -X POST http://localhost:8100/v1/datasets \
 
 **CSV import:**
 
+Place the file under `JUNIPER_DATA_IMPORT_DIR` (default `/data/imports`). `file_path` is relative to that directory. Sources are bounded at **128 MiB** by default; an over-cap import is refused with HTTP **422** unless you opt in to truncation. See [CSV Import Byte Cap](REFERENCE.md#csv-import-byte-cap).
+
 ```bash
 curl -X POST http://localhost:8100/v1/datasets \
   -H "Content-Type: application/json" \
-  -d '{"generator": "csv_import", "params": {"file_path": "/path/to/data.csv"}}'
+  -d '{
+    "generator": "csv_import",
+    "params": {
+      "file_path": "data.csv",
+      "label_column": "label"
+    }
+  }'
 ```
+
+Authorise a partial import (the resulting dataset is permanently annotated as truncated):
+
+```bash
+curl -X POST http://localhost:8100/v1/datasets \
+  -H "Content-Type: application/json" \
+  -d '{
+    "generator": "csv_import",
+    "params": {
+      "file_path": "data.csv",
+      "allow_truncation": true
+    }
+  }'
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `file_path` | string | *(required)* | Path relative to `JUNIPER_DATA_IMPORT_DIR` |
+| `file_format` | string | `"auto"` | `"csv"`, `"json"`, or `"auto"` (from extension) |
+| `label_column` | string | `"label"` | Label column name |
+| `max_bytes` | int | `134217728` (128 MiB) | Per-request cap. May only **lower** `JUNIPER_DATA_CSV_IMPORT_MAX_BYTES`; a huge value cannot skip the ceiling |
+| `allow_truncation` | bool | `false` | Accept a prefix of the source when it exceeds the cap |
+
+The HTTP JSON body is still limited to 10 MB (`RequestBodyLimitMiddleware`). That is a different cap: the CSV is read from disk, not uploaded in the request.
 
 ---
 
@@ -338,6 +370,8 @@ All datasets conform to this standardized format, which serves as the primary da
 | `X_full` | `(n_samples, n_features)` | `float32` | Full dataset features |
 | `y_full` | `(n_samples, n_classes)` | `float32` | Full dataset labels (one-hot) |
 
+Truncation is **not** an NPZ key. An authorised `csv_import` prefix is recorded on `DatasetMeta.truncation` (JSON metadata) after the route pops the reserved channel. `None` means the source was imported whole. See [CSV Import Byte Cap](REFERENCE.md#csv-import-byte-cap).
+
 ### Label Encoding
 
 Labels are **one-hot encoded**:
@@ -446,7 +480,7 @@ export JUNIPER_DATA_CORS_ORIGINS='["*"]'
 
 ### Input Validation
 
-All request parameters are validated using Pydantic models. Invalid inputs return `400 Bad Request` or `422 Unprocessable Entity` with descriptive error messages.
+All request parameters are validated using Pydantic models. Invalid inputs return `400 Bad Request` or `422 Unprocessable Entity` with descriptive error messages. An over-cap `csv_import` source is also **422**, with a **string** `detail` (not the schema-validation list). See [CSV Import Byte Cap](REFERENCE.md#csv-import-byte-cap).
 
 ---
 
@@ -470,6 +504,9 @@ Settings are managed by Pydantic `BaseSettings` in `juniper_data/api/settings.py
 | `JUNIPER_DATA_CORS_ORIGINS` | JSON list | `["*"]` | CORS allowed origins |
 | `JUNIPER_DATA_METRICS_ENABLED` | bool | `false` | Prometheus metrics |
 | `JUNIPER_DATA_SENTRY_DSN` | string | *(none)* | Sentry error tracking |
+| `JUNIPER_DATA_IMPORT_DIR` | string | `/data/imports` | Root for `csv_import` files |
+| `JUNIPER_DATA_CSV_IMPORT_MAX_BYTES` | int | `134217728` | `csv_import` byte-cap ceiling (128 MiB); a request may only lower it |
+| `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION` | bool | `false` | Deployment-wide opt-in to a partial import |
 
 ---
 
@@ -568,6 +605,23 @@ chmod 755 ./data/datasets
 2. Check the `JUNIPER_DATA_URL` environment variable in the consumer
 3. Verify firewall/network rules allow port 8100
 4. In Docker, use `http://juniper-data:8100` instead of `localhost`
+
+### CSV import refused or truncated
+
+**`422` naming a megabyte size and `allow_truncation`:** the on-disk source is over the byte cap (default 128 MiB) and neither the request nor the deployment opted in to a partial import. This is not a server fault.
+
+Remedies:
+
+1. Pass `"allow_truncation": true` in `params` (the dataset will be a prefix, permanently recorded on `meta.truncation`).
+2. Set `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION=true` for every request on that deployment.
+3. Raise `JUNIPER_DATA_CSV_IMPORT_MAX_BYTES` (the deployment ceiling) only if you also accept the memory cost — the loader is not streaming. A request `max_bytes` can only **lower** that ceiling; sending `max_bytes: 10000000000` still 422s.
+4. Confirm the file lives under `JUNIPER_DATA_IMPORT_DIR` and `file_path` is relative to it. An absolute path outside that directory is path traversal, not a byte-cap refusal.
+
+**Still 422 after setting a huge `max_bytes`:** the deployment value is a hard ceiling (`min(request, deployment)`). Generated clients that serialise schema defaults also send `max_bytes=134217728` on every request; that cannot raise a *lower* operator ceiling. Change the env var, not the request, if you meant to lift the bound.
+
+**`meta.truncation` is a dict after a successful import:** the caller (or the deployment) authorised a prefix. `None` means complete. Do not treat a successful 201 as "the whole file was imported" without checking this field.
+
+Details: [CSV Import Byte Cap](REFERENCE.md#csv-import-byte-cap).
 
 ---
 

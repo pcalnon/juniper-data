@@ -2,9 +2,9 @@
 
 ## Comprehensive Testing Guide for juniper-data
 
-**Version:** 0.4.2
+**Version:** 0.4.3
 **Status:** Active
-**Last Updated:** March 3, 2026
+**Last Updated:** September 5, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -16,6 +16,9 @@
    - [Directory Structure](#directory-structure)
    - [Test Categories](#test-categories)
    - [Test File Inventory](#test-file-inventory)
+   - [Empty-train shape metadata](#empty-train-shape-metadata)
+   - [Postgres model-derived schema](#postgres-model-derived-schema)
+   - [Artifact streaming](#artifact-streaming)
 3. [Running Tests](#running-tests)
    - [Basic Commands](#basic-commands)
    - [Marker-Based Selection](#marker-based-selection)
@@ -36,6 +39,9 @@
    - [Marker Requirements](#marker-requirements)
    - [Async Tests](#async-tests)
    - [Test Organization](#test-organization)
+   - [Import-cycle tests](#import-cycle-tests)
+
+   - [DatasetMeta n_val pins](#datasetmeta-n_val-pins)
 9. [Pre-commit Integration](#pre-commit-integration)
 10. [Troubleshooting](#troubleshooting)
 
@@ -98,14 +104,18 @@ juniper_data/tests/
 |------|-----------|-------------|
 | `test_api_app.py` | API | FastAPI app factory and creation |
 | `test_api_routes.py` | API | Route handler functions and endpoints |
-| `test_api_settings.py` | API | Pydantic settings and environment variables |
+| `test_api_settings.py` | API | Pydantic settings; APD-DATA-033 window reaches the live limiter |
 | `test_arc_agi_generator.py` | Generator | ARC-AGI dataset generator |
 | `test_artifacts.py` | Core | Artifact class and file handling |
+| `test_artifact_streaming.py` | Storage | Chunked `open_artifact_stream` (APD-DATA-016) |
+| `test_binary_media_types.py` | API | `BINARY_MEDIA_TYPE` is `application/zip` |
 | `test_cached_store.py` | Storage | Cached dataset storage |
 | `test_checkerboard_generator.py` | Generator | Checkerboard pattern generator |
 | `test_circles_generator.py` | Generator | Concentric circles generator |
-| `test_csv_import_generator.py` | Generator | CSV/JSON file import |
+| `test_csv_import_generator.py` | Generator | CSV/JSON file import; byte-cap refusal and truncation annotation |
 | `test_dataset_id.py` | Core | DatasetID class and validation |
+| `test_equities_generator.py` | Generator | Flat equities; APD-DATA-018 symbol cap (`TestUniverseSymbolCap`) |
+| `test_equities_seq_generator.py` | Generator | Windowed equities; same `_resolve_symbols` + truncation channel |
 | `test_gaussian_generator.py` | Generator | Mixture of Gaussians generator |
 | `test_health_enhanced.py` | API | Health check endpoint |
 | `test_hf_store.py` | Storage | Hugging Face storage backend |
@@ -113,15 +123,18 @@ juniper_data/tests/
 | `test_kaggle_store.py` | Storage | Kaggle storage backend |
 | `test_lifecycle.py` | Core | Dataset lifecycle management |
 | `test_main.py` | Core | CLI entry point (`__main__.py`) |
+| `test_meta_dispatch.py` | Core | Shape metadata: trailing-axis `n_features`, task_type dispatch, empty-train (#340) |
 | `test_middleware.py` | API | FastAPI middleware components |
 | `test_mnist_generator.py` | Generator | MNIST/Fashion-MNIST generator |
+| `test_no_import_cycles.py` | API / generators | Cold-interpreter standalone import of every generator subpackage (#316 / #333) |
 | `test_observability.py` | API | Prometheus metrics and Sentry |
+| `test_postgres_schema_derivation.py` | Storage | Model-derived Postgres DDL/statements and round-trip (#343) |
 | `test_postgres_store.py` | Storage | PostgreSQL storage backend |
 | `test_redis_store.py` | Storage | Redis storage backend |
-| `test_security.py` | API | Security validations |
+| `test_security.py` | API | Rate limiter window expiry, 429, constructor window |
 | `test_security_boundaries.py` | API | Security boundary tests |
 | `test_spiral_generator.py` | Generator | Spiral generator (567 lines, 14 test classes) |
-| `test_split.py` | Core | Train/test split utilities |
+| `test_split.py` | Core | Two-way split plus additive three-way sizing (`partition_row_counts`, `split_three_way`; #353) |
 | `test_storage.py` | Storage | Storage interface and abstract classes |
 | `test_xor_generator.py` | Generator | XOR classification generator |
 
@@ -141,6 +154,28 @@ juniper_data/tests/
 |------|-------------|
 | `test_generator_benchmarks.py` | Generator throughput benchmarks |
 | `test_storage_benchmarks.py` | Storage operation benchmarks |
+
+### Empty-train shape metadata
+
+`compute_shape_meta` is on the create-dataset path for every generator. An empty train split still has a defined `shape[-1]`; hardcoding `n_features = 2` when `n_train == 0` lied for F ≠ 2 (including 3-D sequence F). `test_classification_3d_uses_trailing_feature_axis` only covers non-empty train, so the narrower `if n_train > 0 else 2` stayed green before #365 landed.
+
+Pin empty train in `test_meta_dispatch.py`: 2-D F=5, 3-D F=3 (not lookback), and classification `n_classes` from `y_test`. Mutation: putting `else 2` back fails exactly those two n_features tests.
+
+> See: [REFERENCE.md -- Empty-Train Shape Metadata](../REFERENCE.md#empty-train-shape-metadata)
+
+### Postgres model-derived schema
+
+The Postgres store used to carry five independent transcriptions of `DatasetMeta`. No test asserted `_row_to_meta(_meta_to_row(m)) == m`, so the copies drifted: `n_classes` stayed `NOT NULL` after the model allowed None, and seven fields were dropped every round trip. #343 derives DDL, upsert, update, and both mappers from `model_fields`.
+
+Pin that contract in `test_postgres_schema_derivation.py` (no database — the mappers are pure). Mutation: re-introducing a hand-written column list, `ADD COLUMN ... NOT NULL` without DEFAULT, or `json.dumps(None)` is expected to fail those pins.
+
+> See: [REFERENCE.md -- Postgres Model-Derived Schema](../REFERENCE.md#postgres-model-derived-schema)
+
+### Artifact streaming
+
+`test_artifact_streaming.py` pins APD-DATA-016 / #313. A whole-file read still round-trips, so the decisive LocalFS arm is that a small `chunk_size` yields more than one chunk. The base default must yield exactly one chunk (honest whole-read). Absence must be `None` from the *call* — a generator object here becomes 200 with an empty body. `test_binary_media_types.py` pins the published `application/zip` type.
+
+> See: [REFERENCE.md -- Artifact Streaming](../REFERENCE.md#artifact-streaming)
 
 ---
 
@@ -416,6 +451,34 @@ async def test_health_endpoint(self):
 - Use `conftest.py` for shared fixtures; keep test-specific fixtures local
 - Use `@pytest.mark.slow` for tests that take more than a few seconds
 
+### Import-cycle tests
+
+A circular import is a property of a **cold interpreter**. Once `juniper_data` is in `sys.modules`, a same-process `import juniper_data.generators.csv_import` succeeds with the cycle fully present.
+
+`test_no_import_cycles.py` therefore runs every assertion in a subprocess (`python -c ...`). An in-process assertion here cannot fail and is worse than no test. Do not "fix" collection of `test_csv_import_generator.py` by pre-importing `juniper_data.api.routes.generators`.
+
+```bash
+# Must pass on a file collected first, not only as part of the full suite
+pytest juniper_data/tests/unit/test_csv_import_generator.py
+pytest juniper_data/tests/unit/test_no_import_cycles.py
+```
+
+> See: [REFERENCE.md -- API Package Import Graph](../REFERENCE.md#api-package-import-graph)
+
+### Equities symbol-cap tests
+
+`TestUniverseSymbolCap` (landed with #354) is the pin for APD-DATA-018's equities half. Default is **refusal**: 40 names and no opt-in must raise `InputTooLargeError` with `unit == "symbols"` and `cap == 14`. An authorised cut must write `DatasetMeta.truncation` (`reason=universe_exceeded_symbol_cap`) and the kept prefix must be `sorted(universe)[:14]`.
+
+`test_generate_puts_the_annotation_on_the_returned_arrays` is load-bearing — resolver-only tests stay green if `generate()` drops the channel key. Do not replace these with a live Yahoo/SEC timing assertion. `equities_seq` must keep calling `EquitiesGenerator._resolve_symbols` and attach the same key; a second resolver would need its own pin.
+
+### DatasetMeta `n_val` pins
+
+`compute_shape_meta` is on the create-dataset path for every generator. #358 makes the store able to carry a validation partition: `n_val` is defaulted to `0` (legacy `.meta.json` cannot load a required field), `X_val` is read presence-conditionally, and `n_samples` spans train + val + test. The `y_full`-less classification fallback must stack `y_val`; the pin puts an entire class there so omitting it drops class `1` from the dict.
+
+These pins live in `test_meta_dispatch.py`, on `main` since #358; the three-way *sizing* pins are in `test_split.py`. Generators emit three partitions.
+
+> See: [REFERENCE.md -- DatasetMeta n_val and Three-Partition Counts](../REFERENCE.md#datasetmeta-n_val-and-three-partition-counts)
+
 ---
 
 ## Pre-commit Integration
@@ -436,6 +499,10 @@ The coverage check hook runs `python scripts/check_module_coverage.py --run-test
 
 Code quality hooks (ruff, mypy, bandit) run on **pre-commit** stage and validate test code as well.
 
+### Rate-limit window tests
+
+`test_configured_window_reaches_the_live_rate_limiter` is the load-bearing APD-DATA-033 pin. A `Settings` field that parses but is never passed to `create_app` is the original defect — the two earlier arms stay green against that bug. Do not delete the live-limiter arm to "simplify" the settings tests. `test_check_resets_after_window_expiry` pins the expiry comparison (`now - window_start >= window`).
+
 ---
 
 ## Troubleshooting
@@ -453,6 +520,10 @@ Code quality hooks (ruff, mypy, bandit) run on **pre-commit** stage and validate
 **Coverage below threshold**: Run `python scripts/check_module_coverage.py --run-tests` to see per-module breakdown and identify which modules need more tests.
 
 **Deprecation warnings from dependencies**: These are filtered by default via `filterwarnings` in pyproject.toml for uvicorn, httpx, and pydantic.
+
+**`ImportError: cannot import name 'VERSION'` collecting `test_csv_import_generator.py` in isolation**: `api/__init__.py` eagerly imported `create_app`, which loaded every route while `csv_import` was still initialising (#316 / #333). Keep `create_app` lazy. Do not pre-import `api.routes.generators` as a collection workaround. Pin: `test_no_import_cycles.py` (subprocess). See [REFERENCE.md -- API Package Import Graph](../REFERENCE.md#api-package-import-graph).
+
+**`csv_import` over-cap must be 422, not 500, and must not be silent.** Default is refusal (`InputTooLargeError`). An authorised prefix must land `DatasetMeta.truncation` as a dict (`None` means complete). Cuts land on a record boundary; a JSONL corrupt line mid-file still raises. A request `max_bytes` must not raise the deployment ceiling; `stat` must not be the bound. Pins: `TestCsvImportByteCap` in `test_csv_import_generator.py` (including `test_request_cannot_RAISE_the_deployment_cap` and `test_a_lying_stat_does_not_bypass_the_cap`), plus the three `test_api_routes.py` APD-DATA-018 cases. Contract: [CSV Import Byte Cap](../REFERENCE.md#csv-import-byte-cap).
 
 ---
 
