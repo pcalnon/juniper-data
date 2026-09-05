@@ -110,7 +110,7 @@ juniper-canopy (8050) ──REST──> JuniperData (8100) <──REST── jun
 - **8 generators** -- spiral, xor, gaussian, circles, checkerboard, csv_import, mnist, arc_agi
 - **8 storage backends** -- local filesystem, PostgreSQL, Redis, HuggingFace, Kaggle, in-memory, cached
 - **FastAPI REST service** -- Full CRUD operations on port 8100
-- **NPZ data contract** -- `X_train`, `y_train`, `X_test`, `y_test`, `X_full`, `y_full` (all `float32`)
+- **NPZ data contract** -- `X_train`, `y_train`, `X_val`, `y_val`, `X_test`, `y_test`, `X_full`, `y_full` (all `float32`)
 
 ### Client Library
 

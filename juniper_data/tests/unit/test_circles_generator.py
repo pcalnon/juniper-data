@@ -67,7 +67,7 @@ class TestCirclesGenerator:
         params = CirclesParams(seed=42)
         result = CirclesGenerator.generate(params)
 
-        expected_keys = {"X_train", "y_train", "X_test", "y_test", "X_full", "y_full"}
+        expected_keys = {"X_train", "y_train", "X_val", "y_val", "X_test", "y_test", "X_full", "y_full"}
         assert set(result.keys()) == expected_keys
 
     def test_generate_shapes(self) -> None:
@@ -75,8 +75,13 @@ class TestCirclesGenerator:
         params = CirclesParams(n_samples=150, seed=42)
         result = CirclesGenerator.generate(params)
 
-        assert result["X_full"].shape == (150, 2)
-        assert result["y_full"].shape == (150, 2)
+        # n_samples denotes the TRAIN count under additive sizing, so the
+        # realised dataset is 150 + 60 + 45 = 255 rows.
+        assert result["X_train"].shape == (150, 2)
+        assert result["X_val"].shape == (60, 2)
+        assert result["X_test"].shape == (45, 2)
+        assert result["X_full"].shape == (255, 2)
+        assert result["y_full"].shape == (255, 2)
 
     def test_generate_dtypes(self) -> None:
         """Generated arrays should have float32 dtype."""
@@ -126,8 +131,9 @@ class TestCirclesGenerator:
         result = CirclesGenerator.generate(params)
 
         class_counts = result["y_full"].sum(axis=0)
-        assert class_counts[0] == 50
-        assert class_counts[1] == 50
+        # 100 train + 40 val + 30 test = 170 realised rows, split evenly.
+        assert class_counts[0] == 85
+        assert class_counts[1] == 85
 
     def test_class_distribution_custom_ratio(self) -> None:
         """Custom inner_ratio should be respected."""
@@ -135,8 +141,9 @@ class TestCirclesGenerator:
         result = CirclesGenerator.generate(params)
 
         class_counts = result["y_full"].sum(axis=0)
-        assert class_counts[0] == 70
-        assert class_counts[1] == 30
+        # 170 realised rows at inner_ratio 0.3 -> 51 inner, 119 outer.
+        assert class_counts[0] == 119
+        assert class_counts[1] == 51
 
     def test_train_test_split_ratio(self) -> None:
         """Train/test split should respect configured ratios."""
@@ -145,6 +152,8 @@ class TestCirclesGenerator:
             train_ratio=0.7,
             test_ratio=0.3,
             seed=42,
+            # Ratios divide a fixed N -- that is carve mode by definition.
+            sizing_mode="carve",
         )
         result = CirclesGenerator.generate(params)
 
@@ -164,14 +173,20 @@ class TestCirclesGenerator:
         )
         result = CirclesGenerator.generate(params)
 
-        outer_points = result["X_full"][:50]
-        inner_points = result["X_full"][50:]
+        # Select by CLASS rather than by position. The original slice assumed
+        # the class boundary sat at row 50, which tied a geometry assertion to
+        # the partition sizing; a mask asks the question directly.
+        labels = np.argmax(result["y_full"], axis=1)
+        outer_points = result["X_full"][labels == 0]
+        inner_points = result["X_full"][labels == 1]
+
+        assert outer_points.shape[0] > 0 and inner_points.shape[0] > 0
 
         outer_distances = np.linalg.norm(outer_points, axis=1)
         inner_distances = np.linalg.norm(inner_points, axis=1)
 
-        np.testing.assert_array_almost_equal(outer_distances, np.full(50, 2.0))
-        np.testing.assert_array_almost_equal(inner_distances, np.full(50, 1.0))
+        np.testing.assert_array_almost_equal(outer_distances, np.full(outer_points.shape[0], 2.0))
+        np.testing.assert_array_almost_equal(inner_distances, np.full(inner_points.shape[0], 1.0))
 
     def test_noise_adds_variation(self) -> None:
         """Noise parameter should add variation to circle radii."""
@@ -199,10 +214,14 @@ class TestCirclesGenerator:
         )
         result = CirclesGenerator.generate(params)
 
-        inner_points = result["X_full"][50:]
+        labels = np.argmax(result["y_full"], axis=1)
+        inner_points = result["X_full"][labels == 1]
+
+        assert inner_points.shape[0] > 0
+
         inner_distances = np.linalg.norm(inner_points, axis=1)
 
-        np.testing.assert_array_almost_equal(inner_distances, np.full(50, 1.0))
+        np.testing.assert_array_almost_equal(inner_distances, np.full(inner_points.shape[0], 1.0))
 
     def test_generate_with_noise_covers_branch(self) -> None:
         """Noise > 0 should exercise the noise addition branch."""

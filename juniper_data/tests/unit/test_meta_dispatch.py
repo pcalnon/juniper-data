@@ -20,6 +20,7 @@ import numpy as np
 import pytest
 
 from juniper_data.core.meta import compute_shape_meta, derive_sequence_meta, pop_scaling_meta
+from juniper_data.core.models import DatasetMeta
 
 pytestmark = [pytest.mark.unit]
 
@@ -153,3 +154,145 @@ def test_pop_scaling_meta_absent_returns_none():
     scaling = pop_scaling_meta(arrays)
     assert scaling == {"dt_scaling": None, "target_scaling": None}
     assert "scaling" not in arrays
+
+
+def test_val_partition_absent_reports_zero():
+    """A two-partition artifact predating the third partition still derives cleanly."""
+    arrays = {
+        "X_train": np.zeros((6, 4), np.float32),
+        "y_train": _onehot([0, 1, 0, 1, 0, 1], 2),
+        "X_test": np.zeros((2, 4), np.float32),
+        "y_test": _onehot([0, 1], 2),
+    }
+
+    meta = compute_shape_meta(arrays)
+
+    assert meta["n_val"] == 0
+    assert meta["n_train"] == 6
+    assert meta["n_test"] == 2
+    assert meta["n_samples"] == 8
+
+
+def test_val_partition_counted_in_shape_meta():
+    """n_val is reported and n_samples spans all THREE partitions."""
+    arrays = {
+        "X_train": np.zeros((6, 4), np.float32),
+        "y_train": _onehot([0, 1, 0, 1, 0, 1], 2),
+        "X_val": np.zeros((3, 4), np.float32),
+        "y_val": _onehot([0, 1, 0], 2),
+        "X_test": np.zeros((2, 4), np.float32),
+        "y_test": _onehot([0, 1], 2),
+    }
+
+    meta = compute_shape_meta(arrays)
+
+    assert meta["n_train"] == 6
+    assert meta["n_val"] == 3
+    assert meta["n_test"] == 2
+    assert meta["n_samples"] == 11, "n_samples must be train + val + test, not train + test"
+
+
+def test_class_distribution_without_y_full_includes_val():
+    """The y_full-less fallback must stack val too, or it under-counts silently.
+
+    ``y_full`` is dropped from the contract by decision 11, so the fallback
+    becomes the normal path -- and a fallback that stacks only train + test
+    would omit an entire class here while still returning a well-formed dict.
+    """
+    arrays = {
+        "X_train": np.zeros((2, 4), np.float32),
+        "y_train": _onehot([0, 0], 2),
+        "X_val": np.zeros((3, 4), np.float32),
+        "y_val": _onehot([1, 1, 1], 2),
+        "X_test": np.zeros((2, 4), np.float32),
+        "y_test": _onehot([0, 0], 2),
+    }
+
+    meta = compute_shape_meta(arrays)
+
+    # Omitting y_val would yield {"0": 4} -- class 1 missing entirely.
+    assert meta["class_distribution"] == {"0": 4, "1": 3}
+    assert sum(meta["class_distribution"].values()) == meta["n_samples"]
+
+
+def test_class_distribution_prefers_y_full_when_present():
+    """y_full still wins when the artifact carries it, unchanged from before."""
+    arrays = {
+        "X_train": np.zeros((2, 4), np.float32),
+        "y_train": _onehot([0, 0], 2),
+        "X_val": np.zeros((1, 4), np.float32),
+        "y_val": _onehot([1], 2),
+        "X_test": np.zeros((1, 4), np.float32),
+        "y_test": _onehot([1], 2),
+        "y_full": _onehot([0, 0, 1, 1], 2),
+    }
+
+    meta = compute_shape_meta(arrays)
+
+    assert meta["class_distribution"] == {"0": 2, "1": 2}
+
+
+def test_dataset_meta_n_val_is_defaulted():
+    """R-3: a required n_val would make every stored .meta.json unreadable.
+
+    Existing artifacts are loaded with ``DatasetMeta(**meta_dict)`` from JSON
+    written before the third partition existed. The field must therefore carry a
+    default, and the default must be 0 -- the honest count for an artifact with
+    no validation rows.
+    """
+    field = DatasetMeta.model_fields["n_val"]
+
+    assert field.is_required() is False, "n_val must be defaulted or legacy .meta.json cannot load"
+    assert field.default == 0
+
+
+# --------------------------------------------------------------------------------------
+# Empty train partition -- `n_features` must still be the TRAILING axis.
+#
+# `train_ratio = 0.0` is explicitly permitted (`core/split.py:60` validates
+# `0.0 <= train_ratio <= 1.0`; `:70` then rounds `n_train` to 0), and `compute_shape_meta`
+# runs on every dataset create (`api/routes/datasets.py:292`), so before this fix a
+# fabricated `n_features = 2` was PERSISTED and SERVED for every such artifact.
+#
+# Each case below returned 2 on the unfixed code, so these fail without the change; the two
+# non-empty controls returned the right answer before AND after, and exist so the suite
+# cannot pass merely by the helper returning `shape[-1]` unconditionally.
+# --------------------------------------------------------------------------------------
+
+
+def test_empty_train_2d_reads_the_trailing_axis_not_two():
+    arrays = {
+        "X_train": np.zeros((0, 5), np.float32),
+        "X_test": np.zeros((3, 5), np.float32),
+        "y_train": np.zeros((0, 1), np.float32),
+        "y_test": np.zeros((3, 1), np.float32),
+    }
+    m = compute_shape_meta(arrays, "regression")
+    assert m["n_train"] == 0
+    assert m["n_features"] == 5, "an empty train partition still carries its true feature count"
+
+
+def test_empty_train_3d_reads_the_trailing_axis_not_the_lookback():
+    # The 3-D case is the sharper one: the old fallback reported 2, which is neither the
+    # feature count (3) nor the lookback (7) -- a value present in neither axis.
+    arrays = {
+        "X_train": np.zeros((0, 7, 3), np.float32),
+        "X_test": np.zeros((2, 7, 3), np.float32),
+        "y_train": np.zeros((0, 1), np.float32),
+        "y_test": np.zeros((2, 1), np.float32),
+    }
+    m = compute_shape_meta(arrays, "regression")
+    assert m["n_features"] == 3, "F, not L == 7, and not the old hardcoded 2"
+
+
+@pytest.mark.parametrize(("shape", "expected"), [((4, 5), 5), ((4, 7, 3), 3)])
+def test_non_empty_train_is_unchanged(shape, expected):
+    # Negative control: these passed before the fix too. If they ever fail, the fix has
+    # widened beyond the empty-partition case it is scoped to.
+    arrays = {
+        "X_train": np.zeros(shape, np.float32),
+        "X_test": np.zeros((2,) + shape[1:], np.float32),
+        "y_train": np.zeros((shape[0], 1), np.float32),
+        "y_test": np.zeros((2, 1), np.float32),
+    }
+    assert compute_shape_meta(arrays, "regression")["n_features"] == expected

@@ -257,9 +257,10 @@ Create a new dataset or retrieve an existing one with matching parameters.
     "n_points_per_spiral": 100,
     "seed": 42,
     "algorithm": "modern",
-    "noise": 0.1,
-    "train_ratio": 0.8,
-    "test_ratio": 0.2
+    "noise": 0.25,
+    "sizing_mode": "additive",
+    "val_percent": 40.0,
+    "test_percent": 30.0
   },
   "persist": true,
   "tags": ["baseline", "can-def-005"],
@@ -289,18 +290,40 @@ Create a new dataset or retrieve an existing one with matching parameters.
 
 | Parameter             | Type           | Default    | Description                     |
 | --------------------- | -------------- | ---------- | ------------------------------- |
-| `n_spirals`           | int            | 2          | Number of spiral classes        |
-| `n_points_per_spiral` | int            | 100        | Points per spiral               |
-| `seed`                | int            | None       | Random seed for reproducibility |
-| `algorithm`           | string         | `"modern"` | `"modern"` or `"legacy_cascor"` |
-| `noise`               | float          | 0.1        | Noise level                     |
-| `radius`              | float          | 10.0       | Maximum radius (legacy mode)    |
-| `origin`              | [float, float] | [0.0, 0.0] | Center offset                   |
-| `n_rotations`         | float          | 1.5        | Number of full rotations        |
-| `clockwise`           | bool           | true       | Spiral direction                |
-| `train_ratio`         | float          | 0.8        | Training set ratio              |
-| `test_ratio`          | float          | 0.2        | Test set ratio                  |
-| `shuffle`             | bool           | true       | Shuffle before splitting        |
+| `n_spirals`           | int            | 2            | Number of spiral classes        |
+| `n_points_per_spiral` | int            | 97           | Points per spiral               |
+| `seed`                | int            | 42           | Random seed for reproducibility |
+| `algorithm`           | string         | `"modern"`   | `"modern"` or `"legacy_cascor"` |
+| `noise`               | float          | 0.25         | Noise level                     |
+| `radius`              | float          | 10.0         | Maximum radius (legacy mode)    |
+| `origin`              | [float, float] | [0.0, 0.0]   | Center offset                   |
+| `n_rotations`         | float          | 3.0          | Number of full rotations        |
+| `clockwise`           | bool           | true         | Spiral direction                |
+| `sizing_mode`         | string         | `"additive"` | `"additive"` or `"carve"` -- see **Partition sizing** below |
+| `val_percent`         | float          | 40.0         | Additive mode: validation rows as a percentage of the train count |
+| `test_percent`        | float          | 30.0         | Additive mode: test rows as a percentage of the train count |
+| `train_ratio`         | float          | 0.8          | Carve mode: training share of a fixed total |
+| `val_ratio`           | float          | 0.0          | Carve mode: validation share of a fixed total |
+| `test_ratio`          | float          | 0.2          | Carve mode: test share of a fixed total |
+| `shuffle`             | bool           | true         | Shuffle before splitting        |
+
+#### Partition sizing
+
+Every dataset is partitioned **three ways** -- `train`, `val`, `test`. `val` is the
+in-loop split (early stopping, candidate selection); `test` is touched once, at the end.
+Two sizing models decide how many rows each gets, selected by `sizing_mode`:
+
+- **`additive`** (the default). The generator's native size knob -- for spiral,
+  `n_points_per_spiral` -- denotes the **train** count. `val` and `test` are
+  *additional* rows, sized as percentages of it (`val_percent` / `test_percent`,
+  defaulting to 40 / 30). Asking for more validation data does not take rows away
+  from training.
+- **`carve`**. The conventional division of one fixed total by `train_ratio` /
+  `val_ratio` / `test_ratio`. Used where the row count is not ours to choose --
+  an imported CSV, MNIST, ARC-AGI -- and those generators accept **only** this
+  mode, refusing `additive` rather than pretending a native knob exists.
+
+Ratios always denote absolute dataset rows regardless of which mode produced them.
 
 **Response:**
 
@@ -935,10 +958,17 @@ The NPZ artifact is the primary data contract between JuniperData and its consum
 | --------- | ------------------------- | --------- | ----------------------------- |
 | `X_train` | `(n_train, n_features)`   | `float32` | Training features             |
 | `y_train` | `(n_train, n_classes)`    | `float32` | Training labels (one-hot)     |
+| `X_val`   | `(n_val, n_features)`     | `float32` | Validation features (in-loop) |
+| `y_val`   | `(n_val, n_classes)`      | `float32` | Validation labels (one-hot)   |
 | `X_test`  | `(n_test, n_features)`    | `float32` | Test features                 |
 | `y_test`  | `(n_test, n_classes)`     | `float32` | Test labels (one-hot)         |
 | `X_full`  | `(n_samples, n_features)` | `float32` | Full dataset features         |
 | `y_full`  | `(n_samples, n_classes)`  | `float32` | Full dataset labels (one-hot) |
+
+`X_val` / `y_val` are **not optional**. A consumer that early-stops on `X_test`
+because `X_val` was absent is selecting on the split it reports, and its reported
+score is no longer held out. Consumers should refuse an artifact without them
+rather than fall back.
 
 ### Spiral Dataset Specifics
 
@@ -966,10 +996,12 @@ import numpy as np
 
 # Load from file
 with np.load("dataset.npz") as data:
-    X_train = data["X_train"]  # (160, 2) float32
-    y_train = data["y_train"]  # (160, 2) float32
-    X_test = data["X_test"]    # (40, 2) float32
-    y_test = data["y_test"]    # (40, 2) float32
+    X_train = data["X_train"]  # (194, 2) float32  -- 2 spirals x 97 points
+    y_train = data["y_train"]  # (194, 2) float32
+    X_val = data["X_val"]      # (78, 2)  float32  -- 40% of train, additively
+    y_val = data["y_val"]      # (78, 2)  float32
+    X_test = data["X_test"]    # (58, 2)  float32  -- 30% of train, additively
+    y_test = data["y_test"]    # (58, 2)  float32
 
 # Load from API response
 import io
@@ -994,11 +1026,21 @@ with np.load("dataset.npz") as data:
 JuniperData guarantees:
 
 1. All arrays are `float32` dtype
-2. All arrays are 2-dimensional
-3. `X_*` arrays have shape `(n, n_features)`
-4. `y_*` arrays have shape `(n, n_classes)`
-5. `y_*` arrays are valid one-hot encodings (each row sums to 1.0)
-6. `len(X_train) + len(X_test) == len(X_full)`
+2. `X_*` is 2-dimensional `(n, n_features)` for tabular generators and
+   **3-dimensional** `(n, lookback, n_features)` for the sequence generators
+   (`ar_p`, `delay_product`, `equities_seq`, `irregular_sine`, `mackey_glass`,
+   `multi_sine`). Check `meta.sequence` rather than assuming a rank.
+3. `y_*` arrays have shape `(n, n_classes)` -- or `(n, 1)` for regression targets
+4. `y_*` classification arrays are valid one-hot encodings (each row sums to 1.0)
+5. `X_train`, `X_val` and `X_test` are all present and all non-empty
+6. `len(X_train) + len(X_val) + len(X_test) == len(X_full)`
+
+Guarantee 6 replaced `len(X_train) + len(X_test) == len(X_full)`, which held only
+while the contract was two-way. Any consumer still asserting the two-way form will
+fail against every three-way artifact. Artifacts are distinguishable without
+unpacking them: every generator that gained the `val` partition also bumped its
+`generator_version` to `2.0.0`, and that version is hashed into the `dataset_id`,
+so a cached two-way artifact can never be served for a three-way request.
 
 ---
 

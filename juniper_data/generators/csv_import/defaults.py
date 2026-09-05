@@ -17,7 +17,7 @@ CSV_IMPORT_DEFAULT_NORMALIZE_FEATURES: bool = False
 
 # Dataset Splitting Defaults
 CSV_IMPORT_DEFAULT_TRAIN_RATIO: float = 0.8
-CSV_IMPORT_DEFAULT_TEST_RATIO: float = 0.2
+CSV_IMPORT_DEFAULT_TEST_RATIO: float = 0.1
 
 # Input Bound (APD-DATA-018) -- re-exported, not defined here.
 #

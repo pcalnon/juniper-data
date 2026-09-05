@@ -24,7 +24,7 @@ from juniper_data.generators._synthetic import build_sequence_arrays
 
 from .params import MultiSineParams
 
-VERSION = "1.0.0"
+VERSION = "2.0.0"
 
 # Ranges for seeded-random component parameters when not given explicitly. The
 # frequency band keeps the period (1 / f, in steps at sample_dt == 1) within a

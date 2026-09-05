@@ -26,7 +26,7 @@ from juniper_data.generators._synthetic import attach_scaling
 
 from .params import IrregularSineParams
 
-VERSION = "1.0.0"
+VERSION = "2.0.0"
 
 # Ranges for seeded-random component parameters when not given explicitly
 # (mirrors ``multi_sine``).
@@ -54,7 +54,7 @@ class IrregularSineGenerator:
             params: ``IrregularSineParams`` (component + sampling spec + windowing knobs).
         """
         values, times = IrregularSineGenerator._raw_series(params)
-        arrays = window_timed_series(values, times, lookback=params.lookback, horizon=params.horizon, train_ratio=params.train_ratio)
+        arrays = window_timed_series(values, times, lookback=params.lookback, horizon=params.horizon, train_ratio=params.train_ratio, val_ratio=params.val_ratio)
         return attach_scaling(arrays, params.scaling)
 
     @staticmethod

@@ -136,7 +136,7 @@ Generators: `spiral`, `xor`, `gaussian`, `circles`, `checkerboard`, `csv_import`
 
 ## Data Contract (NPZ)
 
-All arrays `float32`. Keys: `X_train`, `y_train`, `X_test`, `y_test`, `X_full`, `y_full`. Shapes: features `(n, n_features)`, labels `(n, n_classes)` one-hot encoded.
+All arrays `float32`. Keys: `X_train`, `y_train`, `X_val`, `y_val`, `X_test`, `y_test`, `X_full`, `y_full`. Shapes: features `(n, n_features)`, labels `(n, n_classes)` one-hot encoded.
 
 > See: [REFERENCE.md -- NPZ Artifact Keys](REFERENCE.md#npz-artifact-keys)
 

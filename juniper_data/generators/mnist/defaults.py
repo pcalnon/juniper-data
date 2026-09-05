@@ -15,7 +15,7 @@ MNIST_DEFAULT_ONE_HOT_LABELS: bool = True
 
 # Dataset Splitting Defaults
 MNIST_DEFAULT_TRAIN_RATIO: float = 0.8
-MNIST_DEFAULT_TEST_RATIO: float = 0.2
+MNIST_DEFAULT_TEST_RATIO: float = 0.1
 
 # MNIST Image Shape (used by ``flatten``)
 MNIST_IMAGE_HEIGHT: int = 28

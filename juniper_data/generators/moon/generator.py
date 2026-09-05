@@ -8,11 +8,12 @@ generator that did not exist).
 
 import numpy as np
 
-from juniper_data.core.split import shuffle_and_split
+from juniper_data.core.partition_params import rescale_generator_params
+from juniper_data.core.split import partition_and_assemble, resolve_counts_for_params
 
 from .params import MoonParams
 
-VERSION = "1.0.0"
+VERSION = "2.0.0"
 
 
 class MoonGenerator:
@@ -43,25 +44,14 @@ class MoonGenerator:
         """
         rng = np.random.default_rng(params.seed)
 
-        X, y = MoonGenerator._generate_raw(params, rng)
+        counts = resolve_counts_for_params(params, params.n_samples)
+        # Additive sizing needs more raw rows than the size knob names,
+        # because that knob now denotes the TRAIN count alone.
+        gen_params = rescale_generator_params(params, n_samples=counts["n_raw_required"])
 
-        split_result = shuffle_and_split(
-            X=X,
-            y=y,
-            train_ratio=params.train_ratio,
-            test_ratio=params.test_ratio,
-            seed=params.seed,
-            shuffle=params.shuffle,
-        )
+        X, y = MoonGenerator._generate_raw(gen_params, rng)
 
-        return {
-            "X_train": split_result["X_train"],
-            "y_train": split_result["y_train"],
-            "X_test": split_result["X_test"],
-            "y_test": split_result["y_test"],
-            "X_full": X,
-            "y_full": y,
-        }
+        return partition_and_assemble(X, y, counts, params.seed, params.shuffle)
 
     @staticmethod
     def _generate_raw(params: MoonParams, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:

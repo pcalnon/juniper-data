@@ -1,8 +1,9 @@
 """Parameters for the checkerboard dataset generator."""
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from juniper_data.core.constants import DEFAULT_GENERATOR_SEED
+from juniper_data.core.partition_params import PartitionParams
 
 from .defaults import (
     CHECKERBOARD_DEFAULT_N_SAMPLES,
@@ -19,7 +20,7 @@ from .defaults import (
 )
 
 
-class CheckerboardParams(BaseModel):
+class CheckerboardParams(PartitionParams):
     """Configuration parameters for checkerboard dataset generation.
 
     Generates a checkerboard pattern classification dataset where

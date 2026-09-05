@@ -64,7 +64,7 @@ class TestCheckerboardGenerator:
         params = CheckerboardParams(seed=42)
         result = CheckerboardGenerator.generate(params)
 
-        expected_keys = {"X_train", "y_train", "X_test", "y_test", "X_full", "y_full"}
+        expected_keys = {"X_train", "y_train", "X_val", "y_val", "X_test", "y_test", "X_full", "y_full"}
         assert set(result.keys()) == expected_keys
 
     def test_generate_shapes(self) -> None:
@@ -72,8 +72,12 @@ class TestCheckerboardGenerator:
         params = CheckerboardParams(n_samples=150, seed=42)
         result = CheckerboardGenerator.generate(params)
 
-        assert result["X_full"].shape == (150, 2)
-        assert result["y_full"].shape == (150, 2)
+        # n_samples is the TRAIN count under additive sizing: 150 + 60 + 45 = 255.
+        assert result["X_train"].shape == (150, 2)
+        assert result["X_val"].shape == (60, 2)
+        assert result["X_test"].shape == (45, 2)
+        assert result["X_full"].shape == (255, 2)
+        assert result["y_full"].shape == (255, 2)
 
     def test_generate_dtypes(self) -> None:
         """Generated arrays should have float32 dtype."""
@@ -159,6 +163,8 @@ class TestCheckerboardGenerator:
             train_ratio=0.7,
             test_ratio=0.3,
             seed=42,
+            # Ratios divide a fixed N -- that is carve mode by definition.
+            sizing_mode="carve",
         )
         result = CheckerboardGenerator.generate(params)
 

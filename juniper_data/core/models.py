@@ -36,6 +36,13 @@ class DatasetMeta(BaseModel):
     task_type: str = "classification"
     n_classes: int | None = None
     n_train: int
+    # Rows in the in-loop validation partition of the three-way train/val/test
+    # contract (design decision O-1). DEFAULTED, and it must stay defaulted:
+    # every stored `.meta.json` predating the third partition is loaded with
+    # `DatasetMeta(**meta_dict)` (storage/local_fs.py), so a required field with
+    # no default would make every existing artifact unreadable. 0 is the honest
+    # value for a two-partition artifact -- it has no validation rows.
+    n_val: int = 0
     n_test: int
 
     # Class Distribution (str keys for JSON compatibility); None when not classification.
@@ -70,6 +77,21 @@ class DatasetMeta(BaseModel):
     # -- a trainer loading the NPZ months later -- still learns the data is a
     # prefix of its source. The HTTP response is transient; this is not.
     truncation: dict[str, Any] | None = None
+
+    # PERMANENT record that something in this dataset is degraded or missing.
+    #
+    # None means clean. A dict means at least one of:
+    #   `degraded`  -- a value was recovered from a WEAKER source than the primary
+    #                  one (e.g. a period-average share count rather than a
+    #                  point-in-time one, which makes market_cap a different
+    #                  quantity for those symbols);
+    #   `unrescued` -- no source produced a value, so those rows carry the fill.
+    # plus `rows_affected` and the `policy` (accept / drop) that was applied.
+    #
+    # Separate from `truncation` on purpose: truncation says how much is MISSING,
+    # this says what is WRONG with what is present. A consumer has to be able to
+    # ask those independently.
+    data_quality: dict[str, Any] | None = None
 
     # Artifacts
     artifact_formats: list[str] = Field(default_factory=lambda: ["npz"])

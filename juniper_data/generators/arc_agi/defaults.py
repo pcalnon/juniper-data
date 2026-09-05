@@ -20,7 +20,7 @@ ARC_AGI_DEFAULT_FLATTEN_PAIRS: bool = True
 
 # Dataset Splitting Defaults
 ARC_AGI_DEFAULT_TRAIN_RATIO: float = 0.8
-ARC_AGI_DEFAULT_TEST_RATIO: float = 0.2
+ARC_AGI_DEFAULT_TEST_RATIO: float = 0.1
 
 # Validation Bounds
 MIN_PAD_TO: int = 1

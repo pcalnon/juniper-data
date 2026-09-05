@@ -92,13 +92,13 @@ def _write_constant_csv(directory: str) -> None:
 
 class TestCsvImportFitScope:
     def test_train_is_bounded(self, csv_dir):
-        out = CsvImportGenerator.generate(CsvImportParams(file_path="d.csv", label_column="label", normalize_features=True, shuffle=False, train_ratio=0.5, test_ratio=0.5))
+        out = CsvImportGenerator.generate(CsvImportParams(file_path="d.csv", label_column="label", normalize_features=True, shuffle=False, train_ratio=0.5, test_ratio=0.5, val_ratio=0.0))
         train = out["X_train"]
         assert train.min() >= -1e-6 and train.max() <= 1.0 + 1e-6
 
     def test_test_partition_escapes_the_bound(self, csv_dir):
         """THE discriminating assertion -- a full-matrix fit would clamp this to 1.0."""
-        out = CsvImportGenerator.generate(CsvImportParams(file_path="d.csv", label_column="label", normalize_features=True, shuffle=False, train_ratio=0.5, test_ratio=0.5))
+        out = CsvImportGenerator.generate(CsvImportParams(file_path="d.csv", label_column="label", normalize_features=True, shuffle=False, train_ratio=0.5, test_ratio=0.5, val_ratio=0.0))
         assert out["X_test"].max() > 1.0 + 1e-6
 
     def test_disabled_normalisation_leaves_values_raw(self, csv_dir):
@@ -108,10 +108,10 @@ class TestCsvImportFitScope:
 
     def test_shapes_and_partition_sizes_are_unchanged(self, csv_dir):
         """The fix reorders normalisation; it must not change what is split or how much."""
-        common = {"file_path": "d.csv", "label_column": "label", "shuffle": False, "train_ratio": 0.5, "test_ratio": 0.5}
+        common = {"file_path": "d.csv", "label_column": "label", "shuffle": False, "train_ratio": 0.5, "test_ratio": 0.5, "val_ratio": 0.0}
         raw = CsvImportGenerator.generate(CsvImportParams(**common))
         normed = CsvImportGenerator.generate(CsvImportParams(**common, normalize_features=True))
-        for key in ("X_train", "X_test", "X_full", "y_train", "y_test", "y_full"):
+        for key in ("X_train", "X_val", "X_test", "X_full", "y_train", "y_val", "y_test", "y_full"):
             assert raw[key].shape == normed[key].shape, f"{key} shape moved"
 
     def test_a_constant_column_does_not_divide_by_zero(self, csv_dir):

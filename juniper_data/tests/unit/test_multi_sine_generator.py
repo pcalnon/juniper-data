@@ -28,7 +28,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.generators]
 
 def _assert_regular_sequence_contract(arrays: dict, *, lookback: int, sample_dt: float, horizon: int) -> None:
     """Shared assertions for the regular-Δt 3-D regression NPZ contract."""
-    for split in ("train", "test", "full"):
+    for split in ("train", "val", "test", "full"):
         for key in ("X", "y", "dt", "target_dt", "observed_mask"):
             assert f"{key}_{split}" in arrays, f"missing {key}_{split}"
 
@@ -52,8 +52,12 @@ def _assert_regular_sequence_contract(arrays: dict, *, lookback: int, sample_dt:
     assert np.all(mask == 1)
 
     # full == train + test (chronological).
-    assert n_windows == arrays["X_train"].shape[0] + arrays["X_test"].shape[0]
-    np.testing.assert_array_equal(arrays["X_full"], np.concatenate([arrays["X_train"], arrays["X_test"]]))
+    # full == train + val + test, chronological. The non-empty check comes first
+    # deliberately: the three-way identity also holds when val rounds to zero rows,
+    # so without it this assertion would pass on exactly the defect it exists to catch.
+    assert arrays["X_val"].shape[0] > 0, "val partition must be non-empty"
+    assert n_windows == arrays["X_train"].shape[0] + arrays["X_val"].shape[0] + arrays["X_test"].shape[0]
+    np.testing.assert_array_equal(arrays["X_full"], np.concatenate([arrays["X_train"], arrays["X_val"], arrays["X_test"]]))
 
     # Task-type / sequence metadata dispatch: regression leaves classification
     # fields None; the 3-D X is reported as a sequence with lookback L.

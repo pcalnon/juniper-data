@@ -80,7 +80,7 @@ class TestMnistRealGeneration:
         n_samples = 64
         result = _generate_or_skip(MnistParams(n_samples=n_samples, seed=42))
 
-        assert set(result) == {"X_train", "y_train", "X_test", "y_test", "X_full", "y_full"}
+        assert set(result) == {"X_train", "y_train", "X_val", "y_val", "X_test", "y_test", "X_full", "y_full"}
         for key, array in result.items():
             assert array.dtype == np.float32, f"{key} must be float32, got {array.dtype}"
 
@@ -90,9 +90,15 @@ class TestMnistRealGeneration:
         assert result["X_train"].shape[1] == 784
         assert result["y_train"].shape[1] == 10
 
-        # Train/test partition the requested samples (default 0.8/0.2 split).
-        assert result["X_train"].shape[0] + result["X_test"].shape[0] == n_samples
+        # Train/val/test partition the requested samples (carve-only generator,
+        # default 0.8 / 0.1 / 0.1). The identity spans THREE partitions now --
+        # over train + test alone it would pass only while val is empty, which is
+        # the regression it exists to catch. mnist reads a fixed corpus, so no
+        # row may be dropped to rounding either.
+        assert result["X_val"].shape[0] > 0, "X_val must be non-empty, or the identity below holds vacuously"
+        assert result["X_train"].shape[0] + result["X_val"].shape[0] + result["X_test"].shape[0] == n_samples
         assert result["X_train"].shape[0] == result["y_train"].shape[0]
+        assert result["X_val"].shape[0] == result["y_val"].shape[0]
         assert result["X_test"].shape[0] == result["y_test"].shape[0]
 
         # One-hot labels: exactly one class per row.

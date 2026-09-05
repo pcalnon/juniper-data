@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from juniper_data.core.constants import DEFAULT_GENERATOR_SEED
 
 from .defaults import (
+    EQUITIES_DEFAULT_ALLOW_TRUNCATION,
     EQUITIES_DEFAULT_BASIS_PRICE_FIELD,
     EQUITIES_DEFAULT_END_DATE,
     EQUITIES_DEFAULT_FUNDAMENTALS_FILL,
@@ -29,6 +30,7 @@ from .defaults import (
     EQUITIES_DEFAULT_TEST_RATIO,
     EQUITIES_DEFAULT_TRAIN_RATIO,
     EQUITIES_DEFAULT_USE_CACHE,
+    EQUITIES_DEFAULT_VAL_RATIO,
     EQUITIES_DEFAULT_WEEK52_WINDOW,
 )
 
@@ -95,7 +97,15 @@ class EquitiesParams(BaseModel):
     max_symbols: int | None = Field(
         default=EQUITIES_DEFAULT_MAX_SYMBOLS,
         ge=1,
-        description="Cap on the number of symbols (after ordering). None = all.",
+        description="Cap on the number of symbols (after ordering), APD-DATA-018. A universe larger than this is REFUSED unless allow_truncation is set. Omit to use the deployment default (JUNIPER_DATA_EQUITIES_MAX_SYMBOLS); None means unbounded and is honoured only up to that deployment ceiling.",
+    )
+    incomplete_rows: Literal["accept", "drop"] | None = Field(
+        default=None,
+        description="What to do with rows whose fundamentals no rescue path could resolve, once allow_truncation has opened the gate: 'accept' keeps them (filled per fundamentals_fill) or 'drop' excludes those symbols entirely. Either way the dataset is PERMANENTLY annotated in DatasetMeta.data_quality. None inherits the deployment default (JUNIPER_DATA_EQUITIES_INCOMPLETE_ROWS). Without allow_truncation this has no effect -- the request is refused instead.",
+    )
+    allow_truncation: bool = Field(
+        default=EQUITIES_DEFAULT_ALLOW_TRUNCATION,
+        description="Accept a partial universe when it exceeds max_symbols. Default false: an oversized universe is refused with 422 rather than silently truncated to the first N tickers. When true, the leading max_symbols symbols are imported and the dataset is PERMANENTLY annotated as truncated in its metadata. Can also be enabled deployment-wide via JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION or the matching .env entry.",
     )
     use_cache: bool = Field(
         default=EQUITIES_DEFAULT_USE_CACHE,
@@ -106,6 +116,12 @@ class EquitiesParams(BaseModel):
         gt=0,
         le=1,
         description="Fraction of each ticker's earliest rows used for training.",
+    )
+    val_ratio: float = Field(
+        default=EQUITIES_DEFAULT_VAL_RATIO,
+        ge=0,
+        le=1,
+        description="Fraction of each ticker's rows used for in-loop validation, taken from the rows immediately after train and before test.",
     )
     test_ratio: float = Field(
         default=EQUITIES_DEFAULT_TEST_RATIO,
@@ -124,8 +140,8 @@ class EquitiesParams(BaseModel):
     @model_validator(mode="after")
     def _validate(self) -> EquitiesParams:
         """Validate ratio bounds and date formats."""
-        if self.train_ratio + self.test_ratio > 1.0:
-            raise ValueError(f"train_ratio + test_ratio must not exceed 1.0, got {self.train_ratio} + {self.test_ratio}")
+        if self.train_ratio + self.val_ratio + self.test_ratio > 1.0:
+            raise ValueError(f"train_ratio + val_ratio + test_ratio must not exceed 1.0, got {self.train_ratio} + {self.val_ratio} + {self.test_ratio}")
         _validate_date("start_date", self.start_date)
         _validate_date("purchase_date", self.purchase_date)
         if self.end_date is not None:

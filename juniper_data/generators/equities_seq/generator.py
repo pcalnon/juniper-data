@@ -42,13 +42,14 @@ try:
 except ImportError:  # pragma: no cover - exercised only without the equities extra
     pd = None  # type: ignore[assignment]
 
-from juniper_data.core.split import temporal_split_index
+from juniper_data.core.limits import TRUNCATION_META_KEY
+from juniper_data.core.split import temporal_split_indices
 from juniper_data.generators._sequence import _yyyymmdd_to_ordinal, window_one_ticker
 from juniper_data.generators.equities.generator import EQUITIES_DEPS_AVAILABLE, EquitiesGenerator
 
 from .params import EquitiesSeqParams
 
-VERSION = "1.0.0"
+VERSION = "2.0.0"
 
 _logger = logging.getLogger(__name__)
 
@@ -110,7 +111,7 @@ class EquitiesSeqGenerator:
         # the sibling generator -- keeps a single source of truth for fetching,
         # conditioning, and normalization; the 2-D generator is not modified).
         constituents = EquitiesGenerator._load_constituents()
-        symbols, meta_map = EquitiesGenerator._resolve_symbols(params, constituents)
+        symbols, meta_map, truncation = EquitiesGenerator._resolve_symbols(params, constituents)
         end_date = params.end_date or datetime.now(UTC).strftime("%Y-%m-%d")
 
         conditioned: dict[str, Any] = {}
@@ -139,8 +140,9 @@ class EquitiesSeqGenerator:
         # This previously fit on the concatenated FULL frames, including each ticker's
         # chronologically-later test rows, and then applied those statistics to the training
         # windows: look-ahead leakage. The per-ticker split boundary is already computed below
-        # as ``temporal_split_index(n_rows, params.train_ratio)``, so the training rows are
-        # available here and the same boundary is reused rather than re-derived.
+        # as the FIRST cut of ``temporal_split_indices(n_rows, params.train_ratio,
+        # params.val_ratio)``, so the training rows are available here and the same
+        # boundary is reused rather than re-derived.
         #
         # CONSEQUENCE, deliberate: test windows are no longer bounded by [0, 1]. Later rows
         # legitimately exceed the training range, and that excursion is real signal rather
@@ -150,7 +152,9 @@ class EquitiesSeqGenerator:
             train_frames = []
             for ticker in vocab:
                 frame = conditioned[ticker]
-                cut = temporal_split_index(len(frame), params.train_ratio)
+                # The FIRST of the two cuts is the train boundary; val and test both
+                # sit after it, so the fit scope is unchanged by the third partition.
+                cut, _ = temporal_split_indices(len(frame), params.train_ratio, params.val_ratio)
                 if cut > 0:
                     train_frames.append(frame.iloc[:cut])
             # Every ticker rounding to zero training rows leaves nothing to fit on; fall back
@@ -170,7 +174,11 @@ class EquitiesSeqGenerator:
             y_dir = EquitiesGenerator._direction_onehot(frame)
             y_reg = EquitiesGenerator._regression_target(frame, params.regression_target)
             ords = _yyyymmdd_to_ordinal(dates)
-            cut_ordinal = int(ords[temporal_split_index(n_rows, params.train_ratio)])
+            # Two chronological cuts per ticker: train | val | test, in time order.
+            # Derived from the SAME helper the normaliser fit scope uses above, so
+            # the boundary the statistics are fit on and the boundary the windows
+            # are split at cannot drift apart.
+            train_end, val_end = temporal_split_indices(n_rows, params.train_ratio, params.val_ratio)
             out = window_one_ticker(
                 feats,
                 dates,
@@ -178,7 +186,8 @@ class EquitiesSeqGenerator:
                 y_reg,
                 code_of[ticker],
                 lookback=params.lookback,
-                cut_ordinal=cut_ordinal,
+                cut_ordinal=int(ords[train_end]),
+                val_cut_ordinal=int(ords[val_end]),
             )
             per_ticker.append(out)
 
@@ -187,25 +196,46 @@ class EquitiesSeqGenerator:
 
         arrays = EquitiesSeqGenerator._assemble(per_ticker)
         arrays["ticker_vocab"] = np.array(vocab, dtype=np.str_)
+
+        # APD-DATA-018: this generator reuses the flat one's universe resolution,
+        # so it inherits the symbol cap -- and must therefore also carry the
+        # annotation. Inheriting the bound while dropping the record of it is the
+        # worse of the two halves to skip: the dataset would be silently partial
+        # with nothing anywhere saying so.
+        #
+        # ``EquitiesSeqParams`` subclasses ``EquitiesParams``, so ``max_symbols``
+        # and ``allow_truncation`` need no redeclaration here.
+        if truncation is not None:
+            truncation["records_imported"] = int(arrays["X_full"].shape[0])
+            arrays[TRUNCATION_META_KEY] = truncation
+
         return arrays
 
     @staticmethod
     def _assemble(per_ticker: list[dict[str, dict[str, np.ndarray]]]) -> dict[str, np.ndarray]:
-        """Concatenate per-ticker windows into the train/test/full NPZ arrays.
+        """Concatenate per-ticker windows into the train/val/test/full NPZ arrays.
 
-        ``full`` is each ticker's train windows followed by its test windows
-        (chronological within ticker), concatenated across tickers -- so
-        ``full`` == ``train`` + ``test`` with no dropped or duplicated window.
+        ``full`` is each ticker's train windows, then its validation windows, then
+        its test windows (chronological within ticker), concatenated across
+        tickers -- so ``full`` == ``train`` + ``val`` + ``test`` with no dropped or
+        duplicated window.
+
+        The split list is a single tuple used for BOTH loops. Enumerating the
+        splits twice is how ``full`` silently stops containing a partition: the
+        per-split loop would gain ``val`` while the ``full`` loop kept stacking
+        two blocks, and the length identity would fail with nothing naming which
+        partition went missing.
         """
+        splits = ("train", "val", "test")
         arrays: dict[str, np.ndarray] = {}
-        for split in ("train", "test"):
+        for split in splits:
             for key in _WINDOW_KEYS:
                 arrays[f"{key}_{split}"] = np.concatenate([out[split][key] for out in per_ticker], axis=0)
         for key in _WINDOW_KEYS:
             blocks: list[np.ndarray] = []
             for out in per_ticker:
-                blocks.append(out["train"][key])
-                blocks.append(out["test"][key])
+                for split in splits:
+                    blocks.append(out[split][key])
             arrays[f"{key}_full"] = np.concatenate(blocks, axis=0)
         return arrays
 

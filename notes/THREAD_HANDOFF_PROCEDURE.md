@@ -196,7 +196,7 @@ Remaining:
 - Implement [specific method or endpoint]
 - Add unit tests in juniper_data/tests/unit/
 - Add integration tests in juniper_data/tests/integration/
-- Verify NPZ data contract: keys X_train, y_train, X_test, y_test, X_full, y_full (float32)
+- Verify NPZ data contract: keys X_train, y_train, X_val, y_val, X_test, y_test, X_full, y_full (float32)
 
 Key context:
 - Following SpiralGenerator pattern for new generators
