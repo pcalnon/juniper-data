@@ -2,9 +2,9 @@
 
 ## juniper-data Test Configuration, Markers, and Fixtures
 
-**Version:** 0.4.2
+**Version:** 0.4.3
 **Status:** Active
-**Last Updated:** September 4, 2026
+**Last Updated:** September 5, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -224,7 +224,7 @@ Moving the LocalFS existence check into `_chunks` fails the eager-absence arms. 
 | `test_empty_train_3d_uses_trailing_feature_axis` | `(0, 7, 3)` reports `n_features=3`, not lookback 7, not 2 |
 | `test_empty_train_classification_reads_n_classes_from_y_test` | empty-train 4-class artifact reports `n_classes=4` from `y_test` |
 
-Restoring `n_features = … if n_train > 0 else 2` is expected to fail the two n_features tests and leave the rest of this file green. These pins are on #340; they are not on `main` until that PR lands.
+`main` computes `n_features = int(x_train.shape[-1]) if (n_train > 0 or x_train.ndim >= 2) else 2` (#365). Note the `else 2` SURVIVES, for rank < 2 only -- a 1-D empty array has no meaningful trailing axis, and `shape[-1]` would report `0`. The mutation that must go red is dropping the `or x_train.ndim >= 2` disjunct, not "restoring `else 2`". These pins are on `main`.
 
 > See: [REFERENCE.md -- Empty-Train Shape Metadata](../REFERENCE.md#empty-train-shape-metadata)
 
@@ -232,7 +232,7 @@ Restoring `n_features = … if n_train > 0 else 2` is expected to fail the two n
 
 ## Postgres schema-derivation pins
 
-`juniper_data/tests/unit/test_postgres_schema_derivation.py` (juniper-data#343). DDL, upsert, update, and both row mappers derive from `DatasetMeta.model_fields`. The mappers are pure — this file needs no database. These pins are on #343; they are not on `main` until that PR lands.
+`juniper_data/tests/unit/test_postgres_schema_derivation.py` (juniper-data#343). DDL, upsert, update, and both row mappers derive from `DatasetMeta.model_fields`. The mappers are pure — this file needs no database. These pins are on `main` since #343.
 
 | `test_every_model_field_has_a_column` / `test_upsert_names_every_column` / `test_update_names_every_mutable_column` | every `DatasetMeta` field is in the DDL, INSERT, and UPDATE |
 | `test_n_classes_and_class_distribution_are_nullable` | regression INSERT is not rejected |
@@ -422,7 +422,7 @@ The failed-auth throttle (`DEFAULT_FAILED_AUTH_WINDOW_SECONDS`) is a different o
 
 ## DatasetMeta `n_val` pins
 
-`juniper_data/tests/unit/test_meta_dispatch.py` (juniper-data#358). The store can carry a validation partition; generators do not emit one yet. `n_val` must stay defaulted (`0`) or every stored `.meta.json` fails to load.
+`juniper_data/tests/unit/test_meta_dispatch.py` (juniper-data#358). The store carries a validation partition and generators emit one. `n_val` must stay defaulted (`0`) or every `.meta.json` written before the change fails to load.
 
 | Test | Property |
 |------|----------|
@@ -432,12 +432,12 @@ The failed-auth throttle (`DEFAULT_FAILED_AUTH_WINDOW_SECONDS`) is a different o
 | `test_class_distribution_prefers_y_full_when_present` | `y_full` still wins when present |
 | `test_dataset_meta_n_val_is_defaulted` | Field is not required; default is `0` |
 
-Reverting the shape-count and classification-fallback fixes is expected to fail the two behavioural tests and leave the other three green. These pins are on #358; they are not on `main` until that PR lands. Three-way sizing pins are already on `main` in `test_split.py`.
+Reverting the shape-count and classification-fallback fixes is expected to fail the two behavioural tests and leave the other three green. These pins are on `main` since #358; the three-way sizing pins are in `test_split.py`.
 
 > See: [REFERENCE.md -- DatasetMeta n_val and Three-Partition Counts](../REFERENCE.md#datasetmeta-n_val-and-three-partition-counts)
 
 ---
 
-**Last Updated:** September 4, 2026
-**Version:** 0.4.2
+**Last Updated:** September 5, 2026
+**Version:** 0.4.3
 **Maintainer:** Paul Calnon

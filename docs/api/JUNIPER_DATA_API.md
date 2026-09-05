@@ -1,7 +1,7 @@
 # JuniperData API Reference
 
-**Version:** 0.4.2
-**Last Updated:** 2026-09-04
+**Version:** 0.4.3
+**Last Updated:** 2026-09-05
 **Base URL:** `http://localhost:8100`  
 **API Prefix:** `/v1`
 

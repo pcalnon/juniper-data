@@ -2,9 +2,9 @@
 
 ## Get juniper-data Running in 5 Minutes
 
-**Version:** 0.4.2
+**Version:** 0.4.3
 **Status:** Active
-**Last Updated:** March 3, 2026
+**Last Updated:** September 5, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -174,6 +174,6 @@ pytest -m generators
 
 ---
 
-**Last Updated:** March 3, 2026
-**Version:** 0.4.2
+**Last Updated:** September 5, 2026
+**Version:** 0.4.3
 **Status:** Active

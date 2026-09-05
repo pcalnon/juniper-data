@@ -2,9 +2,9 @@
 
 ## Comprehensive Testing Guide for juniper-data
 
-**Version:** 0.4.2
+**Version:** 0.4.3
 **Status:** Active
-**Last Updated:** September 4, 2026
+**Last Updated:** September 5, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -157,7 +157,7 @@ juniper_data/tests/
 
 ### Empty-train shape metadata
 
-`compute_shape_meta` is on the create-dataset path for every generator. An empty train split still has a defined `shape[-1]`; hardcoding `n_features = 2` when `n_train == 0` lied for F ≠ 2 (including 3-D sequence F). `test_classification_3d_uses_trailing_feature_axis` only covers non-empty train, so restoring `else 2` stayed green until #340.
+`compute_shape_meta` is on the create-dataset path for every generator. An empty train split still has a defined `shape[-1]`; hardcoding `n_features = 2` when `n_train == 0` lied for F ≠ 2 (including 3-D sequence F). `test_classification_3d_uses_trailing_feature_axis` only covers non-empty train, so the narrower `if n_train > 0 else 2` stayed green before #365 landed.
 
 Pin empty train in `test_meta_dispatch.py`: 2-D F=5, 3-D F=3 (not lookback), and classification `n_classes` from `y_test`. Mutation: putting `else 2` back fails exactly those two n_features tests.
 
@@ -467,7 +467,7 @@ pytest juniper_data/tests/unit/test_no_import_cycles.py
 
 ### Equities symbol-cap tests
 
-`TestUniverseSymbolCap` (lands with #354) is the pin for APD-DATA-018's equities half. Default is **refusal**: 40 names and no opt-in must raise `InputTooLargeError` with `unit == "symbols"` and `cap == 14`. An authorised cut must write `DatasetMeta.truncation` (`reason=universe_exceeded_symbol_cap`) and the kept prefix must be `sorted(universe)[:14]`.
+`TestUniverseSymbolCap` (landed with #354) is the pin for APD-DATA-018's equities half. Default is **refusal**: 40 names and no opt-in must raise `InputTooLargeError` with `unit == "symbols"` and `cap == 14`. An authorised cut must write `DatasetMeta.truncation` (`reason=universe_exceeded_symbol_cap`) and the kept prefix must be `sorted(universe)[:14]`.
 
 `test_generate_puts_the_annotation_on_the_returned_arrays` is load-bearing — resolver-only tests stay green if `generate()` drops the channel key. Do not replace these with a live Yahoo/SEC timing assertion. `equities_seq` must keep calling `EquitiesGenerator._resolve_symbols` and attach the same key; a second resolver would need its own pin.
 
@@ -475,7 +475,7 @@ pytest juniper_data/tests/unit/test_no_import_cycles.py
 
 `compute_shape_meta` is on the create-dataset path for every generator. #358 makes the store able to carry a validation partition: `n_val` is defaulted to `0` (legacy `.meta.json` cannot load a required field), `X_val` is read presence-conditionally, and `n_samples` spans train + val + test. The `y_full`-less classification fallback must stack `y_val`; the pin puts an entire class there so omitting it drops class `1` from the dict.
 
-These pins live in `test_meta_dispatch.py` on #358 and are not on `main` until that PR lands. Three-way *sizing* pins are already on `main` in `test_split.py`. Generators still emit two partitions.
+These pins live in `test_meta_dispatch.py`, on `main` since #358; the three-way *sizing* pins are in `test_split.py`. Generators emit three partitions.
 
 > See: [REFERENCE.md -- DatasetMeta n_val and Three-Partition Counts](../REFERENCE.md#datasetmeta-n_val-and-three-partition-counts)
 

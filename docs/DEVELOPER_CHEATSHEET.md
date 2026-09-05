@@ -1,6 +1,6 @@
 # Developer Cheatsheet -- juniper-data
 
-**Version**: 0.4.2 | **Date**: 2026-09-04 | **Project**: juniper-data -- Dataset Generation REST Service (FastAPI)
+**Version**: 0.4.3 | **Date**: 2026-09-05 | **Project**: juniper-data -- Dataset Generation REST Service (FastAPI)
 
 ---
 
@@ -218,7 +218,7 @@ Do not import `juniper_data.api.app` or `juniper_data.api.routes` from generator
 =======
 ## DatasetMeta `n_val`
 
-The store can carry a validation partition; no generator emits one yet, so `n_val` reads `0`. The field is **defaulted** so legacy `.meta.json` still loads via `DatasetMeta(**meta_dict)`. `compute_shape_meta` reads `X_val` only if present and sets `n_samples = n_train + n_val + n_test`. Classification fallback without `y_full` must stack `y_val`. Sizing helpers (`partition_row_counts`, `split_three_way`) are on `main` (#353) but unwired. Do not invent `val_ratio`. Pins: `test_meta_dispatch.py` on #358.
+The store carries a validation partition and generators emit one; `n_val` reads `0` only for an artifact written before the change. The field is **defaulted** so legacy `.meta.json` still loads via `DatasetMeta(**meta_dict)`. `compute_shape_meta` reads `X_val` only if present and sets `n_samples = n_train + n_val + n_test`. Classification fallback without `y_full` must stack `y_val`. Sizing helpers (`partition_row_counts`, `split_three_way`) are on `main` (#353) and now wired -- `core/split.py` calls both. Do not invent `val_ratio`. Pins: `test_meta_dispatch.py`, on `main` since #358.
 
 > See: [REFERENCE.md -- DatasetMeta n_val and Three-Partition Counts](REFERENCE.md#datasetmeta-n_val-and-three-partition-counts)
 >>>>>>> 8d9b71ea2639a1c20d18b0a6fc039408d8f58125

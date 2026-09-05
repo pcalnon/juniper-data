@@ -1,6 +1,6 @@
 # Juniper Data User Manual
 
-**Version:** 0.4.2
+**Version:** 0.4.3
 **Status:** Active
 **Last Updated:** September 4, 2026
 **Project:** Juniper Data - Dataset Generation Service

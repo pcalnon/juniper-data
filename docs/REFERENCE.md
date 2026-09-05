@@ -1,8 +1,8 @@
 # Juniper Data Reference
 
-**Version:** 0.4.2
+**Version:** 0.4.3
 **Status:** Active
-**Last Updated:** March 3, 2026
+**Last Updated:** September 5, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -79,13 +79,13 @@ Full REST API documentation is in [JUNIPER_DATA_API.md](api/JUNIPER_DATA_API.md)
 | `X_full` | `(n_samples, n_features)` | `float32` | Full dataset features |
 | `y_full` | `(n_samples, n_classes)` | `float32` | Full dataset labels (one-hot) |
 
-Live generator artifacts still write those six keys. `X_val` / `y_val` are optional: the store and `DatasetMeta` can carry them (`n_val` defaults to `0`). No generator emits them yet. See [DatasetMeta n_val and Three-Partition Counts](#datasetmeta-n_val-and-three-partition-counts).
+Live generator artifacts still write those six keys. `X_val` / `y_val` are carried by the store and by `DatasetMeta` (`n_val` defaults to `0` so a legacy two-partition `.meta.json` still loads). Generators emit them as of the three-partition work. See [DatasetMeta n_val and Three-Partition Counts](#datasetmeta-n_val-and-three-partition-counts).
 
 ---
 
 ## DatasetMeta `n_val` and Three-Partition Counts
 
-The store can *carry* a validation partition. No generator emits one yet, so every artifact produced today is two-partition and `n_val` reads `0` — the blast radius is zero.
+The store carries a validation partition, and generators now emit one. `n_val` remains **defaulted** to `0` so an artifact written before the change still loads; a `0` therefore means "two-partition, pre-change", not "no validation rows were asked for".
 
 This is the storage and metadata half of the val-first sequence (juniper-data#358), after the sizing primitives already on `main` (#353) and the client `NPZ_SPLITS` work (juniper-data-client#187). Generator wiring is a later PR; the REST size-knob vocabulary is not settled — do not invent `val_ratio` on generator params.
 
@@ -101,7 +101,7 @@ This is the storage and metadata half of the val-first sequence (juniper-data#35
 - `n_samples = n_train + n_val + n_test` — not train + test. A 6 / 3 / 2 artifact reports `n_samples=11`.
 - The route passes `n_val=shape_meta["n_val"]` onto the constructed `DatasetMeta`.
 
-On `main` today, `n_samples` is still `n_train + n_test` and `DatasetMeta` has no `n_val`. The behaviour above is on #358; it is not on `main` until that PR lands.
+This landed with #358: `n_samples` is `n_train + n_val + n_test`, and `DatasetMeta.n_val` is on `main` (`juniper_data/core/models.py`).
 
 ### Classification `class_distribution` without `y_full`
 
@@ -136,7 +136,7 @@ Percentages are absolute **rows** of the realised dataset, never per-spiral / pe
 
 ### Pins
 
-These live in `tests/unit/test_meta_dispatch.py` on #358. They are not on `main` until that PR lands. Reverting both shape-count and classification-fallback fixes is expected to fail `test_val_partition_counted_in_shape_meta` and `test_class_distribution_without_y_full_includes_val`; the other three stay green under that mutation because they do not touch what it breaks.
+These live in `tests/unit/test_meta_dispatch.py`, on `main` since #358. Reverting both shape-count and classification-fallback fixes is expected to fail `test_val_partition_counted_in_shape_meta` and `test_class_distribution_without_y_full_includes_val`; the other three stay green under that mutation because they do not touch what it breaks.
 
 | Test | Property |
 |------|----------|
@@ -388,7 +388,7 @@ Adding a field to `DatasetMeta` adds its column, INSERT, UPDATE, and read withou
 
 ### Nullability and the fields that used to vanish
 
-A column is nullable exactly when the model annotation admits `None`. Until #343:
+A column is nullable exactly when the model annotation admits `None`. Before #343:
 
 - `n_classes` and `class_distribution` were `NOT NULL` after WS-1 / #168 made both optional. The first **regression** dataset written would have failed the INSERT.
 - Seven fields were dropped on every round trip: `task_type`, `sequence`, `lookback`, `time_unit`, `dt_scaling`, `target_scaling`, `truncation`. Sequence and scaling metadata silently reset to defaults.
@@ -419,7 +419,7 @@ The builders interpolate a table name (default `datasets`). Values cannot be par
 
 ### Pins
 
-These live in `juniper_data/tests/unit/test_postgres_schema_derivation.py` on #343. They are not on `main` until that PR lands. The mappers are pure functions — the file needs no database.
+These live in `juniper_data/tests/unit/test_postgres_schema_derivation.py`, on `main` since #343. The mappers are pure functions — the file needs no database.
 
 | Test | Property |
 |------|----------|
@@ -867,7 +867,7 @@ Schema `422`s instead carry `detail` as a **list** of per-field objects. The ove
 
 ## CSV Import Byte Cap
 
-Bound for on-disk `csv_import` sources (`APD-DATA-018`, lands with juniper-data#326). Generation runs **inside the request**, so a source large enough to outlive the client timeout cannot succeed however long the caller waits. The remedy is to bound the input, not to move generation to an async job.
+Bound for on-disk `csv_import` sources (`APD-DATA-018`, landed with juniper-data#326). Generation runs **inside the request**, so a source large enough to outlive the client timeout cannot succeed however long the caller waits. The remedy is to bound the input, not to move generation to an async job.
 
 This is **not** the HTTP body limit. `RequestBodyLimitMiddleware` rejects JSON bodies over 10 MB. `csv_import` reads a file under `JUNIPER_DATA_IMPORT_DIR`; `file_path` is relative to that directory (absolute paths outside it fail as path traversal).
 
@@ -1243,7 +1243,7 @@ Responses use typed Pydantic models (defined in `core/models.py` and `api/models
 
 `compute_shape_meta` (`juniper_data/core/meta.py`) derives the shape fields `POST /v1/datasets` writes onto `DatasetMeta` for **every** generator. `n_features` is the **trailing** axis of `X_train`: `shape[-1]` for both 2-D tabular `(N, F)` and 3-D sequence `(W, L, F)`. That matches `derive_sequence_meta`, which already reads rank from an empty `X_train` because an empty split still has a defined shape.
 
-Until #340, empty train (`n_train == 0` — a `train_ratio` that rounds to zero rows, or a generator that emits an empty train split) abandoned that contract and hardcoded `n_features = 2`:
+Before #365, empty train (`n_train == 0` — a `train_ratio` that rounds to zero rows, or a generator that emits an empty train split) abandoned that contract and hardcoded `n_features = 2`:
 
 - a 2-D import with F=5 persisted `n_features=2`
 - a 3-D sequence with lookback 7 and F=3 persisted `n_features=2` (neither lookback nor F)
@@ -1266,7 +1266,7 @@ Regression artifacts still leave `n_classes` / `class_distribution` as `None`.
 
 ### Pins
 
-These live in `tests/unit/test_meta_dispatch.py` on #340. They are not on `main` until that PR lands. The existing `test_classification_3d_uses_trailing_feature_axis` only covers **non-empty** train, so restoring `else 2` stayed green on the suite before these pins.
+These live in `tests/unit/test_meta_dispatch.py`, on `main` since #365 (which superseded the still-open #340). The existing `test_classification_3d_uses_trailing_feature_axis` only covers **non-empty** train, which is why the narrower `if n_train > 0 else 2` stayed green before these pins. `main` keeps an `else 2` arm for rank < 2 -- a 1-D empty array has no meaningful trailing axis -- so the mutation to guard against is dropping the `or x_train.ndim >= 2` disjunct, not the `else 2` itself.
 
 | Test | Property |
 |------|----------|
@@ -1416,7 +1416,7 @@ Full-stack orchestration is in the `juniper-deploy` repository. JuniperData runs
 
 ## Equities Symbol Cap
 
-Bound for `equities` / `equities_seq` (`APD-DATA-018` second half, lands with juniper-data#354). Generation runs **inside the request**. The previous default was `EQUITIES_DEFAULT_MAX_SYMBOLS = None` — all **503** bundled S&P 500 names, 18–34 minutes against a ~30 s client budget — and the only cut was a bare `ordered[: params.max_symbols]` that recorded nothing. #354 deletes that silent slice.
+Bound for `equities` / `equities_seq` (`APD-DATA-018` second half, landed with juniper-data#354). Generation runs **inside the request**. The previous default was `EQUITIES_DEFAULT_MAX_SYMBOLS = None` — all **503** bundled S&P 500 names, 18–34 minutes against a ~30 s client budget — and the only cut was a bare `ordered[: params.max_symbols]` that recorded nothing. #354 deletes that silent slice.
 
 `equities_seq` reuses `EquitiesGenerator._resolve_symbols` and must therefore carry the same annotation. Inheriting the bound while dropping the record is the worse half to skip.
 
@@ -1648,6 +1648,6 @@ Rollout and rationale: [juniper-ml#434](https://github.com/pcalnon/juniper-ml/is
 
 ---
 
-**Last Updated:** April 1, 2026
-**Version:** 0.4.2
+**Last Updated:** September 5, 2026
+**Version:** 0.4.3
 **Maintainer:** Paul Calnon
