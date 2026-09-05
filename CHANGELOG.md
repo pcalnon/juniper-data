@@ -5,6 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **A same-day restatement could overwrite the current share count — `market_cap` was silently
+  wrong on up to 10.4% of a ticker's rows.** The look-ahead fix in 0.13.0 aligns share counts on
+  the **filing** date, and two facts can share one: an 8-K restating an old quarter is filed the
+  same day as the current 10-Q. The de-duplication kept whichever landed last after
+  `set_index("filed").sort_index()` — which is the current period **only if** the re-sort preserves
+  the incoming `end`-ascending order among ties. `sort_index()` defaults to `kind="quicksort"`,
+  which is not stable, so it did not.
+
+  Measured over the 485-payload SEC cache (`util/ad-hoc/2026-09-05_probe_duplicate_filed_resolution.py`):
+  **54 tickers have such a collision and 15, across 9 tickers, kept the restated OLD figure.**
+
+  | Ticker | Filed | Error in `total_shares` / `market_cap` |
+  |---|---|---:|
+  | DVA | 2013-03-01 | **10.43%** |
+  | ORLY | 2012-02-28 | 6.79% |
+  | DVA | 2017-02-24 | 6.32% |
+  | PRU | 2016-02-19 | 1.35% |
+  | KO | 2013-10-24 | 0.92% |
+  | **ADSK** | 2020-03-19 / 2024-06-10 | 0.13% / 0.26% |
+
+  **This was reachable at defaults**: the 14-symbol cap keeps `sorted(constituents)[:14]`, and
+  **ADSK is position 12**. The wrong figure persists on every row until the next filing.
+
+  The de-duplication now sorts on `(filed, end)` explicitly, so the tie-break is stated rather than
+  inherited from an upstream ordering invariant that a refactor could quietly drop. pandas resolves
+  a multi-column `sort_values` with `np.lexsort`, which is stable regardless of `kind`.
+
+- **`test_shares_are_not_visible_before_they_were_filed` never inspected `total_shares`.** It
+  checked only `report_date`, so an implementation that keeps a correct filing date while shifting
+  the share count into the future — a look-ahead in the exact quantity the test is named for —
+  passed it. It now checks the value against what had actually been filed on each trade date.
+  Mutation-verified: `keep="first"`, the unstable sort, and a `shift(-1)` on `total_shares` are all
+  caught; before this change the first and third were not.
+
+- **The look-ahead fix's worked example was false.** 0.13.0 states that AAPL's quarter ending
+  2021-03-27 went unfiled until 2021-04-29, "five weeks". AAPL's dei series has **no 2021-03 point
+  at all**, and that filing carries `end=2021-04-16` — a **13-day** gap. `end` on the dei
+  cover-page tag is an **as-of date**, not a fiscal period end ("as stated on cover of related
+  periodic report"). The **−19 days** figure comes from four 2015–2016 filings; 2021's widest gap
+  is 14 days, and the genuine outlier is a 10-K/A at **101 days**. The leak, the −19, and the
+  325-of-2,266 rows (14.3%) are all confirmed exactly — only the example was wrong. Corrected in
+  `generator.py` and the test docstring.
+
 ## [0.13.0] - 2026-09-05
 
 ### Added
