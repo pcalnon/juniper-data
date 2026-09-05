@@ -36,6 +36,7 @@
    - [Marker Requirements](#marker-requirements)
    - [Async Tests](#async-tests)
    - [Test Organization](#test-organization)
+   - [Import-cycle tests](#import-cycle-tests)
 9. [Pre-commit Integration](#pre-commit-integration)
 10. [Troubleshooting](#troubleshooting)
 
@@ -115,6 +116,7 @@ juniper_data/tests/
 | `test_main.py` | Core | CLI entry point (`__main__.py`) |
 | `test_middleware.py` | API | FastAPI middleware components |
 | `test_mnist_generator.py` | Generator | MNIST/Fashion-MNIST generator |
+| `test_no_import_cycles.py` | API / generators | Cold-interpreter standalone import of every generator subpackage (#316 / #333) |
 | `test_observability.py` | API | Prometheus metrics and Sentry |
 | `test_postgres_store.py` | Storage | PostgreSQL storage backend |
 | `test_redis_store.py` | Storage | Redis storage backend |
@@ -416,6 +418,20 @@ async def test_health_endpoint(self):
 - Use `conftest.py` for shared fixtures; keep test-specific fixtures local
 - Use `@pytest.mark.slow` for tests that take more than a few seconds
 
+### Import-cycle tests
+
+A circular import is a property of a **cold interpreter**. Once `juniper_data` is in `sys.modules`, a same-process `import juniper_data.generators.csv_import` succeeds with the cycle fully present.
+
+`test_no_import_cycles.py` therefore runs every assertion in a subprocess (`python -c ...`). An in-process assertion here cannot fail and is worse than no test. Do not "fix" collection of `test_csv_import_generator.py` by pre-importing `juniper_data.api.routes.generators`.
+
+```bash
+# Must pass on a file collected first, not only as part of the full suite
+pytest juniper_data/tests/unit/test_csv_import_generator.py
+pytest juniper_data/tests/unit/test_no_import_cycles.py
+```
+
+> See: [REFERENCE.md -- API Package Import Graph](../REFERENCE.md#api-package-import-graph)
+
 ---
 
 ## Pre-commit Integration
@@ -453,6 +469,8 @@ Code quality hooks (ruff, mypy, bandit) run on **pre-commit** stage and validate
 **Coverage below threshold**: Run `python scripts/check_module_coverage.py --run-tests` to see per-module breakdown and identify which modules need more tests.
 
 **Deprecation warnings from dependencies**: These are filtered by default via `filterwarnings` in pyproject.toml for uvicorn, httpx, and pydantic.
+
+**`ImportError: cannot import name 'VERSION'` collecting `test_csv_import_generator.py` in isolation**: `api/__init__.py` eagerly imported `create_app`, which loaded every route while `csv_import` was still initialising (#316 / #333). Keep `create_app` lazy. Do not pre-import `api.routes.generators` as a collection workaround. Pin: `test_no_import_cycles.py` (subprocess). See [REFERENCE.md -- API Package Import Graph](../REFERENCE.md#api-package-import-graph).
 
 ---
 

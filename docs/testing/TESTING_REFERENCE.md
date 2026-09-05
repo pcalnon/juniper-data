@@ -17,6 +17,7 @@
 - [Coverage Configuration](#coverage-configuration)
 - [Test Dependencies](#test-dependencies)
 - [Command Reference](#command-reference)
+- [Import-cycle pins](#import-cycle-pins)
 - [File Structure Reference](#file-structure-reference)
 - [Warning Filters](#warning-filters)
 
@@ -252,6 +253,25 @@ Install with: `pip install -e ".[test]"` or `pip install -e ".[all]"`
 | `pre-commit install --hook-type pre-push` | Install pre-push hooks |
 | `pre-commit run --all-files` | Run all pre-commit hooks |
 | `pre-commit run coverage-check --hook-stage pre-push` | Run coverage check manually |
+
+---
+
+## Import-cycle pins
+
+`juniper_data/tests/unit/test_no_import_cycles.py` (juniper-data#316 / #333). Every assertion is a **subprocess**. A cycle is a property of a cold interpreter; an in-process import succeeds once `sys.modules` is populated.
+
+| Test | Property |
+|------|----------|
+| `test_subpackage_imports_first_in_a_cold_interpreter` | Each of the 16 registered generator subpackages imports standalone |
+| `test_csv_import_public_names_resolve` | `VERSION` / `CsvImportGenerator` / `CsvImportParams` / `get_schema` resolve (the failure was on a **name**, not the module object) |
+| `test_importing_settings_does_not_pull_in_the_routes` | `import juniper_data.api.settings` leaves `api.routes.generators` out of `sys.modules` — the property that actually breaks the cycle |
+| `test_create_app_is_still_importable_from_the_package` | `from juniper_data.api import create_app` still works (lazy, not removed) |
+| `test_settings_are_still_eager` | `Settings` / `get_settings` remain eager |
+| `test_unknown_attribute_still_raises_attribute_error` | Module `__getattr__` does not swallow typos |
+
+Reverting `api/__init__.py` to `from .app import create_app` is expected to fail the `csv_import` standalone import, its public-name resolution, and the routes-not-loaded property — and nothing else in this file.
+
+> See: [REFERENCE.md -- API Package Import Graph](../REFERENCE.md#api-package-import-graph)
 
 ---
 
