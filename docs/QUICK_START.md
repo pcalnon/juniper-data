@@ -137,6 +137,7 @@ Settings use Pydantic BaseSettings with the `JUNIPER_DATA_` prefix:
 | `JUNIPER_DATA_STORAGE_PATH` | `./data/datasets` | Dataset artifact storage |
 | `JUNIPER_DATA_LOG_LEVEL` | `INFO` | Log verbosity |
 | `JUNIPER_DATA_API_KEYS` | *(none)* | Optional API key list for auth |
+| `JUNIPER_DATA_RATE_LIMIT_WINDOW_SECONDS` | `60` | Rate-limit window length (count is `REQUESTS_PER_MINUTE`) |
 | `JUNIPER_DATA_CORS_ORIGINS` | `["*"]` | Allowed CORS origins |
 
 ---

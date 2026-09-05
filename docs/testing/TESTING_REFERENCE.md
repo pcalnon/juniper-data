@@ -386,6 +386,22 @@ Configured in `pyproject.toml` `[tool.pytest.ini_options].filterwarnings`:
 
 ---
 
+## Rate-limit window pins
+
+Pins for APD-DATA-033 (`Settings.rate_limit_window_seconds` → live `RateLimiter.window`).
+
+| Test | File | Asserts | Mutation that must go red |
+|------|------|---------|---------------------------|
+| `test_window_default_matches_the_limiter_constructor_default` | `test_api_settings.py` | Setting default is `DEFAULT_RATE_LIMIT_WINDOW_SECONDS` | A second literal that happens to be 60 |
+| `test_window_is_settable_from_the_environment` | same | env `300` parses | Field not bound to `JUNIPER_DATA_RATE_LIMIT_WINDOW_SECONDS` |
+| `test_configured_window_reaches_the_live_rate_limiter` | same | `create_app` limiter `.window == 300`, `.limit == 7` | Field exists but `app.py` still omits `window_seconds=` |
+| `test_window_property_returns_configured_seconds` | `test_security.py` | Constructor window is readable | Property ignores `self._window` |
+| `test_check_resets_after_window_expiry` | same | Count resets after the window | Expiry comparison dropped or inverted |
+
+The failed-auth throttle (`DEFAULT_FAILED_AUTH_WINDOW_SECONDS`) is a different object. Do not retarget these pins at it.
+
+---
+
 **Last Updated:** September 4, 2026
 **Version:** 0.4.2
 **Maintainer:** Paul Calnon

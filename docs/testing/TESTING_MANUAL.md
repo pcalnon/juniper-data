@@ -102,7 +102,7 @@ juniper_data/tests/
 |------|-----------|-------------|
 | `test_api_app.py` | API | FastAPI app factory and creation |
 | `test_api_routes.py` | API | Route handler functions and endpoints |
-| `test_api_settings.py` | API | Pydantic settings and environment variables |
+| `test_api_settings.py` | API | Pydantic settings; APD-DATA-033 window reaches the live limiter |
 | `test_arc_agi_generator.py` | Generator | ARC-AGI dataset generator |
 | `test_artifacts.py` | Core | Artifact class and file handling |
 | `test_artifact_streaming.py` | Storage | Chunked `open_artifact_stream` (APD-DATA-016) |
@@ -127,7 +127,7 @@ juniper_data/tests/
 | `test_postgres_schema_derivation.py` | Storage | Model-derived Postgres DDL/statements and round-trip (#343) |
 | `test_postgres_store.py` | Storage | PostgreSQL storage backend |
 | `test_redis_store.py` | Storage | Redis storage backend |
-| `test_security.py` | API | Security validations |
+| `test_security.py` | API | Rate limiter window expiry, 429, constructor window |
 | `test_security_boundaries.py` | API | Security boundary tests |
 | `test_spiral_generator.py` | Generator | Spiral generator (567 lines, 14 test classes) |
 | `test_split.py` | Core | Train/test split utilities |
@@ -480,6 +480,10 @@ pre-commit run coverage-check --all-files --hook-stage pre-push
 The coverage check hook runs `python scripts/check_module_coverage.py --run-tests`, which executes the full test suite and enforces both aggregate and per-module thresholds.
 
 Code quality hooks (ruff, mypy, bandit) run on **pre-commit** stage and validate test code as well.
+
+### Rate-limit window tests
+
+`test_configured_window_reaches_the_live_rate_limiter` is the load-bearing APD-DATA-033 pin. A `Settings` field that parses but is never passed to `create_app` is the original defect — the two earlier arms stay green against that bug. Do not delete the live-limiter arm to "simplify" the settings tests. `test_check_resets_after_window_expiry` pins the expiry comparison (`now - window_start >= window`).
 
 ---
 
