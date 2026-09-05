@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from juniper_data.core.constants import DEFAULT_GENERATOR_SEED
 
 from .defaults import (
+    EQUITIES_DEFAULT_ALLOW_TRUNCATION,
     EQUITIES_DEFAULT_BASIS_PRICE_FIELD,
     EQUITIES_DEFAULT_END_DATE,
     EQUITIES_DEFAULT_FUNDAMENTALS_FILL,
@@ -95,7 +96,11 @@ class EquitiesParams(BaseModel):
     max_symbols: int | None = Field(
         default=EQUITIES_DEFAULT_MAX_SYMBOLS,
         ge=1,
-        description="Cap on the number of symbols (after ordering). None = all.",
+        description="Cap on the number of symbols (after ordering), APD-DATA-018. A universe larger than this is REFUSED unless allow_truncation is set. Omit to use the deployment default (JUNIPER_DATA_EQUITIES_MAX_SYMBOLS); None means unbounded and is honoured only up to that deployment ceiling.",
+    )
+    allow_truncation: bool = Field(
+        default=EQUITIES_DEFAULT_ALLOW_TRUNCATION,
+        description="Accept a partial universe when it exceeds max_symbols. Default false: an oversized universe is refused with 422 rather than silently truncated to the first N tickers. When true, the leading max_symbols symbols are imported and the dataset is PERMANENTLY annotated as truncated in its metadata. Can also be enabled deployment-wide via JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION or the matching .env entry.",
     )
     use_cache: bool = Field(
         default=EQUITIES_DEFAULT_USE_CACHE,

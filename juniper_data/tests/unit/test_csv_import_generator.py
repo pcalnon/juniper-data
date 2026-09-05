@@ -411,8 +411,9 @@ class TestInputByteCap:
             CsvImportGenerator.generate(CsvImportParams(file_path="wide.csv"))
         # The message must be actionable: it names the remedy and both numbers.
         assert "allow_truncation" in str(excinfo.value)
-        assert excinfo.value.cap_bytes == TINY_CAP_BYTES
-        assert excinfo.value.bytes_total > TINY_CAP_BYTES
+        assert excinfo.value.cap == TINY_CAP_BYTES
+        assert excinfo.value.actual > TINY_CAP_BYTES
+        assert excinfo.value.unit == "bytes"
 
     def test_refusal_is_a_value_error(self, bounded_import_dir) -> None:
         """Subclassing ValueError is load-bearing, not incidental.
@@ -435,9 +436,10 @@ class TestInputByteCap:
         annotation = result[TRUNCATION_META_KEY]
         assert annotation["truncated"] is True
         assert annotation["reason"] == "source_exceeded_byte_cap"
-        assert annotation["cap_bytes"] == TINY_CAP_BYTES
-        assert annotation["bytes_total"] == path.stat().st_size
-        assert annotation["bytes_read"] <= TINY_CAP_BYTES
+        assert annotation["unit"] == "bytes"
+        assert annotation["cap"] == TINY_CAP_BYTES
+        assert annotation["requested"] == path.stat().st_size
+        assert annotation["imported"] <= TINY_CAP_BYTES
         assert 0 < annotation["records_imported"] < 40
         # The arrays must agree with the annotation -- an annotation that does
         # not match what was actually imported is worse than none.
@@ -580,7 +582,7 @@ class TestInputByteCap:
         with pytest.raises(InputTooLargeError) as excinfo:
             CsvImportGenerator.generate(CsvImportParams(file_path="wide.csv", max_bytes=10_000_000_000))
         # The operator's ceiling is what governs, not the caller's request.
-        assert excinfo.value.cap_bytes == TINY_CAP_BYTES
+        assert excinfo.value.cap == TINY_CAP_BYTES
 
     def test_a_lying_stat_does_not_bypass_the_cap(self, bounded_import_dir) -> None:
         """The READ enforces the bound; ``stat`` is only a cheap pre-check.

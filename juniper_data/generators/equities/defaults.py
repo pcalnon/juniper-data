@@ -35,8 +35,37 @@ EQUITIES_DEFAULT_FUNDAMENTALS_FILL: Literal["zero", "nan", "drop"] = "zero"
 EQUITIES_DEFAULT_WEEK52_WINDOW = 252
 
 EQUITIES_DEFAULT_NORMALIZE_FEATURES = False
-EQUITIES_DEFAULT_MAX_SYMBOLS: int | None = None
 EQUITIES_DEFAULT_USE_CACHE = True
+
+# APD-DATA-018 -- re-exported, not defined here (see juniper_data/core/limits.py
+# for the value's derivation and for why it cannot live in this module).
+#
+# This was ``None`` -- every one of the 503 bundled S&P 500 constituents -- which
+# measurement put at 18-34 minutes against a 30 s request budget. The cap is in
+# SYMBOLS rather than bytes because the cost is per request: 163x the payload
+# costs 1.16x the time, so bytes would bound the wrong quantity here.
+from juniper_data.core.limits import (  # noqa: E402  (re-export, kept beside the other defaults)
+    EQUITIES_DEFAULT_ALLOW_TRUNCATION,
+    EQUITIES_DEFAULT_MAX_SYMBOLS,
+)
+
+__all__ = [
+    "CONSTITUENTS_FILENAME",
+    "EQUITIES_DEFAULT_ALLOW_TRUNCATION",
+    "EQUITIES_DEFAULT_BASIS_PRICE_FIELD",
+    "EQUITIES_DEFAULT_END_DATE",
+    "EQUITIES_DEFAULT_FUNDAMENTALS_FILL",
+    "EQUITIES_DEFAULT_MAX_SYMBOLS",
+    "EQUITIES_DEFAULT_NORMALIZE_FEATURES",
+    "EQUITIES_DEFAULT_PURCHASE_DATE",
+    "EQUITIES_DEFAULT_REGRESSION_TARGET",
+    "EQUITIES_DEFAULT_START_DATE",
+    "EQUITIES_DEFAULT_TEST_RATIO",
+    "EQUITIES_DEFAULT_TRAIN_RATIO",
+    "EQUITIES_DEFAULT_USE_CACHE",
+    "EQUITIES_DEFAULT_WEEK52_WINDOW",
+    "EQUITIES_FEATURE_COLUMNS",
+]
 
 # Temporal split: train = earlier dates, test = later dates (per ticker).
 EQUITIES_DEFAULT_TRAIN_RATIO = 0.8

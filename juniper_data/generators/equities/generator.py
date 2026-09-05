@@ -49,6 +49,8 @@ from typing import Any
 
 import numpy as np
 
+from juniper_data.core.limits import REASON_SYMBOL_CAP, TRUNCATION_META_KEY, UNIT_SYMBOLS, InputTooLargeError, build_truncation_meta
+
 from .defaults import CONSTITUENTS_FILENAME, EQUITIES_FEATURE_COLUMNS
 from .params import EquitiesParams
 
@@ -166,12 +168,15 @@ class EquitiesGenerator:
         Raises:
             ImportError: If the optional ``equities`` extra is not installed.
             ValueError: If no data could be retrieved for any requested symbol.
+            InputTooLargeError: If the resolved universe exceeds its symbol cap
+                and neither the request nor the deployment allowed truncation.
+                Subclasses ValueError; the route maps it to 422.
         """
         if not EQUITIES_DEPS_AVAILABLE:
             raise ImportError(EquitiesGenerator.install_hint())
 
         constituents = EquitiesGenerator._load_constituents()
-        symbols, meta_map = EquitiesGenerator._resolve_symbols(params, constituents)
+        symbols, meta_map, truncation = EquitiesGenerator._resolve_symbols(params, constituents)
         end_date = params.end_date or datetime.now(UTC).strftime("%Y-%m-%d")
 
         conditioned: dict[str, Any] = {}
@@ -245,6 +250,21 @@ class EquitiesGenerator:
             arrays[f"date_{name}"] = EquitiesGenerator._dates_yyyymmdd(frame)
 
         arrays["ticker_vocab"] = np.array(vocab, dtype=np.str_)
+
+        # APD-DATA-018: hand the route the permanent truncation annotation over
+        # the reserved channel key, the same way _synthetic.py hands over
+        # "scaling" and csv_import hands over its own. Popped BEFORE checksum +
+        # NPZ persist, so the stored arrays stay array-only. Absent entirely
+        # when nothing was cut.
+        #
+        # records_imported is filled in HERE and not at the cut, because rows
+        # are not known until conditioning finishes -- and note it counts rows
+        # that SURVIVED conditioning, so it is legitimately lower than
+        # (symbols x sessions) when a ticker returns no data.
+        if truncation is not None:
+            truncation["records_imported"] = int(len(full))
+            arrays[TRUNCATION_META_KEY] = truncation
+
         return arrays
 
     # ------------------------------------------------------------------ #
@@ -267,7 +287,46 @@ class EquitiesGenerator:
         return rows
 
     @staticmethod
-    def _resolve_symbols(params: EquitiesParams, constituents: dict[str, dict[str, Any]]) -> tuple[list[str], dict[str, dict[str, Any]]]:
+    def _resolve_bounds(params: EquitiesParams) -> tuple[int, bool]:
+        """Resolve the effective symbol cap and truncation opt-in for this request.
+
+        **A request may only LOWER the cap, never raise it** -- the deployment
+        value is a ceiling and the effective cap is the minimum of the two. This
+        is the same rule ``csv_import`` applies to its byte cap, and for the same
+        two reasons: a bound the bounded party can raise is not a bound, and a
+        generated client that serialises schema defaults would otherwise send
+        the schema's own ``max_symbols`` on every request and silently override
+        a *lower* operator ceiling.
+
+        ``max_symbols=None`` means "no request-side limit", not "unbounded" --
+        the deployment ceiling still applies. There is deliberately no way for a
+        caller to ask for an unbounded universe.
+
+        ``allow_truncation`` is a logical OR: either the caller opts in for this
+        request, or the deployment has opted in for every request. A client
+        cannot opt *out* of the operator's choice.
+
+        Returns:
+            ``(cap_symbols, allow_truncation)``.
+        """
+        # Imported HERE, not at module scope, deliberately. juniper-data carries
+        # a circular import that csv_import already sits inside: importing a
+        # generator package runs its __init__ -> generator -> api.settings ->
+        # api/__init__ -> app -> routes.generators -> back into the half-built
+        # package. csv_import pays that cost at module scope and is therefore
+        # un-runnable in isolation; there is no reason to add a second entry
+        # point to the same cycle for one settings lookup.
+        from juniper_data.api.settings import get_settings
+
+        settings = get_settings()
+        ceiling = settings.equities_max_symbols
+        requested = params.max_symbols if params.max_symbols is not None else ceiling
+        cap = min(requested, ceiling)
+        allow = bool(params.allow_truncation or settings.equities_allow_truncation)
+        return cap, allow
+
+    @staticmethod
+    def _resolve_symbols(params: EquitiesParams, constituents: dict[str, dict[str, Any]]) -> tuple[list[str], dict[str, dict[str, Any]], dict[str, Any] | None]:
         """Resolve the ticker list and the ticker -> (name, cik) metadata map."""
         if params.symbols:
             ordered = [symbol.strip().upper() for symbol in params.symbols if symbol.strip()]
@@ -282,9 +341,45 @@ class EquitiesGenerator:
             ordered = sorted(constituents)
             meta = constituents
 
-        if params.max_symbols is not None:
-            ordered = ordered[: params.max_symbols]
-        return ordered, meta
+        # APD-DATA-018. This was `ordered = ordered[: params.max_symbols]` -- a
+        # bare slice that truncated SILENTLY, recorded nothing, and returned a
+        # dataset indistinguishable from a complete one. The default was `None`,
+        # so in practice it never fired and every request fanned out over all
+        # 503 bundled constituents: 18-34 minutes against a 30 s budget.
+        #
+        # The cap is in SYMBOLS, not bytes, because measurement (2026-09-04)
+        # showed the cost is per request. See juniper_data/core/limits.py.
+        cap_symbols, allow_truncation = EquitiesGenerator._resolve_bounds(params)
+        requested_count = len(ordered)
+
+        if requested_count <= cap_symbols:
+            return ordered, meta, None
+
+        if not allow_truncation:
+            raise InputTooLargeError(
+                source="The requested universe",
+                unit=UNIT_SYMBOLS,
+                cap=cap_symbols,
+                actual=requested_count,
+                opt_in_env="JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION",
+            )
+
+        # Truncation is authorised. Which symbols survive is not arbitrary: the
+        # list is already deterministically ordered (sorted constituents, or the
+        # caller's own sequence), so the prefix is reproducible across runs
+        # rather than depending on dict iteration or download completion order.
+        kept = ordered[:cap_symbols]
+        truncation = build_truncation_meta(
+            reason=REASON_SYMBOL_CAP,
+            unit=UNIT_SYMBOLS,
+            cap=cap_symbols,
+            requested=requested_count,
+            imported=len(kept),
+            # Rows are not known until conditioning finishes; generate() fills
+            # this in. Recording 0 here would be a lie the caller could read.
+            records_imported=-1,
+        )
+        return kept, meta, truncation
 
     @staticmethod
     def _load_sec_ticker_map() -> dict[str, dict[str, Any]]:

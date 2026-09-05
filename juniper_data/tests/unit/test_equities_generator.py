@@ -23,6 +23,8 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+from juniper_data.core import limits as eq_limits
+
 pd = pytest.importorskip("pandas")
 pytest.importorskip("yfinance")
 
@@ -452,20 +454,37 @@ class TestEquitiesGeneratorInternals:
     def test_resolve_symbols_uses_sec_map_for_unknown(self, monkeypatch: pytest.MonkeyPatch) -> None:
         constituents = {"AAPL": {"name": "Apple", "cik": 320193, "sector": "Tech"}}
         monkeypatch.setattr(eq_gen.EquitiesGenerator, "_load_sec_ticker_map", staticmethod(lambda: {"ZZZZ": {"name": "Zeta Corp", "cik": 111}}))
-        ordered, meta = eq_gen.EquitiesGenerator._resolve_symbols(EquitiesParams(symbols=["AAPL", "ZZZZ"]), constituents)
+        ordered, meta, truncation = eq_gen.EquitiesGenerator._resolve_symbols(EquitiesParams(symbols=["AAPL", "ZZZZ"]), constituents)
         assert ordered == ["AAPL", "ZZZZ"]
         assert meta["ZZZZ"]["cik"] == 111
+        assert truncation is None
 
-    def test_resolve_symbols_defaults_to_full_universe(self) -> None:
+    def test_resolve_symbols_defaults_to_the_whole_universe_when_it_fits(self) -> None:
+        """The default universe is still every constituent -- when it fits the cap.
+
+        Renamed from ``…_defaults_to_full_universe``: under APD-DATA-018 the
+        default is bounded, so "full" is only true below the cap. The two-name
+        universe here is well under 14 and must be untouched and unannotated.
+        """
         constituents = {"MSFT": {"name": "MS", "cik": 789019, "sector": "Tech"}, "AAPL": {"name": "Apple", "cik": 320193, "sector": "Tech"}}
-        ordered, meta = eq_gen.EquitiesGenerator._resolve_symbols(EquitiesParams(), constituents)
+        ordered, meta, truncation = eq_gen.EquitiesGenerator._resolve_symbols(EquitiesParams(), constituents)
         assert ordered == ["AAPL", "MSFT"]
         assert meta is constituents
+        assert truncation is None
 
     def test_resolve_symbols_respects_max_symbols(self) -> None:
+        """A tightened cap is honoured -- but only with the opt-in.
+
+        Under APD-DATA-018 a cap that would cut is a REFUSAL by default, so this
+        arm now has to say it accepts a partial universe. The bare slice it used
+        to exercise silently returned two of three.
+        """
         constituents = {name: {"name": name, "cik": i, "sector": ""} for i, name in enumerate(["A", "B", "C"])}
-        ordered, _meta = eq_gen.EquitiesGenerator._resolve_symbols(EquitiesParams(max_symbols=2), constituents)
+        ordered, _meta, truncation = eq_gen.EquitiesGenerator._resolve_symbols(EquitiesParams(max_symbols=2, allow_truncation=True), constituents)
         assert ordered == ["A", "B"]
+        assert truncation["requested"] == 3
+        assert truncation["imported"] == 2
+        assert truncation["cap"] == 2
 
     def test_generate_skips_ticker_whose_download_raises(self) -> None:
         good = _ohlcv(seed=30)
@@ -498,3 +517,126 @@ class TestEquitiesGeneratorInternals:
         assert eq_gen.EquitiesGenerator._direction_onehot(empty).shape == (0, 2)
         assert eq_gen.EquitiesGenerator._regression_target(empty, "next_close").shape == (0, 1)
         assert eq_gen.EquitiesGenerator._dates_yyyymmdd(empty).shape == (0,)
+
+
+@pytest.mark.unit
+class TestUniverseSymbolCap:
+    """APD-DATA-018, equities half: bound the fan-out, and never cut it silently.
+
+    The cap is in **symbols**, not bytes, and that is the load-bearing choice.
+    Measurement on 2026-09-04 put 163x the payload at 1.16x the time, because
+    cost is per request: one symbol over 26 years is 210 KB and ~2 s, while the
+    Russell 3000 over *one day* is 92 KB and 1.7-3.2 h. A byte cap would admit
+    the expensive request and reject the cheap one.
+    """
+
+    @staticmethod
+    def _universe(count: int) -> dict[str, dict[str, object]]:
+        return {f"T{i:03d}": {"name": f"Name {i}", "cik": 1000 + i, "sector": ""} for i in range(count)}
+
+    def test_oversized_universe_is_refused_by_default(self) -> None:
+        """The default is refusal. A partial universe never reaches a caller who did not ask."""
+        with pytest.raises(eq_limits.InputTooLargeError) as excinfo:
+            eq_gen.EquitiesGenerator._resolve_symbols(EquitiesParams(), self._universe(40))
+        assert excinfo.value.unit == "symbols"
+        assert excinfo.value.cap == 14
+        assert excinfo.value.actual == 40
+        assert "allow_truncation" in str(excinfo.value)
+        assert "JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION" in str(excinfo.value)
+
+    def test_refusal_is_a_value_error(self) -> None:
+        """Subclassing ValueError is load-bearing: a missed catch lands on 400, not 500."""
+        with pytest.raises(ValueError):
+            eq_gen.EquitiesGenerator._resolve_symbols(EquitiesParams(), self._universe(40))
+
+    def test_opt_in_truncates_and_annotates(self) -> None:
+        """An authorised cut produces a partial universe AND its permanent record."""
+        ordered, _meta, truncation = eq_gen.EquitiesGenerator._resolve_symbols(EquitiesParams(allow_truncation=True), self._universe(40))
+        assert len(ordered) == 14
+        assert truncation["truncated"] is True
+        assert truncation["reason"] == "universe_exceeded_symbol_cap"
+        assert truncation["unit"] == "symbols"
+        assert truncation["cap"] == 14
+        assert truncation["requested"] == 40
+        assert truncation["imported"] == 14
+
+    def test_the_kept_prefix_is_deterministic(self) -> None:
+        """Which symbols survive must not depend on iteration or download order.
+
+        A truncated dataset that differs run to run is not reproducible, and the
+        annotation would describe a universe nobody can reconstruct.
+        """
+        universe = self._universe(40)
+        first, _m1, _t1 = eq_gen.EquitiesGenerator._resolve_symbols(EquitiesParams(allow_truncation=True), universe)
+        second, _m2, _t2 = eq_gen.EquitiesGenerator._resolve_symbols(EquitiesParams(allow_truncation=True), dict(reversed(list(universe.items()))))
+        assert first == second == sorted(universe)[:14]
+
+    def test_request_cannot_RAISE_the_deployment_cap(self) -> None:
+        """A request may only lower the bound -- including via max_symbols=None."""
+        with pytest.raises(eq_limits.InputTooLargeError) as excinfo:
+            eq_gen.EquitiesGenerator._resolve_symbols(EquitiesParams(max_symbols=9999), self._universe(40))
+        assert excinfo.value.cap == 14
+
+        ordered, _meta, truncation = eq_gen.EquitiesGenerator._resolve_symbols(EquitiesParams(max_symbols=None, allow_truncation=True), self._universe(40))
+        assert len(ordered) == 14, "max_symbols=None must mean 'no request limit', not 'unbounded'"
+        assert truncation["cap"] == 14
+
+    def test_deployment_opt_in_truncates_without_a_request_parameter(self) -> None:
+        """The env-var / .env surface works on its own, for CLI callers."""
+        settings = MagicMock()
+        settings.equities_max_symbols = 14
+        settings.equities_allow_truncation = True
+        with patch("juniper_data.api.settings.get_settings", return_value=settings):
+            ordered, _meta, truncation = eq_gen.EquitiesGenerator._resolve_symbols(EquitiesParams(), self._universe(40))
+        assert len(ordered) == 14
+        assert truncation["truncated"] is True
+
+    def test_universe_at_exactly_the_cap_is_not_truncated(self) -> None:
+        """The boundary is inclusive: 14 of 14 is complete, not a cut."""
+        ordered, _meta, truncation = eq_gen.EquitiesGenerator._resolve_symbols(EquitiesParams(), self._universe(14))
+        assert len(ordered) == 14
+        assert truncation is None
+
+    def test_generate_puts_the_annotation_on_the_returned_arrays(self) -> None:
+        """The descriptor has to reach ``generate()``'s output, not just the resolver.
+
+        Resolving the cut and *reporting* it are separate steps, and only the
+        second is what a consumer ever sees. A mutation that dropped the channel
+        assignment broke nothing until this arm existed -- every other test in
+        this class calls ``_resolve_symbols`` directly and would stay green with
+        the bound enforced and the record silently discarded.
+        """
+        tickers = [f"T{i:02d}" for i in range(16)]
+        ohlcv = {ticker: _ohlcv(seed=index) for index, ticker in enumerate(tickers)}
+        arrays = _generate(tickers, ohlcv, _shares(), allow_truncation=True)
+
+        annotation = arrays[eq_limits.TRUNCATION_META_KEY]
+        assert annotation["reason"] == "universe_exceeded_symbol_cap"
+        assert annotation["requested"] == 16
+        assert annotation["imported"] == 14
+        # records_imported is filled in after conditioning, so it must be a real
+        # row count -- not the -1 placeholder the resolver leaves behind.
+        assert annotation["records_imported"] == arrays["X_full"].shape[0] > 0
+        assert len(arrays["ticker_vocab"]) == 14
+
+    def test_generate_refuses_an_oversized_universe(self) -> None:
+        """The refusal survives all the way out through ``generate()``."""
+        tickers = [f"T{i:02d}" for i in range(16)]
+        ohlcv = {ticker: _ohlcv(seed=index) for index, ticker in enumerate(tickers)}
+        with pytest.raises(eq_limits.InputTooLargeError):
+            _generate(tickers, ohlcv, _shares())
+
+    def test_generate_omits_the_key_entirely_when_nothing_was_cut(self) -> None:
+        """Absence, not a falsy descriptor -- the same contract csv_import keeps."""
+        arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=1), "MSFT": _ohlcv(seed=2)}, _shares())
+        assert eq_limits.TRUNCATION_META_KEY not in arrays
+
+    def test_default_cap_matches_the_measured_budget(self) -> None:
+        """14 is the measured figure, not a round number.
+
+        30 s request budget / 2.1 s per symbol = 14.1. If this constant moves,
+        the measurement behind it (util/ad-hoc/2026-09-04_measure_equities_payloads.py)
+        has to move with it.
+        """
+        assert eq_limits.EQUITIES_DEFAULT_MAX_SYMBOLS == 14
+        assert eq_limits.EQUITIES_DEFAULT_ALLOW_TRUNCATION is False

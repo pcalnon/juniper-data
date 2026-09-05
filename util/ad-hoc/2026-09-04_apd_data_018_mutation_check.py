@@ -45,7 +45,9 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 GENERATOR = REPO / "juniper_data/generators/csv_import/generator.py"
 META = REPO / "juniper_data/core/meta.py"
-TEST_TARGET = "juniper_data/tests/unit/test_csv_import_generator.py"
+EQUITIES = REPO / "juniper_data/generators/equities/generator.py"
+EQUITIES_SEQ = REPO / "juniper_data/generators/equities_seq/generator.py"
+TEST_TARGETS = ["juniper_data/tests/unit/test_csv_import_generator.py", "juniper_data/tests/unit/test_equities_generator.py", "juniper_data/tests/unit/test_api_routes.py"]
 # ``-p juniper_data.api.app`` is not a plugin, it is an import-order fix.
 #
 # juniper-data carries a PRE-EXISTING circular import (confirmed on main, not
@@ -57,7 +59,7 @@ TEST_TARGET = "juniper_data/tests/unit/test_csv_import_generator.py"
 # the api package first. pytest imports ``-p`` modules before collection, which
 # makes that ordering explicit instead of accidental -- and keeps each mutation
 # run at ~0.3 s instead of the ~48 s a whole-directory run costs.
-PYTEST = [sys.executable, "-m", "pytest", TEST_TARGET, "-p", "juniper_data.api.app"]
+PYTEST = [sys.executable, "-m", "pytest", *TEST_TARGETS, "-p", "juniper_data.api.app"]
 
 
 @dataclass
@@ -76,8 +78,8 @@ MUTATIONS = [
     Mutation(
         name="M1-refusal-removed",
         path=GENERATOR,
-        old="        if not allow_truncation:\n            raise InputTooLargeError(source=params.file_path, bytes_total=max(stat_bytes, len(raw)), cap_bytes=cap_bytes)",
-        new="        if False:\n            raise InputTooLargeError(source=params.file_path, bytes_total=max(stat_bytes, len(raw)), cap_bytes=cap_bytes)",
+        old="        if not allow_truncation:\n            raise InputTooLargeError(source=f\"Source {params.file_path!r}\", unit=UNIT_BYTES, cap=cap_bytes, actual=max(stat_bytes, len(raw)), opt_in_env=\"JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION\")",
+        new="        if False:\n            raise InputTooLargeError(source=f\"Source {params.file_path!r}\", unit=UNIT_BYTES, cap=cap_bytes, actual=max(stat_bytes, len(raw)), opt_in_env=\"JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION\")",
         why="Silently truncates without an opt-in -- the exact behaviour the owner's decision forbids. Targets the READ-side refusal; the stat pre-check is a separate, cheaper arm.",
     ),
     Mutation(
@@ -121,6 +123,41 @@ MUTATIONS = [
         old="        raw = CsvImportGenerator._read_capped_bytes(path, cap_bytes + 1)\n        over_cap = len(raw) > cap_bytes",
         new="        raw = CsvImportGenerator._read_capped_bytes(path, cap_bytes + 1)\n        over_cap = stat_bytes > cap_bytes",
         why="Reinstates trusting stat: a FIFO (st_size 0) or a file that grew after the stat bypasses the bound.",
+    ),
+    Mutation(
+        name="E1-equities-request-can-raise-the-cap",
+        path=EQUITIES,
+        old="        cap = min(requested, ceiling)",
+        new="        cap = requested",
+        why="Makes the symbol bound caller-controlled: max_symbols=9999 skips the operator's ceiling.",
+    ),
+    Mutation(
+        name="E2-equities-refusal-removed",
+        path=EQUITIES,
+        old="        if not allow_truncation:\n            raise InputTooLargeError(",
+        new="        if False:\n            raise InputTooLargeError(",
+        why="Restores the silent slice: an oversized universe is cut with no opt-in and no refusal.",
+    ),
+    Mutation(
+        name="E3-equities-annotation-dropped",
+        path=EQUITIES,
+        old="        if truncation is not None:\n            truncation[\"records_imported\"] = int(len(full))\n            arrays[TRUNCATION_META_KEY] = truncation",
+        new="        if False:\n            truncation[\"records_imported\"] = int(len(full))\n            arrays[TRUNCATION_META_KEY] = truncation",
+        why="Bound still enforced, but the dataset no longer records that it is partial -- the half that makes truncation safe.",
+    ),
+    Mutation(
+        name="E4-equities-none-handling (EXPECTED SURVIVAL)",
+        path=EQUITIES,
+        old="        requested = params.max_symbols if params.max_symbols is not None else ceiling",
+        new="        requested = params.max_symbols if params.max_symbols is not None else 10**9",
+        expect_fail=False,
+        why=(
+            "Survives BY DESIGN, and that is the point worth pinning. Replacing the None "
+            "fallback with an absurd value changes nothing, because `cap = min(requested, "
+            "ceiling)` clamps it anyway. The clamp -- not the None handling -- is what makes "
+            "the bound unbypassable, so the None branch cannot be the single point of failure. "
+            "A RED here would mean the clamp had been removed."
+        ),
     ),
     Mutation(
         name="M6-helper-renamed (EXPECTED SURVIVAL)",
