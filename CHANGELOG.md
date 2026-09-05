@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING (default): `fundamentals_fill` is now `"nan"`, was `"zero"`.** Owner decision,
+  2026-09-05.
+
+  A `market_cap` of `0.0` is a value no listed company can have, and nothing downstream can tell it
+  apart from a measurement: it survives every dtype, range and NaN check, and a model trained on it
+  learns from a number a fill policy invented. NaN propagates visibly instead.
+
+  **Know the blast radius before upgrading.** This is not limited to the handful of tickers no
+  rescue path resolves. SEC XBRL reaches back to only ~2009, so **every ticker has trade rows before
+  its first filing** — a default request with `start_date=2000` now yields roughly **nine years of
+  NaN** in `total_shares`, `market_cap` and `days_since_report` for *every* symbol, where it
+  previously yielded `0.0`.
+
+  Consumers that cannot take NaN in `X` have two explicit options, and choosing one is now a
+  decision rather than a default: `fundamentals_fill="zero"` restores the old behaviour, and
+  `"drop"` removes the affected rows (which changes the universe size, and is why it is not the
+  default either).
+
+  **`juniper-cascor` has no NaN guard on ingested dataset arrays** — its only `torch.isfinite` check
+  covers weight patching, not `_artifact_to_tensors`. A NaN dataset will reach training and surface
+  as a NaN loss rather than a named refusal.
+
+### Added
+
+- **A fourth rescue rung: `us-gaap:CommonStockSharesIssued`, annotated as its own degraded basis.**
+  Owner decision, 2026-09-05. It rescues the three tickers no other rung reaches.
+
+  **Issued is a different quantity, not a weaker measurement of the same one** — it includes
+  treasury stock, so it is ≥ shares outstanding, materially so for a company that has bought back
+  stock. A `market_cap` built on it therefore *means something else* for that symbol, which is why
+  it carries its own `data_quality.degraded` value, `issued_includes_treasury`, rather than being
+  collapsed into the existing `period_average` label. A consumer that must compare market caps
+  across symbols can now exclude exactly the affected ones.
+
+  **It is the last rung, deliberately.** `WeightedAverageNumberOfSharesOutstandingBasic` is the
+  *right* quantity measured over a period; issued is the *wrong* quantity measured exactly. For a
+  market cap the first is nearer the truth, so issued is reached only when nothing else reported
+  anything at all. Pinned by `test_the_issued_rung_is_last_in_the_ladder`.
+
 ### Fixed
 
 - **A same-day restatement could overwrite the current share count — `market_cap` was silently

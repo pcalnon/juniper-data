@@ -81,6 +81,19 @@ _SHARES_OUTLIER_FACTOR = 100.0
 # XBRL shares-outstanding concepts, tried in order (dei cover-page first).
 _SHARES_CONCEPTS = (("dei", "EntityCommonStockSharesOutstanding"), ("us-gaap", "CommonStockSharesOutstanding"))
 
+# Provenance values recorded on the shares frame and surfaced in DatasetMeta.
+SHARES_SOURCE_CONCEPT = "companyconcept"
+SHARES_SOURCE_FACTS = "companyfacts"
+SHARES_QUALITY_POINT_IN_TIME = "point_in_time"
+SHARES_QUALITY_PERIOD_AVERAGE = "period_average"
+# ISSUED IS A DIFFERENT QUANTITY, not a weaker measurement of the same one.
+# Issued includes treasury stock, so it is >= outstanding -- materially so for a
+# company that has bought back stock. A ``market_cap`` built on it silently means
+# something else for that symbol, which is why it rides in ``data_quality`` as a
+# `degraded` entry naming this basis rather than being folded in silently.
+SHARES_QUALITY_ISSUED = "issued_includes_treasury"
+SHARES_QUALITY_UNRESCUED = "unrescued"
+
 # THE RESCUE LADDER, walked only when ``companyconcept`` yields nothing.
 #
 # Probed 2026-09-05 (``util/ad-hoc/2026-09-05_probe_shares_rescue_paths.py``)
@@ -123,18 +136,18 @@ _SHARES_CONCEPTS = (("dei", "EntityCommonStockSharesOutstanding"), ("us-gaap", "
 # optimistic 2.1 s/symbol, or roughly 6 at the conservative 4.0 s recorded in
 # ``juniper_data/core/limits.py``.
 _SHARES_FACTS_LADDER = (
-    ("dei", "EntityCommonStockSharesOutstanding", "point_in_time"),
-    ("us-gaap", "CommonStockSharesOutstanding", "point_in_time"),
-    ("us-gaap", "WeightedAverageNumberOfSharesOutstandingBasic", "period_average"),
+    ("dei", "EntityCommonStockSharesOutstanding", SHARES_QUALITY_POINT_IN_TIME),
+    ("us-gaap", "CommonStockSharesOutstanding", SHARES_QUALITY_POINT_IN_TIME),
+    ("us-gaap", "WeightedAverageNumberOfSharesOutstandingBasic", SHARES_QUALITY_PERIOD_AVERAGE),
+    # LAST, and last deliberately. The weighted average above is the RIGHT
+    # quantity measured over a period; issued is the WRONG quantity measured
+    # exactly. For a market cap, a time-averaged count of outstanding shares is
+    # nearer the truth than a precise count that includes treasury stock -- so
+    # this rung only runs when nothing else reported anything at all.
+    ("us-gaap", "CommonStockSharesIssued", SHARES_QUALITY_ISSUED),
 )
 _SEC_FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"
 
-# Provenance values recorded on the shares frame and surfaced in DatasetMeta.
-SHARES_SOURCE_CONCEPT = "companyconcept"
-SHARES_SOURCE_FACTS = "companyfacts"
-SHARES_QUALITY_POINT_IN_TIME = "point_in_time"
-SHARES_QUALITY_PERIOD_AVERAGE = "period_average"
-SHARES_QUALITY_UNRESCUED = "unrescued"
 
 _CONSTITUENTS_PATH = Path(__file__).resolve().parent / CONSTITUENTS_FILENAME
 _CACHE_DIR = Path(os.environ.get("JUNIPER_DATA_EQUITIES_CACHE_DIR", str(Path.home() / ".cache" / "juniper_data" / "equities")))
@@ -820,12 +833,13 @@ class EquitiesGenerator:
             entry = payload["facts"].get(taxonomy, {}).get(tag)
             if not entry or not any(entry.get("units", {}).values()):
                 continue
-            if quality == SHARES_QUALITY_PERIOD_AVERAGE:
+            if quality != SHARES_QUALITY_POINT_IN_TIME:
                 _logger.warning(
-                    "equities: cik=%s has no point-in-time shares concept; falling back to %s/%s (a PERIOD AVERAGE, not a point-in-time count) -- market_cap for this symbol is not directly comparable with the others",
+                    "equities: cik=%s has no point-in-time shares-outstanding concept; falling back to %s/%s (%s) -- market_cap for this symbol is not directly comparable with the others, and the dataset is annotated as degraded",
                     cik,
                     taxonomy,
                     tag,
+                    "a PERIOD AVERAGE, not a point-in-time count" if quality == SHARES_QUALITY_PERIOD_AVERAGE else "shares ISSUED, which includes treasury stock and so exceeds shares outstanding",
                 )
             return {"units": entry["units"]}, quality
         return None, SHARES_QUALITY_POINT_IN_TIME
