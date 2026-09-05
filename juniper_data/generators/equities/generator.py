@@ -83,27 +83,45 @@ _SHARES_CONCEPTS = (("dei", "EntityCommonStockSharesOutstanding"), ("us-gaap", "
 
 # THE RESCUE LADDER, walked only when ``companyconcept`` yields nothing.
 #
-# Measured 2026-09-05 over the 37 S&P 500 constituents that ``companyconcept``
-# reported as empty (``util/ad-hoc/2026-09-05_probe_shares_rescue_paths.py``):
-# **18 of them have the SAME dei concept, fully populated, in companyfacts** --
-# KO among them, with 71 facts and a current count of 4.30 billion shares. The
-# two SEC endpoints disagree for the same CIK, taxonomy and tag, so this was
-# never missing data; it was the wrong endpoint.
+# Probed 2026-09-05 (``util/ad-hoc/2026-09-05_probe_shares_rescue_paths.py``)
+# against the constituents ``companyconcept`` reported as empty: **18 have the
+# SAME dei concept, fully populated, in companyfacts** -- KO among them, with 71
+# facts and a current count of 4.30 billion shares. Rung 3 rescues 10 more (META,
+# RL, HRL, MKC, LEN, UHS, ABNB, TTD, TKO, XYZ). One name (STZ) has no share
+# concept at all in companyfacts.
 #
-# The mechanism, for whoever meets it next: both endpoints return only facts
-# with NO dimensional qualifiers. A multi-class filer tags shares outstanding
-# per share class (``us-gaap:StatementClassOfStockAxis``), and those facts carry
-# a dimension. companyfacts happens to surface a usable undimensioned series for
-# most of them anyway; companyconcept does not.
+# **The supported claim is ">= 28 of 37 rescued", not "37 -> 1".** The probe's
+# own gap list holds 29 entries (18 + 10 + 1), while its docstring says 37 --
+# eight of the census's names were never probed, so their outcome is unknown, not
+# rescued. Corrected 2026-09-05; the earlier "37 -> 1" is in this file's history,
+# in CHANGELOG.md and in RELEASE_NOTES_v0.13.0.md.
+#
+# **The mechanism is NOT what this comment used to claim.** It said both
+# endpoints exclude dimensional facts and that multi-class filers therefore go
+# missing. That story does not fit its own example: KO is SINGLE-class and its
+# rows carry no dimensional keys at all. What the evidence supports instead is an
+# UPSTREAM REGRESSION in ``companyconcept`` between 2026-06 and 2026-09 -- a
+# June-2026 cache holds KO's same 71 dei facts from the endpoint that returns
+# nothing today, and across the probed names the ones rescued at rungs 1-2 are
+# exactly the ones with a June cache entry. Population-level, "no data" went
+# 15 -> 37 against a constituents list unchanged since 2026-06-03.
+#
+# The ladder is still right -- a fallback does not need to know why the primary
+# failed -- but do not rely on it compensating for a PERMANENT property. If SEC
+# restores the endpoint the framing changes; if it degrades further, this rung is
+# not guaranteed either.
 #
 # Rung 3 is SEMANTICALLY WEAKER and is why provenance is recorded: a period
 # average is not a point-in-time count, so a market cap derived from it is not
-# the same quantity. It rescues 10 more (META, RL, HRL, MKC, LEN, UHS, ABNB,
-# TTD, TKO, XYZ). One name (STZ) has no share concept at all in companyfacts.
+# the same quantity.
 #
-# companyfacts costs ~1.15 s and ~5 MB against companyconcept's ~0.20 s and
-# ~600 B, so it must stay a FALLBACK: paying it for every symbol would cut the
-# 14-symbol cap to ~9.
+# companyfacts costs ~1.15 s and ~5 MB, so it must stay a FALLBACK. The
+# comparison against companyconcept's "~600 B" was misleading: 600 B is the size
+# of an EMPTY response, while a populated one has a median of ~10.9 KB across the
+# 485-payload cache -- so the honest ratio is ~455x, not ~8,300x. Paying
+# companyfacts per symbol would cut the 14-symbol cap to roughly 9 at the
+# optimistic 2.1 s/symbol, or roughly 6 at the conservative 4.0 s recorded in
+# ``juniper_data/core/limits.py``.
 _SHARES_FACTS_LADDER = (
     ("dei", "EntityCommonStockSharesOutstanding", "point_in_time"),
     ("us-gaap", "CommonStockSharesOutstanding", "point_in_time"),

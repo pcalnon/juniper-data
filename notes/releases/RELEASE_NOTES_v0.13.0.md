@@ -132,8 +132,14 @@ Defaulted to `0` so an already-stored record still loads (risk R-3).
 - **`csv_import` shipped an unnormalised `X_val`** — missing from the train-fit min-max application.
 
 Plus the equities work that landed in the same window: the filed-date look-ahead leak in shares
-outstanding, the `companyfacts` rescue ladder (37 unresolvable tickers → 1), the 14-symbol cap, and
-the refusal of datasets whose fundamentals cannot be resolved. See `CHANGELOG.md` for the full list.
+outstanding, the `companyfacts` rescue ladder (at least 28 of 37 unresolvable tickers rescued), the
+14-symbol cap, and the refusal of datasets whose fundamentals cannot be resolved. See `CHANGELOG.md`
+for the full list.
+
+*(Corrected 2026-09-05: this said "37 unresolvable tickers → 1". The probe covered **29** names —
+eight of the census's 37 were never probed — so the supported claim is ">= 28 of 37". The leak fix
+shipped here was also incomplete; see the `[Unreleased]` entry in `CHANGELOG.md` for the same-day
+restatement defect it left behind.)*
 
 ---
 

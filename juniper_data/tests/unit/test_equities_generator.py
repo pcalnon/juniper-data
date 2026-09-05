@@ -671,10 +671,19 @@ class TestUniverseSymbolCap:
     """APD-DATA-018, equities half: bound the fan-out, and never cut it silently.
 
     The cap is in **symbols**, not bytes, and that is the load-bearing choice.
-    Measurement on 2026-09-04 put 163x the payload at 1.16x the time, because
-    cost is per request: one symbol over 26 years is 210 KB and ~2 s, while the
-    Russell 3000 over *one day* is 92 KB and 1.7-3.2 h. A byte cap would admit
-    the expensive request and reject the cheap one.
+    A cap's unit must be something the server can measure BEFORE doing the work.
+    `csv_import` has a file in hand, so bytes are a `stat`. `equities` has no
+    input at all -- a request is a ticker list and a date range, and its byte
+    count does not exist until the API fan-out the cap exists to bound has
+    already run. The symbol count is known with zero network calls, which is
+    where `_resolve_symbols` raises.
+
+    (Corrected 2026-09-05: this docstring argued the choice from "163x the
+    payload at 1.16x the time ... a byte cap would admit the expensive request
+    and reject the cheap one". The byte arithmetic was inverted -- the published
+    92 KB omitted the per-request envelope on 2,923 separate calls, and the real
+    figure is ~2.07 MB, larger than the 210 KB single-symbol request. Bytes are
+    positively correlated with cost here. The cap is unchanged.)
     """
 
     @staticmethod

@@ -15,9 +15,26 @@ from a cited index fact sheet. Nothing here is estimated from intuition; where a
 figure is derived rather than measured it says so.
 
 The headline the numbers produce: **bytes and wall time do not scale together.**
-163x more payload cost 1.16x the time, because the cost is per-REQUEST, not
-per-byte. A byte cap therefore bounds the wrong quantity for this generator --
-which is the opposite of the csv_import half, where the input is a file.
+More payload costs almost no more time, because the cost is per-REQUEST, not
+per-byte.
+
+CORRECTED 2026-09-05, and the correction matters more than the headline:
+
+* This module's model was PURELY PROPORTIONAL -- ``days * WIRE_BYTES_PER_TRADING_DAY``
+  with no per-request term -- so a fan-out over N symbols was costed as if the N
+  HTTP envelopes were free. ``WIRE_BYTES_PER_REQUEST`` below fixes that. The
+  earlier run therefore under-reported multi-symbol requests by ~22x: the
+  Russell-3000-x-1-day row printed 91.6 KB where the real figure is ~2 MB.
+* Consequently a byte cap is NOT anti-correlated with cost, as the earlier
+  closing prose claimed. Bytes here rise with the symbol count, same as time
+  does. What actually rules a byte cap out is that **equities has no input to
+  measure**: its byte count does not exist until the fan-out the cap exists to
+  bound has already run, so the cap could only ever be a prediction derived from
+  (symbols x horizon). csv_import differs because its input is a file already in
+  hand.
+* ``SEC_BYTES_PER_SYMBOL`` is defined but never used, so every figure here is
+  Yahoo-only. Left as-is and labelled, rather than folded in on an unverified
+  per-symbol SEC cost.
 """
 
 from __future__ import annotations
@@ -30,7 +47,15 @@ from __future__ import annotations
 #   1 year         8,398         28,541       0.34
 #   5 years       36,762        139,113       0.42
 #   since 2000   215,505        724,740       0.58
-WIRE_BYTES_PER_TRADING_DAY = 32.1  # 215,505 / 6,708 rows (the longest sample)
+WIRE_BYTES_PER_TRADING_DAY = 30.6  # slope of the two smallest samples: (8,398 - 1,322) / (252 - 21)
+# FITTED, not measured. Every HTTP response carries a fixed envelope, and the
+# original model had no term for it -- which is why a 2,923-symbol request costed
+# out at 91.6 KB when it is 2,923 separate calls. Least-squares over the two
+# smallest rows above gives 1,322 - 21 * 30.6 = 679 B; the (1 year, 5 years) pair
+# gives 1,307 B. The spread is real: an OLS fit over all four rows returns a
+# NEGATIVE intercept, so treat the sign and the order of magnitude as robust and
+# the digits as indicative. A direct measurement would need a live Yahoo call.
+WIRE_BYTES_PER_REQUEST = 679.0
 RAW_BYTES_PER_TRADING_DAY = 108.0  # 724,740 / 6,708
 YF_SECONDS_PER_CALL = 1.85  # measured via yfinance (0.34-0.58 s direct; yfinance adds overhead)
 SEC_SECONDS_PER_CALL = 0.20  # dei/EntityCommonStockSharesOutstanding
@@ -38,7 +63,7 @@ SEC_CALLS_PER_SYMBOL = 1.4  # 1 call when the dei tag hits, 2 when it falls thro
 SEC_BYTES_PER_SYMBOL = 10_500  # ~10.5 KB, ~70 facts
 SEC_MIN_INTERVAL = 0.12  # SEC's 10 req/s ceiling, enforced in generator.py
 
-NPZ_X_BYTES_PER_ROW = 10 * 4  # EQUITIES_FEATURE_COLUMNS, float32
+NPZ_X_BYTES_PER_ROW = 16 * 4  # len(EQUITIES_FEATURE_COLUMNS), float32 -- was 10, stale since juniper-data#362 widened the matrix
 NPZ_Y_BYTES_PER_ROW = 4  # regression target, float32
 
 REQUEST_BUDGET_SECONDS = 30.0  # the client's default socket timeout
@@ -93,7 +118,7 @@ def main() -> int:
     print("=" * 100)
     print(f"{'horizon':<14} {'rows':>7} {'wire':>12} {'uncompressed':>14} {'NPZ X+y':>10} {'seconds':>9}")
     for label, days in HORIZONS.items():
-        wire = days * WIRE_BYTES_PER_TRADING_DAY
+        wire = WIRE_BYTES_PER_REQUEST + days * WIRE_BYTES_PER_TRADING_DAY
         raw = days * RAW_BYTES_PER_TRADING_DAY
         npz = days * (NPZ_X_BYTES_PER_ROW + NPZ_Y_BYTES_PER_ROW)
         secs = YF_SECONDS_PER_CALL + SEC_CALLS_PER_SYMBOL * SEC_SECONDS_PER_CALL
@@ -115,7 +140,7 @@ def main() -> int:
     for name, count in UNIVERSES.items():
         cells = []
         for label in horizons:
-            wire = count * HORIZONS[label] * WIRE_BYTES_PER_TRADING_DAY
+            wire = count * (WIRE_BYTES_PER_REQUEST + HORIZONS[label] * WIRE_BYTES_PER_TRADING_DAY)
             cells.append(f"{human(wire):>13}")
         print(f"{name:<20} {count:>8,} " + " ".join(cells))
 
@@ -140,12 +165,19 @@ def main() -> int:
     print("Bytes at that symbol count, longest horizon:")
     for frac, note in ((1.0, "full budget"), (0.5, "half budget")):
         symbols = max_symbols * frac
-        wire = symbols * HORIZONS["since 2000"] * WIRE_BYTES_PER_TRADING_DAY
+        wire = symbols * (WIRE_BYTES_PER_REQUEST + HORIZONS["since 2000"] * WIRE_BYTES_PER_TRADING_DAY)
         print(f"  {symbols:>5.1f} symbols x 6,708 days = {human(wire):>10}   ({note})")
     print()
-    print("A byte cap set anywhere near those figures would be measured in single-digit")
-    print("MB -- and would reject a 3,000-symbol x 1-day request (2.9 MB, ~2 hours) while")
-    print("accepting a 25-symbol x 26-year request (5.4 MB, ~50 s). It bounds the wrong axis.")
+    print("A byte cap cannot be enforced here at all. equities has no input to weigh --")
+    print("its byte count does not exist until the fan-out the cap exists to bound has")
+    print("already run, so the cap could only be a PREDICTION derived from symbols x")
+    print("horizon, i.e. a noisier restatement of the symbol cap. csv_import differs")
+    print("because its input is a file already in hand.")
+    print()
+    print("(The earlier version of these lines claimed a byte cap would 'reject a")
+    print("3,000-symbol x 1-day request (2.9 MB) while accepting a 25-symbol x 26-year")
+    print("request (5.4 MB)' -- no threshold does both, and the 2.9 MB contradicted this")
+    print("script's own 91.6 KB for that row. Corrected 2026-09-05.)")
     return 0
 
 

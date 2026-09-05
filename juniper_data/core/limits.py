@@ -16,17 +16,43 @@ to an async job.
 
 Two generators, two units, one contract
 ---------------------------------------
-The unit is not a style choice; it is whichever quantity the cost actually
-tracks, and the two generators differ:
+The unit is not a style choice. **A cap's unit must be something the server can
+measure BEFORE doing the work** -- otherwise enforcing it costs exactly what it
+was meant to prevent. The two generators differ because their inputs do:
 
-* **csv_import** bounds **bytes**. Its input is a file, and bytes are what an
-  operator can enforce without parsing it.
-* **equities** bounds **symbols**. Its input is an API fan-out, and measurement
-  (2026-09-04) showed cost is per *request*, not per byte -- 163x the payload
-  cost 1.16x the time. A byte cap there would be actively misleading: one symbol
-  over 26 years is 210 KB and ~2 s, while the Russell 3000 over *one day* is
-  92 KB and 1.7-3.2 h. The smaller payload is the far more expensive request, so
-  a byte threshold would admit exactly the wrong one.
+* **csv_import** bounds **bytes**. Its input is a file that is already in hand,
+  so the bound is a ``stat`` (then re-checked against the read, because ``stat``
+  is a claim about the file and not about what was actually consumed).
+* **equities** bounds **symbols**. It has **no input** -- a request is a ticker
+  list and a date range, and its byte count does not exist until the API fan-out
+  the cap is meant to bound has already happened. A byte cap there could only be
+  a *prediction* derived from (symbols x horizon), i.e. a noisier restatement of
+  the symbol cap. The symbol count, by contrast, is known with zero network
+  calls: ``_resolve_symbols`` counts the resolved list and raises.
+
+Cost being per *request* rather than per byte (2026-09-04) is why the cap is
+sized the way it is; it is not why the unit is symbols.
+
+.. note::
+
+   **Corrected 2026-09-05.** This docstring previously argued the unit from a
+   correlation -- "163x the payload cost 1.16x the time ... one symbol over 26
+   years is 210 KB and ~2 s, while the Russell 3000 over *one day* is 92 KB and
+   1.7-3.2 h. The smaller payload is the far more expensive request, so a byte
+   threshold would admit exactly the wrong one" -- and the direction was
+   **backwards**.
+
+   That 92 KB came from a purely proportional sizing model (``2,923 symbols x
+   32.1 B/day``) with **no per-request intercept**. Russell 3000 x 1 day is 2,923
+   separate HTTP calls; fitting an intercept to the source document's own two
+   smallest rows gives ~2.07 MB -- larger than the 210 KB single-symbol request,
+   not smaller. Bytes are **positively** correlated with cost here, so a byte cap
+   would not in fact have picked the wrong request.
+
+   The decision is unchanged. The argument above replaces it with one that does
+   not depend on the correlation at all. See
+   ``juniper-ml/notes/JUNIPER_2026-09-04_JUNIPER-DATA_EQUITIES-INGEST-SIZING-AND-FIELD-AVAILABILITY.md``
+   section 1.
 
 Everything else is shared, because the failure mode is shared.
 
