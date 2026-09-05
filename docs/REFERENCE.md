@@ -29,6 +29,7 @@
 - [Prometheus Collector Reference](#prometheus-collector-reference)
 - [Artifact Streaming](#artifact-streaming)
 - [Docker Reference](#docker-reference)
+- [Equities Symbol Cap](#equities-symbol-cap)
 - [CI/CD Pipeline Reference](#cicd-pipeline-reference)
 - [Additional Resources](#additional-resources)
 
@@ -1340,6 +1341,127 @@ All `JUNIPER_DATA_*` variables (see [Configuration](../AGENTS.md#configuration))
 ### Docker Compose
 
 Full-stack orchestration is in the `juniper-deploy` repository. JuniperData runs as a service alongside juniper-cascor and JuniperCanopy.
+
+---
+
+## Equities Symbol Cap
+
+Bound for `equities` / `equities_seq` (`APD-DATA-018` second half, lands with juniper-data#354). Generation runs **inside the request**. The previous default was `EQUITIES_DEFAULT_MAX_SYMBOLS = None` — all **503** bundled S&P 500 names, 18–34 minutes against a ~30 s client budget — and the only cut was a bare `ordered[: params.max_symbols]` that recorded nothing. #354 deletes that silent slice.
+
+`equities_seq` reuses `EquitiesGenerator._resolve_symbols` and must therefore carry the same annotation. Inheriting the bound while dropping the record is the worse half to skip.
+
+### Why symbols, not bytes
+
+Call count is `O(symbols)`, not `O(rows)`. Horizon grows the Yahoo payload; it does not add requests. Measurement (`util/ad-hoc/2026-09-04_measure_equities_payloads.py`, shipped in #348):
+
+| Request | Wire bytes | Wall time |
+|---------|-----------:|----------:|
+| 1 symbol × 26 years | 210 KB | ~2 s |
+| Russell 3000 × 1 day | 92 KB | 1.7–3.2 h |
+
+163× the payload cost 1.16× the time. A byte cap would admit the expensive request and refuse the cheap one.
+
+**14 = 30 s ÷ 2.1 s per symbol** (`EQUITIES_DEFAULT_MAX_SYMBOLS` in `juniper_data/core/limits.py`). A second measurement implied ~7; the owner took the optimistic end on 2026-09-04. `defaults.py` re-exports the constant so `api/settings.py` can import it without a generator-package cycle.
+
+### Surfaces and precedence
+
+Same privilege model as `csv_import`'s byte cap:
+
+| Surface | Cap (`max_symbols`) | Truncation opt-in (`allow_truncation`) |
+|---------|---------------------|----------------------------------------|
+| Request params (`EquitiesParams`) | May only **lower** the deployment ceiling: `min(requested, deployment)` | Per-request flag |
+| Environment / `.env` | `JUNIPER_DATA_EQUITIES_MAX_SYMBOLS` — hard ceiling, `gt=0` | `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION` |
+| Compiled default | **14** | `false` |
+
+- **`max_symbols`:** omit the field (or send `None`) to inherit the deployment ceiling. That is **not** unbounded — a caller cannot raise the operator cap, including via `max_symbols=9999` or `max_symbols=None`. `Settings.equities_max_symbols` rejects non-positive values at boot (`gt=0`).
+- **`allow_truncation`:** logical **OR**. Either the request opts in, or the deployment has opted in for every request. A client cannot opt *out* of the operator's choice.
+
+`_resolve_bounds` imports `get_settings` **inside the method**, not at module scope, so this generator does not join `csv_import`'s settings cycle.
+
+### What `_resolve_symbols` does
+
+1. If `params.symbols` is set: strip, uppercase, keep **caller order**. Unknown tickers get a CIK from SEC `company_tickers.json` (cached) or `cik=None`.
+2. Else: bundled `generators/equities/sp500_constituents.csv` (**503** names), ordered by `sorted(constituents)` — alphabetical ticker, not market cap.
+3. If `len(ordered) <= cap`: return the list, `truncation=None`.
+4. Else if truncation is not allowed: raise `InputTooLargeError` (a `ValueError` subclass).
+5. Else: keep the leading `cap` symbols and return a `build_truncation_meta(...)` descriptor (`records_imported=-1` until `generate()` fills the real row count).
+
+The silent prefix slice is gone. Default `EquitiesParams()` against the bundled 503 names **refuses**.
+
+`POST /v1/datasets` maps `InputTooLargeError` to **HTTP 422** with a string `detail` that names the actual count, the cap, and the remedy (`allow_truncation=true` or `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION`). Schema 422s still carry a list; check the type before iterating. Subclassing `ValueError` is load-bearing: a missed catch lands on the app-level **400**, not a 500. `batch-create` reuses `create_dataset`, so the same 422 becomes the per-item `error` string.
+
+### Permanent annotation
+
+When a cut is authorised, the generator places the descriptor on the reserved `"truncation"` channel (`TRUNCATION_META_KEY`). The route pops it with `pop_truncation_meta` **before** checksum and NPZ persist — same discipline as `pop_scaling_meta`. `generate()` fills `records_imported` after conditioning (`len(full)` for `equities`; `X_full.shape[0]` for `equities_seq`), so it counts rows that survived, not `symbols × sessions`.
+
+`DatasetMeta.truncation` (one shape for every generator):
+
+| Field | Meaning |
+|-------|---------|
+| `None` | Complete. Absence, not `{}` — a reader tests the field's presence alone. |
+| dict | Partial. Keys: `truncated` (`true`), `reason` (`universe_exceeded_symbol_cap`), `unit` (`symbols`), `cap`, `requested`, `imported`, `records_imported`. |
+
+#354 also replaced the earlier byte-specific `cap_bytes` / `bytes_total` / `bytes_read` keys with this shared shape (`unit` is `bytes` or `symbols`). Unreleased-to-unreleased; no published artifact carries the old keys.
+
+14 of 14 is complete (`truncation is None`). Which symbols survive is deterministic: sorted constituents, or the caller's own sequence. Dict-iteration / download-completion order must not change the prefix.
+
+### Per-symbol work (cold cache)
+
+For each remaining ticker, `_condition_one` does one `yf.download` (class shares mapped `BRK.B` → `BRK-B`) plus, if a CIK is known, 1–2 SEC GETs (`dei` then `us-gaap` shares-outstanding), spaced by `_SEC_MIN_INTERVAL = 0.12` s.
+
+`use_cache` defaults `True` (`~/.cache/juniper_data/equities`, override `JUNIPER_DATA_EQUITIES_CACHE_DIR`). Yahoo is `download` only — not `Ticker.info`. Missing SEC facts + default `fundamentals_fill="zero"` writes `0.0`. A later download failure still skips with a warning; only an empty conditioned set raises `ValueError`. Extra: `pip install "juniper-data[equities]"`; missing extra → `501`.
+
+### Operator usage
+
+```python
+from juniper_data.generators.equities.params import EquitiesParams
+from juniper_data.generators.equities.generator import EquitiesGenerator
+
+# Default universe is 503 names — this 422s / raises InputTooLargeError.
+# EquitiesParams()
+
+# Explicit list under the cap: complete, no annotation.
+EquitiesGenerator.generate(EquitiesParams(symbols=["AAPL", "MSFT"], start_date="2024-01-01", end_date="2024-06-01"))
+
+# Authorised cut of the bundled snapshot: first 14 alphabetical tickers + meta.truncation.
+EquitiesParams(allow_truncation=True)
+
+# Tighten further (caller order, then prefix): AAPL, MSFT — not AMZN.
+EquitiesParams(symbols=["AAPL", "MSFT", "AMZN"], max_symbols=2, allow_truncation=True)
+```
+
+Via `POST /v1/datasets`: `"generator": "equities"` / `"equities_seq"` with `"params": {"symbols": ["AAPL", "MSFT"]}` or `"params": {"allow_truncation": true}`. Deployment-wide: `JUNIPER_DATA_EQUITIES_MAX_SYMBOLS` / `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION`.
+
+### What not to do
+
+- Do not add a byte cap to this generator. Wire size and wall time do not scale together.
+- Do not treat omitted `symbols` / omitted `max_symbols` as an unbounded S&P 500 pull. The default universe is 503 names and **refuses**.
+- Do not treat `max_symbols=None` as unbounded. It means "no request-side limit"; the deployment ceiling still applies.
+- Do not let a request raise the deployment ceiling. The effective cap is `min(requested, deployment)`.
+- Do not restore `ordered[: params.max_symbols]` without the refusal / annotation pair. Silence is the failure mode this bound was warned about.
+- Do not default `allow_truncation` on.
+- Do not leave `"truncation"` in the NPZ. Pop it before checksum.
+- Do not store `{}` for "complete". `pop_truncation_meta` returns `None`.
+- Do not add a second resolver in `equities_seq`. Inherit both the bound and the record.
+- Do not assume the default-universe prefix is the largest names — it is alphabetical.
+- Do not call `Ticker.info`. The Yahoo path is `yf.download` only.
+- Do not take `total_shares == 0` as "the company has no shares" under default fill.
+
+### Pins (land with #354)
+
+| Test | File | Guards |
+|------|------|--------|
+| `TestUniverseSymbolCap.test_oversized_universe_is_refused_by_default` | `tests/unit/test_equities_generator.py` | 40 names, no opt-in → `InputTooLargeError` (unit `symbols`, cap 14) |
+| `test_opt_in_truncates_and_annotates` | same | Authorised cut writes `universe_exceeded_symbol_cap` + `imported == 14` |
+| `test_the_kept_prefix_is_deterministic` | same | Reversed dict order still yields `sorted(universe)[:14]` |
+| `test_request_cannot_RAISE_the_deployment_cap` | same | `max_symbols=9999` and `None` still clamp to 14 |
+| `test_generate_puts_the_annotation_on_the_returned_arrays` | same | Channel key reaches `generate()` output; `records_imported` is a real row count |
+| `test_generate_refuses_an_oversized_universe` | same | Refusal survives the full `generate()` path |
+| `test_generate_omits_the_key_entirely_when_nothing_was_cut` | same | Under-cap has no `"truncation"` key |
+| `test_default_cap_matches_the_measured_budget` | same | Constant stays 14; truncation default stays `false` |
+| `util/ad-hoc/2026-09-04_apd_data_018_mutation_check.py` | ad-hoc | Mutation matrix spanning both generators |
+
+`equities_seq` is covered by calling `EquitiesGenerator._resolve_symbols` and then attaching the same channel key. Re-measure with `util/ad-hoc/2026-09-04_measure_equities_payloads.py` before moving the constant. Keep SEC spacing at `_SEC_MIN_INTERVAL`. Full analysis: juniper-ml `notes/JUNIPER_2026-09-04_JUNIPER-DATA_EQUITIES-INGEST-SIZING-AND-FIELD-AVAILABILITY.md`.
 
 ---
 

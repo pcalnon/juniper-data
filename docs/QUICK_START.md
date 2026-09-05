@@ -116,6 +116,8 @@ The NPZ artifact contains keys: `X_train`, `y_train`, `X_val`, `y_val`, `X_test`
 | `csv_import` | CSV/JSON file import |
 | `mnist` | MNIST / Fashion-MNIST |
 | `arc_agi` | ARC-AGI visual reasoning tasks |
+| `equities` | S&P 500 daily OHLCV + SEC shares (default cap **14** symbols; oversized universe is 422 unless `allow_truncation`) |
+| `equities_seq` | Windowed equities; same cap and annotation |
 
 List all generators and their parameter schemas:
 
@@ -168,6 +170,7 @@ pytest -m generators
 - [API Reference](api/JUNIPER_DATA_API.md) -- full endpoint documentation with schemas
 - [Testing Quick Start](testing/TESTING_QUICK_START.md) -- get tests running in 5 minutes
 - [CI/CD Quick Start](ci_cd/CICD_QUICK_START.md) -- run CI checks locally
+- [Equities symbol cap](REFERENCE.md#equities-symbol-cap) -- APD-DATA-018: default 14-symbol bound; refuse unless opted in
 
 ---
 

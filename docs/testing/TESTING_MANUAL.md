@@ -112,6 +112,8 @@ juniper_data/tests/
 | `test_circles_generator.py` | Generator | Concentric circles generator |
 | `test_csv_import_generator.py` | Generator | CSV/JSON file import; byte-cap refusal and truncation annotation |
 | `test_dataset_id.py` | Core | DatasetID class and validation |
+| `test_equities_generator.py` | Generator | Flat equities; APD-DATA-018 symbol cap (`TestUniverseSymbolCap`) |
+| `test_equities_seq_generator.py` | Generator | Windowed equities; same `_resolve_symbols` + truncation channel |
 | `test_gaussian_generator.py` | Generator | Mixture of Gaussians generator |
 | `test_health_enhanced.py` | API | Health check endpoint |
 | `test_hf_store.py` | Storage | Hugging Face storage backend |
@@ -460,6 +462,12 @@ pytest juniper_data/tests/unit/test_no_import_cycles.py
 ```
 
 > See: [REFERENCE.md -- API Package Import Graph](../REFERENCE.md#api-package-import-graph)
+
+### Equities symbol-cap tests
+
+`TestUniverseSymbolCap` (lands with #354) is the pin for APD-DATA-018's equities half. Default is **refusal**: 40 names and no opt-in must raise `InputTooLargeError` with `unit == "symbols"` and `cap == 14`. An authorised cut must write `DatasetMeta.truncation` (`reason=universe_exceeded_symbol_cap`) and the kept prefix must be `sorted(universe)[:14]`.
+
+`test_generate_puts_the_annotation_on_the_returned_arrays` is load-bearing — resolver-only tests stay green if `generate()` drops the channel key. Do not replace these with a live Yahoo/SEC timing assertion. `equities_seq` must keep calling `EquitiesGenerator._resolve_symbols` and attach the same key; a second resolver would need its own pin.
 
 ---
 

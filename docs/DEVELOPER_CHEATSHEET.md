@@ -165,11 +165,29 @@ All arrays `float32`. Keys: `X_train`, `y_train`, `X_val`, `y_val`, `X_test`, `y
 
 ---
 
+<<<<<<< HEAD
 ## Empty-train shape metadata
 
 `compute_shape_meta` (called from `POST /v1/datasets` for every generator) takes `n_features` from `X_train.shape[-1]` even when `n_train == 0`. Empty arrays still have a defined trailing axis. Do not restore `else 2` — a 2-D import with F=5 or a 3-D sequence with F=3 would persist `n_features=2`. Classification `n_classes` already falls back to `y_test`. Pin: `test_meta_dispatch.py` empty-train cases (#340).
 
 > See: [REFERENCE.md -- Empty-Train Shape Metadata](REFERENCE.md#empty-train-shape-metadata)
+=======
+## Equities symbol cap
+
+`equities` / `equities_seq` fan out one Yahoo `download` plus 1–2 SEC `companyconcept` calls **per ticker**. APD-DATA-018's bound is `max_symbols` (default **14**), not bytes.
+
+An oversized universe is **refused with 422** unless `allow_truncation`, `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION`, or the matching `.env` entry is set. A request may only *lower* the cap (`min(requested, JUNIPER_DATA_EQUITIES_MAX_SYMBOLS)`); `max_symbols=None` means "no request-side limit", not unbounded.
+
+Default `EquitiesParams()` is the 503-name snapshot and **refuses**. Authorised cuts write `DatasetMeta.truncation` (`unit=symbols`, `reason=universe_exceeded_symbol_cap`). Prefix is alphabetical (or caller order). Extra: `pip install "juniper-data[equities]"`.
+
+```python
+EquitiesParams(symbols=["AAPL", "MSFT"])                         # fits; no annotation
+EquitiesParams(allow_truncation=True)                            # first 14 alphabetical S&P names + meta.truncation
+EquitiesParams(symbols=["AAPL", "MSFT", "AMZN"], max_symbols=2, allow_truncation=True)
+```
+
+> See: [REFERENCE.md -- Equities Symbol Cap](REFERENCE.md#equities-symbol-cap)
+>>>>>>> 03b3b94c6b3b10526e5894a1d892fd5db1d18379
 
 ---
 
@@ -259,9 +277,15 @@ pre-commit install --hook-type pre-push  # coverage gate (one-time)
 | Artifact 200 with empty body | Existence check moved inside the generator | Return `None` from `open_artifact_stream` before yielding |
 | `ImportError: redis`    | Optional backend   | `pip install redis`                                      |
 | Coverage pre-push fails | Below threshold    | Add tests; see `scripts/check_module_coverage.py`        |
+<<<<<<< HEAD
 | `ImportError: cannot import name 'VERSION'` collecting a generator test in isolation | `api/__init__.py` eagerly imported `create_app` | Keep `create_app` lazy. Do not pre-import routes. See [API Package Import Graph](REFERENCE.md#api-package-import-graph) |
 | `csv_import` 422 naming MB + `allow_truncation` | Source over the byte cap | Pass `"allow_truncation": true`, or set `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION=true`. A huge request `max_bytes` cannot raise the deployment ceiling. `meta.truncation is None` means complete. See [CSV Import Byte Cap](REFERENCE.md#csv-import-byte-cap). |
 | Path traversal / file not found on `csv_import` | `file_path` outside `JUNIPER_DATA_IMPORT_DIR` | Put the file under the import dir and pass a relative path. This is not the 10 MB HTTP body limit. |
+=======
+| Equities `422` / `InputTooLargeError` | Default universe is 503 names; cap is 14 | Pass `symbols` ≤ cap, or set `allow_truncation=true` / `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION` |
+| Equities generate hangs / times out | Uncached fan-out still costs ~2.1 s/symbol | Keep `use_cache=True`; do not raise the cap without re-measuring |
+| Equities `total_shares` all zeros | SEC returned no facts; default `fundamentals_fill="zero"` | Check CIK / logs; try `fundamentals_fill="nan"`; do not read 0 as "no shares" |
+>>>>>>> 03b3b94c6b3b10526e5894a1d892fd5db1d18379
 
 ---
 
