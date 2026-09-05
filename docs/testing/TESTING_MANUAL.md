@@ -42,6 +42,7 @@
    - [Import-cycle tests](#import-cycle-tests)
 
    - [DatasetMeta n_val pins](#datasetmeta-n_val-pins)
+   - [Truncation-edge tests](#truncation-edge-tests)
 9. [Pre-commit Integration](#pre-commit-integration)
 10. [Troubleshooting](#troubleshooting)
 
@@ -478,6 +479,17 @@ pytest juniper_data/tests/unit/test_no_import_cycles.py
 These pins live in `test_meta_dispatch.py`, on `main` since #358; the three-way *sizing* pins are in `test_split.py`. Generators emit three partitions.
 
 > See: [REFERENCE.md -- DatasetMeta n_val and Three-Partition Counts](../REFERENCE.md#datasetmeta-n_val-and-three-partition-counts)
+### Truncation-edge tests
+
+Authorised `csv_import` truncation has three silent failure modes that an ordinary under-cap / over-cap pair will not catch (#372):
+
+- A minified JSON array (`json.dumps(..., separators=(",", ":"))`, no newline) must import complete elements under a byte cap, not raise `No data found in file`.
+- A 2-column CSV whose unclosed `"` swallows later lines has no `None` fields; the quote scan must still drop that last row.
+- `bind_deployment_defaults` must put the *effective* cap and opt-in in `params.model_dump()` so `generate_dataset_id` does not hash Field defaults. Pin the API cache: a tight then wide deployment cap must not reuse `dataset_id`.
+
+These are on `test_csv_import_generator.py` and `test_api_routes.py`, landed by #372 and #373.
+
+> See: [REFERENCE.md -- CSV Import Truncation Edges](../REFERENCE.md#csv-import-truncation-edges)
 
 ---
 
