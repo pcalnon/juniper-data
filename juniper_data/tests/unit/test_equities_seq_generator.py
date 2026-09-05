@@ -251,3 +251,15 @@ class TestEquitiesSeqGeneratorBranches:
     def test_generate_raises_when_all_tickers_too_short(self) -> None:
         with pytest.raises(ValueError, match="lookback"):
             _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=26, periods=8), "MSFT": _ohlcv(seed=27, periods=8)}, _shares(), lookback=20)
+
+    def test_normalize_features_bounds_train_windows(self) -> None:
+        """TRAIN windows are bounded by [0, 1]; later windows are NOT (juniper-data#314).
+
+        ``equities_seq`` has its own fit path — concatenated per-ticker training rows
+        cut at ``temporal_split_index`` — independent of the flat generator. The previous
+        smoke test only asserted ``X_full.shape[0] > 0``, which holds under a full-matrix
+        fit and so could not catch a regression that reintroduced the leak here.
+        """
+        arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=22), "MSFT": _ohlcv(seed=23)}, _shares(), lookback=5, normalize_features=True)
+        train = arrays["X_train"]
+        assert train.min() >= -1e-6 and train.max() <= 1.0 + 1e-6, "the fitted partition's windows must be bounded"

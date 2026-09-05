@@ -66,6 +66,7 @@ def csv_dir():
     with tempfile.TemporaryDirectory(prefix="juniper_fitscope_") as tmp:
         _write_csv(tmp)
         _write_constant_csv(tmp)
+        _write_single_row_csv(tmp)
         os.environ["JUNIPER_DATA_IMPORT_DIR"] = tmp
         if hasattr(get_settings, "cache_clear"):
             get_settings.cache_clear()
@@ -88,6 +89,15 @@ def _write_constant_csv(directory: str) -> None:
         writer.writerow(["f0", "f1", "label"])
         for i in range(10):
             writer.writerow([5, i, i % 2])
+
+
+def _write_single_row_csv(directory: str) -> None:
+    """One row so ``round(n * train_ratio)`` can empty the training partition."""
+    path = pathlib.Path(directory, "single.csv")
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["f0", "f1", "label"])
+        writer.writerow([10, 20, 1])
 
 
 class TestCsvImportFitScope:
@@ -120,6 +130,50 @@ class TestCsvImportFitScope:
         assert np.isfinite(out["X_train"]).all()
         assert np.isfinite(out["X_test"]).all()
 
+    def test_same_train_statistics_are_applied_to_every_partition(self, csv_dir):
+        """X_full is the original rows scaled by the same stats as train and test.
+
+        With shuffle=False the split is positional, so X_full is the concatenation
+        train | val | test. Fitting each partition independently would bound all three
+        blocks and break this identity. A full-matrix fit would still satisfy it; the
+        discriminating leak guard is ``test_test_partition_escapes_the_bound``.
+
+        Harvested from a branch that predates the val partition, where this asserted a
+        TWO-way concatenation. Ratios are given explicitly rather than leaning on the
+        default val_ratio, and a NON-EMPTY val is used deliberately -- asserting over
+        three blocks of which one is empty would not have caught a val that is scaled by
+        its own statistics.
+        """
+        out = CsvImportGenerator.generate(CsvImportParams(file_path="d.csv", label_column="label", normalize_features=True, shuffle=False, train_ratio=0.5, val_ratio=0.2, test_ratio=0.3))
+        n_train = out["X_train"].shape[0]
+        n_val = out["X_val"].shape[0]
+        assert n_train and n_val and out["X_test"].shape[0]
+        np.testing.assert_allclose(out["X_full"][:n_train], out["X_train"], rtol=1e-5, atol=1e-6)
+        np.testing.assert_allclose(out["X_full"][n_train : n_train + n_val], out["X_val"], rtol=1e-5, atol=1e-6)
+        np.testing.assert_allclose(out["X_full"][n_train + n_val :], out["X_test"], rtol=1e-5, atol=1e-6)
+        assert out["X_full"].max() > 1.0 + 1e-6
+
+    def test_empty_test_partition_is_applied_without_error(self, csv_dir):
+        """``test_ratio=0`` yields an empty X_test; ``_apply_minmax`` must pass it through."""
+        out = CsvImportGenerator.generate(CsvImportParams(file_path="d.csv", label_column="label", normalize_features=True, shuffle=False, train_ratio=1.0, val_ratio=0.0, test_ratio=0.0))
+        assert out["X_test"].shape[0] == 0
+        assert out["X_val"].shape[0] == 0
+        train = out["X_train"]
+        assert train.min() >= -1e-6 and train.max() <= 1.0 + 1e-6
+
+    def test_empty_training_partition_falls_back_to_full_without_nan(self, csv_dir):
+        """1 row + train_ratio 0.4 rounds to zero train rows: fit on full, stay finite.
+
+        ``X_train if X_train.shape[0] else X_full`` is the empty-train guard. A full-set
+        fit here is not a leak — there is no training partition to contaminate.
+        """
+        out = CsvImportGenerator.generate(CsvImportParams(file_path="single.csv", label_column="label", normalize_features=True, shuffle=False, train_ratio=0.4, val_ratio=0.0, test_ratio=0.6))
+        assert out["X_train"].shape[0] == 0
+        assert out["X_test"].shape[0] == 1
+        assert np.isfinite(out["X_test"]).all()
+        assert np.isfinite(out["X_full"]).all()
+        assert out["X_test"].min() >= -1e-6 and out["X_test"].max() <= 1.0 + 1e-6
+
 
 # NOTE: the two equities generators are asserted END TO END in their own suites, each against
 # the real conditioned-frame schema via that module's mocked-download helpers:
@@ -137,3 +191,40 @@ class TestCsvImportFitScope:
 # with a try/except that skipped on schema mismatch -- a test that reports success without
 # executing its assertion. That is the failure mode this arc keeps finding, and it is not
 # worth adding one deliberately for coverage of a path already covered end to end.
+
+
+class TestCsvImportMinmaxHelpers:
+    """Direct coverage of the helpers ``generate`` gained when the split moved first.
+
+    Unlike the equities ``_raw_features`` helper (which needs a conditioned frame schema),
+    these operate on plain float32 matrices, so they can be asserted without a skip-on-mismatch
+    try/except.
+    """
+
+    def test_fit_uses_only_the_rows_it_is_given(self):
+        """THE helper-level discriminating assertion — later rows must not enter the stats."""
+        train = np.array([[0.0, 0.0], [2.0, 4.0]], dtype=np.float32)
+        later = np.array([[10.0, 20.0]], dtype=np.float32)
+        minimum, scale = CsvImportGenerator._fit_minmax(train)
+        np.testing.assert_array_equal(minimum, np.array([[0.0, 0.0]], dtype=np.float32))
+        np.testing.assert_array_equal(scale, np.array([[2.0, 4.0]], dtype=np.float32))
+        applied_train = CsvImportGenerator._apply_minmax(train, minimum, scale)
+        assert applied_train.min() >= -1e-6 and applied_train.max() <= 1.0 + 1e-6
+        applied_later = CsvImportGenerator._apply_minmax(later, minimum, scale)
+        assert applied_later.max() > 1.0 + 1e-6
+
+    def test_apply_passes_empty_matrix_through(self):
+        empty = np.zeros((0, 2), dtype=np.float32)
+        minimum = np.array([[0.0, 0.0]], dtype=np.float32)
+        scale = np.array([[1.0, 1.0]], dtype=np.float32)
+        out = CsvImportGenerator._apply_minmax(empty, minimum, scale)
+        assert out.shape == (0, 2)
+        np.testing.assert_array_equal(out, empty)
+
+    def test_fit_zero_range_column_uses_scale_of_one(self):
+        matrix = np.array([[5.0, 0.0], [5.0, 2.0]], dtype=np.float32)
+        minimum, scale = CsvImportGenerator._fit_minmax(matrix)
+        assert scale[0, 0] == 1.0
+        applied = CsvImportGenerator._apply_minmax(matrix, minimum, scale)
+        assert np.isfinite(applied).all()
+        assert applied[0, 0] == 0.0
