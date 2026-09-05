@@ -360,11 +360,14 @@ Each row sums to 1.0 and contains exactly one 1.0 value.
 Juniper Data guarantees:
 
 1. All arrays are `float32` dtype
-2. All arrays are 2-dimensional
-3. `X_*` arrays have shape `(n, n_features)`
-4. `y_*` arrays have shape `(n, n_classes)`
-5. `y_*` arrays are valid one-hot encodings (each row sums to 1.0)
-6. `len(X_train) + len(X_test) == len(X_full)`
+2. `X_*` is 2-dimensional `(n, n_features)` for tabular generators and
+   **3-dimensional** `(n, lookback, n_features)` for the sequence generators
+   (`ar_p`, `delay_product`, `equities_seq`, `irregular_sine`, `mackey_glass`,
+   `multi_sine`). Check `meta.sequence` rather than assuming a rank.
+3. `y_*` arrays have shape `(n, n_classes)` -- or `(n, 1)` for regression targets
+4. `y_*` classification arrays are valid one-hot encodings (each row sums to 1.0)
+5. `X_train`, `X_val` and `X_test` are all present and all non-empty
+6. `len(X_train) + len(X_val) + len(X_test) == len(X_full)`
 
 ### Loading Artifacts
 

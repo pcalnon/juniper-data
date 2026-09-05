@@ -320,6 +320,61 @@ def temporal_split_index(n_samples: int, train_ratio: float) -> int:
     return max(idx, 0)
 
 
+def temporal_split_indices(n_samples: int, train_ratio: float, val_ratio: float) -> tuple[int, int]:
+    """The two chronological boundaries of a three-way time-ordered split.
+
+    The three-partition counterpart of :func:`temporal_split_index`. Rows
+    ``[0, train_end)`` are train (earliest), ``[train_end, val_end)`` are
+    validation, and ``[val_end, n)`` are test (latest).
+
+    **The order is the point.** Validation sits BETWEEN train and test in time,
+    so every train target precedes every validation target and every validation
+    target precedes every test target. That keeps the no-future-leak guarantee
+    transitive: early stopping never sees data from after the reported window,
+    and the reported score is measured on the most recent rows -- which is what a
+    forecaster is actually asked to do.
+
+    Test takes the remainder rather than its own rounded share, so no window is
+    dropped to independent rounding (the same defect the tabular carve had at
+    0.8 / 0.1 / 0.1 over four rows).
+
+    For ``n_samples >= 3`` the boundaries are clamped so all three partitions are
+    non-empty; below that a three-way split is not expressible and the caller is
+    expected to have refused earlier.
+
+    Args:
+        n_samples: total number of time-ordered rows (windows).
+        train_ratio: fraction of the earliest rows used for training, ``(0, 1]``.
+        val_ratio: fraction used for validation, ``[0, 1)``.
+
+    Returns:
+        ``(train_end, val_end)``.
+
+    Raises:
+        ValueError: if ``train_ratio`` is not in ``(0, 1]``, ``val_ratio`` is not
+            in ``[0, 1)``, or the two together leave no room for a test split.
+    """
+    if not (0.0 < train_ratio <= 1.0):
+        raise ValueError(f"train_ratio must be in (0, 1], got {train_ratio}")
+    if not (0.0 <= val_ratio < 1.0):
+        raise ValueError(f"val_ratio must be in [0, 1), got {val_ratio}")
+    if train_ratio + val_ratio >= 1.0:
+        raise ValueError(f"train_ratio ({train_ratio}) + val_ratio ({val_ratio}) must be < 1.0 to leave a test split, got {train_ratio + val_ratio}")
+
+    train_end = int(round(n_samples * train_ratio))
+    val_end = train_end + int(round(n_samples * val_ratio))
+
+    if n_samples >= 3:
+        # Clamp so each partition keeps at least one row, preserving order.
+        train_end = min(max(train_end, 1), n_samples - 2)
+        val_end = min(max(val_end, train_end + 1), n_samples - 1)
+    else:
+        train_end = min(max(train_end, 0), n_samples)
+        val_end = min(max(val_end, train_end), n_samples)
+
+    return train_end, val_end
+
+
 # --- Sizing-mode resolution ---------------------------------------------------
 #
 # Design section 6.3 requires TWO sizing models, not one:

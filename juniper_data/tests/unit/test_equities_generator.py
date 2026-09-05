@@ -95,7 +95,7 @@ class TestEquitiesGenerator:
 
     def test_keys_shapes_and_dtypes(self) -> None:
         arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=1), "MSFT": _ohlcv(seed=2)}, _shares())
-        for key in ("X_train", "y_train", "X_test", "y_test", "X_full", "y_full", "y_reg_full", "ticker_code_full", "date_full", "ticker_vocab"):
+        for key in ("X_train", "y_train", "X_val", "y_val", "X_test", "y_test", "X_full", "y_full", "y_reg_full", "ticker_code_full", "date_full", "ticker_vocab"):
             assert key in arrays, f"missing {key}"
 
         n = arrays["X_full"].shape[0]
@@ -107,8 +107,11 @@ class TestEquitiesGenerator:
         assert arrays["ticker_code_full"].dtype == np.int32
         assert arrays["date_full"].dtype == np.int32
         assert arrays["ticker_vocab"].tolist() == ["AAPL", "MSFT"]
-        # train + test partition the full set (temporal split, no overlap/loss).
-        assert arrays["X_train"].shape[0] + arrays["X_test"].shape[0] == n
+        # train + val + test partition the full set (temporal split, no overlap/loss).
+        # The default ratios are 0.8 / 0.1 / 0.1, so all three are non-empty here and
+        # the sum is exact rather than a lower bound.
+        assert arrays["X_val"].shape[0] > 0, "val partition must be non-empty"
+        assert arrays["X_train"].shape[0] + arrays["X_val"].shape[0] + arrays["X_test"].shape[0] == n
 
     def test_direction_target_is_onehot_and_correct(self) -> None:
         frame = _ohlcv(seed=3)
@@ -148,11 +151,15 @@ class TestEquitiesGenerator:
         assert abs(float(ret["y_reg_full"].mean())) < 1.0
 
     def test_temporal_split_ordering_per_ticker(self) -> None:
-        arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=5), "MSFT": _ohlcv(seed=6)}, _shares(), train_ratio=0.7, test_ratio=0.3)
+        arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=5), "MSFT": _ohlcv(seed=6)}, _shares(), train_ratio=0.6, val_ratio=0.1, test_ratio=0.3)
         for code in range(len(arrays["ticker_vocab"])):
-            train_dates = arrays["date_train"][arrays["ticker_code_train"] == code]
-            test_dates = arrays["date_test"][arrays["ticker_code_test"] == code]
-            assert train_dates.max() <= test_dates.min(), "train must precede test"
+            per_split = {s: arrays[f"date_{s}"][arrays[f"ticker_code_{s}"] == code] for s in ("train", "val", "test")}
+            assert all(d.size for d in per_split.values()), "each partition must claim rows for every ticker"
+            # Transitive, not just train < test: checking the endpoints alone would
+            # leave val free to overlap either neighbour, and val is the split early
+            # stopping reads.
+            for earlier, later in (("train", "val"), ("val", "test"), ("train", "test")):
+                assert per_split[earlier].max() <= per_split[later].min(), f"{earlier} must precede {later}"
 
     def test_week52_high_low(self) -> None:
         frame = _ohlcv(seed=7)
@@ -304,7 +311,10 @@ class TestEquitiesParams:
     """Validation behavior of EquitiesParams."""
 
     def test_version_string(self) -> None:
-        assert VERSION == "1.0.0"
+        # 2.0.0 since the val partition: the dataset ID hashes this version, so a
+        # seeded request that produced a two-way artifact must not resolve to the
+        # same ID now that the same params produce a three-way one (risk R-1).
+        assert VERSION == "2.0.0"
 
     def test_get_schema_returns_json_schema(self) -> None:
         schema = get_schema()
@@ -313,8 +323,19 @@ class TestEquitiesParams:
         assert "fundamentals_fill" in schema["properties"]
 
     def test_invalid_ratio_sum_rejected(self) -> None:
-        with pytest.raises(ValueError, match="train_ratio \\+ test_ratio"):
+        with pytest.raises(ValueError, match="train_ratio \\+ val_ratio \\+ test_ratio"):
             EquitiesParams(train_ratio=0.8, test_ratio=0.3)
+
+    def test_default_val_ratio_participates_in_the_sum(self) -> None:
+        """0.7 + 0.3 was legal two-way and is refused three-way.
+
+        The validation share is not free: it comes out of the same 1.0. A caller
+        who wants the old two-way division has to say ``val_ratio=0.0`` and mean it,
+        rather than have the generator quietly shrink test to make room.
+        """
+        with pytest.raises(ValueError, match="train_ratio \\+ val_ratio \\+ test_ratio"):
+            EquitiesParams(train_ratio=0.7, test_ratio=0.3)
+        assert EquitiesParams(train_ratio=0.7, val_ratio=0.0, test_ratio=0.3).val_ratio == 0.0
 
     def test_invalid_date_rejected(self) -> None:
         with pytest.raises(ValueError, match="start_date"):
@@ -554,16 +575,22 @@ class TestEquitiesGeneratorInternals:
         assert arrays["ticker_vocab"].tolist() == ["AAPL"]
 
     def test_generate_clips_test_split_when_rounding_overshoots(self) -> None:
-        # 8 business days condition to 7 rows; train=test=0.5 -> round(3.5)=4 each
-        # -> 4 + 4 > 7, exercising the ``n_test = n_rows - n_train`` clip.
+        # 8 business days condition to 7 rows; 0.5/0.25/0.25 rounds to 4 + 2 + 2 = 8
+        # against 7 rows, so one row of overflow has to be given back.
         # allow_truncation: this window is 8 business days from 2008-01-01, entirely
         # BEFORE the first filing in _shares() (2009-08-14), so under filed-date
         # alignment there is genuinely no shares data for these rows and the
         # generator now refuses by default. Split arithmetic is what is under test.
-        arrays = _generate(["AAPL"], {"AAPL": _ohlcv(periods=8, seed=31)}, _shares(), train_ratio=0.5, test_ratio=0.5, allow_truncation=True)
+        arrays = _generate(["AAPL"], {"AAPL": _ohlcv(periods=8, seed=31)}, _shares(), train_ratio=0.5, val_ratio=0.25, test_ratio=0.25, allow_truncation=True)
         n = arrays["X_full"].shape[0]
         assert n == 7
-        assert arrays["X_train"].shape[0] + arrays["X_test"].shape[0] == n
+        assert arrays["X_train"].shape[0] + arrays["X_val"].shape[0] + arrays["X_test"].shape[0] == n
+        # Trimmed test-first, and train is never trimmed: shrinking train to fund a
+        # rounding artifact would change what the model was fit on, which is the one
+        # thing a split-arithmetic fix must not do.
+        assert arrays["X_train"].shape[0] == 4
+        assert arrays["X_val"].shape[0] == 2
+        assert arrays["X_test"].shape[0] == 1
 
     def test_condition_one_returns_none_when_too_short(self) -> None:
         with patch.object(eq_gen.yf, "download", return_value=_ohlcv(periods=1)):

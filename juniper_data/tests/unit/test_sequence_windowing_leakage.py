@@ -82,20 +82,25 @@ def test_windowing_invariants(series, lookback, train_ratio, embargo):
         if n <= lookback + 1:
             continue
         ords = _yyyymmdd_to_ordinal(dates)
-        cut_idx = min(round(n * train_ratio), n - 1)  # clamp: always leave >= 1 test row
-        cut = int(ords[cut_idx])  # this entity's own test-boundary date
-        out = window_one_ticker(X, dates, y_dir, y_reg, code, lookback=lookback, cut_ordinal=cut, embargo=embargo)
-        per_ticker.append((code, cut, out))
+        # Two boundaries now: train | val | test, in time order. Clamped so each
+        # of the three has at least one row to claim.
+        cut_idx = min(round(n * train_ratio), n - 2)
+        cut_idx = max(cut_idx, 1)
+        val_cut_idx = min(cut_idx + 1, n - 1)
+        cut = int(ords[cut_idx])  # this entity's own validation-boundary date
+        val_cut = int(ords[val_cut_idx])  # this entity's own test-boundary date
+        out = window_one_ticker(X, dates, y_dir, y_reg, code, lookback=lookback, cut_ordinal=cut, val_cut_ordinal=val_cut, embargo=embargo)
+        per_ticker.append((code, cut, val_cut, out))
 
-    for code, cut, out in per_ticker:
-        tr, te = out["train"], out["test"]
+    for code, cut, val_cut, out in per_ticker:
+        tr, va, te = out["train"], out["val"], out["test"]
 
         # I1 -- every window belongs to exactly this entity (no cross-ticker splice).
-        assert np.all(tr["ticker_code"] == code)
-        assert np.all(te["ticker_code"] == code)
+        for blk in (tr, va, te):
+            assert np.all(blk["ticker_code"] == code)
 
         # I3 -- monotone time inside each window; dt[:,0]==0; dt == diff(step ordinals).
-        for blk in (tr, te):
+        for blk in (tr, va, te):
             if blk["X"].shape[0] == 0:
                 continue
             step_ords = _ords_of(blk["date"])
@@ -108,20 +113,28 @@ def test_windowing_invariants(series, lookback, train_ratio, embargo):
             assert np.all(blk["observed_mask"] == 1)
 
         # I5 -- target strictly after the window's last step.
-        for blk in (tr, te):
+        for blk in (tr, va, te):
             if blk["X"].shape[0]:
                 assert np.all(blk["target_dt"] > 0)
 
-        # I2 -- no future leak: every train target strictly precedes every test target.
-        if tr["X"].shape[0] and te["X"].shape[0]:
-            tr_targets = _ords_of(tr["window_end_date"]) + tr["target_dt"].astype(np.int64)
-            te_targets = _ords_of(te["window_end_date"]) + te["target_dt"].astype(np.int64)
-            assert tr_targets.max() < te_targets.min()
+        # I2 -- no future leak, now TRANSITIVE across three partitions: every train
+        # target precedes every validation target, and every validation target
+        # precedes every test target. Checking only train < test would leave the
+        # validation split free to overlap either neighbour, which is exactly the
+        # leak the in-loop partition must not have.
+        def _targets(blk):
+            return _ords_of(blk["window_end_date"]) + blk["target_dt"].astype(np.int64)
 
-        # I4 -- embargo purges test windows whose lookback straddles the cut.
-        if embargo and te["X"].shape[0]:
-            first_step_ord = _ords_of(te["date"][:, 0])
-            assert np.all(first_step_ord >= cut)
+        for earlier, later in ((tr, va), (va, te), (tr, te)):
+            if earlier["X"].shape[0] and later["X"].shape[0]:
+                assert _targets(earlier).max() < _targets(later).min()
+
+        # I4 -- embargo purges windows whose lookback straddles the cut PRECEDING
+        # their own split, at both boundaries.
+        if embargo:
+            for blk, preceding in ((va, cut), (te, val_cut)):
+                if blk["X"].shape[0]:
+                    assert np.all(_ords_of(blk["date"][:, 0]) >= preceding)
 
 
 def test_concat_then_slide_would_leak():
@@ -140,9 +153,10 @@ def test_concat_then_slide_would_leak():
     lookback=st.integers(2, 12),
     horizon=st.integers(1, 6),
     sample_dt=st.floats(0.1, 5.0, allow_nan=False, allow_infinity=False),
-    train_ratio=st.floats(0.5, 0.95),
+    train_ratio=st.floats(0.5, 0.8),
+    val_ratio=st.floats(0.05, 0.15),
 )
-def test_regular_windowing_invariants(n_steps, lookback, horizon, sample_dt, train_ratio):
+def test_regular_windowing_invariants(n_steps, lookback, horizon, sample_dt, train_ratio, val_ratio):
     """``window_regular_series``: regular-Δt contract, index encoding, no future leak.
 
     The series value encodes its own index (``series[k] == k``), so each window's
@@ -151,10 +165,10 @@ def test_regular_windowing_invariants(n_steps, lookback, horizon, sample_dt, tra
     and every train target strictly precedes every test target (the regular-Δt
     analog of I2).
     """
-    if n_steps - lookback - horizon + 1 < 2:
-        return  # too short for two windows; the windower raises (covered in the unit tests)
+    if n_steps - lookback - horizon + 1 < 3:
+        return  # too short for a three-way split; the windower raises (covered in the unit tests)
     series = np.arange(n_steps, dtype=np.float64).reshape(-1, 1)  # value == index
-    out = window_regular_series(series, lookback=lookback, horizon=horizon, sample_dt=sample_dt, train_ratio=train_ratio)
+    out = window_regular_series(series, lookback=lookback, horizon=horizon, sample_dt=sample_dt, train_ratio=train_ratio, val_ratio=val_ratio)
     n_windows = n_steps - lookback - horizon + 1
 
     # RR1 -- shapes.
@@ -172,13 +186,18 @@ def test_regular_windowing_invariants(n_steps, lookback, horizon, sample_dt, tra
     assert np.all(np.diff(steps, axis=1) == 1)
     np.testing.assert_array_equal(out["y_full"][:, 0], steps[:, -1] + horizon)
 
-    # RR4 -- full == train + test, chronological.
-    assert n_windows == out["X_train"].shape[0] + out["X_test"].shape[0]
-    np.testing.assert_array_equal(out["X_full"], np.concatenate([out["X_train"], out["X_test"]]))
+    # RR4 -- full == train + val + test, chronological. The identity spans THREE
+    # partitions now; over train + test alone it would pass only while val is empty.
+    assert out["X_val"].shape[0] > 0, "X_val must be non-empty, or RR4/RR5 hold vacuously"
+    assert n_windows == out["X_train"].shape[0] + out["X_val"].shape[0] + out["X_test"].shape[0]
+    np.testing.assert_array_equal(out["X_full"], np.concatenate([out["X_train"], out["X_val"], out["X_test"]]))
 
-    # RR5 -- no future leak: every train target strictly precedes every test target.
-    if out["y_train"].shape[0] and out["y_test"].shape[0]:
-        assert out["y_train"][:, 0].max() < out["y_test"][:, 0].min()
+    # RR5 -- no future leak, TRANSITIVE: train targets precede val targets, which
+    # precede test targets. Values encode their step index, so a plain max/min
+    # comparison is exactly the chronological ordering.
+    for earlier, later in (("train", "val"), ("val", "test"), ("train", "test")):
+        if out[f"y_{earlier}"].shape[0] and out[f"y_{later}"].shape[0]:
+            assert out[f"y_{earlier}"][:, 0].max() < out[f"y_{later}"][:, 0].min()
 
 
 @settings(max_examples=200, deadline=None)
@@ -187,9 +206,10 @@ def test_regular_windowing_invariants(n_steps, lookback, horizon, sample_dt, tra
     lookback=st.integers(2, 12),
     horizon=st.integers(1, 6),
     gaps=st.lists(st.floats(0.05, 10.0, allow_nan=False, allow_infinity=False), min_size=199, max_size=199),
-    train_ratio=st.floats(0.5, 0.95),
+    train_ratio=st.floats(0.5, 0.8),
+    val_ratio=st.floats(0.05, 0.15),
 )
-def test_timed_windowing_invariants(n_steps, lookback, horizon, gaps, train_ratio):
+def test_timed_windowing_invariants(n_steps, lookback, horizon, gaps, train_ratio, val_ratio):
     """``window_timed_series``: dt == within-window time-diffs, variable target_dt, no future leak.
 
     Index-encoded values (``series[k] == k``) plus strictly-increasing irregular
@@ -198,11 +218,11 @@ def test_timed_windowing_invariants(n_steps, lookback, horizon, gaps, train_rati
     train target strictly precedes every test target (the irregular-Δt analog of
     the regular-windowing invariants).
     """
-    if n_steps - lookback - horizon + 1 < 2:
-        return  # too short for two windows; the windower raises (covered in the unit tests)
+    if n_steps - lookback - horizon + 1 < 3:
+        return  # too short for a three-way split; the windower raises (covered in the unit tests)
     values = np.arange(n_steps, dtype=np.float64).reshape(-1, 1)  # value == index
     times = np.concatenate([[0.0], np.cumsum(np.asarray(gaps[: n_steps - 1]))])  # strictly increasing
-    out = window_timed_series(values, times, lookback=lookback, horizon=horizon, train_ratio=train_ratio)
+    out = window_timed_series(values, times, lookback=lookback, horizon=horizon, train_ratio=train_ratio, val_ratio=val_ratio)
     n_windows = n_steps - lookback - horizon + 1
 
     # TR1 -- shapes.
@@ -227,11 +247,17 @@ def test_timed_windowing_invariants(n_steps, lookback, horizon, gaps, train_rati
     assert np.all(np.diff(steps, axis=1) == 1)
     np.testing.assert_array_equal(out["y_full"][:, 0].astype(np.int64), ends + horizon)
 
-    # TR5 -- full == train + test; no future leak.
-    assert n_windows == out["X_train"].shape[0] + out["X_test"].shape[0]
-    np.testing.assert_array_equal(out["X_full"], np.concatenate([out["X_train"], out["X_test"]]))
-    if out["y_train"].shape[0] and out["y_test"].shape[0]:
-        assert out["y_train"][:, 0].max() < out["y_test"][:, 0].min()
+    # TR5 -- full == train + val + test; no future leak, TRANSITIVE.
+    #
+    # The identity spans THREE partitions now. Over train + test alone it would
+    # pass only while val is empty, so the non-empty guard below is what stops it
+    # from silently degrading into a vacuous check.
+    assert out["X_val"].shape[0] > 0, "X_val must be non-empty, or TR5 holds vacuously"
+    assert n_windows == out["X_train"].shape[0] + out["X_val"].shape[0] + out["X_test"].shape[0]
+    np.testing.assert_array_equal(out["X_full"], np.concatenate([out["X_train"], out["X_val"], out["X_test"]]))
+    for earlier, later in (("train", "val"), ("val", "test"), ("train", "test")):
+        if out[f"y_{earlier}"].shape[0] and out[f"y_{later}"].shape[0]:
+            assert out[f"y_{earlier}"][:, 0].max() < out[f"y_{later}"][:, 0].min()
 
 
 class TestSequenceWindowingValidation:
@@ -248,61 +274,61 @@ class TestSequenceWindowingValidation:
     def test_one_ticker_rejects_lookback_below_one(self) -> None:
         feats, dates, y_dir, y_reg = self._one_ticker_args(np.array([20200101, 20200102, 20200103], dtype=np.int64))
         with pytest.raises(ValueError, match="lookback must be >= 1"):
-            window_one_ticker(feats, dates, y_dir, y_reg, 0, lookback=0, cut_ordinal=0)
+            window_one_ticker(feats, dates, y_dir, y_reg, 0, lookback=0, cut_ordinal=0, val_cut_ordinal=0)
 
     def test_one_ticker_rejects_non_increasing_dates(self) -> None:
         feats, dates, y_dir, y_reg = self._one_ticker_args(np.array([20200103, 20200101, 20200105], dtype=np.int64))
         with pytest.raises(ValueError, match="strictly increasing"):
-            window_one_ticker(feats, dates, y_dir, y_reg, 0, lookback=1, cut_ordinal=0)
+            window_one_ticker(feats, dates, y_dir, y_reg, 0, lookback=1, cut_ordinal=0, val_cut_ordinal=0)
 
     def test_regular_series_rejects_lookback_below_one(self) -> None:
         with pytest.raises(ValueError, match="lookback must be >= 1"):
-            window_regular_series(np.arange(6.0), lookback=0, horizon=1, sample_dt=1.0, train_ratio=0.5)
+            window_regular_series(np.arange(6.0), lookback=0, horizon=1, sample_dt=1.0, train_ratio=0.5, val_ratio=0.25)
 
     def test_regular_series_rejects_horizon_below_one(self) -> None:
         with pytest.raises(ValueError, match="horizon must be >= 1"):
-            window_regular_series(np.arange(6.0), lookback=2, horizon=0, sample_dt=1.0, train_ratio=0.5)
+            window_regular_series(np.arange(6.0), lookback=2, horizon=0, sample_dt=1.0, train_ratio=0.5, val_ratio=0.25)
 
     def test_regular_series_rejects_nonpositive_sample_dt(self) -> None:
         with pytest.raises(ValueError, match="sample_dt must be > 0"):
-            window_regular_series(np.arange(6.0), lookback=2, horizon=1, sample_dt=0.0, train_ratio=0.5)
+            window_regular_series(np.arange(6.0), lookback=2, horizon=1, sample_dt=0.0, train_ratio=0.5, val_ratio=0.25)
 
     def test_regular_series_accepts_1d_input(self) -> None:
-        out = window_regular_series(np.arange(6.0), lookback=2, horizon=1, sample_dt=1.0, train_ratio=0.5)
+        out = window_regular_series(np.arange(6.0), lookback=2, horizon=1, sample_dt=1.0, train_ratio=0.5, val_ratio=0.25)
         assert out["X_full"].ndim == 3 and out["X_full"].shape[2] == 1  # 1-D reshaped to (W, L, 1)
 
     def test_regular_series_rejects_3d_input(self) -> None:
         with pytest.raises(ValueError, match="1-D or 2-D"):
-            window_regular_series(np.zeros((6, 1, 1)), lookback=2, horizon=1, sample_dt=1.0, train_ratio=0.5)
+            window_regular_series(np.zeros((6, 1, 1)), lookback=2, horizon=1, sample_dt=1.0, train_ratio=0.5, val_ratio=0.25)
 
     def test_regular_series_rejects_too_short(self) -> None:
         with pytest.raises(ValueError, match="too short"):
-            window_regular_series(np.arange(3.0), lookback=2, horizon=1, sample_dt=1.0, train_ratio=0.5)
+            window_regular_series(np.arange(3.0), lookback=2, horizon=1, sample_dt=1.0, train_ratio=0.5, val_ratio=0.25)
 
     def test_timed_series_rejects_lookback_below_one(self) -> None:
         with pytest.raises(ValueError, match="lookback must be >= 1"):
-            window_timed_series(np.arange(6.0), np.arange(6.0), lookback=0, horizon=1, train_ratio=0.5)
+            window_timed_series(np.arange(6.0), np.arange(6.0), lookback=0, horizon=1, train_ratio=0.5, val_ratio=0.25)
 
     def test_timed_series_rejects_horizon_below_one(self) -> None:
         with pytest.raises(ValueError, match="horizon must be >= 1"):
-            window_timed_series(np.arange(6.0), np.arange(6.0), lookback=2, horizon=0, train_ratio=0.5)
+            window_timed_series(np.arange(6.0), np.arange(6.0), lookback=2, horizon=0, train_ratio=0.5, val_ratio=0.25)
 
     def test_timed_series_accepts_1d_values(self) -> None:
-        out = window_timed_series(np.arange(6.0), np.arange(6.0), lookback=2, horizon=1, train_ratio=0.5)
+        out = window_timed_series(np.arange(6.0), np.arange(6.0), lookback=2, horizon=1, train_ratio=0.5, val_ratio=0.25)
         assert out["X_full"].ndim == 3 and out["X_full"].shape[2] == 1
 
     def test_timed_series_rejects_3d_values(self) -> None:
         with pytest.raises(ValueError, match="1-D or 2-D"):
-            window_timed_series(np.zeros((6, 1, 1)), np.arange(6.0), lookback=2, horizon=1, train_ratio=0.5)
+            window_timed_series(np.zeros((6, 1, 1)), np.arange(6.0), lookback=2, horizon=1, train_ratio=0.5, val_ratio=0.25)
 
     def test_timed_series_rejects_times_length_mismatch(self) -> None:
         with pytest.raises(ValueError, match="times must be 1-D of length"):
-            window_timed_series(np.arange(6.0), np.arange(5.0), lookback=2, horizon=1, train_ratio=0.5)
+            window_timed_series(np.arange(6.0), np.arange(5.0), lookback=2, horizon=1, train_ratio=0.5, val_ratio=0.25)
 
     def test_timed_series_rejects_non_increasing_times(self) -> None:
         with pytest.raises(ValueError, match="strictly increasing"):
-            window_timed_series(np.arange(6.0), np.array([0.0, 2.0, 1.0, 3.0, 4.0, 5.0]), lookback=2, horizon=1, train_ratio=0.5)
+            window_timed_series(np.arange(6.0), np.array([0.0, 2.0, 1.0, 3.0, 4.0, 5.0]), lookback=2, horizon=1, train_ratio=0.5, val_ratio=0.25)
 
     def test_timed_series_rejects_too_short(self) -> None:
         with pytest.raises(ValueError, match="too short"):
-            window_timed_series(np.arange(3.0), np.arange(3.0), lookback=2, horizon=1, train_ratio=0.5)
+            window_timed_series(np.arange(3.0), np.arange(3.0), lookback=2, horizon=1, train_ratio=0.5, val_ratio=0.25)

@@ -54,7 +54,7 @@ from juniper_data.core.limits import DATA_QUALITY_META_KEY, INCOMPLETE_ACCEPT, I
 from .defaults import CONSTITUENTS_FILENAME, EQUITIES_FEATURE_COLUMNS
 from .params import EquitiesParams
 
-VERSION = "1.0.0"
+VERSION = "2.0.0"
 
 _logger = logging.getLogger(__name__)
 
@@ -197,8 +197,8 @@ class EquitiesGenerator:
                 cost-basis purchase date, and conditioning options.
 
         Returns:
-            Dictionary with the canonical NPZ keys (X_train, y_train, X_test,
-            y_test, X_full, y_full) plus auxiliary arrays: y_reg_* (next-day
+            Dictionary with the canonical NPZ keys (X_train, y_train, X_val,
+            y_val, X_test, y_test, X_full, y_full) plus auxiliary arrays: y_reg_* (next-day
             close regression target), ticker_code_* / date_* (row-aligned
             identifiers), and ticker_vocab (code -> ticker lookup).
 
@@ -277,21 +277,35 @@ class EquitiesGenerator:
         vocab = sorted(conditioned)
         code_of = {ticker: code for code, ticker in enumerate(vocab)}
 
-        train_frames, test_frames, full_frames = [], [], []
+        # Three chronological partitions per ticker: train | val | test, earliest
+        # first. Validation sits BETWEEN train and test in time, so early stopping
+        # never reads rows from after the reported window.
+        train_frames, val_frames, test_frames, full_frames = [], [], [], []
         for ticker in vocab:
             frame = conditioned[ticker].sort_index()
             frame["ticker_code"] = code_of[ticker]
             n_rows = len(frame)
             n_train = int(round(n_rows * params.train_ratio))
+            n_val = int(round(n_rows * params.val_ratio))
             n_test = int(round(n_rows * params.test_ratio))
-            if n_train + n_test > n_rows:
-                n_test = n_rows - n_train
+            # An over-subscribed request is trimmed from the END -- test first,
+            # then val. Trimming train would silently shrink the partition every
+            # existing baseline is measured against.
+            overflow = n_train + n_val + n_test - n_rows
+            if overflow > 0:
+                taken = min(overflow, n_test)
+                n_test -= taken
+                overflow -= taken
+            if overflow > 0:
+                n_val -= min(overflow, n_val)
             train_frames.append(frame.iloc[:n_train])
-            test_frames.append(frame.iloc[n_train : n_train + n_test])
+            val_frames.append(frame.iloc[n_train : n_train + n_val])
+            test_frames.append(frame.iloc[n_train + n_val : n_train + n_val + n_test])
             full_frames.append(frame)
 
         full = pd.concat(full_frames)
         train = pd.concat(train_frames) if train_frames else full.iloc[:0]
+        val = pd.concat(val_frames) if val_frames else full.iloc[:0]
         test = pd.concat(test_frames) if test_frames else full.iloc[:0]
 
         # Fit normalization statistics on the TRAINING rows only (juniper-data#314).
@@ -305,7 +319,7 @@ class EquitiesGenerator:
         # (juniper-ml notes/JUNIPER_2026-08-29_JUNIPER-ECOSYSTEM_TRAIN-EVAL-TEST-PARTITION-DESIGN.md):
         # no quantity derived from a later partition may reach the training data.
         #
-        # CONSEQUENCE, deliberate: ``X_full`` and ``X_test`` are no longer guaranteed to lie
+        # CONSEQUENCE, deliberate: ``X_full``, ``X_val`` and ``X_test`` are no longer guaranteed to lie
         # within [0, 1]. They are scaled by train's statistics, and later rows legitimately
         # exceed the training range -- that excursion IS the information the old code was
         # leaking away. Only ``X_train`` is bounded now.
@@ -319,7 +333,7 @@ class EquitiesGenerator:
             norm = EquitiesGenerator._fit_normalizer(fit_frame)
 
         arrays: dict[str, np.ndarray] = {}
-        for name, frame in (("full", full), ("train", train), ("test", test)):
+        for name, frame in (("full", full), ("train", train), ("val", val), ("test", test)):
             features = EquitiesGenerator._features(frame, norm)
             arrays[f"X_{name}"] = features
             arrays[f"y_{name}"] = EquitiesGenerator._direction_onehot(frame)

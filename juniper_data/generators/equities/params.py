@@ -30,6 +30,7 @@ from .defaults import (
     EQUITIES_DEFAULT_TEST_RATIO,
     EQUITIES_DEFAULT_TRAIN_RATIO,
     EQUITIES_DEFAULT_USE_CACHE,
+    EQUITIES_DEFAULT_VAL_RATIO,
     EQUITIES_DEFAULT_WEEK52_WINDOW,
 )
 
@@ -116,6 +117,12 @@ class EquitiesParams(BaseModel):
         le=1,
         description="Fraction of each ticker's earliest rows used for training.",
     )
+    val_ratio: float = Field(
+        default=EQUITIES_DEFAULT_VAL_RATIO,
+        ge=0,
+        le=1,
+        description="Fraction of each ticker's rows used for in-loop validation, taken from the rows immediately after train and before test.",
+    )
     test_ratio: float = Field(
         default=EQUITIES_DEFAULT_TEST_RATIO,
         ge=0,
@@ -133,8 +140,8 @@ class EquitiesParams(BaseModel):
     @model_validator(mode="after")
     def _validate(self) -> EquitiesParams:
         """Validate ratio bounds and date formats."""
-        if self.train_ratio + self.test_ratio > 1.0:
-            raise ValueError(f"train_ratio + test_ratio must not exceed 1.0, got {self.train_ratio} + {self.test_ratio}")
+        if self.train_ratio + self.val_ratio + self.test_ratio > 1.0:
+            raise ValueError(f"train_ratio + val_ratio + test_ratio must not exceed 1.0, got {self.train_ratio} + {self.val_ratio} + {self.test_ratio}")
         _validate_date("start_date", self.start_date)
         _validate_date("purchase_date", self.purchase_date)
         if self.end_date is not None:
