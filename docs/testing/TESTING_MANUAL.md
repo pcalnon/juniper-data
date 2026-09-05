@@ -18,6 +18,7 @@
    - [Test File Inventory](#test-file-inventory)
    - [Empty-train shape metadata](#empty-train-shape-metadata)
    - [Postgres model-derived schema](#postgres-model-derived-schema)
+   - [Artifact streaming](#artifact-streaming)
 3. [Running Tests](#running-tests)
    - [Basic Commands](#basic-commands)
    - [Marker-Based Selection](#marker-based-selection)
@@ -104,6 +105,8 @@ juniper_data/tests/
 | `test_api_settings.py` | API | Pydantic settings and environment variables |
 | `test_arc_agi_generator.py` | Generator | ARC-AGI dataset generator |
 | `test_artifacts.py` | Core | Artifact class and file handling |
+| `test_artifact_streaming.py` | Storage | Chunked `open_artifact_stream` (APD-DATA-016) |
+| `test_binary_media_types.py` | API | `BINARY_MEDIA_TYPE` is `application/zip` |
 | `test_cached_store.py` | Storage | Cached dataset storage |
 | `test_checkerboard_generator.py` | Generator | Checkerboard pattern generator |
 | `test_circles_generator.py` | Generator | Concentric circles generator |
@@ -163,6 +166,12 @@ The Postgres store used to carry five independent transcriptions of `DatasetMeta
 Pin that contract in `test_postgres_schema_derivation.py` (no database — the mappers are pure). Mutation: re-introducing a hand-written column list, `ADD COLUMN ... NOT NULL` without DEFAULT, or `json.dumps(None)` is expected to fail those pins.
 
 > See: [REFERENCE.md -- Postgres Model-Derived Schema](../REFERENCE.md#postgres-model-derived-schema)
+
+### Artifact streaming
+
+`test_artifact_streaming.py` pins APD-DATA-016 / #313. A whole-file read still round-trips, so the decisive LocalFS arm is that a small `chunk_size` yields more than one chunk. The base default must yield exactly one chunk (honest whole-read). Absence must be `None` from the *call* — a generator object here becomes 200 with an empty body. `test_binary_media_types.py` pins the published `application/zip` type.
+
+> See: [REFERENCE.md -- Artifact Streaming](../REFERENCE.md#artifact-streaming)
 
 ---
 

@@ -14,6 +14,7 @@
 - [Pytest Markers](#pytest-markers)
 - [Pytest Configuration](#pytest-configuration)
 - [Fixtures Reference](#fixtures-reference)
+- [Artifact streaming pins](#artifact-streaming-pins)
 - [Coverage Configuration](#coverage-configuration)
 - [Empty-train shape-meta pins](#empty-train-shape-meta-pins)
 - [Postgres schema-derivation pins](#postgres-schema-derivation-pins)
@@ -136,6 +137,25 @@ Dataset dictionaries contain keys: `X_train`, `y_train`, `X_val`, `y_val`, `X_te
 | `2_spiral_metadata.json` | `tests/fixtures/golden_datasets/` | Generation parameters |
 | `3_spiral.npz` | `tests/fixtures/golden_datasets/` | Reference 3-spiral dataset |
 | `3_spiral_metadata.json` | `tests/fixtures/golden_datasets/` | Generation parameters |
+
+---
+
+## Artifact streaming pins
+
+`juniper_data/tests/unit/test_artifact_streaming.py` (on `main`; APD-DATA-016 / #313). Bytes round-tripping is not the decisive arm — a whole-file read round-trips too.
+
+| Test | Property |
+|------|----------|
+| `test_small_chunk_size_yields_many_chunks` | LocalFS is incremental; one chunk means the artifact was materialised whole |
+| `test_chunk_size_is_honoured` | every chunk but the last equals `chunk_size` |
+| `test_bytes_are_identical_to_the_materialised_read` | streamed bytes match `get_artifact_bytes` |
+| `test_inheriting_backend_yields_exactly_one_chunk` | InMemory (base default) is an honest whole read |
+| `test_local_fs_returns_none_not_a_generator` / `test_default_returns_none_not_a_generator` | missing dataset is `None` from the call, not a generator |
+| `test_binary_media_types.py` | `BINARY_MEDIA_TYPE == "application/zip"`; no inline media-type literals |
+
+Moving the LocalFS existence check into `_chunks` fails the eager-absence arms. Reverting the LocalFS override to a whole read fails the two chunking arms.
+
+> See: [REFERENCE.md -- Artifact Streaming](../REFERENCE.md#artifact-streaming)
 
 ---
 

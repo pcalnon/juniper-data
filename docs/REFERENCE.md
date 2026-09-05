@@ -26,6 +26,7 @@
 - [Empty-Train Shape Metadata](#empty-train-shape-metadata)
 - [Storage Backend Reference](#storage-backend-reference)
 - [Prometheus Collector Reference](#prometheus-collector-reference)
+- [Artifact Streaming](#artifact-streaming)
 - [Docker Reference](#docker-reference)
 - [CI/CD Pipeline Reference](#cicd-pipeline-reference)
 - [Additional Resources](#additional-resources)
@@ -1152,6 +1153,7 @@ JuniperData supports 7 storage backend implementations with a composable archite
 `DatasetStore` (in `storage/base.py`) defines the standard interface:
 
 - **Core**: `save()`, `get_meta()`, `get_artifact_bytes()`, `exists()`, `delete()`, `list_datasets()`
+- **Streaming**: `open_artifact_stream()` — not abstract; see [Artifact Streaming](#artifact-streaming)
 - **Versioning**: `list_versions()`, `get_latest_version()`, `next_version_number()`, `save_versioned()`
 - **Lifecycle**: `record_access()`, `is_expired()`, `delete_expired()`, `filter_datasets()`
 - **Batch**: `batch_delete()`, `get_stats()`
@@ -1194,6 +1196,61 @@ For any new `prometheus_client` `Counter` / `Gauge` / `Histogram` / `Summary` / 
 - `lazy_register_or_reuse(...)` — for the lazy-init-with-`None`-sentinel pattern.
 
 Tests touching these collectors should use `juniper_observability.testing.reset_prometheus_registry`. Existing examples in this repo: `juniper_data/api/observability.py:_ensure_dataset_metrics`. See [the design doc in juniper-ml](https://github.com/pcalnon/juniper-ml/blob/main/notes/observability/JUNIPER_2026-05-05_JUNIPER-ML_REGISTER-OR-REUSE-HELPER-DESIGN.md) for the rationale.
+
+---
+
+---
+
+## Artifact Streaming
+
+`GET /v1/datasets/{id}/artifact` (`download_artifact` in `api/routes/datasets.py`) used to wrap `get_artifact_bytes(...)` in `io.BytesIO` and return a `StreamingResponse`. That bounds the **socket buffer**, not process memory: the whole NPZ sat in RAM before the response existed, once per concurrent download. Peak RSS scaled with artifact size × concurrency while the name "streaming" invited the opposite assumption (APD-DATA-016 / #313).
+
+The route now calls `DatasetStore.open_artifact_stream`. The memory bound is a property of the **store**, not of the route.
+
+### Interface
+
+`open_artifact_stream(dataset_id, chunk_size=ARTIFACT_STREAM_CHUNK_SIZE)` is **deliberately not** `@abstractmethod`. The base implementation reads via `get_artifact_bytes` and yields `iter((payload,))` — one chunk, the whole blob. All seven backends keep working without a flag day. Only a backend that can read incrementally should override it.
+
+| Backend | Streaming behaviour |
+|---------|---------------------|
+| `LocalFSDatasetStore` | Overrides: reads the NPZ file in `chunk_size` blocks (default **1 MiB**, `storage/constants.py`) |
+| InMemory, Cached, Redis, Postgres, HuggingFace, Kaggle | Inherit the base whole-read |
+
+`create_app` constructs `LocalFSDatasetStore` directly, so the default serving path is incremental. Wrapping LocalFS in `CachedDatasetStore` silently reverts to a whole read: Cached does not override, so the call hits `Cached.get_artifact_bytes`.
+
+### Absence is decided eagerly
+
+A generator body does not run until first iteration. An `exists()` check placed *inside* the generator defers the `None`/404 until after the route has already committed to 200 and sent headers — the client sees **200 with an empty body**. LocalFS checks `npz_path.exists()` *before* returning `_chunks()`. The route branches on `is None` after `asyncio.to_thread(store.open_artifact_stream, ...)` — only the open (existence + handle) is off-thread; later chunk reads are pulled by the ASGI server.
+
+The LocalFS handle is opened inside the generator and closed by its `with` block, so a client disconnect mid-stream releases the file when the generator is finalised.
+
+### Wire
+
+- **Content-Type:** `application/zip` (`BINARY_MEDIA_TYPE` in `api/constants.py`). Both binary routes derive from that name. Do not spell `application/octet-stream` inline — that is the RFC 9110 §8.3 fallback, not this service's published type. Changing the value is a wire change (`test_binary_media_types.py`).
+- **Content-Disposition:** `attachment; filename={dataset_id}.npz`.
+- Bytes are identical to `get_artifact_bytes`. The change is a memory profile, not a payload change.
+- ETag / conditional GET is APD-DATA-017 and is not implemented here.
+
+### What not to do
+
+- Do not wrap `get_artifact_bytes` in `io.BytesIO` and call it streaming.
+- Do not move the existence check inside the generator.
+- Do not make `open_artifact_stream` abstract — that is a flag day across seven stores.
+- Do not ignore `chunk_size` in an override. Overriders must honour it.
+- Do not assume wrapping LocalFS in Cached (or any inheriting store) keeps incremental reads.
+
+### Pins
+
+These live in `juniper_data/tests/unit/test_artifact_streaming.py` (on `main`). A whole-file read still round-trips, so the decisive LocalFS arm is that a small `chunk_size` yields **more than one** chunk.
+
+| Test | Property |
+|------|----------|
+| `test_small_chunk_size_yields_many_chunks` | LocalFS is incremental; one chunk means a whole read |
+| `test_chunk_size_is_honoured` | every chunk but the last is exactly `chunk_size` |
+| `test_bytes_are_identical_to_the_materialised_read` | memory-profile change is not a wire change |
+| `test_inheriting_backend_yields_exactly_one_chunk` | base default is an honest whole read |
+| `test_local_fs_returns_none_not_a_generator` / `test_default_returns_none_not_a_generator` | absence is `None` from the *call*, not from first iteration |
+| `test_binary_media_types.py` | published type is `application/zip`; no inline media-type literals |
 
 ---
 
