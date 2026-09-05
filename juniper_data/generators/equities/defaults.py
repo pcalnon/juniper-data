@@ -61,6 +61,7 @@ __all__ = [
     "EQUITIES_DEFAULT_REGRESSION_TARGET",
     "EQUITIES_DEFAULT_START_DATE",
     "EQUITIES_DEFAULT_TEST_RATIO",
+    "EQUITIES_DEFAULT_VAL_RATIO",
     "EQUITIES_DEFAULT_TRAIN_RATIO",
     "EQUITIES_DEFAULT_USE_CACHE",
     "EQUITIES_DEFAULT_WEEK52_WINDOW",
@@ -69,7 +70,11 @@ __all__ = [
 
 # Temporal split: train = earlier dates, test = later dates (per ticker).
 EQUITIES_DEFAULT_TRAIN_RATIO = 0.8
-EQUITIES_DEFAULT_TEST_RATIO = 0.2
+# The three-way default is 0.8 / 0.1 / 0.1: test halves to make room for the
+# in-loop partition rather than train shrinking, because every existing
+# baseline is measured against the train count.
+EQUITIES_DEFAULT_VAL_RATIO = 0.1
+EQUITIES_DEFAULT_TEST_RATIO = 0.1
 
 # Regression-target (y_reg) representation. The raw next-day close is
 # non-stationary (it trends with the price level), which a bounded-memory

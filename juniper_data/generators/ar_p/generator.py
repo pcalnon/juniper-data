@@ -24,7 +24,7 @@ from juniper_data.generators._synthetic import build_sequence_arrays
 
 from .params import ArPParams
 
-VERSION = "1.0.0"
+VERSION = "2.0.0"
 
 
 class ArPGenerator:

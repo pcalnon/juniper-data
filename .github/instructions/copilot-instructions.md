@@ -53,7 +53,7 @@ Pydantic BaseSettings with `JUNIPER_DATA_` env var prefix. Key settings: `host`,
 
 ### Data Contract
 
-NPZ artifacts with keys: `X_train`, `y_train`, `X_test`, `y_test`, `X_full`, `y_full` (all `float32`).
+NPZ artifacts with keys: `X_train`, `y_train`, `X_val`, `y_val`, `X_test`, `y_test`, `X_full`, `y_full` (all `float32`).
 
 ## Code Style
 

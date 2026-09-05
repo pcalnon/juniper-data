@@ -97,7 +97,7 @@ class TestEquitiesSeqGenerator:
     def test_contract_keys_and_3d_shapes(self) -> None:
         lookback = 6
         arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=1), "MSFT": _ohlcv(seed=2)}, _shares(), lookback=lookback)
-        for split in ("train", "test", "full"):
+        for split in ("train", "val", "test", "full"):
             for key in ("X", "y", "y_reg", "date", "dt", "target_dt", "window_end_date", "ticker_code", "observed_mask"):
                 assert f"{key}_{split}" in arrays, f"missing {key}_{split}"
         assert "ticker_vocab" in arrays
@@ -114,9 +114,10 @@ class TestEquitiesSeqGenerator:
         assert arrays["observed_mask_full"].shape == (n_windows, lookback)
         assert arrays["ticker_vocab"].tolist() == ["AAPL", "MSFT"]
 
-    def test_full_equals_train_plus_test(self) -> None:
+    def test_full_equals_train_plus_val_plus_test(self) -> None:
         arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=3)}, _shares(), lookback=5)
-        assert arrays["X_full"].shape[0] == arrays["X_train"].shape[0] + arrays["X_test"].shape[0]
+        assert arrays["X_val"].shape[0] > 0, "val partition must be non-empty"
+        assert arrays["X_full"].shape[0] == arrays["X_train"].shape[0] + arrays["X_val"].shape[0] + arrays["X_test"].shape[0]
 
     def test_dt_is_calendar_gap_with_weekend_jumps(self) -> None:
         arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=4)}, _shares(), lookback=5)
