@@ -140,6 +140,18 @@ Default filesystem layout: `{JUNIPER_DATA_STORAGE_PATH}/{dataset_id}.meta.json` 
 
 ---
 
+## csv_import truncation edges
+
+Authorised truncation has three silent failure modes on the #326 path (#372):
+
+1. **Newline trim is CSV-only.** `json.dumps` / `JSON.stringify` emit one line. Trimming that prefix to the last newline yields empty text (`No data found in file`). JSON / JSONL keep the byte prefix and decode complete elements.
+2. **Unclosed quotes are not a short row.** A 2-column file whose dangling `"` swallows later lines still populates every field (`DictReader` reports no `None`). `_has_unclosed_quote` drops that last row on the capped path.
+3. **Bind the effective policy before the cache key.** `generate_dataset_id` hashes `params.model_dump()`, which fills Field defaults (128 MiB / `allow_truncation=false`). `CsvImportGenerator.bind_deployment_defaults` copies the resolved cap and opt-in onto params in `POST /v1/datasets` before hashing. Otherwise raising the deployment cap keeps serving the truncated artifact.
+
+> See: [REFERENCE.md -- CSV Import Truncation Edges](REFERENCE.md#csv-import-truncation-edges)
+
+---
+
 ## Generator Registration
 
 Generators: `spiral`, `xor`, `gaussian`, `circles`, `checkerboard`, `csv_import`, `mnist`, `arc_agi`.
