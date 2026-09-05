@@ -76,12 +76,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`DatasetMeta.n_val`**, defaulted to `0` so an existing stored record still loads.
 
-- **A rescue ladder for shares outstanding — 37 unresolvable tickers become 1.** The 2026-09-04
-  census found 37 of 503 S&P 500 constituents returning nothing from either shares concept, so their
-  `total_shares` and `market_cap` were zero-filled. **It was never missing data; it was the wrong
-  endpoint.** SEC's `companyconcept` and `companyfacts` disagree for the same CIK, taxonomy and tag:
-  for `KO`, `companyconcept` returns 636 bytes and **0 facts** while `companyfacts` returns **71**,
-  with a current count of 4.30 billion shares.
+- **A rescue ladder for shares outstanding — at least 28 of 37 unresolvable tickers rescued.** The
+  2026-09-04 census found 37 of 503 S&P 500 constituents returning nothing from either shares
+  concept, so their `total_shares` and `market_cap` were zero-filled. SEC's `companyconcept` and
+  `companyfacts` disagree for the same CIK, taxonomy and tag: for `KO`, `companyconcept` returns
+  636 bytes and **0 facts** while `companyfacts` returns **71**, with a current count of 4.30
+  billion shares.
+
+  > **Corrected 2026-09-05, three ways.**
+  >
+  > 1. **"37 → 1" is not supported; ">= 28 of 37" is.** The probe's own gap list holds **29**
+  >    entries (18 rescued at rungs 1–2, 10 at rung 3, 1 unrescuable) while its docstring says 37 —
+  >    **eight of the census's names were never probed**, so their outcome is unknown, not rescued.
+  > 2. **The mechanism was wrong.** This entry attributed the gap to both endpoints excluding
+  >    *dimensional* facts, which multi-class filers produce. That story does not fit its own
+  >    example: **KO is single-class** and its rows carry no dimensional keys at all, while the three
+  >    genuine multi-class filers (GOOG/GOOGL, NWS/NWSA, FOX/FOXA) all resolved fine. What the
+  >    evidence supports is an **upstream regression in `companyconcept` between 2026-06 and
+  >    2026-09**: a June-2026 cache holds KO's *same 71 dei facts* from the endpoint that returns
+  >    nothing today, and "no data" went **15 → 37** against a constituents list unchanged since
+  >    2026-06-03. The ladder is still the right shape — a fallback need not know why the primary
+  >    failed — but it is not compensating for a permanent property.
+  > 3. **The census figure is not a measurement of absence.** Its instrument maps a 403, a timeout,
+  >    a 404 and an empty body onto verdicts the cascade treats identically, with **no retries**, at
+  >    ≈8.3 req/s over ~1,509 requests — so "37" cannot be separated from *"37 minus however many
+  >    were throttled"*.
+  >
+  > Also: `companyconcept`'s "~600 B" is the size of an **empty** response; a populated one has a
+  > median of **~10.9 KB** across the 485-payload cache, so the honest cost ratio against
+  > `companyfacts` is ~455×, not ~8,300×.
 
   When `companyconcept` yields nothing, the generator now walks `companyfacts`:
 
@@ -233,12 +256,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bare `ordered[: params.max_symbols]` — it **truncated silently**, recorded nothing, and returned a
   dataset indistinguishable from a complete one.
 
-  **The cap is in SYMBOLS, not bytes, and that is the load-bearing choice.** Measurement on
-  2026-09-04 (`util/ad-hoc/2026-09-04_measure_equities_payloads.py`) found **163× the payload costs
-  1.16× the time**, because ingest cost is per *request*: ~1.85 s per Yahoo call plus 1–2 SEC XBRL
-  calls. One symbol over 26 years is 210 KB and ~2 s; the Russell 3000 over **one day** is 92 KB and
-  1.7–3.2 h. A byte cap would admit the expensive request and reject the cheap one — it is not
-  merely the wrong unit, it runs *counter* to the cost.
+  **The cap is in SYMBOLS, not bytes, and that is the load-bearing choice.** A cap's unit must be
+  something the server can measure **before doing the work**. `csv_import` has a file in hand, so
+  bytes are a `stat`. `equities` has **no input** — a request is a ticker list and a date range, and
+  its byte count does not exist until the API fan-out the cap exists to bound has already run, so a
+  byte cap there could only ever be a *prediction* derived from (symbols × horizon). The symbol
+  count is known with **zero network calls**, which is where `_resolve_symbols` raises. Ingest cost
+  being per *request* (~1.85 s per Yahoo call plus 1–2 SEC XBRL calls) is why the cap is **sized**
+  as it is; it is not why the **unit** is symbols.
+
+  > **Corrected 2026-09-05.** This entry originally argued the unit from a correlation — "163× the
+  > payload costs 1.16× the time … the Russell 3000 over one day is 92 KB and 1.7–3.2 h. A byte cap
+  > would admit the expensive request and reject the cheap one" — and the direction was
+  > **backwards**. The 92 KB came from a purely proportional model (`2,923 symbols × 32.1 B/day`)
+  > with no per-request intercept, but that request is 2,923 separate HTTP calls; fitting an
+  > intercept to the source document's own two smallest rows gives **~2.07 MB**, *larger* than the
+  > 210 KB single-symbol request. Bytes are **positively** correlated with cost here. The cap and
+  > its value are unchanged. `163× / 1.16×` is also the two extremes of a non-monotonic four-point
+  > series (1 year is *faster* than 1 month), so read it as an order-of-magnitude statement rather
+  > than a measurement.
 
   **14 = 30 s ÷ 2.1 s per symbol.** Same contract as `csv_import`: an oversized universe is
   **refused with 422** until the caller opts in via `allow_truncation`,

@@ -92,7 +92,7 @@ class EquitiesParams(BaseModel):
     )
     normalize_features: bool = Field(
         default=EQUITIES_DEFAULT_NORMALIZE_FEATURES,
-        description="Min-max normalize each feature column to [0, 1] (fit on the full set).",
+        description="Min-max normalize each feature column to [0, 1], fit on the TRAIN partition only (falling back to the full set only when train is empty). Fitting on the full set would let validation and test rows move the scaler and leak into training -- the leak juniper-data#314 removed.",
     )
     max_symbols: int | None = Field(
         default=EQUITIES_DEFAULT_MAX_SYMBOLS,

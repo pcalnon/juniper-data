@@ -42,8 +42,12 @@ EQUITIES_DEFAULT_USE_CACHE = True
 #
 # This was ``None`` -- every one of the 503 bundled S&P 500 constituents -- which
 # measurement put at 18-34 minutes against a 30 s request budget. The cap is in
-# SYMBOLS rather than bytes because the cost is per request: 163x the payload
-# costs 1.16x the time, so bytes would bound the wrong quantity here.
+# SYMBOLS rather than bytes because a cap's unit has to be measurable BEFORE the
+# work: equities has no input to weigh, so its byte count does not exist until
+# the fan-out the cap exists to bound has already run. (Corrected 2026-09-05:
+# this said "bytes would bound the wrong quantity", citing an inverted byte
+# comparison. Bytes here are in fact positively correlated with cost; what rules
+# a byte cap out is that it is unmeasurable ex ante, not its direction.)
 from juniper_data.core.limits import (  # noqa: E402  (re-export, kept beside the other defaults)
     EQUITIES_DEFAULT_ALLOW_TRUNCATION,
     EQUITIES_DEFAULT_MAX_SYMBOLS,
