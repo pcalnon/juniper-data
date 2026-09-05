@@ -36,6 +36,13 @@ class DatasetMeta(BaseModel):
     task_type: str = "classification"
     n_classes: int | None = None
     n_train: int
+    # Rows in the in-loop validation partition of the three-way train/val/test
+    # contract (design decision O-1). DEFAULTED, and it must stay defaulted:
+    # every stored `.meta.json` predating the third partition is loaded with
+    # `DatasetMeta(**meta_dict)` (storage/local_fs.py), so a required field with
+    # no default would make every existing artifact unreadable. 0 is the honest
+    # value for a two-partition artifact -- it has no validation rows.
+    n_val: int = 0
     n_test: int
 
     # Class Distribution (str keys for JSON compatibility); None when not classification.

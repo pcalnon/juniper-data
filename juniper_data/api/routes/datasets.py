@@ -311,6 +311,7 @@ async def create_dataset(
         task_type=task_type,
         n_classes=shape_meta["n_classes"],
         n_train=shape_meta["n_train"],
+        n_val=shape_meta["n_val"],
         n_test=shape_meta["n_test"],
         class_distribution=shape_meta["class_distribution"],
         sequence=seq_meta["sequence"],
