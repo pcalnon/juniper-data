@@ -1,8 +1,9 @@
 """Parameters for the Gaussian blobs dataset generator."""
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import Field, field_validator
 
 from juniper_data.core.constants import DEFAULT_GENERATOR_SEED
+from juniper_data.core.partition_params import PartitionParams
 
 from .defaults import (
     GAUSSIAN_DEFAULT_CENTER_RADIUS,
@@ -21,7 +22,7 @@ from .defaults import (
 )
 
 
-class GaussianParams(BaseModel):
+class GaussianParams(PartitionParams):
     """Configuration parameters for Gaussian blobs dataset generation.
 
     Generates a mixture-of-Gaussians classification dataset with configurable

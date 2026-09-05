@@ -73,7 +73,8 @@ class TestGeneratorThroughput:
         params = SpiralParams(n_spirals=2, n_points_per_spiral=500, seed=42)
         result = benchmark(SpiralGenerator.generate, params)
         assert "X_train" in result
-        assert result["X_full"].shape[0] == 1000
+        # The size knob names the TRAIN count under additive sizing.
+        assert result["X_train"].shape[0] == 1000
         assert result["X_train"].dtype == np.float32
 
     def test_xor_generator(self, benchmark):
@@ -81,7 +82,8 @@ class TestGeneratorThroughput:
         params = XorParams(n_points_per_quadrant=250, seed=42)
         result = benchmark(XorGenerator.generate, params)
         assert "X_train" in result
-        assert result["X_full"].shape[0] == 1000
+        # The size knob names the TRAIN count under additive sizing.
+        assert result["X_train"].shape[0] == 1000
         assert result["X_train"].dtype == np.float32
 
     def test_gaussian_generator(self, benchmark):
@@ -89,7 +91,8 @@ class TestGeneratorThroughput:
         params = GaussianParams(n_classes=2, n_samples_per_class=500, seed=42)
         result = benchmark(GaussianGenerator.generate, params)
         assert "X_train" in result
-        assert result["X_full"].shape[0] == 1000
+        # The size knob names the TRAIN count under additive sizing.
+        assert result["X_train"].shape[0] == 1000
         assert result["X_train"].dtype == np.float32
 
     def test_circles_generator(self, benchmark):
@@ -97,7 +100,8 @@ class TestGeneratorThroughput:
         params = CirclesParams(n_samples=1000, seed=42)
         result = benchmark(CirclesGenerator.generate, params)
         assert "X_train" in result
-        assert result["X_full"].shape[0] == 1000
+        # The size knob names the TRAIN count under additive sizing.
+        assert result["X_train"].shape[0] == 1000
         assert result["X_train"].dtype == np.float32
 
     def test_checkerboard_generator(self, benchmark):
@@ -105,7 +109,8 @@ class TestGeneratorThroughput:
         params = CheckerboardParams(n_samples=1000, seed=42)
         result = benchmark(CheckerboardGenerator.generate, params)
         assert "X_train" in result
-        assert result["X_full"].shape[0] == 1000
+        # The size knob names the TRAIN count under additive sizing.
+        assert result["X_train"].shape[0] == 1000
         assert result["X_train"].dtype == np.float32
 
 
@@ -131,7 +136,8 @@ class TestGeneratorScaling:
         """Benchmark spiral generation at various dataset sizes."""
         params = SpiralParams(n_spirals=2, n_points_per_spiral=n_points_per_spiral, seed=42)
         result = benchmark(SpiralGenerator.generate, params)
-        assert result["X_full"].shape[0] == n_points_per_spiral * 2
+        # The size knob names the TRAIN count under additive sizing.
+        assert result["X_train"].shape[0] == n_points_per_spiral * 2
 
     @pytest.mark.parametrize(
         "n_samples",
@@ -142,7 +148,8 @@ class TestGeneratorScaling:
         """Benchmark Gaussian generation at various dataset sizes."""
         params = GaussianParams(n_classes=2, n_samples_per_class=n_samples // 2, seed=42)
         result = benchmark(GaussianGenerator.generate, params)
-        assert result["X_full"].shape[0] == n_samples
+        # The size knob names the TRAIN count under additive sizing.
+        assert result["X_train"].shape[0] == n_samples
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -163,7 +170,8 @@ class TestMultiClassScaling:
         """Benchmark spiral generation with varying class counts."""
         params = SpiralParams(n_spirals=n_spirals, n_points_per_spiral=200, seed=42)
         result = benchmark(SpiralGenerator.generate, params)
-        assert result["X_full"].shape[0] == n_spirals * 200
+        # The size knob names the TRAIN count under additive sizing.
+        assert result["X_train"].shape[0] == n_spirals * 200
         assert result["y_full"].shape[1] == n_spirals
 
     @pytest.mark.parametrize(
@@ -175,4 +183,5 @@ class TestMultiClassScaling:
         """Benchmark Gaussian generation with varying class counts."""
         params = GaussianParams(n_classes=n_classes, n_samples_per_class=100, seed=42)
         result = benchmark(GaussianGenerator.generate, params)
-        assert result["X_full"].shape[0] == n_classes * 100
+        # The size knob names the TRAIN count under additive sizing.
+        assert result["X_train"].shape[0] == n_classes * 100

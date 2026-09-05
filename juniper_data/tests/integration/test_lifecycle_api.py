@@ -257,7 +257,8 @@ class TestDatasetStats:
         assert response.status_code == 200
         data = response.json()
         assert data["total_datasets"] == 3
-        assert data["total_samples"] == 600
+        # Each dataset realises 1.7x its train count under additive sizing.
+        assert data["total_samples"] == 1020
         assert data["by_generator"] == {"spiral": 3}
         assert data["by_tag"]["train"] == 2
 

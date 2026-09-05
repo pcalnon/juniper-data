@@ -95,13 +95,18 @@ class TestE2EModernAlgorithm:
             assert X_full.dtype == np.float32
             assert y_full.dtype == np.float32
 
-            n_total = 2 * 100
-            n_train = int(n_total * 0.8)
-            n_test = n_total - n_train
+            # 2 x 100 = 200 TRAIN points under additive sizing (decisions 2 and 8),
+            # plus 80 val and 60 test -> 340 realised rows.
+            n_train = 2 * 100
+            n_val = 80
+            n_test = 60
+            n_total = n_train + n_val + n_test
             n_spirals = 2
 
             assert X_train.shape == (n_train, 2)
             assert y_train.shape == (n_train, n_spirals)
+            assert data["X_val"].shape == (n_val, 2)
+            assert data["y_val"].shape == (n_val, n_spirals)
             assert X_test.shape == (n_test, 2)
             assert y_test.shape == (n_test, n_spirals)
             assert X_full.shape == (n_total, 2)
@@ -178,7 +183,7 @@ class TestE2ELegacyCascorAlgorithm:
         assert artifact_response.status_code == 200
 
         with np.load(io.BytesIO(artifact_response.content)) as data:
-            expected_keys = ["X_train", "y_train", "X_test", "y_test", "X_full", "y_full"]
+            expected_keys = ["X_train", "y_train", "X_val", "y_val", "X_test", "y_test", "X_full", "y_full"]
             for key in expected_keys:
                 assert key in data.files, f"Missing key: {key}"
 
@@ -188,7 +193,8 @@ class TestE2ELegacyCascorAlgorithm:
             assert X_full.dtype == np.float32
             assert y_full.dtype == np.float32
 
-            n_total = 2 * 100
+            # 200 TRAIN points plus 80 val and 60 test.
+            n_total = 200 + 80 + 60
             assert X_full.shape == (n_total, 2)
             assert y_full.shape == (n_total, 2)
 
@@ -255,7 +261,7 @@ class TestE2EDataContract:
         artifact_response = e2e_client.get(f"/v1/datasets/{dataset_id}/artifact")
 
         with np.load(io.BytesIO(artifact_response.content)) as data:
-            expected_keys = {"X_train", "y_train", "X_test", "y_test", "X_full", "y_full"}
+            expected_keys = {"X_train", "y_train", "X_val", "y_val", "X_test", "y_test", "X_full", "y_full"}
             actual_keys = set(data.files)
             assert actual_keys == expected_keys, f"Keys mismatch: expected {expected_keys}, got {actual_keys}"
 
@@ -295,14 +301,24 @@ class TestE2EDataContract:
 
         with np.load(io.BytesIO(artifact_response.content)) as data:
             n_train = len(data["X_train"])
+            n_val = len(data["X_val"])
             n_test = len(data["X_test"])
             n_full = len(data["X_full"])
 
-            assert n_train + n_test == n_full
+            # The length identity spans THREE partitions now. Asserting it over
+            # train + test alone -- which is what this line used to do -- would
+            # pass only while val is empty, which is the regression it must catch.
+            assert n_val > 0, "X_val must be non-empty, or the identity below holds vacuously"
+            assert n_train + n_val + n_test == n_full
 
-            expected_train_ratio = 0.7
-            actual_train_ratio = n_train / n_full
-            assert abs(actual_train_ratio - expected_train_ratio) < 0.05
+            # Decisions 2 and 8: the size knob (2 x 50) is the TRAIN count,
+            # honoured literally, and val/test are ADDITIONAL rows at 40 % and
+            # 30 % of it. The request's train_ratio does not govern additive
+            # sizing, so asserting a 0.7 train share would be checking a number
+            # this mode never computes.
+            assert n_train == 100
+            assert n_val == 40
+            assert n_test == 30
 
     def test_e2e_metadata_consistency(self, e2e_client: TestClient, contract_request: dict) -> None:
         """Verify metadata matches actual data dimensions."""
