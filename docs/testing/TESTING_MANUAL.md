@@ -40,6 +40,8 @@
    - [Async Tests](#async-tests)
    - [Test Organization](#test-organization)
    - [Import-cycle tests](#import-cycle-tests)
+
+   - [DatasetMeta n_val pins](#datasetmeta-n_val-pins)
 9. [Pre-commit Integration](#pre-commit-integration)
 10. [Troubleshooting](#troubleshooting)
 
@@ -132,7 +134,7 @@ juniper_data/tests/
 | `test_security.py` | API | Rate limiter window expiry, 429, constructor window |
 | `test_security_boundaries.py` | API | Security boundary tests |
 | `test_spiral_generator.py` | Generator | Spiral generator (567 lines, 14 test classes) |
-| `test_split.py` | Core | Train/test split utilities |
+| `test_split.py` | Core | Two-way split plus additive three-way sizing (`partition_row_counts`, `split_three_way`; #353) |
 | `test_storage.py` | Storage | Storage interface and abstract classes |
 | `test_xor_generator.py` | Generator | XOR classification generator |
 
@@ -468,6 +470,14 @@ pytest juniper_data/tests/unit/test_no_import_cycles.py
 `TestUniverseSymbolCap` (lands with #354) is the pin for APD-DATA-018's equities half. Default is **refusal**: 40 names and no opt-in must raise `InputTooLargeError` with `unit == "symbols"` and `cap == 14`. An authorised cut must write `DatasetMeta.truncation` (`reason=universe_exceeded_symbol_cap`) and the kept prefix must be `sorted(universe)[:14]`.
 
 `test_generate_puts_the_annotation_on_the_returned_arrays` is load-bearing — resolver-only tests stay green if `generate()` drops the channel key. Do not replace these with a live Yahoo/SEC timing assertion. `equities_seq` must keep calling `EquitiesGenerator._resolve_symbols` and attach the same key; a second resolver would need its own pin.
+
+### DatasetMeta `n_val` pins
+
+`compute_shape_meta` is on the create-dataset path for every generator. #358 makes the store able to carry a validation partition: `n_val` is defaulted to `0` (legacy `.meta.json` cannot load a required field), `X_val` is read presence-conditionally, and `n_samples` spans train + val + test. The `y_full`-less classification fallback must stack `y_val`; the pin puts an entire class there so omitting it drops class `1` from the dict.
+
+These pins live in `test_meta_dispatch.py` on #358 and are not on `main` until that PR lands. Three-way *sizing* pins are already on `main` in `test_split.py`. Generators still emit two partitions.
+
+> See: [REFERENCE.md -- DatasetMeta n_val and Three-Partition Counts](../REFERENCE.md#datasetmeta-n_val-and-three-partition-counts)
 
 ---
 

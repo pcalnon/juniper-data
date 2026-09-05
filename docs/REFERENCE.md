@@ -10,6 +10,7 @@
 ## Table of Contents
 
 - [API Reference](#api-reference)
+- [DatasetMeta n_val and Three-Partition Counts](#datasetmeta-n_val-and-three-partition-counts)
 - [Configuration Reference](#configuration-reference)
 - [Rate-Limit Window](#rate-limit-window)
 - [Storage Backend Notes](#storage-backend-notes)
@@ -77,6 +78,75 @@ Full REST API documentation is in [JUNIPER_DATA_API.md](api/JUNIPER_DATA_API.md)
 | `y_test` | `(n_test, n_classes)` | `float32` | Test labels (one-hot) |
 | `X_full` | `(n_samples, n_features)` | `float32` | Full dataset features |
 | `y_full` | `(n_samples, n_classes)` | `float32` | Full dataset labels (one-hot) |
+
+Live generator artifacts still write those six keys. `X_val` / `y_val` are optional: the store and `DatasetMeta` can carry them (`n_val` defaults to `0`). No generator emits them yet. See [DatasetMeta n_val and Three-Partition Counts](#datasetmeta-n_val-and-three-partition-counts).
+
+---
+
+## DatasetMeta `n_val` and Three-Partition Counts
+
+The store can *carry* a validation partition. No generator emits one yet, so every artifact produced today is two-partition and `n_val` reads `0` — the blast radius is zero.
+
+This is the storage and metadata half of the val-first sequence (juniper-data#358), after the sizing primitives already on `main` (#353) and the client `NPZ_SPLITS` work (juniper-data-client#187). Generator wiring is a later PR; the REST size-knob vocabulary is not settled — do not invent `val_ratio` on generator params.
+
+### Why `n_val` is defaulted (R-3)
+
+`DatasetMeta.n_val: int = 0` in `core/models.py`. Existing `.meta.json` files are loaded with `DatasetMeta(**meta_dict)` from JSON written before the third partition existed (`storage/local_fs.py`; Redis and Postgres do the same). A required field with no default would make every stored artifact unreadable. `0` is the honest count for an artifact with no validation rows — not a placeholder.
+
+### `compute_shape_meta` counts three partitions
+
+`core/meta.py` (called from `POST /v1/datasets` / `batch-create` for every generator):
+
+- `n_val = len(arrays["X_val"]) if "X_val" in arrays else 0` — presence-conditional. A two-partition artifact predating the third partition reports `0` rather than failing.
+- `n_samples = n_train + n_val + n_test` — not train + test. A 6 / 3 / 2 artifact reports `n_samples=11`.
+- The route passes `n_val=shape_meta["n_val"]` onto the constructed `DatasetMeta`.
+
+On `main` today, `n_samples` is still `n_train + n_test` and `DatasetMeta` has no `n_val`. The behaviour above is on #358; it is not on `main` until that PR lands.
+
+### Classification `class_distribution` without `y_full`
+
+`_classification_meta` still prefers `y_full` when the artifact carries it. When `y_full` is absent, the fallback must stack **every partition present** (`y_train`, optional `y_val`, `y_test`). Omitting `y_val` silently drops those rows from the distribution — and only on artifacts without `y_full`, which is the path design decision 11 makes the normal case.
+
+The pin puts an **entire class** in `y_val`, so the buggy stack (`y_train` + `y_test` only) drops class `1` from the dict outright rather than shifting a count. A test that only changed a count would be easier to mis-read as noise.
+
+### Postgres
+
+`n_val` is added to `_SQL_DEFAULTS` as `"0"` because it is non-nullable *with* a default — `ADD COLUMN … NOT NULL` against a populated table fails without one. The column itself is emitted by `build_schema_sql` iterating `DatasetMeta.model_fields` (juniper-data#343). Do not add a sixth hand-written `ALTER`. `test_postgres_schema_derivation.py` already asserts against `model_fields` rather than a hardcoded field count, so the new column is covered without a new test.
+
+### Sizing primitives already on `main` (#353)
+
+`core/split.py` already has additive three-way sizing. Generators do **not** call these yet; they still use two-way `split_data` / `shuffle_and_split`.
+
+| Helper | Contract |
+|--------|----------|
+| `partition_row_counts(n_train, val_percent=40, test_percent=30)` | Train count is honoured literally. Val and test are *additional* rows, as percentages of train. Default `n_train=1000` yields `1000 / 400 / 300`. |
+| `split_three_way` / `shuffle_and_split_three_way` | Contiguous, index-disjoint cuts. Rows beyond `n_train + n_val + n_test` are left unused, not folded into a partition. |
+
+Percentages are absolute **rows** of the realised dataset, never per-spiral / per-quadrant / per-class units. Asking a generator for N+M rows does not reproduce the first N rows it would have produced for N — the train *count* is preserved; the train *content* is not.
+
+### What not to do
+
+- Do not make `n_val` required. Legacy `.meta.json` cannot load.
+- Do not assume `X_val` is always in the NPZ. The read is presence-conditional.
+- Do not compute `n_samples` as `n_train + n_test` once `X_val` exists.
+- Do not stack only train + test for `class_distribution` when `y_full` is absent.
+- Do not claim generators emit `X_val` / `y_val`. They do not. Live HTTP artifacts remain two-partition; `n_val` reads `0`.
+- Do not invent the public REST size-knob vocabulary. That gates the generator half.
+- Do not re-document the Postgres field-list derivation (owned by #344) or the empty-train `n_features` trailing-axis contract (owned by #341).
+
+### Pins
+
+These live in `tests/unit/test_meta_dispatch.py` on #358. They are not on `main` until that PR lands. Reverting both shape-count and classification-fallback fixes is expected to fail `test_val_partition_counted_in_shape_meta` and `test_class_distribution_without_y_full_includes_val`; the other three stay green under that mutation because they do not touch what it breaks.
+
+| Test | Property |
+|------|----------|
+| `test_val_partition_absent_reports_zero` | Two-partition artifact: `n_val=0`, `n_samples=n_train+n_test` |
+| `test_val_partition_counted_in_shape_meta` | `n_samples` is train + val + test (`6+3+2=11`), not train + test |
+| `test_class_distribution_without_y_full_includes_val` | A class that lives only in `y_val` is counted (`{"0": 4, "1": 3}`) |
+| `test_class_distribution_prefers_y_full_when_present` | `y_full` still wins when the artifact carries it |
+| `test_dataset_meta_n_val_is_defaulted` | Field is not required; default is `0` |
+
+Three-way sizing pins are already on `main` in `tests/unit/test_split.py` (`partition_row_counts`, `split_three_way`, `shuffle_and_split_three_way`).
 
 ---
 

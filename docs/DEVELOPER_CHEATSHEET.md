@@ -207,6 +207,7 @@ Coverage thresholds: **80% aggregate** (default; set in `pyproject.toml` `[tool.
 
 ---
 
+<<<<<<< HEAD
 ## Standalone generator imports
 
 A generator subpackage must import in a **cold interpreter** (`import juniper_data.generators.csv_import` with nothing else loaded). `create_app` is lazy on `juniper_data.api` (PEP 562) so `from juniper_data.api.settings import get_settings` does not pull the routes. Restoring `from .app import create_app` in `api/__init__.py` re-opens the cycle (#316 / #333).
@@ -214,6 +215,13 @@ A generator subpackage must import in a **cold interpreter** (`import juniper_da
 Do not import `juniper_data.api.app` or `juniper_data.api.routes` from generator code. Do not pre-import routes to make a test collect. Pin with `pytest juniper_data/tests/unit/test_no_import_cycles.py` — every assertion there is a **subprocess**; an in-process check cannot fail.
 
 > See: [REFERENCE.md -- API Package Import Graph](REFERENCE.md#api-package-import-graph)
+=======
+## DatasetMeta `n_val`
+
+The store can carry a validation partition; no generator emits one yet, so `n_val` reads `0`. The field is **defaulted** so legacy `.meta.json` still loads via `DatasetMeta(**meta_dict)`. `compute_shape_meta` reads `X_val` only if present and sets `n_samples = n_train + n_val + n_test`. Classification fallback without `y_full` must stack `y_val`. Sizing helpers (`partition_row_counts`, `split_three_way`) are on `main` (#353) but unwired. Do not invent `val_ratio`. Pins: `test_meta_dispatch.py` on #358.
+
+> See: [REFERENCE.md -- DatasetMeta n_val and Three-Partition Counts](REFERENCE.md#datasetmeta-n_val-and-three-partition-counts)
+>>>>>>> 8d9b71ea2639a1c20d18b0a6fc039408d8f58125
 
 ---
 
