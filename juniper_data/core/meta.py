@@ -64,8 +64,18 @@ def compute_shape_meta(
     # third partition simply has none, and reports 0 rather than failing.
     n_val = len(arrays["X_val"]) if "X_val" in arrays else 0
     n_samples = n_train + n_val + n_test
-    # Feature count is the trailing axis for both (N, F) and (W, L, F).
-    n_features = int(x_train.shape[-1]) if n_train > 0 else 2
+    # Feature count is the trailing axis for both (N, F) and (W, L, F) -- INCLUDING when the
+    # train partition is empty. `train_ratio = 0.0` is explicitly permitted (`split.py:60`
+    # validates `0.0 <= train_ratio <= 1.0`, and `:70` then rounds `n_train` to 0), and this
+    # helper runs on every dataset create (`api/routes/datasets.py:292`), so the old
+    # `else 2` persisted and served a fabricated feature count for every such artifact:
+    # a `(0, 5)` train partition reported 2, and a `(0, 7, 3)` sequence partition also
+    # reported 2. An empty partition still carries its true trailing axis.
+    #
+    # The `ndim >= 2` arm keeps 1-D / 0-d inputs on the previous fallback rather than
+    # widening the fix: `shape[-1]` on a 1-D `(N,)` array is the SAMPLE count, not a
+    # feature count, so reading it there would trade one wrong answer for another.
+    n_features = int(x_train.shape[-1]) if (n_train > 0 or x_train.ndim >= 2) else 2
 
     n_classes: int | None = None
     class_distribution: dict[str, int] | None = None

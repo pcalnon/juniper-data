@@ -244,3 +244,55 @@ def test_dataset_meta_n_val_is_defaulted():
 
     assert field.is_required() is False, "n_val must be defaulted or legacy .meta.json cannot load"
     assert field.default == 0
+
+
+# --------------------------------------------------------------------------------------
+# Empty train partition -- `n_features` must still be the TRAILING axis.
+#
+# `train_ratio = 0.0` is explicitly permitted (`core/split.py:60` validates
+# `0.0 <= train_ratio <= 1.0`; `:70` then rounds `n_train` to 0), and `compute_shape_meta`
+# runs on every dataset create (`api/routes/datasets.py:292`), so before this fix a
+# fabricated `n_features = 2` was PERSISTED and SERVED for every such artifact.
+#
+# Each case below returned 2 on the unfixed code, so these fail without the change; the two
+# non-empty controls returned the right answer before AND after, and exist so the suite
+# cannot pass merely by the helper returning `shape[-1]` unconditionally.
+# --------------------------------------------------------------------------------------
+
+
+def test_empty_train_2d_reads_the_trailing_axis_not_two():
+    arrays = {
+        "X_train": np.zeros((0, 5), np.float32),
+        "X_test": np.zeros((3, 5), np.float32),
+        "y_train": np.zeros((0, 1), np.float32),
+        "y_test": np.zeros((3, 1), np.float32),
+    }
+    m = compute_shape_meta(arrays, "regression")
+    assert m["n_train"] == 0
+    assert m["n_features"] == 5, "an empty train partition still carries its true feature count"
+
+
+def test_empty_train_3d_reads_the_trailing_axis_not_the_lookback():
+    # The 3-D case is the sharper one: the old fallback reported 2, which is neither the
+    # feature count (3) nor the lookback (7) -- a value present in neither axis.
+    arrays = {
+        "X_train": np.zeros((0, 7, 3), np.float32),
+        "X_test": np.zeros((2, 7, 3), np.float32),
+        "y_train": np.zeros((0, 1), np.float32),
+        "y_test": np.zeros((2, 1), np.float32),
+    }
+    m = compute_shape_meta(arrays, "regression")
+    assert m["n_features"] == 3, "F, not L == 7, and not the old hardcoded 2"
+
+
+@pytest.mark.parametrize(("shape", "expected"), [((4, 5), 5), ((4, 7, 3), 3)])
+def test_non_empty_train_is_unchanged(shape, expected):
+    # Negative control: these passed before the fix too. If they ever fail, the fix has
+    # widened beyond the empty-partition case it is scoped to.
+    arrays = {
+        "X_train": np.zeros(shape, np.float32),
+        "X_test": np.zeros((2,) + shape[1:], np.float32),
+        "y_train": np.zeros((shape[0], 1), np.float32),
+        "y_test": np.zeros((2, 1), np.float32),
+    }
+    assert compute_shape_meta(arrays, "regression")["n_features"] == expected
