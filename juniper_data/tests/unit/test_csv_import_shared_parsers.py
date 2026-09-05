@@ -32,7 +32,6 @@ import importlib
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pytest
 
 # Load-bearing side effect, NOT an unused import. ``juniper_data.generators.csv_import``
@@ -40,8 +39,8 @@ import pytest
 # ``api.routes.generators`` (juniper-data#316). Importing the routes module first
 # closes the cycle so this file is runnable without relying on collection order.
 #
-# Written as an explicit ``import_module`` call rather than a bare import with ``# noqa: F401``
-# because the noqa satisfied ruff but not CodeQL, which correctly flagged an unused NAME.
+# Written as an explicit ``import_module`` call rather than a bare import with a ruff-suppression comment
+# because that suppression satisfied ruff but not CodeQL, which correctly flagged an unused NAME.
 importlib.import_module("juniper_data.api.routes.generators")
 
 from juniper_data.generators.csv_import import CsvImportGenerator, CsvImportParams  # noqa: E402
@@ -133,11 +132,7 @@ class TestWholeFileAndInMemoryParsersAgree:
     @classmethod
     def _from_text(cls, path: Path, params: CsvImportParams, *, csv_format: bool) -> list:
         text = path.read_bytes().decode("utf-8")
-        rows = (
-            CsvImportGenerator._parse_csv_text(text, params, drop_trailing_partial=False)
-            if csv_format
-            else CsvImportGenerator._parse_json_text(text, tolerate_truncated=False)
-        )
+        rows = CsvImportGenerator._parse_csv_text(text, params, drop_trailing_partial=False) if csv_format else CsvImportGenerator._parse_json_text(text, tolerate_truncated=False)
         return cls._pairs(*CsvImportGenerator._convert_to_arrays(rows, params))
 
     def test_generate_matches_parse_csv_text_for_lf(self, tmp_path: Path) -> None:
