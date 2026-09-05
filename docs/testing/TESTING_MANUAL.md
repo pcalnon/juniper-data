@@ -36,6 +36,7 @@
    - [Marker Requirements](#marker-requirements)
    - [Async Tests](#async-tests)
    - [Test Organization](#test-organization)
+   - [DatasetMeta n_val pins](#datasetmeta-n_val-pins)
 9. [Pre-commit Integration](#pre-commit-integration)
 10. [Troubleshooting](#troubleshooting)
 
@@ -121,7 +122,7 @@ juniper_data/tests/
 | `test_security.py` | API | Security validations |
 | `test_security_boundaries.py` | API | Security boundary tests |
 | `test_spiral_generator.py` | Generator | Spiral generator (567 lines, 14 test classes) |
-| `test_split.py` | Core | Train/test split utilities |
+| `test_split.py` | Core | Two-way split plus additive three-way sizing (`partition_row_counts`, `split_three_way`; #353) |
 | `test_storage.py` | Storage | Storage interface and abstract classes |
 | `test_xor_generator.py` | Generator | XOR classification generator |
 
@@ -415,6 +416,14 @@ async def test_health_endpoint(self):
 - Place benchmark tests in `tests/performance/`
 - Use `conftest.py` for shared fixtures; keep test-specific fixtures local
 - Use `@pytest.mark.slow` for tests that take more than a few seconds
+
+### DatasetMeta `n_val` pins
+
+`compute_shape_meta` is on the create-dataset path for every generator. #358 makes the store able to carry a validation partition: `n_val` is defaulted to `0` (legacy `.meta.json` cannot load a required field), `X_val` is read presence-conditionally, and `n_samples` spans train + val + test. The `y_full`-less classification fallback must stack `y_val`; the pin puts an entire class there so omitting it drops class `1` from the dict.
+
+These pins live in `test_meta_dispatch.py` on #358 and are not on `main` until that PR lands. Three-way *sizing* pins are already on `main` in `test_split.py`. Generators still emit two partitions.
+
+> See: [REFERENCE.md -- DatasetMeta n_val and Three-Partition Counts](../REFERENCE.md#datasetmeta-n_val-and-three-partition-counts)
 
 ---
 

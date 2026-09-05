@@ -19,6 +19,7 @@
 - [Command Reference](#command-reference)
 - [File Structure Reference](#file-structure-reference)
 - [Warning Filters](#warning-filters)
+- [DatasetMeta n_val pins](#datasetmeta-n_val-pins)
 
 ---
 
@@ -289,6 +290,24 @@ Configured in `pyproject.toml` `[tool.pytest.ini_options].filterwarnings`:
 | `ignore::DeprecationWarning` | `uvicorn.*` | Known uvicorn deprecation warnings |
 | `ignore::DeprecationWarning` | `httpx.*` | Known httpx deprecation warnings |
 | `ignore::PendingDeprecationWarning` | `pydantic.*` | Known pydantic pending deprecation warnings |
+
+---
+
+## DatasetMeta `n_val` pins
+
+`juniper_data/tests/unit/test_meta_dispatch.py` (juniper-data#358). The store can carry a validation partition; generators do not emit one yet. `n_val` must stay defaulted (`0`) or every stored `.meta.json` fails to load.
+
+| Test | Property |
+|------|----------|
+| `test_val_partition_absent_reports_zero` | Two-partition artifact: `n_val=0`, `n_samples=n_train+n_test` |
+| `test_val_partition_counted_in_shape_meta` | `n_samples` is train + val + test (`6+3+2=11`) |
+| `test_class_distribution_without_y_full_includes_val` | A class that lives only in `y_val` is counted |
+| `test_class_distribution_prefers_y_full_when_present` | `y_full` still wins when present |
+| `test_dataset_meta_n_val_is_defaulted` | Field is not required; default is `0` |
+
+Reverting the shape-count and classification-fallback fixes is expected to fail the two behavioural tests and leave the other three green. These pins are on #358; they are not on `main` until that PR lands. Three-way sizing pins are already on `main` in `test_split.py`.
+
+> See: [REFERENCE.md -- DatasetMeta n_val and Three-Partition Counts](../REFERENCE.md#datasetmeta-n_val-and-three-partition-counts)
 
 ---
 

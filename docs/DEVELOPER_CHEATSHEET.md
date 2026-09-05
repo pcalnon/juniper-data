@@ -158,6 +158,14 @@ Coverage thresholds: **80% aggregate** (default; set in `pyproject.toml` `[tool.
 
 ---
 
+## DatasetMeta `n_val`
+
+The store can carry a validation partition; no generator emits one yet, so `n_val` reads `0`. The field is **defaulted** so legacy `.meta.json` still loads via `DatasetMeta(**meta_dict)`. `compute_shape_meta` reads `X_val` only if present and sets `n_samples = n_train + n_val + n_test`. Classification fallback without `y_full` must stack `y_val`. Sizing helpers (`partition_row_counts`, `split_three_way`) are on `main` (#353) but unwired. Do not invent `val_ratio`. Pins: `test_meta_dispatch.py` on #358.
+
+> See: [REFERENCE.md -- DatasetMeta n_val and Three-Partition Counts](REFERENCE.md#datasetmeta-n_val-and-three-partition-counts)
+
+---
+
 ## Code Quality (Ruff)
 
 juniper-data uses **ruff** (NOT black/isort/flake8). Config in `pyproject.toml`: line-length 320, target Python 3.12+ (py312), rule sets E, W, F, B, C4, I, UP, SIM, T20.
