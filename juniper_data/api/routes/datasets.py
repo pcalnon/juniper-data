@@ -137,6 +137,16 @@ async def create_dataset(
         )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid parameters: {e}") from e
 
+    # Bind the DEPLOYMENT policy onto the params before hashing. `model_dump` fills
+    # Field defaults, so an omitted `max_bytes` hashes as the schema default (128 MiB)
+    # no matter what the deployment ceiling is -- and a cache entry written under a
+    # loose ceiling is then served verbatim to a request made under a tighter one.
+    # Lowering the bound would have no effect on anything already cached.
+    # Generators without the hook are unaffected.
+    binder = getattr(generator_class, "bind_deployment_defaults", None)
+    if callable(binder):
+        params = binder(params)
+
     dataset_id = generate_dataset_id(
         generator=request.generator,
         version=version,
