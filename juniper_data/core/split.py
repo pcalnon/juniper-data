@@ -404,10 +404,21 @@ def resolve_partition_counts(
     if abs(train_ratio + val_ratio + test_ratio - 1.0) < 1e-9:
         n_test = n_native - n_train - n_val
 
-    # A carve invents no rows, so an over-subscribed request is trimmed from the
-    # END -- test first, then val. Trimming train would silently shrink the
-    # partition every existing baseline is measured against.
-    overflow = n_train + n_val + n_test - n_native
+    # Remainder absorption can go negative. ``round(n*0.7) + round(n*0.3)`` is
+    # 6 on five rows (and again on 25, 65, ...), so ``n_test = n - 4 - 2`` is
+    # -1. ``split_three_way`` then raises on a schema-valid request -- a 25-row
+    # CSV imported at the common 70/30 train/val split with no held-out test.
+    # Convert the negative into the overflow the trim below already handles;
+    # the previous ``overflow = n_train + n_val + n_test - n_native`` is 0
+    # when ``n_test`` was assigned as the remainder, so it never saw this.
+    if n_test < 0:
+        overflow = -n_test
+        n_test = 0
+    else:
+        # A carve invents no rows, so an over-subscribed request is trimmed
+        # from the END -- test first, then val. Trimming train would silently
+        # shrink the partition every existing baseline is measured against.
+        overflow = n_train + n_val + n_test - n_native
     if overflow > 0:
         take = min(overflow, n_test)
         n_test -= take

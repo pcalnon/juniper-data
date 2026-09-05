@@ -100,6 +100,32 @@ class TestCarveSizing:
         counts = resolve_partition_counts(sizing_mode=SIZING_MODE_CARVE, n_native=n_native, train_ratio=0.8, val_ratio=0.1, test_ratio=0.1)
 
         assert counts["n_total"] == n_native, f"{n_native - counts['n_total']} row(s) silently dropped"
+        assert min(counts["n_train"], counts["n_val"], counts["n_test"]) >= 0
+
+    @pytest.mark.parametrize("n_native", [5, 15, 25, 35, 65, 105])
+    @pytest.mark.parametrize("train_ratio,val_ratio,test_ratio", [(0.7, 0.3, 0.0), (0.9, 0.1, 0.0), (0.5, 0.5, 0.0)])
+    def test_remainder_overflow_does_not_go_negative(self, n_native: int, train_ratio: float, val_ratio: float, test_ratio: float) -> None:
+        """train+val rounding up past N must not produce a negative test count.
+
+        0.7 / 0.3 / 0.0 over 5 or 25 rows is the concrete crash: independently
+        rounded train+val is 6 (or 26), remainder absorption assigns
+        ``n_test = -1``, and ``split_three_way`` raises on a valid request.
+        """
+        counts = resolve_partition_counts(
+            sizing_mode=SIZING_MODE_CARVE,
+            n_native=n_native,
+            train_ratio=train_ratio,
+            val_ratio=val_ratio,
+            test_ratio=test_ratio,
+        )
+
+        assert min(counts["n_train"], counts["n_val"], counts["n_test"]) >= 0
+        assert counts["n_total"] == n_native
+        assert counts["n_train"] + counts["n_val"] + counts["n_test"] == n_native
+        X = np.zeros((n_native, 2), dtype=np.float32)
+        y = np.zeros((n_native, 1), dtype=np.float32)
+        split = partition_and_assemble(X, y, counts, seed=0, shuffle=False)
+        assert split["X_full"].shape[0] == n_native
 
     def test_partial_ratios_do_not_absorb_the_remainder(self) -> None:
         """Asking for 70 % of the rows must not silently inflate test to 50 %."""

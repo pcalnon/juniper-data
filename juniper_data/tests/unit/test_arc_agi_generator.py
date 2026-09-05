@@ -330,6 +330,44 @@ class TestArcAgiGeneratorLocal:
         assert result["X_full"].shape[0] == 4  # 2 tasks * (1 train + 1 test)
         assert result["task_ids"].shape[0] == 4
 
+    def test_task_ids_stay_aligned_with_shuffled_full(self, tmp_path) -> None:
+        """Each X_full row must name the task that actually produced it.
+
+        ``partition_and_assemble`` rebuilds ``X_full`` from the shuffled
+        partitions. Sticking the raw generation-order ``task_ids`` on that
+        result makes ``task_ids[i]`` describe a different grid than
+        ``X_full[i]``. Distinct per-task fill values make the mismatch
+        observable: after a shuffle, row 0 is almost never still task_a.
+        """
+        from juniper_data.generators.arc_agi.generator import ArcAgiGenerator
+
+        training_dir = tmp_path / "training"
+        training_dir.mkdir()
+
+        for name, fill in (("task_a", 1), ("task_b", 2), ("task_c", 3)):
+            task = {
+                "train": [{"input": [[fill]], "output": [[fill]]}],
+                "test": [{"input": [[fill]], "output": [[fill]]}],
+            }
+            (training_dir / f"{name}.json").write_text(json.dumps(task))
+
+        params = ArcAgiParams(
+            source="local",
+            local_path=str(tmp_path),
+            subset="training",
+            pad_to=5,
+            pad_value=-1,
+            flatten_pairs=False,
+            seed=42,
+            shuffle=True,
+        )
+        result = ArcAgiGenerator.generate(params)
+
+        assert result["X_full"].shape[0] == result["task_ids"].shape[0] == 6
+        for row, task_id in zip(result["X_full"], result["task_ids"], strict=True):
+            fill = int(row[0, 0])
+            assert task_id == {1: "task_a", 2: "task_b", 3: "task_c"}[fill]
+
     def test_generate_local_evaluation_subset(self, tmp_path) -> None:
         """Generate from evaluation subset."""
         from juniper_data.generators.arc_agi.generator import ArcAgiGenerator

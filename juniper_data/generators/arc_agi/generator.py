@@ -107,8 +107,21 @@ class ArcAgiGenerator:
         # has no way to produce the extra rows it would promise.
         counts = resolve_counts_for_params(params, X.shape[0])
 
-        split_result = partition_and_assemble(X, y, counts, params.seed, params.shuffle)
-        split_result["task_ids"] = task_ids
+        # ``task_ids`` is a per-row sidecar. ``partition_and_assemble`` rebuilds
+        # ``X_full`` from the shuffled partitions, so the ids must take the
+        # SAME permutation and the SAME kept prefix or ``X_full[i]`` names the
+        # wrong task. Shuffle here and cut with shuffle=False so there is one
+        # permutation, not a second independent draw from the same seed.
+        if params.shuffle:
+            rng = np.random.default_rng(params.seed)
+            perm = rng.permutation(X.shape[0])
+            X = X[perm]
+            y = y[perm]
+            task_ids = task_ids[perm]
+
+        split_result = partition_and_assemble(X, y, counts, params.seed, shuffle=False)
+        n_kept = counts["n_train"] + counts["n_val"] + counts["n_test"]
+        split_result["task_ids"] = task_ids[:n_kept]
         return split_result
 
     @staticmethod
