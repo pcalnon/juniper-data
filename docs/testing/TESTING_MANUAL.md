@@ -17,6 +17,7 @@
    - [Test Categories](#test-categories)
    - [Test File Inventory](#test-file-inventory)
    - [Empty-train shape metadata](#empty-train-shape-metadata)
+   - [Postgres model-derived schema](#postgres-model-derived-schema)
 3. [Running Tests](#running-tests)
    - [Basic Commands](#basic-commands)
    - [Marker-Based Selection](#marker-based-selection)
@@ -120,6 +121,7 @@ juniper_data/tests/
 | `test_mnist_generator.py` | Generator | MNIST/Fashion-MNIST generator |
 | `test_no_import_cycles.py` | API / generators | Cold-interpreter standalone import of every generator subpackage (#316 / #333) |
 | `test_observability.py` | API | Prometheus metrics and Sentry |
+| `test_postgres_schema_derivation.py` | Storage | Model-derived Postgres DDL/statements and round-trip (#343) |
 | `test_postgres_store.py` | Storage | PostgreSQL storage backend |
 | `test_redis_store.py` | Storage | Redis storage backend |
 | `test_security.py` | API | Security validations |
@@ -153,6 +155,14 @@ juniper_data/tests/
 Pin empty train in `test_meta_dispatch.py`: 2-D F=5, 3-D F=3 (not lookback), and classification `n_classes` from `y_test`. Mutation: putting `else 2` back fails exactly those two n_features tests.
 
 > See: [REFERENCE.md -- Empty-Train Shape Metadata](../REFERENCE.md#empty-train-shape-metadata)
+
+### Postgres model-derived schema
+
+The Postgres store used to carry five independent transcriptions of `DatasetMeta`. No test asserted `_row_to_meta(_meta_to_row(m)) == m`, so the copies drifted: `n_classes` stayed `NOT NULL` after the model allowed None, and seven fields were dropped every round trip. #343 derives DDL, upsert, update, and both mappers from `model_fields`.
+
+Pin that contract in `test_postgres_schema_derivation.py` (no database — the mappers are pure). Mutation: re-introducing a hand-written column list, `ADD COLUMN ... NOT NULL` without DEFAULT, or `json.dumps(None)` is expected to fail those pins.
+
+> See: [REFERENCE.md -- Postgres Model-Derived Schema](../REFERENCE.md#postgres-model-derived-schema)
 
 ---
 

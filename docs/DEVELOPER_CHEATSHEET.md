@@ -116,7 +116,11 @@ Seven backends extend `DatasetStore` (`juniper_data/storage/base.py`):
 
 Default filesystem layout: `{JUNIPER_DATA_STORAGE_PATH}/{dataset_id}.meta.json` + `.npz`. Optional backends use lazy imports; missing packages degrade gracefully. Factory helpers: `get_redis_store()`, `get_hf_store()`, `get_postgres_store()`, `get_kaggle_store()`.
 
-> See: `juniper_data/storage/__init__.py` | `juniper_data/storage/base.py`
+### Postgres model-derived schema
+
+`PostgresDatasetStore` DDL, upsert, update, and both row mappers derive from `DatasetMeta.model_fields` (#343). Do not re-transcribe the column list — that dropped seven fields and made `n_classes` NOT NULL after the model allowed None. `SCHEMA_SQL` runs on every init (`ADD COLUMN IF NOT EXISTS`; NOT NULL adds carry a DEFAULT). Table names must be bare identifiers. The API still uses LocalFS; this store is opt-in.
+
+> See: [REFERENCE.md -- Postgres Model-Derived Schema](REFERENCE.md#postgres-model-derived-schema)
 
 ---
 

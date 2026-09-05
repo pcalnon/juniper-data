@@ -16,6 +16,7 @@
 - [Fixtures Reference](#fixtures-reference)
 - [Coverage Configuration](#coverage-configuration)
 - [Empty-train shape-meta pins](#empty-train-shape-meta-pins)
+- [Postgres schema-derivation pins](#postgres-schema-derivation-pins)
 - [Test Dependencies](#test-dependencies)
 - [Command Reference](#command-reference)
 - [Import-cycle pins](#import-cycle-pins)
@@ -205,6 +206,23 @@ Restoring `n_features = … if n_train > 0 else 2` is expected to fail the two n
 > See: [REFERENCE.md -- Empty-Train Shape Metadata](../REFERENCE.md#empty-train-shape-metadata)
 
 ---
+
+## Postgres schema-derivation pins
+
+`juniper_data/tests/unit/test_postgres_schema_derivation.py` (juniper-data#343). DDL, upsert, update, and both row mappers derive from `DatasetMeta.model_fields`. The mappers are pure — this file needs no database. These pins are on #343; they are not on `main` until that PR lands.
+
+| `test_every_model_field_has_a_column` / `test_upsert_names_every_column` / `test_update_names_every_mutable_column` | every `DatasetMeta` field is in the DDL, INSERT, and UPDATE |
+| `test_n_classes_and_class_distribution_are_nullable` | regression INSERT is not rejected |
+| `test_meta_survives_a_round_trip` | `_row_to_meta(_meta_to_row(m)) == m` for classification and regression/sequence |
+| `test_a_row_from_an_older_table_still_loads` | missing columns fall back to the model default |
+| `test_a_not_null_added_column_always_carries_a_default` | migration-safe ALTER |
+| `test_a_hostile_table_name_is_refused` | `_safe_identifier` rejects injection-shaped names |
+| `test_no_python_comment_leaks_into_generated_sql` | `# nosec` cannot leak into SQL |
+
+Re-introducing a hand-written column list, `ADD COLUMN ... NOT NULL` without DEFAULT, or `json.dumps(None)` is expected to fail these pins.
+
+> See: [REFERENCE.md -- Postgres Model-Derived Schema](../REFERENCE.md#postgres-model-derived-schema)
+
 
 ## Test Dependencies
 
