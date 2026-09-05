@@ -8,11 +8,11 @@ from typing import Literal
 
 import numpy as np
 
-from juniper_data.core.split import shuffle_and_split
+from juniper_data.core.split import partition_and_assemble, per_unit_count, resolve_counts_for_params
 
 from .params import SpiralParams
 
-VERSION = "1.0.0"
+VERSION = "2.0.0"
 
 
 class SpiralGenerator:
@@ -34,32 +34,23 @@ class SpiralGenerator:
             Dictionary containing:
                 - X_train: Training features (n_train, 2)
                 - y_train: Training labels (n_train, n_spirals)
+                - X_val: Validation features (n_val, 2)
+                - y_val: Validation labels (n_val, n_spirals)
                 - X_test: Test features (n_test, 2)
                 - y_test: Test labels (n_test, n_spirals)
-                - X_full: Full dataset features (total_points, 2)
-                - y_full: Full dataset labels (total_points, n_spirals)
+                - X_full: All three partitions stacked (n_total, 2)
+                - y_full: All three partitions stacked (n_total, n_spirals)
         """
         rng = np.random.default_rng(params.seed)
 
-        X, y = SpiralGenerator._generate_raw(params, rng)
+        counts = resolve_counts_for_params(params, params.total_points())
+        # Under additive sizing the spirals must carry more points than the size
+        # knob asks for, because that knob now denotes the TRAIN count alone.
+        gen_params = params.model_copy(update={"n_points_per_spiral": per_unit_count(counts["n_raw_required"], params.n_spirals)})
 
-        split_result = shuffle_and_split(
-            X=X,
-            y=y,
-            train_ratio=params.train_ratio,
-            test_ratio=params.test_ratio,
-            seed=params.seed,
-            shuffle=params.shuffle,
-        )
+        X, y = SpiralGenerator._generate_raw(gen_params, rng)
 
-        return {
-            "X_train": split_result["X_train"],
-            "y_train": split_result["y_train"],
-            "X_test": split_result["X_test"],
-            "y_test": split_result["y_test"],
-            "X_full": X,
-            "y_full": y,
-        }
+        return partition_and_assemble(X, y, counts, params.seed, params.shuffle)
 
     @staticmethod
     def _generate_raw(params: SpiralParams, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:

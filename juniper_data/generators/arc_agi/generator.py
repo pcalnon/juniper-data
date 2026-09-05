@@ -11,11 +11,11 @@ from pathlib import Path
 import numpy as np
 
 from juniper_data.core.constants import CHARSET_UTF8
-from juniper_data.core.split import shuffle_and_split
+from juniper_data.core.split import partition_and_assemble, resolve_counts_for_params
 
 from .params import ArcAgiParams
 
-VERSION = "1.0.0"
+VERSION = "2.0.0"
 
 logger = logging.getLogger(__name__)
 
@@ -103,24 +103,13 @@ class ArcAgiGenerator:
         if X.shape[0] == 0:
             raise RuntimeError(f"ARC-AGI generation produced 0 samples from {len(tasks)} task(s). The source loaded but yielded no usable input/output grid pairs -- this is a source or schema problem, not an empty request.")
 
-        split_result = shuffle_and_split(
-            X=X,
-            y=y,
-            train_ratio=params.train_ratio,
-            test_ratio=params.test_ratio,
-            seed=params.seed,
-            shuffle=params.shuffle,
-        )
+        # Carve only: ARC-AGI reads a fixed corpus of tasks, so additive sizing
+        # has no way to produce the extra rows it would promise.
+        counts = resolve_counts_for_params(params, X.shape[0])
 
-        return {
-            "X_train": split_result["X_train"],
-            "y_train": split_result["y_train"],
-            "X_test": split_result["X_test"],
-            "y_test": split_result["y_test"],
-            "X_full": X,
-            "y_full": y,
-            "task_ids": task_ids,
-        }
+        split_result = partition_and_assemble(X, y, counts, params.seed, params.shuffle)
+        split_result["task_ids"] = task_ids
+        return split_result
 
     @staticmethod
     def _load_from_huggingface(params: ArcAgiParams) -> list[dict]:

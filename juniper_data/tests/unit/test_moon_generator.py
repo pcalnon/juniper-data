@@ -45,13 +45,17 @@ class TestMoonGenerator:
     def test_generate_returns_expected_keys(self) -> None:
         params = MoonParams(seed=42)
         result = MoonGenerator.generate(params)
-        assert set(result.keys()) == {"X_train", "y_train", "X_test", "y_test", "X_full", "y_full"}
+        assert set(result.keys()) == {"X_train", "y_train", "X_val", "y_val", "X_test", "y_test", "X_full", "y_full"}
 
     def test_generate_shapes(self) -> None:
         params = MoonParams(n_samples=150, seed=42)
         result = MoonGenerator.generate(params)
-        assert result["X_full"].shape == (150, 2)
-        assert result["y_full"].shape == (150, 2)
+        # n_samples is the TRAIN count under additive sizing: 150 + 60 + 45 = 255.
+        assert result["X_train"].shape == (150, 2)
+        assert result["X_val"].shape == (60, 2)
+        assert result["X_test"].shape == (45, 2)
+        assert result["X_full"].shape == (255, 2)
+        assert result["y_full"].shape == (255, 2)
 
     def test_generate_dtypes(self) -> None:
         params = MoonParams(seed=42)
@@ -84,11 +88,13 @@ class TestMoonGenerator:
         params = MoonParams(n_samples=200, seed=42)
         result = MoonGenerator.generate(params)
         counts = result["y_full"].sum(axis=0)
-        assert counts[0] == 100
-        assert counts[1] == 100
+        # 200 train + 80 val + 60 test = 340 realised rows, evenly halved.
+        assert counts[0] == 170
+        assert counts[1] == 170
 
     def test_train_test_split_ratio(self) -> None:
-        params = MoonParams(n_samples=100, train_ratio=0.7, test_ratio=0.3, seed=42)
+        # Ratios divide a fixed N -- that is carve mode by definition.
+        params = MoonParams(n_samples=100, train_ratio=0.7, test_ratio=0.3, seed=42, sizing_mode="carve")
         result = MoonGenerator.generate(params)
         assert len(result["X_train"]) == 70
         assert len(result["X_test"]) == 30
@@ -105,16 +111,20 @@ class TestMoonGenerator:
         params = MoonParams(n_samples=100, noise=0.0, seed=42, shuffle=False)
         result = MoonGenerator.generate(params)
 
-        upper = result["X_full"][:50]
+        # The boundary is derived from the realised array rather than hardcoded:
+        # n_samples now denotes TRAIN, so the realised row count is larger and the
+        # two moons meet at its midpoint, not at row 50.
+        n_upper = result["X_full"].shape[0] // 2
+        upper = result["X_full"][:n_upper]
         # Upper moon: y = sin(theta), x = cos(theta) — satisfies x^2 + y^2 == 1
         radii = np.linalg.norm(upper, axis=1)
-        np.testing.assert_array_almost_equal(radii, np.ones(50), decimal=5)
+        np.testing.assert_array_almost_equal(radii, np.ones(n_upper), decimal=5)
 
-        lower = result["X_full"][50:]
+        lower = result["X_full"][n_upper:]
         # Lower moon: x = 1 - cos, y = 0.5 - sin — so (x-1)^2 + (y-0.5)^2 == 1
         centered = lower - np.array([1.0, 0.5], dtype=np.float32)
         lower_radii = np.linalg.norm(centered, axis=1)
-        np.testing.assert_array_almost_equal(lower_radii, np.ones(50), decimal=5)
+        np.testing.assert_array_almost_equal(lower_radii, np.ones(lower.shape[0]), decimal=5)
 
 
 class TestGetSchema:

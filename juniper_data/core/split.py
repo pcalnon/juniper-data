@@ -4,6 +4,8 @@ This module provides pure NumPy utilities for shuffling and splitting datasets
 into train/test sets with reproducible random number generation.
 """
 
+from typing import Any
+
 import numpy as np
 
 
@@ -306,3 +308,212 @@ def temporal_split_index(n_samples: int, train_ratio: float) -> int:
     if n_samples >= 2:
         return min(max(idx, 1), n_samples - 1)
     return max(idx, 0)
+
+
+# --- Sizing-mode resolution ---------------------------------------------------
+#
+# Design section 6.3 requires TWO sizing models, not one:
+#
+#   * ADDITIVE (the default) -- the generator's native size knob denotes the
+#     TRAIN row count, and val/test are generated as ADDITIONAL rows sized as
+#     percentages of it. Decisions 2 and 8.
+#   * CARVE -- the conventional split of a fixed N by ratios. Section 6.3 admits
+#     it "when any of these holds: an explicit CLI switch, environment variable
+#     or config setting; the dataset has no generator or no generator specs; or
+#     the dataset type is not amenable to synthetic generation". The last clause
+#     is why the real-data generators (mnist, csv_import, arc_agi) are
+#     carve-only: they cannot conjure additional rows to honour a train count.
+
+SIZING_MODE_ADDITIVE: str = "additive"
+SIZING_MODE_CARVE: str = "carve"
+
+#: Every legal value of a generator's ``sizing_mode`` parameter.
+SIZING_MODES: tuple[str, ...] = (SIZING_MODE_ADDITIVE, SIZING_MODE_CARVE)
+
+
+def resolve_partition_counts(
+    *,
+    sizing_mode: str,
+    n_native: int,
+    train_ratio: float = 1.0,
+    val_ratio: float = 0.0,
+    test_ratio: float = 0.0,
+    val_percent: float = DEFAULT_VAL_PERCENT,
+    test_percent: float = DEFAULT_TEST_PERCENT,
+) -> dict[str, int]:
+    """Resolve a generator's partition row counts under either sizing model.
+
+    This is the single place the two models differ, so a generator does not
+    branch on the mode itself -- it asks for counts and a raw row target, then
+    generates that many rows and cuts them.
+
+    Args:
+        sizing_mode: ``"additive"`` or ``"carve"``.
+        n_native: rows the generator's size knob natively describes. Under
+            ``additive`` this IS the train count; under ``carve`` it is the
+            total to be divided.
+        train_ratio: carve mode only -- train's share of ``n_native``.
+        val_ratio: carve mode only -- val's share of ``n_native``.
+        test_ratio: carve mode only -- test's share of ``n_native``.
+        val_percent: additive mode only -- val rows as a percentage of train.
+        test_percent: additive mode only -- test rows as a percentage of train.
+
+    Returns:
+        Dictionary with ``n_train``, ``n_val``, ``n_test``, ``n_total`` and
+        ``n_raw_required`` -- the number of rows the generator must produce
+        before cutting. Under ``additive`` that is ``n_total``; under ``carve``
+        it is ``n_native``, because a carve invents no rows.
+
+    Raises:
+        ValueError: If ``sizing_mode`` is not a known mode, ``n_native`` is
+            below 1, or a carve's ratios are outside ``[0, 1]``.
+    """
+    if sizing_mode not in SIZING_MODES:
+        raise ValueError(f"sizing_mode must be one of {SIZING_MODES}. Got {sizing_mode!r}")
+
+    if n_native < 1:
+        raise ValueError(f"n_native must be at least 1. Got {n_native}")
+
+    if sizing_mode == SIZING_MODE_ADDITIVE:
+        counts = partition_row_counts(n_native, val_percent, test_percent)
+        counts["n_raw_required"] = counts["n_total"]
+        return counts
+
+    for name, ratio in (("train_ratio", train_ratio), ("val_ratio", val_ratio), ("test_ratio", test_ratio)):
+        if not (0.0 <= ratio <= 1.0):
+            raise ValueError(f"{name} must be between 0 and 1. Got {ratio}")
+
+    n_train = int(np.round(n_native * train_ratio))
+    n_val = int(np.round(n_native * val_ratio))
+    n_test = int(np.round(n_native * test_ratio))
+
+    # When the ratios account for the WHOLE dataset, the last partition absorbs
+    # the rounding remainder instead of being rounded independently.
+    #
+    # Rounding all three separately loses rows. At 0.8 / 0.1 / 0.1 over four
+    # rows it yields 3 + 0 + 0 -- a quarter of the dataset silently discarded,
+    # and small real-data fixtures are exactly where that bites. The two-way
+    # code this replaces had the same protection in the form
+    # ``n_test = n_samples - n_train``; dropping it while adding a third
+    # partition would have been a regression, not a new limitation.
+    #
+    # The guard is deliberately conditional. A caller who asks for 0.5 / 0.0 /
+    # 0.2 has asked for 70 % of the rows and must keep getting a 20 % test
+    # partition -- silently inflating it to 50 % to "use everything" would be
+    # answering a question they did not ask.
+    if abs(train_ratio + val_ratio + test_ratio - 1.0) < 1e-9:
+        n_test = n_native - n_train - n_val
+
+    # A carve invents no rows, so an over-subscribed request is trimmed from the
+    # END -- test first, then val. Trimming train would silently shrink the
+    # partition every existing baseline is measured against.
+    overflow = n_train + n_val + n_test - n_native
+    if overflow > 0:
+        take = min(overflow, n_test)
+        n_test -= take
+        overflow -= take
+    if overflow > 0:
+        n_val -= min(overflow, n_val)
+
+    return {
+        "n_train": n_train,
+        "n_val": n_val,
+        "n_test": n_test,
+        "n_total": n_train + n_val + n_test,
+        "n_raw_required": n_native,
+    }
+
+
+def per_unit_count(n_required: int, n_units: int) -> int:
+    """Per-unit size knob that yields at least ``n_required`` rows.
+
+    Generators whose size knob is per-spiral / per-quadrant / per-class need to
+    be asked for a larger unit under additive sizing. Rounding is UP so the
+    generator never comes up short; the surplus rows are dropped by
+    :func:`split_three_way`, which cuts exactly the counts it is given.
+
+    Scaling every unit equally is what keeps class balance intact -- the surplus
+    is discarded after shuffling, so it is not taken from any one class.
+
+    Args:
+        n_required: total rows needed across all units.
+        n_units: number of units (spirals, quadrants, classes).
+
+    Returns:
+        The per-unit count.
+
+    Raises:
+        ValueError: If ``n_units`` is below 1.
+    """
+    if n_units < 1:
+        raise ValueError(f"n_units must be at least 1. Got {n_units}")
+    return int(-(-n_required // n_units))
+
+
+def resolve_counts_for_params(params: Any, n_native: int) -> dict[str, int]:
+    """:func:`resolve_partition_counts` driven by a generator's params model.
+
+    Duck-typed on purpose: it reads the fields
+    ``juniper_data.core.partition_params.PartitionParams`` contributes plus the
+    generator's own ``train_ratio`` / ``test_ratio``, without importing the
+    model (which would make ``split`` depend on the layer that depends on it).
+
+    Args:
+        params: a generator params model carrying the partition vocabulary.
+        n_native: rows the generator's size knob natively describes.
+
+    Returns:
+        The dict :func:`resolve_partition_counts` returns.
+    """
+    return resolve_partition_counts(
+        sizing_mode=params.sizing_mode,
+        n_native=n_native,
+        train_ratio=getattr(params, "train_ratio", 1.0),
+        val_ratio=getattr(params, "val_ratio", 0.0),
+        test_ratio=getattr(params, "test_ratio", 0.0),
+        val_percent=getattr(params, "val_percent", DEFAULT_VAL_PERCENT),
+        test_percent=getattr(params, "test_percent", DEFAULT_TEST_PERCENT),
+    )
+
+
+def partition_and_assemble(
+    X: np.ndarray,
+    y: np.ndarray,
+    counts: dict[str, int],
+    seed: int | None,
+    shuffle: bool,
+) -> dict[str, np.ndarray]:
+    """Cut into train / val / test and assemble the legacy ``*_full`` pair.
+
+    ``X_full`` is the vstack of the three partitions rather than the raw
+    generated array, and that difference is load-bearing. Additive sizing rounds
+    a per-unit size knob UP, so a generator can produce a few more rows than the
+    partitions need. Reporting the raw array as ``X_full`` would then break the
+    ``n_full == n_train + n_val + n_test`` length identity that
+    ``test_e2e_workflow`` asserts. Assembling it from the partitions keeps the
+    identity exact, and -- because the surplus is discarded from the SHUFFLED
+    tail rather than the raw array's end -- the rows dropped are random instead
+    of coming out of whichever class the generator emits last.
+
+    Args:
+        X: generated feature array, at least ``n_train + n_val + n_test`` rows.
+        y: generated label array, same row count as ``X``.
+        counts: the dict from :func:`resolve_counts_for_params`.
+        seed: random seed for the shuffle.
+        shuffle: whether to shuffle before cutting.
+
+    Returns:
+        The six partition keys plus ``X_full`` / ``y_full``.
+    """
+    split = shuffle_and_split_three_way(
+        X,
+        y,
+        counts["n_train"],
+        counts["n_val"],
+        counts["n_test"],
+        seed=seed,
+        shuffle=shuffle,
+    )
+    split["X_full"] = np.vstack([split["X_train"], split["X_val"], split["X_test"]])
+    split["y_full"] = np.vstack([split["y_train"], split["y_val"], split["y_test"]])
+    return split

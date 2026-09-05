@@ -81,7 +81,8 @@ class TestGenerateStoreRetrieveWorkflow:
         retrieved_meta = store.get_meta("spiral-mem-001")
         assert retrieved_meta is not None
         assert retrieved_meta.dataset_id == "spiral-mem-001"
-        assert retrieved_meta.n_samples == 200
+        # 200 train + 80 val + 60 test = 340 realised rows.
+        assert retrieved_meta.n_samples == 340
 
         artifact_bytes = store.get_artifact_bytes("spiral-mem-001")
         assert artifact_bytes is not None
@@ -111,7 +112,8 @@ class TestGenerateStoreRetrieveWorkflow:
         retrieved_meta = store.get_meta("spiral-fs-001")
         assert retrieved_meta is not None
         assert retrieved_meta.dataset_id == "spiral-fs-001"
-        assert retrieved_meta.n_samples == 200
+        # 200 train + 80 val + 60 test = 340 realised rows.
+        assert retrieved_meta.n_samples == 340
 
         artifact_bytes = store.get_artifact_bytes("spiral-fs-001")
         assert artifact_bytes is not None

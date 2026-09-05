@@ -6,11 +6,14 @@ classification datasets using only NumPy operations.
 
 import numpy as np
 
-from juniper_data.core.split import shuffle_and_split
+from juniper_data.core.split import partition_and_assemble, per_unit_count, resolve_counts_for_params
 
 from .params import XorParams
 
-VERSION = "1.0.0"
+VERSION = "2.0.0"
+
+#: XOR is four quadrants by construction; the size knob is per-quadrant.
+_N_QUADRANTS = 4
 
 
 class XorGenerator:
@@ -36,6 +39,8 @@ class XorGenerator:
             Dictionary containing:
                 - X_train: Training features (n_train, 2)
                 - y_train: Training labels (n_train, 2)
+                - X_val: Validation features (n_val, 2)
+                - y_val: Validation labels (n_val, 2)
                 - X_test: Test features (n_test, 2)
                 - y_test: Test labels (n_test, 2)
                 - X_full: Full dataset features (total_points, 2)
@@ -43,25 +48,14 @@ class XorGenerator:
         """
         rng = np.random.default_rng(params.seed)
 
-        X, y = XorGenerator._generate_raw(params, rng)
+        counts = resolve_counts_for_params(params, _N_QUADRANTS * params.n_points_per_quadrant)
+        # Additive sizing needs more raw rows than the size knob names,
+        # because that knob now denotes the TRAIN count alone.
+        gen_params = params.model_copy(update={"n_points_per_quadrant": per_unit_count(counts["n_raw_required"], _N_QUADRANTS)})
 
-        split_result = shuffle_and_split(
-            X=X,
-            y=y,
-            train_ratio=params.train_ratio,
-            test_ratio=params.test_ratio,
-            seed=params.seed,
-            shuffle=params.shuffle,
-        )
+        X, y = XorGenerator._generate_raw(gen_params, rng)
 
-        return {
-            "X_train": split_result["X_train"],
-            "y_train": split_result["y_train"],
-            "X_test": split_result["X_test"],
-            "y_test": split_result["y_test"],
-            "X_full": X,
-            "y_full": y,
-        }
+        return partition_and_assemble(X, y, counts, params.seed, params.shuffle)
 
     @staticmethod
     def _generate_raw(params: XorParams, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:

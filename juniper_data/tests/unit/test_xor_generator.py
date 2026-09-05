@@ -66,12 +66,17 @@ class TestXorGenerator:
         params = XorParams(n_points_per_quadrant=25, seed=42)
         result = XorGenerator.generate(params)
 
-        n_total = 4 * 25
-        n_train = int(n_total * 0.8)
-        n_test = n_total - n_train
+        # The per-quadrant knob names the TRAIN count under additive sizing:
+        # 4 * 25 = 100 train, plus 40 val and 30 test.
+        n_train = 4 * 25
+        n_val = 40
+        n_test = 30
+        n_total = n_train + n_val + n_test
 
         assert result["X_train"].shape == (n_train, 2)
         assert result["y_train"].shape == (n_train, 2)
+        assert result["X_val"].shape == (n_val, 2)
+        assert result["y_val"].shape == (n_val, 2)
         assert result["X_test"].shape == (n_test, 2)
         assert result["y_test"].shape == (n_test, 2)
         assert result["X_full"].shape == (n_total, 2)
@@ -125,8 +130,16 @@ class TestXorGenerator:
         class_0_count = y_full[:, 0].sum()
         class_1_count = y_full[:, 1].sum()
 
-        assert class_0_count == 50
-        assert class_1_count == 50
+        # 100 train + 40 val + 30 test = 170 realised rows. Additive sizing rounds
+        # the per-quadrant knob UP (ceil(170/4) = 43, so 172 generated), and the
+        # 2 surplus rows are dropped from the SHUFFLED tail -- so exact per-class
+        # equality is not guaranteed by construction and must not be asserted.
+        # The bound below is what the code actually promises.
+        n_generated = 4 * -(-170 // 4)
+        n_surplus = n_generated - 170
+
+        assert class_0_count + class_1_count == 170
+        assert abs(class_0_count - class_1_count) <= n_surplus
 
     def test_generate_quadrant_distribution(self) -> None:
         """Points are in correct quadrants based on class."""
@@ -135,7 +148,9 @@ class TestXorGenerator:
 
         X = result["X_full"]
         y = result["y_full"]
-        n = 50
+        # Quadrants are equal-sized blocks of the unshuffled array; the block size
+        # follows the realised row count rather than the requested per-quadrant knob.
+        n = X.shape[0] // 4
 
         q1_x = X[0:n, 0]
         q1_y = X[0:n, 1]

@@ -218,6 +218,9 @@ class TestCsvImportGenerator:
             file_path=sample_csv_file.name,
             train_ratio=0.5,
             test_ratio=0.5,
+            # 0.5 + 0.5 accounts for every row; state the validation share as 0
+            # rather than leaving the 0.1 default to over-subscribe at 1.1.
+            val_ratio=0.0,
             seed=42,
         )
         result = CsvImportGenerator.generate(params)
