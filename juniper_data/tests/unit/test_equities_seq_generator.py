@@ -160,8 +160,8 @@ class TestEquitiesSeqGenerator:
         and prove nothing.
         """
         arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=21), "MSFT": _ohlcv(seed=22)}, _shares(), normalize_features=True)
-        assert arrays["X_train"].max() <= 1.0 + 1e-6, "the fitted partition must be bounded"
-        assert arrays["X_test"].max() > 1.0 + 1e-6, "test windows should exceed the training range; a full-frame fit would clamp them"
+        assert np.nanmax(arrays["X_train"]) <= 1.0 + 1e-6, "the fitted partition must be bounded"
+        assert np.nanmax(arrays["X_test"]) > 1.0 + 1e-6, "test windows should exceed the training range; a full-frame fit would clamp them"
 
     def test_fit_excludes_every_row_at_or_after_the_split(self) -> None:
         """What "train rows" means here, pinned deliberately (juniper-data#314).
@@ -184,7 +184,12 @@ class TestEquitiesSeqGenerator:
         raw = _generate(["AAPL"], {"AAPL": _ohlcv(seed=23)}, _shares())
         assert normed["X_train"].shape == raw["X_train"].shape, "normalisation must not change what is windowed"
         assert normed["X_test"].shape == raw["X_test"].shape
-        assert np.isfinite(normed["X_train"]).all() and np.isfinite(normed["X_test"]).all()
+        # Normalisation must not INTRODUCE non-finite values (a constant column
+        # divided by a zero range would). It cannot assert the windows are finite
+        # outright: since 2026-09-05 `fundamentals_fill` defaults to "nan", so the
+        # pre-filing span is legitimately NaN before normalisation ever runs.
+        assert np.isnan(normed["X_train"]).sum() == np.isnan(raw["X_train"]).sum(), "normalisation introduced NaN"
+        assert np.isinf(normed["X_train"]).sum() == 0 and np.isinf(normed["X_test"]).sum() == 0
 
     def test_get_schema_includes_lookback(self) -> None:
         schema = get_schema()
@@ -262,4 +267,4 @@ class TestEquitiesSeqGeneratorBranches:
         """
         arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=22), "MSFT": _ohlcv(seed=23)}, _shares(), lookback=5, normalize_features=True)
         train = arrays["X_train"]
-        assert train.min() >= -1e-6 and train.max() <= 1.0 + 1e-6, "the fitted partition's windows must be bounded"
+        assert np.nanmin(train) >= -1e-6 and np.nanmax(train) <= 1.0 + 1e-6, "the fitted partition's windows must be bounded"

@@ -29,7 +29,20 @@ EQUITIES_DEFAULT_BASIS_PRICE_FIELD: Literal["close", "adj_close"] = "close"
 #   "zero" -> fill missing total_shares / market_cap with 0.0 (X stays trainable)
 #   "nan"  -> leave NaN (honest; caller must handle)
 #   "drop" -> drop rows lacking shares (restricts the series to ~2009+)
-EQUITIES_DEFAULT_FUNDAMENTALS_FILL: Literal["zero", "nan", "drop"] = "zero"
+#
+# DEFAULT CHANGED "zero" -> "nan" (2026-09-05, owner decision). A market cap of
+# 0.0 is a value no listed company can have, and nothing downstream can tell it
+# apart from a measurement: it survives every dtype, range and NaN check, and a
+# model trained on it learns from a number that was fabricated by a fill policy.
+# NaN propagates visibly instead -- pandas and numpy consumers see it, and a
+# consumer that wants the old behaviour asks for it explicitly.
+#
+# This is a BEHAVIOUR CHANGE for callers who relied on the default: rows before a
+# ticker's first SEC filing (~2009) now carry NaN in total_shares / market_cap
+# rather than 0.0. "drop" remains available for a caller who wants those rows
+# gone instead, and it changes the universe size, which is why it is not the
+# default either.
+EQUITIES_DEFAULT_FUNDAMENTALS_FILL: Literal["zero", "nan", "drop"] = "nan"
 
 # 52-week high/low rolling window, in trading sessions (~252 per year).
 EQUITIES_DEFAULT_WEEK52_WINDOW = 252

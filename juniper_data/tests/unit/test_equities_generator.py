@@ -280,7 +280,7 @@ class TestEquitiesGenerator:
         """
         arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=13), "MSFT": _ohlcv(seed=14)}, _shares(), normalize_features=True)
         train = arrays["X_train"]
-        assert train.min() >= -1e-6 and train.max() <= 1.0 + 1e-6, "the fitted partition must be bounded"
+        assert np.nanmin(train) >= -1e-6 and np.nanmax(train) <= 1.0 + 1e-6, "the fitted partition must be bounded"
 
     def test_normaliser_is_fit_on_train_not_full(self) -> None:
         """The regression guard. Would fail if the fit reverted to the full matrix.
@@ -294,7 +294,7 @@ class TestEquitiesGenerator:
     def test_unnormalised_output_is_unaffected(self) -> None:
         """``normalize_features`` defaults to False, so the common path must not move."""
         arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=13), "MSFT": _ohlcv(seed=14)}, _shares())
-        assert arrays["X_train"].max() > 1.0, "raw features are not in [0, 1]"
+        assert np.nanmax(arrays["X_train"]) > 1.0, "raw features are not in [0, 1]"
 
     def test_extra_arrays_survive_roundtrip(self, tmp_path) -> None:
         arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=15), "MSFT": _ohlcv(seed=16)}, _shares())
@@ -406,7 +406,7 @@ class TestEquitiesParams:
         params = EquitiesParams()
         assert params.symbols is None
         assert params.start_date == "2000-01-01"
-        assert params.fundamentals_fill == "zero"
+        assert params.fundamentals_fill == "nan"
 
     def test_regression_target_default_and_schema(self) -> None:
         assert EquitiesParams().regression_target == "next_close"
@@ -1036,7 +1036,7 @@ class TestFreeFields:
         )
         arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=19)}, undated, allow_truncation=True)
         shares = arrays["X_full"][:, _FEATURES.index("total_shares")]
-        assert np.all(shares == 0.0), "an undated filing must not populate total_shares"
+        assert np.all(np.isnan(shares)), "an undated filing must not populate total_shares"
         assert np.all(arrays["report_date_full"] == 0)
 
     def test_rolling_extreme_positions_rejects_an_ambiguous_request(self) -> None:
@@ -1149,3 +1149,60 @@ class TestUnresolvableFundamentals:
         assert quality["unrescued"] == {}
         # Degraded alone must NOT trip the refusal -- the value was recovered.
         assert quality["policy"] == "accept"
+
+    def test_shares_issued_is_recorded_as_its_own_degraded_basis(self) -> None:
+        """Issued is a DIFFERENT quantity, and the annotation has to say which.
+
+        Issued includes treasury stock, so it is >= shares outstanding -- and for
+        a company that has bought back stock, materially so. A ``market_cap``
+        built on it therefore means something else for that symbol. Collapsing it
+        into the same `degraded` label as a period average would tell a consumer
+        that something is off without telling it what, which is not enough to
+        decide whether the symbol is usable.
+        """
+        issued_shares = _shares()
+        issued_shares["shares_quality"] = eq_gen.SHARES_QUALITY_ISSUED
+        issued_shares["shares_origin"] = eq_gen.SHARES_SOURCE_FACTS
+
+        arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=51)}, issued_shares)
+        quality = arrays[eq_limits.DATA_QUALITY_META_KEY]
+        assert quality["degraded"] == {"AAPL": "issued_includes_treasury"}
+        assert quality["unrescued"] == {}
+        # A rescue, not a gap: it must not trip the refusal.
+        assert quality["policy"] == "accept"
+
+    def test_the_issued_rung_is_last_in_the_ladder(self) -> None:
+        """Order is the whole design here, so pin it rather than trusting a comment.
+
+        The weighted average is the RIGHT quantity measured over a period; issued
+        is the WRONG quantity measured exactly. For a market cap the first is
+        nearer the truth, so issued may only be reached when nothing else
+        reported anything at all.
+        """
+        tags = [tag for _taxonomy, tag, _quality in eq_gen._SHARES_FACTS_LADDER]
+        qualities = [quality for _taxonomy, _tag, quality in eq_gen._SHARES_FACTS_LADDER]
+        assert tags[-1] == "CommonStockSharesIssued", f"issued must be the last rung; ladder is {tags}"
+        assert qualities[-1] == eq_gen.SHARES_QUALITY_ISSUED
+        assert tags.index("WeightedAverageNumberOfSharesOutstandingBasic") < tags.index("CommonStockSharesIssued")
+        # The first two rungs are the real quantity, measured properly.
+        assert qualities[0] == qualities[1] == eq_gen.SHARES_QUALITY_POINT_IN_TIME
+
+    def test_pre_filing_rows_are_nan_not_a_fabricated_zero(self) -> None:
+        """THE DEFAULT CHANGED. `fundamentals_fill` is "nan", and this is why.
+
+        SEC XBRL reaches back to ~2009, so every ticker has trade rows before its
+        first filing. Under the old "zero" default those rows carried
+        ``total_shares = 0.0`` and ``market_cap = 0.0`` -- values no listed
+        company can have, and ones that survive every dtype, range and NaN check
+        downstream. A model trained on them learns from a number a fill policy
+        invented.
+
+        NaN propagates visibly instead. That IS the point, and it is a behaviour
+        change: `X_full` now contains NaN by default for the pre-filing span.
+        """
+        assert EquitiesParams().fundamentals_fill == "nan"
+
+        arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=52)}, _shares())
+        shares = arrays["X_full"][:, _FEATURES.index("total_shares")]
+        assert np.isnan(shares).any(), "the pre-filing span must be NaN, not 0.0"
+        assert not np.any(shares == 0.0), "a fabricated zero is exactly what this default exists to remove"
