@@ -53,6 +53,7 @@ from juniper_data.generators.spiral.generator import SpiralGenerator
 from juniper_data.generators.spiral.params import SpiralParams
 from juniper_data.generators.xor.generator import XorGenerator
 from juniper_data.generators.xor.params import XorParams
+from juniper_data.tests.partitions import whole
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Generator Throughput Benchmarks
@@ -172,7 +173,7 @@ class TestMultiClassScaling:
         result = benchmark(SpiralGenerator.generate, params)
         # The size knob names the TRAIN count under additive sizing.
         assert result["X_train"].shape[0] == n_spirals * 200
-        assert result["y_full"].shape[1] == n_spirals
+        assert whole(result, "y").shape[1] == n_spirals
 
     @pytest.mark.parametrize(
         "n_classes",

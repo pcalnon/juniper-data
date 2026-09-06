@@ -11,7 +11,7 @@ from juniper_data.core.split import partition_and_assemble, per_unit_count, reso
 
 from .params import XorParams
 
-VERSION = "2.0.0"
+VERSION = "3.0.0"
 
 #: XOR is four quadrants by construction; the size knob is per-quadrant.
 _N_QUADRANTS = 4
@@ -44,8 +44,6 @@ class XorGenerator:
                 - y_val: Validation labels (n_val, 2)
                 - X_test: Test features (n_test, 2)
                 - y_test: Test labels (n_test, 2)
-                - X_full: Full dataset features (total_points, 2)
-                - y_full: Full dataset labels (total_points, 2)
         """
         rng = np.random.default_rng(params.seed)
 

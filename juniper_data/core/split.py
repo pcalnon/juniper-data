@@ -590,17 +590,16 @@ def partition_and_assemble(
     *,
     extras: dict[str, np.ndarray] | None = None,
 ) -> dict[str, np.ndarray]:
-    """Cut into train / val / test and assemble the legacy ``*_full`` pair.
+    """Cut into train / val / test.
 
-    ``X_full`` is the vstack of the three partitions rather than the raw
-    generated array, and that difference is load-bearing. Additive sizing rounds
-    a per-unit size knob UP, so a generator can produce a few more rows than the
-    partitions need. Reporting the raw array as ``X_full`` would then break the
-    ``n_full == n_train + n_val + n_test`` length identity that
-    ``test_e2e_workflow`` asserts. Assembling it from the partitions keeps the
-    identity exact, and -- because the surplus is discarded from the SHUFFLED
-    tail rather than the raw array's end -- the rows dropped are random instead
-    of coming out of whichever class the generator emits last.
+    The ``*_full`` pair this used to append is gone (decision 11, design §9.5).
+    The reason it was assembled from the partitions rather than reported as the raw
+    generated array is worth keeping in mind even though the array itself is gone:
+    additive sizing rounds a per-unit size knob UP, so a generator can produce a few
+    more rows than the partitions need, and the surplus is discarded from the SHUFFLED
+    tail. Anything that reconstructs "the whole dataset" downstream must therefore
+    concatenate the PARTITIONS -- the raw generated array is a different, slightly
+    larger set, and its extra rows come out of whichever class the generator emits last.
 
     Args:
         X: generated feature array, at least ``n_train + n_val + n_test`` rows.
@@ -610,13 +609,15 @@ def partition_and_assemble(
         shuffle: whether to shuffle before cutting.
         extras: optional per-row metadata arrays, keyed by the name they should carry
             in the result. Each is permuted with the SAME permutation as the rows and
-            then truncated to ``X_full``'s length, so ``result[name][i]`` describes
-            ``result["X_full"][i]``. A generator that attaches such metadata AFTER the
-            split instead is attaching generation-order values to shuffled rows.
+            then truncated to the partition sum, so ``result[name][i]`` describes row
+            ``i`` of ``concatenate([X_train, X_val, X_test])``. That is the same
+            alignment the retired ``X_full`` gave, because ``split_three_way`` slices
+            contiguously in train | val | test order. A generator that attaches such
+            metadata AFTER the split instead is attaching generation-order values to
+            shuffled rows.
 
     Returns:
-        The six partition keys plus ``X_full`` / ``y_full``, and one key per ``extras``
-        entry.
+        The six partition keys, plus one key per ``extras`` entry.
     """
     aligned = dict(extras or {})
     split = shuffle_and_split_three_way(
@@ -629,12 +630,19 @@ def partition_and_assemble(
         shuffle=shuffle,
         extras=aligned,
     )
-    split["X_full"] = np.vstack([split["X_train"], split["X_val"], split["X_test"]])
-    split["y_full"] = np.vstack([split["y_train"], split["y_val"], split["y_test"]])
-    # `split_three_way` slices contiguously in train | val | test order, so `X_full` is
-    # exactly the first `n_train + n_val + n_test` shuffled rows. Any surplus the
-    # generator produced is dropped from the shuffled TAIL, and the metadata is cut at
-    # the same place for the same reason.
+
+    # `shuffle_and_split_three_way` permutes `aligned` IN PLACE and returns only the six
+    # partition keys -- it has no third return value, deliberately, so that adding extras
+    # was not a breaking arity change for its other callers. The permuted arrays therefore
+    # have to be merged back in HERE or they are silently dropped: correctly ordered, never
+    # emitted. That is not hypothetical -- it is what removing the `*_full` assembly did to
+    # ARC-AGI's `task_ids`, which vanished from the artifact with no error anywhere.
+    #
+    # Truncate to the partition sum, not to `len(X)`. Additive sizing rounds a per-unit
+    # size knob UP, so `X` can carry a few more rows than the partitions consume; those
+    # surplus rows are discarded from the shuffled tail and their metadata must go with
+    # them, or `result[name]` is longer than the data it describes.
+    total = counts["n_train"] + counts["n_val"] + counts["n_test"]
     for name, array in aligned.items():
-        split[name] = array[: split["X_full"].shape[0]]
+        split[name] = array[:total]
     return split

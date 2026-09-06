@@ -33,6 +33,7 @@ from juniper_data.core.artifacts import load_npz, save_npz  # noqa: E402
 from juniper_data.generators.equities import VERSION, EquitiesGenerator, EquitiesParams, get_schema  # noqa: E402
 from juniper_data.generators.equities import generator as eq_gen  # noqa: E402
 from juniper_data.generators.equities.defaults import EQUITIES_FEATURE_COLUMNS  # noqa: E402
+from juniper_data.tests.partitions import whole
 
 pytestmark = [pytest.mark.unit, pytest.mark.generators]
 
@@ -116,17 +117,17 @@ class TestEquitiesGenerator:
 
     def test_keys_shapes_and_dtypes(self) -> None:
         arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=1), "MSFT": _ohlcv(seed=2)}, _shares())
-        for key in ("X_train", "y_train", "X_val", "y_val", "X_test", "y_test", "X_full", "y_full", "y_reg_full", "ticker_code_full", "date_full", "ticker_vocab"):
+        for key in ("X_train", "y_train", "X_val", "y_val", "X_test", "y_test", "y_reg_train", "ticker_code_train", "date_train", "ticker_vocab"):
             assert key in arrays, f"missing {key}"
 
-        n = arrays["X_full"].shape[0]
-        assert arrays["X_full"].shape == (n, len(EQUITIES_FEATURE_COLUMNS))
-        assert arrays["y_full"].shape == (n, 2)
-        assert arrays["y_reg_full"].shape == (n, 1)
-        assert arrays["X_full"].dtype == np.float32
-        assert arrays["y_full"].dtype == np.float32
-        assert arrays["ticker_code_full"].dtype == np.int32
-        assert arrays["date_full"].dtype == np.int32
+        n = whole(arrays, "X").shape[0]
+        assert whole(arrays, "X").shape == (n, len(EQUITIES_FEATURE_COLUMNS))
+        assert whole(arrays, "y").shape == (n, 2)
+        assert whole(arrays, "y_reg").shape == (n, 1)
+        assert whole(arrays, "X").dtype == np.float32
+        assert whole(arrays, "y").dtype == np.float32
+        assert whole(arrays, "ticker_code").dtype == np.int32
+        assert whole(arrays, "date").dtype == np.int32
         assert arrays["ticker_vocab"].tolist() == ["AAPL", "MSFT"]
         # train + val + test partition the full set (temporal split, no overlap/loss).
         # The default ratios are 0.8 / 0.1 / 0.1, so all three are non-empty here and
@@ -138,38 +139,38 @@ class TestEquitiesGenerator:
         frame = _ohlcv(seed=3)
         arrays = _generate(["AAPL"], {"AAPL": frame}, _shares())
         # All rows sum to exactly one (valid one-hot).
-        assert np.allclose(arrays["y_full"].sum(axis=1), 1.0)
+        assert np.allclose(whole(arrays, "y").sum(axis=1), 1.0)
         # Single ticker, temporal order preserved -> compare to the source.
         close = frame["Close"].to_numpy()
         expected_up = (close[1:] > close[:-1]).astype(np.float32)
-        np.testing.assert_array_equal(arrays["y_full"][:, 1], expected_up[: arrays["y_full"].shape[0]])
+        np.testing.assert_array_equal(whole(arrays, "y")[:, 1], expected_up[: whole(arrays, "y").shape[0]])
 
     def test_next_close_regression_target(self) -> None:
         frame = _ohlcv(seed=4)
         arrays = _generate(["AAPL"], {"AAPL": frame}, _shares())
         close = frame["Close"].to_numpy().astype(np.float32)
-        np.testing.assert_allclose(arrays["y_reg_full"][:, 0], close[1 : arrays["y_reg_full"].shape[0] + 1], rtol=1e-5)
+        np.testing.assert_allclose(whole(arrays, "y_reg")[:, 0], close[1 : whole(arrays, "y_reg").shape[0] + 1], rtol=1e-5)
 
     def test_regression_target_default_is_next_close(self) -> None:
         # The default mode reproduces the original raw-close target byte-for-byte.
         frame = _ohlcv(seed=20)
         default = _generate(["AAPL"], {"AAPL": frame}, _shares())
         explicit = _generate(["AAPL"], {"AAPL": frame}, _shares(), regression_target="next_close")
-        np.testing.assert_array_equal(default["y_reg_full"], explicit["y_reg_full"])
+        np.testing.assert_array_equal(whole(default, "y_reg"), whole(explicit, "y_reg"))
 
     def test_regression_target_return_and_log_return(self) -> None:
         # `return` / `log_return` produce the stationary next-day return targets.
         frame = _ohlcv(seed=21)
-        n = _generate(["AAPL"], {"AAPL": frame}, _shares())["y_reg_full"].shape[0]
+        n = whole(_generate(["AAPL"], {"AAPL": frame}, _shares()), "y_reg").shape[0]
         ret = _generate(["AAPL"], {"AAPL": frame}, _shares(), regression_target="return")
         logret = _generate(["AAPL"], {"AAPL": frame}, _shares(), regression_target="log_return")
         close = frame["Close"].to_numpy(dtype=np.float64)
         next_close, close_aligned = close[1 : n + 1], close[:n]
-        np.testing.assert_allclose(ret["y_reg_full"][:, 0], (next_close / close_aligned - 1.0).astype(np.float32), rtol=1e-6, atol=1e-7)
-        np.testing.assert_allclose(logret["y_reg_full"][:, 0], np.log(next_close / close_aligned).astype(np.float32), rtol=1e-6, atol=1e-7)
-        assert ret["y_reg_full"].shape == (n, 1)
+        np.testing.assert_allclose(whole(ret, "y_reg")[:, 0], (next_close / close_aligned - 1.0).astype(np.float32), rtol=1e-6, atol=1e-7)
+        np.testing.assert_allclose(whole(logret, "y_reg")[:, 0], np.log(next_close / close_aligned).astype(np.float32), rtol=1e-6, atol=1e-7)
+        assert whole(ret, "y_reg").shape == (n, 1)
         # Raw close tracks the ~100 price level (non-stationary); returns are centered near zero.
-        assert abs(float(ret["y_reg_full"].mean())) < 1.0
+        assert abs(float(whole(ret, "y_reg").mean())) < 1.0
 
     def test_temporal_split_ordering_per_ticker(self) -> None:
         arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=5), "MSFT": _ohlcv(seed=6)}, _shares(), train_ratio=0.6, val_ratio=0.1, test_ratio=0.3)
@@ -185,11 +186,11 @@ class TestEquitiesGenerator:
     def test_week52_high_low(self) -> None:
         frame = _ohlcv(seed=7)
         arrays = _generate(["AAPL"], {"AAPL": frame}, _shares(), week52_window=252)
-        rows = arrays["X_full"].shape[0]
+        rows = whole(arrays, "X").shape[0]
         expected_high = frame["High"].rolling(252, min_periods=1).max().to_numpy()[:rows]
         expected_low = frame["Low"].rolling(252, min_periods=1).min().to_numpy()[:rows]
-        np.testing.assert_allclose(arrays["X_full"][:, _FEATURES.index("week52_high")], expected_high, rtol=1e-5)
-        np.testing.assert_allclose(arrays["X_full"][:, _FEATURES.index("week52_low")], expected_low, rtol=1e-5)
+        np.testing.assert_allclose(whole(arrays, "X")[:, _FEATURES.index("week52_high")], expected_high, rtol=1e-5)
+        np.testing.assert_allclose(whole(arrays, "X")[:, _FEATURES.index("week52_low")], expected_low, rtol=1e-5)
 
     def test_cost_basis_uses_purchase_date(self) -> None:
         frame = _ohlcv(seed=8)
@@ -197,32 +198,32 @@ class TestEquitiesGenerator:
         purchase = "2009-01-05"
         arrays = _generate(["AAPL"], {"AAPL": frame}, _shares(), purchase_date=purchase)
         expected = float(frame.loc[frame.index <= pd.Timestamp(purchase), "Close"].iloc[-1])
-        basis_column = arrays["X_full"][:, _FEATURES.index("cost_basis")]
+        basis_column = whole(arrays, "X")[:, _FEATURES.index("cost_basis")]
         assert np.allclose(basis_column, np.float32(expected)), "cost basis is constant per ticker = price on purchase date"
 
     def test_fundamentals_fill_zero(self) -> None:
         arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=9)}, _shares(), fundamentals_fill="zero")
-        shares_col = arrays["X_full"][:, _FEATURES.index("total_shares")]
-        mcap_col = arrays["X_full"][:, _FEATURES.index("market_cap")]
+        shares_col = whole(arrays, "X")[:, _FEATURES.index("total_shares")]
+        mcap_col = whole(arrays, "X")[:, _FEATURES.index("market_cap")]
         # Pre-2009 rows exist and are zero-filled; post-filing rows are positive.
         assert (shares_col == 0).any() and (shares_col > 0).any()
         assert (mcap_col == 0).any() and (mcap_col > 0).any()
 
     def test_fundamentals_fill_drop(self) -> None:
         arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=10)}, _shares(), fundamentals_fill="drop")
-        shares_col = arrays["X_full"][:, _FEATURES.index("total_shares")]
+        shares_col = whole(arrays, "X")[:, _FEATURES.index("total_shares")]
         assert (shares_col > 0).all(), "drop mode keeps only rows with known shares"
 
     def test_fundamentals_fill_nan(self) -> None:
         arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=11)}, _shares(), fundamentals_fill="nan")
-        shares_col = arrays["X_full"][:, _FEATURES.index("total_shares")]
+        shares_col = whole(arrays, "X")[:, _FEATURES.index("total_shares")]
         assert np.isnan(shares_col).any(), "nan mode leaves pre-filing rows missing"
 
     def test_no_shares_data_yields_zero_fundamentals(self) -> None:
         # allow_truncation opts in to the zero-fill this test is ABOUT. Without it
         # the generator now refuses, which is the point of the new contract.
         arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=12)}, shares=None, fundamentals_fill="zero", allow_truncation=True)
-        shares_col = arrays["X_full"][:, _FEATURES.index("total_shares")]
+        shares_col = whole(arrays, "X")[:, _FEATURES.index("total_shares")]
         assert np.all(shares_col == 0), "no SEC data -> all shares zero under zero-fill"
 
     def test_shares_fetch_failure_keeps_price_data(self) -> None:
@@ -239,8 +240,8 @@ class TestEquitiesGenerator:
             arrays = EquitiesGenerator.generate(EquitiesParams(symbols=["AAPL"], start_date="2008-01-01", end_date="2011-01-01", use_cache=False, fundamentals_fill="zero", allow_truncation=True))
 
         assert arrays["ticker_vocab"].tolist() == ["AAPL"]
-        assert arrays["X_full"].shape[0] > 0
-        assert np.all(arrays["X_full"][:, _FEATURES.index("total_shares")] == 0)
+        assert whole(arrays, "X").shape[0] > 0
+        assert np.all(whole(arrays, "X")[:, _FEATURES.index("total_shares")] == 0)
 
     def test_fetch_shares_filters_filer_scale_error(self) -> None:
         # A SEC XBRL cover-page typo (1e6x too large, like ORCL 2012-09-17)
@@ -302,9 +303,9 @@ class TestEquitiesGenerator:
         save_npz(path, arrays)
         restored = load_npz(path)
         assert sorted(restored) == sorted(arrays)
-        for key in ("y_reg_full", "ticker_code_full", "date_full", "ticker_vocab"):
+        for key in ("y_reg_train", "ticker_code_train", "date_train", "ticker_vocab"):
             assert key in restored
-        np.testing.assert_array_equal(restored["y_reg_full"], arrays["y_reg_full"])
+        np.testing.assert_array_equal(whole(restored, "y_reg"), whole(arrays, "y_reg"))
         assert restored["ticker_vocab"].tolist() == arrays["ticker_vocab"].tolist()
 
     def test_unknown_symbol_skipped_not_fatal(self) -> None:
@@ -365,17 +366,23 @@ class TestEquitiesGenerator:
         assert arrays["X_train"].shape[0] == 0
         assert arrays["X_test"].shape[0] == 1
         assert np.isfinite(arrays["X_test"]).all()
-        assert np.isfinite(arrays["X_full"]).all()
+        assert np.isfinite(whole(arrays, "X")).all()
 
 
 class TestEquitiesParams:
     """Validation behavior of EquitiesParams."""
 
     def test_version_string(self) -> None:
-        # 2.0.0 since the val partition: the dataset ID hashes this version, so a
-        # seeded request that produced a two-way artifact must not resolve to the
-        # same ID now that the same params produce a three-way one (risk R-1).
-        assert VERSION == "2.0.0"
+        # 3.0.0 since decision 11 retired the `*_full` family. The dataset ID hashes this
+        # version, so a seeded request that produced a `*_full`-bearing artifact must not
+        # resolve to the same ID now that the same params produce one without it (risk
+        # R-1). 2.0.0 was the val partition; removing keys is a SECOND contract change and
+        # needs its own bump, or cache state decides which shape a consumer sees.
+        #
+        # Fleet-wide coverage lives in `test_val_emission_guards.py` -- this guard existed
+        # for exactly one of sixteen generators, which is how the decision-11 bump came to
+        # be skipped for the other fifteen.
+        assert VERSION == "3.0.0"
 
     def test_get_schema_returns_json_schema(self) -> None:
         schema = get_schema()
@@ -643,7 +650,7 @@ class TestEquitiesGeneratorInternals:
         # alignment there is genuinely no shares data for these rows and the
         # generator now refuses by default. Split arithmetic is what is under test.
         arrays = _generate(["AAPL"], {"AAPL": _ohlcv(periods=8, seed=31)}, _shares(), train_ratio=0.5, val_ratio=0.25, test_ratio=0.25, allow_truncation=True)
-        n = arrays["X_full"].shape[0]
+        n = whole(arrays, "X").shape[0]
         assert n == 7
         assert arrays["X_train"].shape[0] + arrays["X_val"].shape[0] + arrays["X_test"].shape[0] == n
         # Trimmed test-first, and train is never trimmed: shrinking train to fund a
@@ -772,7 +779,7 @@ class TestUniverseSymbolCap:
         assert annotation["imported"] == 14
         # records_imported is filled in after conditioning, so it must be a real
         # row count -- not the -1 placeholder the resolver leaves behind.
-        assert annotation["records_imported"] == arrays["X_full"].shape[0] > 0
+        assert annotation["records_imported"] == whole(arrays, "X").shape[0] > 0
         assert len(arrays["ticker_vocab"]) == 14
 
     def test_generate_refuses_an_oversized_universe(self) -> None:
@@ -866,7 +873,7 @@ class TestFreeFields:
         """
         arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=12)}, _shares())
         for column in ("dividend", "split_ratio"):
-            values = arrays["X_full"][:, _FEATURES.index(column)]
+            values = whole(arrays, "X")[:, _FEATURES.index(column)]
             assert not np.isnan(values).any()
             assert np.all(values == 0.0)
 
@@ -878,18 +885,18 @@ class TestFreeFields:
         """
         frame = _ohlcv(seed=13)
         arrays = _generate(["AAPL"], {"AAPL": frame}, _shares())
-        highs = arrays["X_full"][:, _FEATURES.index("week52_high")]
-        dates = arrays["date_full"]
-        high_dates = arrays["week52_high_date_full"]
+        highs = whole(arrays, "X")[:, _FEATURES.index("week52_high")]
+        dates = whole(arrays, "date")
+        high_dates = whole(arrays, "week52_high_date")
         for row in (0, len(highs) // 3, len(highs) - 1):
             position = int(np.where(dates == high_dates[row])[0][0])
-            assert arrays["X_full"][position, _FEATURES.index("high")] == pytest.approx(highs[row], rel=1e-6)
+            assert whole(arrays, "X")[position, _FEATURES.index("high")] == pytest.approx(highs[row], rel=1e-6)
 
     def test_days_since_week52_high_is_never_negative(self) -> None:
         """A trailing window cannot place its extreme in the future."""
         arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=14)}, _shares())
         for column in ("days_since_week52_high", "days_since_week52_low"):
-            values = arrays["X_full"][:, _FEATURES.index(column)]
+            values = whole(arrays, "X")[:, _FEATURES.index(column)]
             assert values.min() >= 0
 
     def test_report_date_is_the_filing_date_not_the_period_end(self) -> None:
@@ -900,7 +907,7 @@ class TestFreeFields:
         figure roughly six weeks before it was public.
         """
         arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=15)}, _shares())
-        reported = arrays["report_date_full"]
+        reported = whole(arrays, "report_date")
         seen = {int(value) for value in reported if value != 0}
         assert 20090814 in seen or 20100813 in seen
         assert 20090630 not in seen, "period end must not be used as the reporting date"
@@ -908,9 +915,9 @@ class TestFreeFields:
     def test_days_since_report_matches_the_dates(self) -> None:
         """The derived column and the date array must agree, or one of them is wrong."""
         arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=16)}, _shares())
-        ages = arrays["X_full"][:, _FEATURES.index("days_since_report")]
-        trade = arrays["date_full"]
-        report = arrays["report_date_full"]
+        ages = whole(arrays, "X")[:, _FEATURES.index("days_since_report")]
+        trade = whole(arrays, "date")
+        report = whole(arrays, "report_date")
         for row in range(0, len(ages), max(1, len(ages) // 5)):
             if report[row] == 0:
                 continue
@@ -921,7 +928,7 @@ class TestFreeFields:
         """``Adj Close`` was already in the response and dropped at the feature step."""
         frame = _ohlcv(seed=17)
         arrays = _generate(["AAPL"], {"AAPL": frame}, _shares())
-        adj = arrays["X_full"][:, _FEATURES.index("adj_close")]
+        adj = whole(arrays, "X")[:, _FEATURES.index("adj_close")]
         np.testing.assert_allclose(adj, frame["Adj Close"].to_numpy()[: len(adj)], rtol=1e-5)
 
     def test_rolling_extreme_positions_matches_a_naive_scan(self) -> None:
@@ -965,16 +972,16 @@ class TestFreeFields:
         """
         shares = _shares_quarterly()
         arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=18)}, shares)
-        ages = arrays["X_full"][:, _FEATURES.index("days_since_report")]
+        ages = whole(arrays, "X")[:, _FEATURES.index("days_since_report")]
         assert ages.min() >= 0, "a negative filing age means the row saw its own future"
 
-        trade = arrays["date_full"]
-        report = arrays["report_date_full"]
+        trade = whole(arrays, "date")
+        report = whole(arrays, "report_date")
         future = [(int(t), int(r)) for t, r in zip(trade, report, strict=False) if r != 0 and r > t]
         assert not future, f"report_date after the trade date on {len(future)} row(s): {future[:3]}"
 
         published = shares.dropna(subset=["filed"]).sort_values("filed")
-        observed = arrays["X_full"][:, _FEATURES.index("total_shares")]
+        observed = whole(arrays, "X")[:, _FEATURES.index("total_shares")]
         checked = 0
         for row in range(len(trade)):
             day = pd.Timestamp(str(trade[row]))
@@ -1014,8 +1021,8 @@ class TestFreeFields:
         assert tie == shares["filed"].iloc[0], "fixture must put both filings on one day"
 
         arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=19)}, shares)
-        trade = arrays["date_full"]
-        observed = arrays["X_full"][:, _FEATURES.index("total_shares")]
+        trade = whole(arrays, "date")
+        observed = whole(arrays, "X")[:, _FEATURES.index("total_shares")]
         next_filing = min(value for value in shares["filed"] if value > tie)
         window = [row for row in range(len(trade)) if tie <= pd.Timestamp(str(trade[row])) < next_filing]
         assert window, "fixture must leave trade rows between the tied filing and the next one"
@@ -1035,9 +1042,9 @@ class TestFreeFields:
             index=pd.to_datetime([pd.Timestamp("2009-06-30")]),
         )
         arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=19)}, undated, allow_truncation=True)
-        shares = arrays["X_full"][:, _FEATURES.index("total_shares")]
+        shares = whole(arrays, "X")[:, _FEATURES.index("total_shares")]
         assert np.all(np.isnan(shares)), "an undated filing must not populate total_shares"
-        assert np.all(arrays["report_date_full"] == 0)
+        assert np.all(whole(arrays, "report_date") == 0)
 
     def test_rolling_extreme_positions_rejects_an_ambiguous_request(self) -> None:
         with pytest.raises(ValueError, match="exactly one"):
@@ -1082,7 +1089,7 @@ class TestUnresolvableFundamentals:
         assert quality["complete"] is False
         assert quality["policy"] == "accept"
         assert sorted(quality["unrescued"]) == ["AAPL", "MSFT"]
-        assert quality["rows_affected"] == arrays["X_full"].shape[0]
+        assert quality["rows_affected"] == whole(arrays, "X").shape[0]
         assert len(arrays["ticker_vocab"]) == 2, "accept must not remove the symbols"
 
     def test_drop_removes_the_symbols_and_says_so(self) -> None:
@@ -1120,7 +1127,7 @@ class TestUnresolvableFundamentals:
         """The knobs must not change a dataset that has nothing wrong with it."""
         without = _generate(["AAPL"], {"AAPL": _ohlcv(seed=48)}, _shares())
         with_gate = _generate(["AAPL"], {"AAPL": _ohlcv(seed=48)}, _shares(), allow_truncation=True)
-        np.testing.assert_array_equal(without["X_full"], with_gate["X_full"])
+        np.testing.assert_array_equal(whole(without, "X"), whole(with_gate, "X"))
 
     def test_deployment_gate_works_without_a_request_parameter(self) -> None:
         """The env-var / .env surface, for a command-line caller."""
@@ -1203,6 +1210,6 @@ class TestUnresolvableFundamentals:
         assert EquitiesParams().fundamentals_fill == "nan"
 
         arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=52)}, _shares())
-        shares = arrays["X_full"][:, _FEATURES.index("total_shares")]
+        shares = whole(arrays, "X")[:, _FEATURES.index("total_shares")]
         assert np.isnan(shares).any(), "the pre-filing span must be NaN, not 0.0"
         assert not np.any(shares == 0.0), "a fabricated zero is exactly what this default exists to remove"

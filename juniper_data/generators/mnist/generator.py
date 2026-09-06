@@ -10,7 +10,7 @@ from juniper_data.core.split import partition_and_assemble, resolve_counts_for_p
 
 from .params import MnistParams
 
-VERSION = "2.0.0"
+VERSION = "3.0.0"
 
 try:
     from datasets import load_dataset as hf_load_dataset
@@ -78,8 +78,6 @@ class MnistGenerator:
                 - y_train: Training labels
                 - X_test: Test features
                 - y_test: Test labels
-                - X_full: Full dataset features
-                - y_full: Full dataset labels
 
         Raises:
             ImportError: If datasets package is not installed.

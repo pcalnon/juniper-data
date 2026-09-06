@@ -19,6 +19,7 @@ from juniper_data.api.app import create_app
 from juniper_data.api.routes import datasets
 from juniper_data.api.settings import Settings
 from juniper_data.storage.memory import InMemoryDatasetStore
+from juniper_data.tests.partitions import whole
 
 
 @pytest.fixture
@@ -78,15 +79,13 @@ class TestE2EModernAlgorithm:
             assert "y_train" in data.files
             assert "X_test" in data.files
             assert "y_test" in data.files
-            assert "X_full" in data.files
-            assert "y_full" in data.files
 
             X_train = data["X_train"]
             y_train = data["y_train"]
             X_test = data["X_test"]
             y_test = data["y_test"]
-            X_full = data["X_full"]
-            y_full = data["y_full"]
+            X_full = whole(data, "X")
+            y_full = whole(data, "y")
 
             assert X_train.dtype == np.float32
             assert y_train.dtype == np.float32
@@ -127,8 +126,8 @@ class TestE2EModernAlgorithm:
 
         with np.load(io.BytesIO(artifact_response1.content)) as data1:
             with np.load(io.BytesIO(artifact_response2.content)) as data2:
-                np.testing.assert_array_equal(data1["X_full"], data2["X_full"])
-                np.testing.assert_array_equal(data1["y_full"], data2["y_full"])
+                np.testing.assert_array_equal(whole(data1, "X"), whole(data2, "X"))
+                np.testing.assert_array_equal(whole(data1, "y"), whole(data2, "y"))
 
     def test_e2e_different_seed_different_data(self, e2e_client: TestClient, modern_request: dict) -> None:
         """Different seeds produce different data."""
@@ -146,7 +145,7 @@ class TestE2EModernAlgorithm:
 
         with np.load(io.BytesIO(artifact_response1.content)) as data1:
             with np.load(io.BytesIO(artifact_response2.content)) as data2:
-                assert not np.array_equal(data1["X_full"], data2["X_full"])
+                assert not np.array_equal(whole(data1, "X"), whole(data2, "X"))
 
 
 @pytest.mark.integration
@@ -183,12 +182,12 @@ class TestE2ELegacyCascorAlgorithm:
         assert artifact_response.status_code == 200
 
         with np.load(io.BytesIO(artifact_response.content)) as data:
-            expected_keys = ["X_train", "y_train", "X_val", "y_val", "X_test", "y_test", "X_full", "y_full"]
+            expected_keys = ["X_train", "y_train", "X_val", "y_val", "X_test", "y_test"]
             for key in expected_keys:
                 assert key in data.files, f"Missing key: {key}"
 
-            X_full = data["X_full"]
-            y_full = data["y_full"]
+            X_full = whole(data, "X")
+            y_full = whole(data, "y")
 
             assert X_full.dtype == np.float32
             assert y_full.dtype == np.float32
@@ -231,7 +230,7 @@ class TestE2ELegacyCascorAlgorithm:
 
         with np.load(io.BytesIO(modern_artifact.content)) as modern_data:
             with np.load(io.BytesIO(legacy_artifact.content)) as legacy_data:
-                assert not np.array_equal(modern_data["X_full"], legacy_data["X_full"])
+                assert not np.array_equal(whole(modern_data, "X"), whole(legacy_data, "X"))
 
 
 @pytest.mark.integration
@@ -261,7 +260,7 @@ class TestE2EDataContract:
         artifact_response = e2e_client.get(f"/v1/datasets/{dataset_id}/artifact")
 
         with np.load(io.BytesIO(artifact_response.content)) as data:
-            expected_keys = {"X_train", "y_train", "X_val", "y_val", "X_test", "y_test", "X_full", "y_full"}
+            expected_keys = {"X_train", "y_train", "X_val", "y_val", "X_test", "y_test"}
             actual_keys = set(data.files)
             assert actual_keys == expected_keys, f"Keys mismatch: expected {expected_keys}, got {actual_keys}"
 
@@ -274,7 +273,7 @@ class TestE2EDataContract:
         with np.load(io.BytesIO(artifact_response.content)) as data:
             assert data["X_train"].shape[1] == 2
             assert data["X_test"].shape[1] == 2
-            assert data["X_full"].shape[1] == 2
+            assert whole(data, "X").shape[1] == 2
 
     def test_e2e_one_hot_labels(self, e2e_client: TestClient, contract_request: dict) -> None:
         """Verify labels are one-hot encoded with correct class count."""
@@ -283,7 +282,7 @@ class TestE2EDataContract:
         artifact_response = e2e_client.get(f"/v1/datasets/{dataset_id}/artifact")
 
         with np.load(io.BytesIO(artifact_response.content)) as data:
-            y_full = data["y_full"]
+            y_full = whole(data, "y")
             n_spirals = contract_request["params"]["n_spirals"]
 
             assert y_full.shape[1] == n_spirals
@@ -303,7 +302,7 @@ class TestE2EDataContract:
             n_train = len(data["X_train"])
             n_val = len(data["X_val"])
             n_test = len(data["X_test"])
-            n_full = len(data["X_full"])
+            n_full = len(whole(data, "X"))
 
             # The length identity spans THREE partitions now. Asserting it over
             # train + test alone -- which is what this line used to do -- would
@@ -330,11 +329,11 @@ class TestE2EDataContract:
         artifact_response = e2e_client.get(f"/v1/datasets/{dataset_id}/artifact")
 
         with np.load(io.BytesIO(artifact_response.content)) as npz_data:
-            assert meta["n_samples"] == len(npz_data["X_full"])
+            assert meta["n_samples"] == len(whole(npz_data, "X"))
             assert meta["n_train"] == len(npz_data["X_train"])
             assert meta["n_test"] == len(npz_data["X_test"])
-            assert meta["n_features"] == npz_data["X_full"].shape[1]
-            assert meta["n_classes"] == npz_data["y_full"].shape[1]
+            assert meta["n_features"] == whole(npz_data, "X").shape[1]
+            assert meta["n_classes"] == whole(npz_data, "y").shape[1]
 
 
 @pytest.mark.integration

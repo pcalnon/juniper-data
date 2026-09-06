@@ -16,11 +16,11 @@ It reuses ``window_timed_series`` for the leakage-safe windowing / splitting and
 then OVERWRITES ``y`` with the in-window product: the windowed ``X`` IS
 ``values[win_idx]``, so the product is read directly from the emitted window
 contents and can never reach an out-of-window sample (windowing-leakage safe by
-construction). ``y_full == concatenate([y_train, y_val, y_test])`` is preserved because
-the product is computed identically per split from its own ``X`` block -- which is also
-why the split list here must name EVERY partition: a split left out of it keeps the
-forecast target ``window_timed_series`` emitted, silently pairing that split's windows
-with a target from a different problem.
+construction). The product is computed identically per split from its own ``X`` block,
+which is why the split list here must name EVERY partition: a split left out of it keeps
+the forecast target ``window_timed_series`` emitted, silently pairing that split's
+windows with a target from a different problem. ``full`` left that list with decision 11,
+at the same time the windower stopped emitting it.
 """
 
 # Project:       Juniper
@@ -40,7 +40,7 @@ from juniper_data.generators._synthetic import attach_scaling
 
 from .params import DelayProductParams
 
-VERSION = "2.0.0"
+VERSION = "3.0.0"
 
 # Ranges for seeded-random component parameters when not given explicitly
 # (mirrors ``irregular_sine`` / ``multi_sine``).
@@ -58,7 +58,7 @@ class DelayProductGenerator:
     def generate(params: DelayProductParams) -> dict[str, np.ndarray]:
         """Generate the windowed irregular-Δt delay-product dataset.
 
-        Returns the additive 3-D NPZ contract for train/val/test/full: ``X_{split}``
+        Returns the additive 3-D NPZ contract for train/val/test: ``X_{split}``
         ``(W, L, 1)`` (the irregularly-sampled signal windows), the regression target
         ``y_{split}`` ``(W, 1)`` (the in-window product
         ``x[·, L−1−lag1] · x[·, L−1−lag2]``), plus the non-uniform ``dt`` / variable
@@ -81,12 +81,13 @@ class DelayProductGenerator:
         in-window steps. Window position ``p = lookback − 1 − lag`` is the step
         ``lag`` places back from the window end, so the product reads only the emitted
         window contents ``X`` (== ``values[win_idx]``) and can never reach outside the
-        window. Computing it per split from that split's own ``X`` keeps
-        ``y_full == concatenate([y_train, y_val, y_test])``.
+        window. Each split is computed from its own ``X``, so concatenating the three
+        ``y`` partitions gives the same result as computing the product over the
+        concatenated ``X``.
         """
         p1 = lookback - 1 - lag1
         p2 = lookback - 1 - lag2
-        for split in ("train", "val", "test", "full"):
+        for split in ("train", "val", "test"):
             x = arrays[f"X_{split}"]  # (W, L, 1) float32
             arrays[f"y_{split}"] = (x[:, p1, 0] * x[:, p2, 0]).reshape(-1, 1).astype(np.float32)
 

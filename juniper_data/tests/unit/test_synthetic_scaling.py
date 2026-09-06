@@ -26,6 +26,7 @@ from juniper_data.generators.delay_product import DelayProductGenerator, DelayPr
 from juniper_data.generators.irregular_sine import IrregularSineGenerator, IrregularSineParams
 from juniper_data.generators.mackey_glass import MackeyGlassGenerator, MackeyGlassParams
 from juniper_data.generators.multi_sine import MultiSineGenerator, MultiSineParams
+from juniper_data.tests.partitions import whole
 
 pytestmark = [pytest.mark.unit, pytest.mark.generators]
 
@@ -59,12 +60,12 @@ def test_standardize_emits_descriptors_and_round_trips(gen, params_cls, extra) -
     assert dt_desc["method"] == "standardize" and target_desc["method"] == "standardize"
     assert all(isinstance(dt_desc[k], float) for k in ("mean", "std", "min", "max"))
     # Advisory: the NPZ arrays stay RAW, so the contract still holds (dt[:, 0] == 0).
-    assert np.all(arrays["dt_full"][:, 0] == 0)
+    assert np.all(whole(arrays, "dt")[:, 0] == 0)
 
     # Denorm round-trip (§B): standardize(raw) then inverse recovers raw to tolerance.
-    raw_y = arrays["y_full"]
+    raw_y = whole(arrays, "y")
     np.testing.assert_allclose(inverse_standardize(standardize(raw_y, target_desc), target_desc), raw_y, rtol=1e-4, atol=1e-4)
-    raw_dt = arrays["dt_full"][:, 1:]
+    raw_dt = whole(arrays, "dt")[:, 1:]
     np.testing.assert_allclose(inverse_standardize(standardize(raw_dt, dt_desc), dt_desc), raw_dt, rtol=1e-4, atol=1e-4)
 
 

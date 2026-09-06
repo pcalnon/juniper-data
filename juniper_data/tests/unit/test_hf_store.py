@@ -8,6 +8,7 @@ import pytest
 
 from juniper_data.core.models import DatasetMeta
 from juniper_data.storage.memory import InMemoryDatasetStore
+from juniper_data.tests.partitions import whole
 
 
 @pytest.fixture
@@ -146,7 +147,7 @@ class TestHuggingFaceDatasetStoreLoadDataset:
         assert "X_train" in arrays
         assert "y_train" in arrays
         assert "X_full" in arrays
-        assert arrays["X_full"].dtype == np.float32
+        assert whole(arrays, "X").dtype == np.float32
 
     def test_load_with_config_name(self, mock_hf_module) -> None:
         """Load with config name included in dataset_id."""
@@ -194,7 +195,7 @@ class TestHuggingFaceDatasetStoreLoadDataset:
         store = HuggingFaceDatasetStore()
         _, meta, arrays = store.load_hf_dataset("test-dataset", one_hot_labels=False, feature_columns=["feature1", "feature2"])
 
-        assert arrays["y_full"].shape[1] == 1
+        assert whole(arrays, "y").shape[1] == 1
 
     def test_load_with_normalization(self, mock_hf_module) -> None:
         """Load with normalization scales features."""
@@ -206,7 +207,7 @@ class TestHuggingFaceDatasetStoreLoadDataset:
         store = HuggingFaceDatasetStore()
         _, _, arrays = store.load_hf_dataset("test-dataset", normalize=True, feature_columns=["feature1", "feature2"])
 
-        assert arrays["X_full"].max() <= 1.0
+        assert whole(arrays, "X").max() <= 1.0
 
     def test_load_saves_to_cache(self, mock_hf_module) -> None:
         """Load saves the result to cache store."""

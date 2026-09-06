@@ -25,29 +25,30 @@ import pytest
 
 from juniper_data.core.meta import compute_shape_meta, derive_sequence_meta
 from juniper_data.generators.delay_product import DelayProductGenerator, DelayProductParams, get_schema
+from juniper_data.tests.partitions import whole
 
 pytestmark = [pytest.mark.unit, pytest.mark.generators]
 
 
 def _assert_irregular_sequence_contract(arrays: dict, *, lookback: int, horizon: int) -> None:
     """Shared assertions for the irregular-Δt 3-D regression NPZ contract (non-uniform dt)."""
-    for split in ("train", "val", "test", "full"):
+    for split in ("train", "val", "test"):
         for key in ("X", "y", "dt", "target_dt", "observed_mask"):
             assert f"{key}_{split}" in arrays, f"missing {key}_{split}"
 
-    xf = arrays["X_full"]
+    xf = whole(arrays, "X")
     n_windows = xf.shape[0]
     assert xf.ndim == 3 and xf.shape[1:] == (lookback, 1) and xf.dtype == np.float32
-    assert arrays["y_full"].shape == (n_windows, 1) and arrays["y_full"].dtype == np.float32
+    assert whole(arrays, "y").shape == (n_windows, 1) and whole(arrays, "y").dtype == np.float32
 
     # Irregular Δt: first step is 0 by contract; the rest are strictly positive.
-    dt = arrays["dt_full"]
+    dt = whole(arrays, "dt")
     assert dt.shape == (n_windows, lookback) and dt.dtype == np.float32
     assert np.all(dt[:, 0] == 0)
     assert np.all(dt[:, 1:] > 0)
-    assert arrays["target_dt_full"].shape == (n_windows,) and np.all(arrays["target_dt_full"] > 0)
+    assert whole(arrays, "target_dt").shape == (n_windows,) and np.all(whole(arrays, "target_dt") > 0)
 
-    mask = arrays["observed_mask_full"]
+    mask = whole(arrays, "observed_mask")
     assert mask.shape == (n_windows, lookback) and mask.dtype == np.uint8 and np.all(mask == 1)
 
     # full == train + val + test, chronological. The non-empty check comes first
@@ -55,7 +56,7 @@ def _assert_irregular_sequence_contract(arrays: dict, *, lookback: int, horizon:
     # so without it this assertion would pass on exactly the defect it exists to catch.
     assert arrays["X_val"].shape[0] > 0, "val partition must be non-empty"
     assert n_windows == arrays["X_train"].shape[0] + arrays["X_val"].shape[0] + arrays["X_test"].shape[0]
-    np.testing.assert_array_equal(arrays["X_full"], np.concatenate([arrays["X_train"], arrays["X_val"], arrays["X_test"]]))
+    np.testing.assert_array_equal(whole(arrays, "X"), np.concatenate([arrays["X_train"], arrays["X_val"], arrays["X_test"]]))
 
     shape_meta = compute_shape_meta(arrays, "regression")
     assert shape_meta["n_features"] == 1
@@ -74,10 +75,10 @@ class TestDelayProductGenerator:
     def test_dt_is_genuinely_non_uniform(self) -> None:
         # Same irregular-Δt sampling as irregular_sine: dt varies step-to-step.
         arrays = DelayProductGenerator.generate(DelayProductParams(n_steps=400, lookback=24, jitter=0.6, sample_dt=1.0, seed=0))
-        dt = arrays["dt_full"]
+        dt = whole(arrays, "dt")
         assert dt[:, 1:].std() > 0.05
         assert not np.allclose(dt[:, 1:], dt[0, 1])  # not a constant gap
-        assert arrays["target_dt_full"].std() > 0.0  # the (advisory) forecast horizon also varies
+        assert whole(arrays, "target_dt").std() > 0.0  # the (advisory) forecast horizon also varies
 
     def test_target_is_in_window_product(self) -> None:
         # y is EXACTLY the product of the two delayed in-window positions of X
@@ -90,13 +91,13 @@ class TestDelayProductGenerator:
         # omitted from that loop keeps the forecast target, and X/y for that split
         # then describe two different problems. Checking only y_full would miss it
         # entirely -- full is a separate block that gets its own overwrite.
-        for split in ("train", "val", "test", "full"):
+        for split in ("train", "val", "test"):
             x = arrays[f"X_{split}"]
             assert x.shape[0] > 0, f"{split} partition must be non-empty"
             np.testing.assert_array_equal(arrays[f"y_{split}"][:, 0], x[:, p1, 0] * x[:, p2, 0])
         # And the per-split products concatenate to the full target (no split-boundary drift).
-        np.testing.assert_array_equal(arrays["y_full"], np.concatenate([arrays["y_train"], arrays["y_val"], arrays["y_test"]]))
-        assert np.all(np.isfinite(arrays["y_full"]))
+        np.testing.assert_array_equal(whole(arrays, "y"), np.concatenate([arrays["y_train"], arrays["y_val"], arrays["y_test"]]))
+        assert np.all(np.isfinite(whole(arrays, "y")))
 
     def test_closed_form_known_answer_product(self) -> None:
         params = DelayProductParams(
@@ -126,7 +127,7 @@ class TestDelayProductGenerator:
         starts = np.arange(n_windows)  # window j starts at raw index j
         p1, p2 = params.lookback - 1 - params.lag1, params.lookback - 1 - params.lag2
         expected = signal[starts + p1] * signal[starts + p2]
-        np.testing.assert_allclose(arrays["y_full"][:, 0], expected, atol=1e-4)
+        np.testing.assert_allclose(whole(arrays, "y")[:, 0], expected, atol=1e-4)
 
     def test_capacity_linear_cannot_fit_but_product_can(self) -> None:
         # The defining property (DP-3 §8a): the target is QUADRATIC in the window, so
@@ -135,8 +136,8 @@ class TestDelayProductGenerator:
         # the true product feature fits essentially perfectly. Model-free capacity guard.
         params = DelayProductParams(n_steps=2000, lookback=24, horizon=1, lag1=3, lag2=11, jitter=0.4, n_components=4, seed=1)
         arrays = DelayProductGenerator.generate(params)
-        x = arrays["X_full"][:, :, 0].astype(np.float64)  # (W, L)
-        y = arrays["y_full"][:, 0].astype(np.float64)  # (W,)
+        x = whole(arrays, "X")[:, :, 0].astype(np.float64)  # (W, L)
+        y = whole(arrays, "y")[:, 0].astype(np.float64)  # (W,)
 
         def _r2(design: np.ndarray) -> float:
             coef, *_ = np.linalg.lstsq(design, y, rcond=None)
@@ -156,13 +157,13 @@ class TestDelayProductGenerator:
         # lag1 == lag2 gives y = x(t−τ)^2: still a valid (even) non-linear capacity target.
         arrays = DelayProductGenerator.generate(DelayProductParams(n_steps=200, lookback=16, lag1=4, lag2=4, seed=0))
         p = 16 - 1 - 4
-        np.testing.assert_array_equal(arrays["y_full"][:, 0], arrays["X_full"][:, p, 0] ** 2)
-        assert np.all(arrays["y_full"] >= 0)  # a square is non-negative
+        np.testing.assert_array_equal(whole(arrays, "y")[:, 0], whole(arrays, "X")[:, p, 0] ** 2)
+        assert np.all(whole(arrays, "y") >= 0)  # a square is non-negative
 
     def test_determinism(self) -> None:
         first = DelayProductGenerator.generate(DelayProductParams(n_steps=300, lookback=20, lag1=2, lag2=9, seed=7))
         second = DelayProductGenerator.generate(DelayProductParams(n_steps=300, lookback=20, lag1=2, lag2=9, seed=7))
-        for key in ("X_full", "y_full", "dt_full", "target_dt_full"):
+        for key in ("dt_train", "target_dt_train", "dt_val", "dt_test"):
             np.testing.assert_array_equal(first[key], second[key])
 
     def test_lag_out_of_lookback_rejected(self) -> None:

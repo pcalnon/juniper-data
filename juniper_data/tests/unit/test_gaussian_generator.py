@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from juniper_data.generators.gaussian import VERSION, GaussianGenerator, GaussianParams, get_schema
+from juniper_data.tests.partitions import whole
 
 pytestmark = [pytest.mark.unit, pytest.mark.generators]
 
@@ -85,7 +86,7 @@ class TestGaussianGenerator:
         params = GaussianParams(seed=42)
         result = GaussianGenerator.generate(params)
 
-        expected_keys = {"X_train", "y_train", "X_val", "y_val", "X_test", "y_test", "X_full", "y_full"}
+        expected_keys = {"X_train", "y_train", "X_val", "y_val", "X_test", "y_test"}
         assert set(result.keys()) == expected_keys
 
     def test_generate_shapes(self) -> None:
@@ -102,8 +103,8 @@ class TestGaussianGenerator:
         n_train = 3 * 40
         total_samples = n_train + 48 + 36
         assert result["X_train"].shape == (n_train, 5)
-        assert result["X_full"].shape == (total_samples, 5)
-        assert result["y_full"].shape == (total_samples, 3)
+        assert whole(result, "X").shape == (total_samples, 5)
+        assert whole(result, "y").shape == (total_samples, 3)
 
     def test_generate_dtypes(self) -> None:
         """Generated arrays should have float32 dtype."""
@@ -112,8 +113,8 @@ class TestGaussianGenerator:
 
         assert result["X_train"].dtype == np.float32
         assert result["y_train"].dtype == np.float32
-        assert result["X_full"].dtype == np.float32
-        assert result["y_full"].dtype == np.float32
+        assert whole(result, "X").dtype == np.float32
+        assert whole(result, "y").dtype == np.float32
 
     def test_determinism_with_seed(self) -> None:
         """Same seed should produce identical results."""
@@ -122,8 +123,8 @@ class TestGaussianGenerator:
         result1 = GaussianGenerator.generate(params)
         result2 = GaussianGenerator.generate(params)
 
-        np.testing.assert_array_equal(result1["X_full"], result2["X_full"])
-        np.testing.assert_array_equal(result1["y_full"], result2["y_full"])
+        np.testing.assert_array_equal(whole(result1, "X"), whole(result2, "X"))
+        np.testing.assert_array_equal(whole(result1, "y"), whole(result2, "y"))
 
     def test_different_seeds_produce_different_data(self) -> None:
         """Different seeds should produce different results."""
@@ -133,17 +134,17 @@ class TestGaussianGenerator:
         result1 = GaussianGenerator.generate(params1)
         result2 = GaussianGenerator.generate(params2)
 
-        assert not np.allclose(result1["X_full"], result2["X_full"])
+        assert not np.allclose(whole(result1, "X"), whole(result2, "X"))
 
     def test_one_hot_labels(self) -> None:
         """Labels should be valid one-hot encoded."""
         params = GaussianParams(n_classes=4, seed=42)
         result = GaussianGenerator.generate(params)
 
-        row_sums = result["y_full"].sum(axis=1)
+        row_sums = whole(result, "y").sum(axis=1)
         np.testing.assert_array_almost_equal(row_sums, np.ones(len(row_sums)))
 
-        for row in result["y_full"]:
+        for row in whole(result, "y"):
             assert np.sum(row == 1.0) == 1
             assert np.sum(row == 0.0) == params.n_classes - 1
 
@@ -152,7 +153,7 @@ class TestGaussianGenerator:
         params = GaussianParams(n_classes=3, n_samples_per_class=50, seed=42)
         result = GaussianGenerator.generate(params)
 
-        class_counts = result["y_full"].sum(axis=0)
+        class_counts = whole(result, "y").sum(axis=0)
         # 3 x 50 = 150 train + 60 val + 45 test = 255 realised rows, 85 per class.
         np.testing.assert_array_equal(class_counts, [85, 85, 85])
 
@@ -190,9 +191,9 @@ class TestGaussianGenerator:
 
         # Select by CLASS rather than position: the per-class block size follows
         # the realised row count, and a mask asks the question directly.
-        labels = np.argmax(result["y_full"], axis=1)
-        class_0_samples = result["X_full"][labels == 0]
-        class_1_samples = result["X_full"][labels == 1]
+        labels = np.argmax(whole(result, "y"), axis=1)
+        class_0_samples = whole(result, "X")[labels == 0]
+        class_1_samples = whole(result, "X")[labels == 1]
 
         assert class_0_samples.shape[0] > 0 and class_1_samples.shape[0] > 0
 
@@ -244,8 +245,8 @@ class TestGaussianGenerator:
         result_no_noise = GaussianGenerator.generate(params_no_noise)
         result_with_noise = GaussianGenerator.generate(params_with_noise)
 
-        var_no_noise = np.var(result_no_noise["X_full"])
-        var_with_noise = np.var(result_with_noise["X_full"])
+        var_no_noise = np.var(whole(result_no_noise, "X"))
+        var_with_noise = np.var(whole(result_with_noise, "X"))
 
         assert var_with_noise > var_no_noise
 
@@ -260,9 +261,9 @@ class TestGaussianGenerator:
         )
         result = GaussianGenerator.generate(params)
 
-        labels = np.argmax(result["y_full"], axis=1)
+        labels = np.argmax(whole(result, "y"), axis=1)
         for i in range(4):
-            class_rows = result["X_full"][labels == i]
+            class_rows = whole(result, "X")[labels == i]
             assert class_rows.shape[0] > 0
             class_mean = class_rows.mean(axis=0)
             distance_from_origin = np.linalg.norm(class_mean)
@@ -279,7 +280,7 @@ class TestGaussianGenerator:
         result = GaussianGenerator.generate(params)
 
         # 3 x 100 = 300 TRAIN samples, plus 120 val and 90 test.
-        assert result["X_full"].shape == (510, 2)
+        assert whole(result, "X").shape == (510, 2)
 
     def test_generate_single_feature(self) -> None:
         """Single feature should skip sin component in center placement."""
@@ -292,7 +293,7 @@ class TestGaussianGenerator:
         result = GaussianGenerator.generate(params)
 
         # 100 TRAIN samples, plus 40 val and 30 test.
-        assert result["X_full"].shape == (170, 1)
+        assert whole(result, "X").shape == (170, 1)
 
     def test_get_stds_scalar(self) -> None:
         """Scalar class_std should return a list of repeated values."""

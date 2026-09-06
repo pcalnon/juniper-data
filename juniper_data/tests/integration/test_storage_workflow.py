@@ -18,6 +18,7 @@ from juniper_data.core.artifacts import compute_checksum
 from juniper_data.core.models import DatasetMeta
 from juniper_data.generators.spiral import SpiralGenerator, SpiralParams
 from juniper_data.storage import InMemoryDatasetStore, LocalFSDatasetStore
+from juniper_data.tests.partitions import whole
 
 
 @pytest.fixture
@@ -67,7 +68,7 @@ class TestGenerateStoreRetrieveWorkflow:
         store = InMemoryDatasetStore()
 
         data = SpiralGenerator.generate(spiral_params)
-        X, y = data["X_full"], data["y_full"]
+        X, y = whole(data, "X"), whole(data, "y")
         X_train, y_train = data["X_train"], data["y_train"]
         X_test, y_test = data["X_test"], data["y_test"]
 
@@ -95,7 +96,7 @@ class TestGenerateStoreRetrieveWorkflow:
         store = LocalFSDatasetStore(temp_storage_dir)
 
         data = SpiralGenerator.generate(spiral_params)
-        X, y = data["X_full"], data["y_full"]
+        X, y = whole(data, "X"), whole(data, "y")
         X_train, y_train = data["X_train"], data["y_train"]
         X_test, y_test = data["X_test"], data["y_test"]
 
@@ -125,7 +126,7 @@ class TestGenerateStoreRetrieveWorkflow:
         store1 = LocalFSDatasetStore(temp_storage_dir)
 
         data = SpiralGenerator.generate(spiral_params)
-        X, y = data["X_full"], data["y_full"]
+        X, y = whole(data, "X"), whole(data, "y")
         X_train, y_train = data["X_train"], data["y_train"]
         X_test, y_test = data["X_test"], data["y_test"]
 
@@ -154,7 +155,7 @@ class TestDatasetLifecycle:
         store = LocalFSDatasetStore(temp_storage_dir)
 
         data = SpiralGenerator.generate(spiral_params)
-        X, y = data["X_full"], data["y_full"]
+        X, y = whole(data, "X"), whole(data, "y")
         X_train, y_train = data["X_train"], data["y_train"]
         X_test, y_test = data["X_test"], data["y_test"]
 
@@ -179,7 +180,7 @@ class TestDatasetLifecycle:
         for i, n_points in enumerate([50, 100, 200]):
             params = SpiralParams(n_spirals=2, n_points_per_spiral=n_points, seed=i)
             data = SpiralGenerator.generate(params)
-            X, y = data["X_full"], data["y_full"]
+            X, y = whole(data, "X"), whole(data, "y")
             X_train, y_train = data["X_train"], data["y_train"]
             X_test, y_test = data["X_test"], data["y_test"]
 
@@ -207,7 +208,7 @@ class TestChecksumVerification:
         store = LocalFSDatasetStore(temp_storage_dir)
 
         data = SpiralGenerator.generate(spiral_params)
-        X, y = data["X_full"], data["y_full"]
+        X, y = whole(data, "X"), whole(data, "y")
         X_train, y_train = data["X_train"], data["y_train"]
         X_test, y_test = data["X_test"], data["y_test"]
 
@@ -245,8 +246,8 @@ class TestReproducibility:
         data1 = SpiralGenerator.generate(params1)
         data2 = SpiralGenerator.generate(params2)
 
-        np.testing.assert_array_equal(data1["X_full"], data2["X_full"])
-        np.testing.assert_array_equal(data1["y_full"], data2["y_full"])
+        np.testing.assert_array_equal(whole(data1, "X"), whole(data2, "X"))
+        np.testing.assert_array_equal(whole(data1, "y"), whole(data2, "y"))
 
     def test_different_seeds_produce_different_data(self):
         """Different seeds produce different datasets."""
@@ -256,4 +257,4 @@ class TestReproducibility:
         data1 = SpiralGenerator.generate(params1)
         data2 = SpiralGenerator.generate(params2)
 
-        assert not np.allclose(data1["X_full"], data2["X_full"])
+        assert not np.allclose(whole(data1, "X"), whole(data2, "X"))

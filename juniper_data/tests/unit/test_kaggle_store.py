@@ -10,6 +10,7 @@ import pytest
 
 from juniper_data.core.models import DatasetMeta
 from juniper_data.storage.memory import InMemoryDatasetStore
+from juniper_data.tests.partitions import whole
 
 
 @pytest.fixture
@@ -183,7 +184,7 @@ class TestKaggleDatasetStoreLoadDataset:
         assert meta.n_samples == 5
         assert meta.n_features == 2
         assert meta.n_classes == 3
-        assert arrays["X_full"].shape == (5, 2)
+        assert whole(arrays, "X").shape == (5, 2)
 
     def test_load_with_auto_detect_csv(self, mock_kaggle_module, tmp_path) -> None:
         """Auto-detect CSV when specified file not found."""
@@ -240,7 +241,7 @@ class TestKaggleDatasetStoreLoadDataset:
         _, meta1, arrays1 = store.load_kaggle_dataset("owner/seed", file_name="data.csv", seed=42)
         _, meta2, arrays2 = store.load_kaggle_dataset("owner/seed", file_name="data.csv", seed=42)
 
-        np.testing.assert_array_equal(arrays1["X_full"], arrays2["X_full"])
+        np.testing.assert_array_equal(whole(arrays1, "X"), whole(arrays2, "X"))
 
     def test_load_with_n_samples(self, mock_kaggle_module, tmp_path) -> None:
         """Load with n_samples limits data."""
@@ -266,7 +267,7 @@ class TestKaggleDatasetStoreLoadDataset:
         _write_csv(dataset_dir / "data.csv", rows)
 
         _, _, arrays = store.load_kaggle_dataset("owner/nohot", file_name="data.csv", one_hot_labels=False)
-        assert arrays["y_full"].shape[1] == 1
+        assert whole(arrays, "y").shape[1] == 1
 
     def test_load_with_normalization(self, mock_kaggle_module, tmp_path) -> None:
         """Load with feature normalization."""
@@ -279,8 +280,8 @@ class TestKaggleDatasetStoreLoadDataset:
         _write_csv(dataset_dir / "data.csv", rows)
 
         _, _, arrays = store.load_kaggle_dataset("owner/norm", file_name="data.csv", normalize_features=True)
-        assert arrays["X_full"].max() <= 1.0 + 1e-6
-        assert arrays["X_full"].min() >= 0.0 - 1e-6
+        assert whole(arrays, "X").max() <= 1.0 + 1e-6
+        assert whole(arrays, "X").min() >= 0.0 - 1e-6
 
     def test_load_with_invalid_values(self, mock_kaggle_module, tmp_path) -> None:
         """Non-numeric feature values are treated as 0.0."""
@@ -296,8 +297,8 @@ class TestKaggleDatasetStoreLoadDataset:
         _write_csv(dataset_dir / "data.csv", rows)
 
         _, _, arrays = store.load_kaggle_dataset("owner/bad", file_name="data.csv")
-        assert arrays["X_full"][0, 0] == 0.0
-        assert arrays["X_full"][1, 0] == 1.5
+        assert whole(arrays, "X")[0, 0] == 0.0
+        assert whole(arrays, "X")[1, 0] == 1.5
 
     def test_load_with_feature_columns(self, mock_kaggle_module, tmp_path) -> None:
         """Load with explicit feature columns."""

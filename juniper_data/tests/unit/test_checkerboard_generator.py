@@ -9,6 +9,7 @@ from juniper_data.generators.checkerboard import (
     CheckerboardParams,
     get_schema,
 )
+from juniper_data.tests.partitions import whole
 
 pytestmark = [pytest.mark.unit, pytest.mark.generators]
 
@@ -64,7 +65,7 @@ class TestCheckerboardGenerator:
         params = CheckerboardParams(seed=42)
         result = CheckerboardGenerator.generate(params)
 
-        expected_keys = {"X_train", "y_train", "X_val", "y_val", "X_test", "y_test", "X_full", "y_full"}
+        expected_keys = {"X_train", "y_train", "X_val", "y_val", "X_test", "y_test"}
         assert set(result.keys()) == expected_keys
 
     def test_generate_shapes(self) -> None:
@@ -76,8 +77,8 @@ class TestCheckerboardGenerator:
         assert result["X_train"].shape == (150, 2)
         assert result["X_val"].shape == (60, 2)
         assert result["X_test"].shape == (45, 2)
-        assert result["X_full"].shape == (255, 2)
-        assert result["y_full"].shape == (255, 2)
+        assert whole(result, "X").shape == (255, 2)
+        assert whole(result, "y").shape == (255, 2)
 
     def test_generate_dtypes(self) -> None:
         """Generated arrays should have float32 dtype."""
@@ -86,8 +87,8 @@ class TestCheckerboardGenerator:
 
         assert result["X_train"].dtype == np.float32
         assert result["y_train"].dtype == np.float32
-        assert result["X_full"].dtype == np.float32
-        assert result["y_full"].dtype == np.float32
+        assert whole(result, "X").dtype == np.float32
+        assert whole(result, "y").dtype == np.float32
 
     def test_determinism_with_seed(self) -> None:
         """Same seed should produce identical results."""
@@ -96,8 +97,8 @@ class TestCheckerboardGenerator:
         result1 = CheckerboardGenerator.generate(params)
         result2 = CheckerboardGenerator.generate(params)
 
-        np.testing.assert_array_equal(result1["X_full"], result2["X_full"])
-        np.testing.assert_array_equal(result1["y_full"], result2["y_full"])
+        np.testing.assert_array_equal(whole(result1, "X"), whole(result2, "X"))
+        np.testing.assert_array_equal(whole(result1, "y"), whole(result2, "y"))
 
     def test_different_seeds_produce_different_data(self) -> None:
         """Different seeds should produce different results."""
@@ -107,17 +108,17 @@ class TestCheckerboardGenerator:
         result1 = CheckerboardGenerator.generate(params1)
         result2 = CheckerboardGenerator.generate(params2)
 
-        assert not np.allclose(result1["X_full"], result2["X_full"])
+        assert not np.allclose(whole(result1, "X"), whole(result2, "X"))
 
     def test_one_hot_labels(self) -> None:
         """Labels should be valid one-hot encoded."""
         params = CheckerboardParams(seed=42)
         result = CheckerboardGenerator.generate(params)
 
-        row_sums = result["y_full"].sum(axis=1)
+        row_sums = whole(result, "y").sum(axis=1)
         np.testing.assert_array_almost_equal(row_sums, np.ones(len(row_sums)))
 
-        for row in result["y_full"]:
+        for row in whole(result, "y"):
             assert np.sum(row == 1.0) == 1
             assert np.sum(row == 0.0) == 1
 
@@ -132,10 +133,10 @@ class TestCheckerboardGenerator:
         )
         result = CheckerboardGenerator.generate(params)
 
-        assert result["X_full"][:, 0].min() >= 0.0
-        assert result["X_full"][:, 0].max() <= 1.0
-        assert result["X_full"][:, 1].min() >= 0.0
-        assert result["X_full"][:, 1].max() <= 1.0
+        assert whole(result, "X")[:, 0].min() >= 0.0
+        assert whole(result, "X")[:, 0].max() <= 1.0
+        assert whole(result, "X")[:, 1].min() >= 0.0
+        assert whole(result, "X")[:, 1].max() <= 1.0
 
     def test_checkerboard_pattern(self) -> None:
         """Adjacent squares should have different classes."""
@@ -150,8 +151,8 @@ class TestCheckerboardGenerator:
         )
         result = CheckerboardGenerator.generate(params)
 
-        corner_00 = result["X_full"][(result["X_full"][:, 0] < 0.25) & (result["X_full"][:, 1] < 0.25)]
-        corner_01 = result["X_full"][(result["X_full"][:, 0] < 0.25) & (result["X_full"][:, 1] > 0.25) & (result["X_full"][:, 1] < 0.5)]
+        corner_00 = whole(result, "X")[(whole(result, "X")[:, 0] < 0.25) & (whole(result, "X")[:, 1] < 0.25)]
+        corner_01 = whole(result, "X")[(whole(result, "X")[:, 0] < 0.25) & (whole(result, "X")[:, 1] > 0.25) & (whole(result, "X")[:, 1] < 0.5)]
 
         if len(corner_00) > 0 and len(corner_01) > 0:
             pass
@@ -179,7 +180,7 @@ class TestCheckerboardGenerator:
         result_no_noise = CheckerboardGenerator.generate(params_no_noise)
         result_with_noise = CheckerboardGenerator.generate(params_with_noise)
 
-        assert not np.allclose(result_no_noise["X_full"], result_with_noise["X_full"])
+        assert not np.allclose(whole(result_no_noise, "X"), whole(result_with_noise, "X"))
 
     def test_generate_custom_range(self) -> None:
         """Custom x_range and y_range should be respected."""
@@ -192,10 +193,10 @@ class TestCheckerboardGenerator:
         )
         result = CheckerboardGenerator.generate(params)
 
-        assert result["X_full"][:, 0].min() >= -5.0
-        assert result["X_full"][:, 0].max() <= 5.0
-        assert result["X_full"][:, 1].min() >= -3.0
-        assert result["X_full"][:, 1].max() <= 3.0
+        assert whole(result, "X")[:, 0].min() >= -5.0
+        assert whole(result, "X")[:, 0].max() <= 5.0
+        assert whole(result, "X")[:, 1].min() >= -3.0
+        assert whole(result, "X")[:, 1].max() <= 3.0
 
 
 class TestGetSchema:

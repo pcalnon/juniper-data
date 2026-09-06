@@ -11,7 +11,7 @@ from juniper_data.core.split import partition_and_assemble, per_unit_count, reso
 
 from .params import GaussianParams
 
-VERSION = "2.0.0"
+VERSION = "3.0.0"
 
 
 class GaussianGenerator:
@@ -39,8 +39,6 @@ class GaussianGenerator:
                 - y_val: Validation labels (n_val, 2)
                 - X_test: Test features (n_test, n_features)
                 - y_test: Test labels (n_test, n_classes)
-                - X_full: Full dataset features (total_points, n_features)
-                - y_full: Full dataset labels (total_points, n_classes)
         """
         rng = np.random.default_rng(params.seed)
 

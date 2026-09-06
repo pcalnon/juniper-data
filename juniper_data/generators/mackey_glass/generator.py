@@ -26,7 +26,7 @@ from juniper_data.generators._synthetic import build_sequence_arrays
 
 from .params import MackeyGlassParams
 
-VERSION = "2.0.0"
+VERSION = "3.0.0"
 
 
 class MackeyGlassGenerator:
@@ -40,7 +40,7 @@ class MackeyGlassGenerator:
     def generate(params: MackeyGlassParams) -> dict[str, np.ndarray]:
         """Generate the windowed Mackey-Glass sequence dataset.
 
-        Returns the additive 3-D NPZ contract for train/test/full:
+        Returns the additive 3-D NPZ contract for train/val/test:
         ``X_{split}`` ``(W, L, 1)``, the regression target ``y_{split}`` ``(W, 1)``
         (the state ``horizon`` steps after the window end), plus ``dt`` /
         ``target_dt`` / ``observed_mask``.

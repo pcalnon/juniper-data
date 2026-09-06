@@ -11,11 +11,13 @@ catch:
   of 0.0 (the additive resolve tests never read carve ratios);
 * overflow trimmed from val first, or only from test, so long as train is 80
   and the total fits;
-* ``X_full`` assembled from the raw array rather than the three partitions
-  (shape identity still holds);
+* the whole-dataset view covering the RAW generated array rather than the three
+  partitions, surplus rows included (shape identity still holds);
 * surplus taken from the raw last-class block rather than the shuffled tail;
-* ``csv_import`` applying train-fit stats to train/test/full but leaving a
-  non-empty ``X_val`` on the raw scale.
+* ``csv_import`` applying train-fit stats to train and test but leaving a
+  non-empty ``X_val`` on the raw scale;
+* a generator left on a pre-decision-11 ``VERSION``, which lets a cached
+  ``*_full``-bearing artifact answer a post-decision-11 request.
 """
 
 from __future__ import annotations
@@ -41,6 +43,7 @@ from juniper_data.core.split import (
 from juniper_data.generators.arc_agi.params import ArcAgiParams
 from juniper_data.generators.csv_import import CsvImportGenerator, CsvImportParams
 from juniper_data.generators.mnist.params import MnistParams
+from juniper_data.tests.partitions import whole
 
 pytestmark = [pytest.mark.unit]
 
@@ -124,20 +127,25 @@ class TestOverflowTrimIsTwoStageAndExact:
 
 
 class TestAssembleFromPartitionsNotRaw:
-    def test_full_is_the_vstack_of_the_three_partitions(self) -> None:
+    def test_the_partitions_exclude_the_surplus_rather_than_covering_the_raw_array(self) -> None:
+        """The claim ``X_full`` used to carry, restated where it still has teeth.
+
+        While ``X_full`` existed this compared it against
+        ``np.vstack([train, val, test])``. Post-decision-11 both sides of that comparison
+        are the same expression -- ``whole()`` IS that vstack -- so it holds for every
+        input and proves nothing. The defect it existed to catch was assembling the whole
+        view from the RAW generated array, which carries surplus rows the partitions never
+        received. So assert that directly: the partitions cover ``n_total``, not ``len(X)``.
+        """
         counts = resolve_partition_counts(sizing_mode=SIZING_MODE_ADDITIVE, n_native=50)
-        X, y = _blocked_arrays(counts["n_raw_required"] + 7)
+        surplus = 7
+        X, y = _blocked_arrays(counts["n_raw_required"] + surplus)
 
         result = partition_and_assemble(X, y, counts, seed=42, shuffle=True)
 
-        np.testing.assert_array_equal(
-            result["X_full"],
-            np.vstack([result["X_train"], result["X_val"], result["X_test"]]),
-        )
-        np.testing.assert_array_equal(
-            result["y_full"],
-            np.vstack([result["y_train"], result["y_val"], result["y_test"]]),
-        )
+        assert whole(result, "X").shape[0] == counts["n_total"]
+        assert whole(result, "X").shape[0] < X.shape[0], "the whole view covers the raw array, surplus included"
+        assert whole(result, "y").shape[0] == counts["n_total"]
 
     def test_empty_val_still_assembles(self) -> None:
         counts = resolve_partition_counts(
@@ -151,11 +159,12 @@ class TestAssembleFromPartitionsNotRaw:
 
         result = partition_and_assemble(X, y, counts, seed=None, shuffle=False)
 
+        # A zero-row val partition must be PRESENT and empty, not absent: a consumer
+        # that distinguishes the two reads an absent key as a legacy two-way artifact.
         assert result["X_val"].shape == (0, 2)
-        np.testing.assert_array_equal(
-            result["X_full"],
-            np.vstack([result["X_train"], result["X_val"], result["X_test"]]),
-        )
+        assert "y_val" in result
+        # It contributes nothing to the whole view, which is still the other two in full.
+        assert whole(result, "X").shape[0] == result["X_train"].shape[0] + result["X_test"].shape[0] == counts["n_total"]
 
     def test_surplus_is_the_shuffled_tail_not_the_last_class(self) -> None:
         """Last-class drop would keep every class-0 row and drop 20 class-1 rows."""
@@ -171,11 +180,11 @@ class TestAssembleFromPartitionsNotRaw:
 
         result = partition_and_assemble(X, y, counts, seed=42, shuffle=True)
 
-        used_ids = set(result["X_full"][:, 0].tolist())
+        used_ids = set(whole(result, "X")[:, 0].tolist())
         raw_tail_ids = set(X[-surplus:, 0].tolist())
 
         assert used_ids & raw_tail_ids, "raw tail (all class 1) was dropped wholesale"
-        class0 = int(result["y_full"][:, 0].sum())
+        class0 = int(whole(result, "y")[:, 0].sum())
         assert class0 < n // 2, "class 0 was never charged for the surplus"
 
 
@@ -221,7 +230,53 @@ class TestCsvImportValUsesTrainFitStats:
         assert not np.allclose(out["X_val"], raw_val), "X_val was left on the raw scale"
         np.testing.assert_allclose(out["X_val"], expected, rtol=1e-5, atol=1e-6)
         assert out["X_val"].max() > 1.0 + 1e-6, "X_val was fit on itself or the full set"
-        np.testing.assert_array_equal(
-            out["X_full"],
-            np.vstack([out["X_train"], out["X_val"], out["X_test"]]),
-        )
+        # Every partition is present and accounted for. (Comparing `whole()` against the
+        # vstack of the same three partitions would be the same expression twice.)
+        assert whole(out, "X").shape[0] == sum(out[f"X_{p}"].shape[0] for p in ("train", "val", "test"))
+
+
+class TestEveryGeneratorBumpedForDecision11:
+    """A contract change that removes keys must move `VERSION` on EVERY generator.
+
+    `generate_dataset_id` hashes the generator version, so an unbumped generator serves a
+    CACHED pre-decision-11 artifact -- one that still carries `*_full` -- for a request
+    made after the change. Which shape a consumer sees is then decided by cache state
+    rather than by the contract. That is risk R-1, and it had been closed on the strength
+    of the val bump alone.
+
+    This is deliberately a FLEET check rather than one more per-generator assertion. The
+    val bump was verified by a single test in `test_equities_generator.py`, so fifteen
+    generators had no guard at all and the decision-11 bump was skipped on all of them
+    without a failure anywhere. Enumerating the package is what makes the next omission
+    visible: a generator added later is covered the day it lands.
+    """
+
+    @staticmethod
+    def _generator_versions() -> dict[str, str]:
+        import importlib
+        import pkgutil
+
+        import juniper_data.generators as generators_pkg
+
+        found: dict[str, str] = {}
+        for module in pkgutil.iter_modules(generators_pkg.__path__):
+            if not module.ispkg:
+                continue
+            try:
+                mod = importlib.import_module(f"juniper_data.generators.{module.name}.generator")
+            except ImportError:  # pragma: no cover - an uninstalled optional extra
+                continue
+            version = getattr(mod, "VERSION", None)
+            if version is not None:
+                found[module.name] = version
+        return found
+
+    def test_the_enumeration_is_not_empty(self) -> None:
+        """An empty sweep would make the assertion below pass while checking nothing."""
+        versions = self._generator_versions()
+        assert len(versions) >= 10, f"only {len(versions)} generator(s) discovered: {sorted(versions)}"
+
+    def test_every_generator_is_at_the_decision_11_version(self) -> None:
+        versions = self._generator_versions()
+        stale = {name: version for name, version in versions.items() if version != "3.0.0"}
+        assert not stale, f"generators still on a pre-decision-11 VERSION: {stale}. The dataset ID hashes this, so each one can serve a cached *_full-bearing artifact."

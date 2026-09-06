@@ -24,7 +24,7 @@ from juniper_data.generators._synthetic import build_sequence_arrays
 
 from .params import ArPParams
 
-VERSION = "2.0.0"
+VERSION = "3.0.0"
 
 
 class ArPGenerator:
@@ -37,7 +37,7 @@ class ArPGenerator:
     def generate(params: ArPParams) -> dict[str, np.ndarray]:
         """Generate the windowed AR(p) sequence dataset.
 
-        Returns the additive 3-D NPZ contract for train/test/full:
+        Returns the additive 3-D NPZ contract for train/val/test:
         ``X_{split}`` ``(W, L, 1)``, the regression target ``y_{split}`` ``(W, 1)``
         (the series value ``horizon`` steps after the window end), plus ``dt`` /
         ``target_dt`` / ``observed_mask``.

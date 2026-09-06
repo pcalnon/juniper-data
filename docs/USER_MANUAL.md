@@ -367,8 +367,6 @@ All datasets conform to this standardized format, which serves as the primary da
 | `y_train` | `(n_train, n_classes)` | `float32` | Training labels (one-hot) |
 | `X_test` | `(n_test, n_features)` | `float32` | Test features |
 | `y_test` | `(n_test, n_classes)` | `float32` | Test labels (one-hot) |
-| `X_full` | `(n_samples, n_features)` | `float32` | Full dataset features |
-| `y_full` | `(n_samples, n_classes)` | `float32` | Full dataset labels (one-hot) |
 
 Truncation is **not** an NPZ key. An authorised `csv_import` prefix is recorded on `DatasetMeta.truncation` (JSON metadata) after the route pops the reserved channel. `None` means the source was imported whole. See [CSV Import Byte Cap](REFERENCE.md#csv-import-byte-cap).
 
@@ -401,7 +399,9 @@ Juniper Data guarantees:
 3. `y_*` arrays have shape `(n, n_classes)` -- or `(n, 1)` for regression targets
 4. `y_*` classification arrays are valid one-hot encodings (each row sums to 1.0)
 5. `X_train`, `X_val` and `X_test` are all present and all non-empty
-6. `len(X_train) + len(X_val) + len(X_test) == len(X_full)`
+6. The three partitions ARE the dataset: there is no whole-set array to compare them
+   against, and `meta.n_samples` equals `n_train + n_val + n_test`. A consumer that
+   wants the whole set concatenates the three, in that order.
 
 ### Loading Artifacts
 

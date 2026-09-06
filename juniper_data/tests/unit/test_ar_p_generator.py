@@ -20,30 +20,31 @@ import pytest
 
 from juniper_data.core.meta import compute_shape_meta, derive_sequence_meta
 from juniper_data.generators.ar_p import ArPGenerator, ArPParams, get_schema
+from juniper_data.tests.partitions import whole
 
 pytestmark = [pytest.mark.unit, pytest.mark.generators]
 
 
 def _assert_regular_sequence_contract(arrays: dict, *, lookback: int, sample_dt: float, horizon: int) -> None:
     """Shared assertions for the regular-Δt 3-D regression NPZ contract."""
-    for split in ("train", "val", "test", "full"):
+    for split in ("train", "val", "test"):
         for key in ("X", "y", "dt", "target_dt", "observed_mask"):
             assert f"{key}_{split}" in arrays, f"missing {key}_{split}"
 
-    xf = arrays["X_full"]
+    xf = whole(arrays, "X")
     n_windows = xf.shape[0]
     assert xf.ndim == 3 and xf.shape[1:] == (lookback, 1)
     assert xf.dtype == np.float32
-    assert arrays["y_full"].shape == (n_windows, 1) and arrays["y_full"].dtype == np.float32
+    assert whole(arrays, "y").shape == (n_windows, 1) and whole(arrays, "y").dtype == np.float32
 
-    dt = arrays["dt_full"]
+    dt = whole(arrays, "dt")
     assert dt.shape == (n_windows, lookback) and dt.dtype == np.float32
     assert np.all(dt[:, 0] == 0)
     np.testing.assert_allclose(dt[:, 1:], np.float32(sample_dt))
-    assert arrays["target_dt_full"].shape == (n_windows,)
-    np.testing.assert_allclose(arrays["target_dt_full"], np.float32(horizon * sample_dt))
+    assert whole(arrays, "target_dt").shape == (n_windows,)
+    np.testing.assert_allclose(whole(arrays, "target_dt"), np.float32(horizon * sample_dt))
 
-    mask = arrays["observed_mask_full"]
+    mask = whole(arrays, "observed_mask")
     assert mask.shape == (n_windows, lookback) and mask.dtype == np.uint8
     assert np.all(mask == 1)
 
@@ -52,7 +53,7 @@ def _assert_regular_sequence_contract(arrays: dict, *, lookback: int, sample_dt:
     # so without it this assertion would pass on exactly the defect it exists to catch.
     assert arrays["X_val"].shape[0] > 0, "val partition must be non-empty"
     assert n_windows == arrays["X_train"].shape[0] + arrays["X_val"].shape[0] + arrays["X_test"].shape[0]
-    np.testing.assert_array_equal(arrays["X_full"], np.concatenate([arrays["X_train"], arrays["X_val"], arrays["X_test"]]))
+    np.testing.assert_array_equal(whole(arrays, "X"), np.concatenate([arrays["X_train"], arrays["X_val"], arrays["X_test"]]))
 
     shape_meta = compute_shape_meta(arrays, "regression")
     assert shape_meta["n_features"] == 1
@@ -83,9 +84,9 @@ class TestArPGenerator:
             x[t] = 0.0 + phi @ x[t - order : t][::-1] + eps[t]
         expected = x[order : order + total].astype(np.float32)
 
-        np.testing.assert_allclose(arrays["X_full"][0, :, 0], expected[:20], atol=1e-4)
+        np.testing.assert_allclose(whole(arrays, "X")[0, :, 0], expected[:20], atol=1e-4)
         ends = np.arange(19, total - 1)  # lookback - 1 .. T - 1 - horizon
-        np.testing.assert_allclose(arrays["y_full"][:, 0], expected[ends + 1], atol=1e-4)
+        np.testing.assert_allclose(whole(arrays, "y")[:, 0], expected[ends + 1], atol=1e-4)
 
     def test_order_p_equals_len_coefficients(self) -> None:
         # An AR(3) is accepted and produces the contract; order is len(coefficients).
@@ -95,13 +96,13 @@ class TestArPGenerator:
     def test_determinism(self) -> None:
         first = ArPGenerator.generate(ArPParams(n_steps=300, lookback=20, seed=5))
         second = ArPGenerator.generate(ArPParams(n_steps=300, lookback=20, seed=5))
-        np.testing.assert_array_equal(first["X_full"], second["X_full"])
+        np.testing.assert_array_equal(whole(first, "X"), whole(second, "X"))
 
     def test_burn_in_changes_start(self) -> None:
         no_warmup = ArPGenerator.generate(ArPParams(n_steps=300, lookback=20, burn_in=0, seed=0))
         warmup = ArPGenerator.generate(ArPParams(n_steps=300, lookback=20, burn_in=100, seed=0))
-        assert no_warmup["X_full"].shape == warmup["X_full"].shape
-        assert not np.allclose(no_warmup["X_full"][0, :, 0], warmup["X_full"][0, :, 0])
+        assert whole(no_warmup, "X").shape == whole(warmup, "X").shape
+        assert not np.allclose(whole(no_warmup, "X")[0, :, 0], whole(warmup, "X")[0, :, 0])
 
     def test_empty_coefficients_rejected(self) -> None:
         with pytest.raises(ValueError):

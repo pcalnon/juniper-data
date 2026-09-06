@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from juniper_data.generators.circles import VERSION, CirclesGenerator, CirclesParams, get_schema
+from juniper_data.tests.partitions import whole
 
 pytestmark = [pytest.mark.unit, pytest.mark.generators]
 
@@ -67,7 +68,7 @@ class TestCirclesGenerator:
         params = CirclesParams(seed=42)
         result = CirclesGenerator.generate(params)
 
-        expected_keys = {"X_train", "y_train", "X_val", "y_val", "X_test", "y_test", "X_full", "y_full"}
+        expected_keys = {"X_train", "y_train", "X_val", "y_val", "X_test", "y_test"}
         assert set(result.keys()) == expected_keys
 
     def test_generate_shapes(self) -> None:
@@ -80,8 +81,8 @@ class TestCirclesGenerator:
         assert result["X_train"].shape == (150, 2)
         assert result["X_val"].shape == (60, 2)
         assert result["X_test"].shape == (45, 2)
-        assert result["X_full"].shape == (255, 2)
-        assert result["y_full"].shape == (255, 2)
+        assert whole(result, "X").shape == (255, 2)
+        assert whole(result, "y").shape == (255, 2)
 
     def test_generate_dtypes(self) -> None:
         """Generated arrays should have float32 dtype."""
@@ -90,8 +91,8 @@ class TestCirclesGenerator:
 
         assert result["X_train"].dtype == np.float32
         assert result["y_train"].dtype == np.float32
-        assert result["X_full"].dtype == np.float32
-        assert result["y_full"].dtype == np.float32
+        assert whole(result, "X").dtype == np.float32
+        assert whole(result, "y").dtype == np.float32
 
     def test_determinism_with_seed(self) -> None:
         """Same seed should produce identical results."""
@@ -100,8 +101,8 @@ class TestCirclesGenerator:
         result1 = CirclesGenerator.generate(params)
         result2 = CirclesGenerator.generate(params)
 
-        np.testing.assert_array_equal(result1["X_full"], result2["X_full"])
-        np.testing.assert_array_equal(result1["y_full"], result2["y_full"])
+        np.testing.assert_array_equal(whole(result1, "X"), whole(result2, "X"))
+        np.testing.assert_array_equal(whole(result1, "y"), whole(result2, "y"))
 
     def test_different_seeds_produce_different_data(self) -> None:
         """Different seeds should produce different results."""
@@ -111,17 +112,17 @@ class TestCirclesGenerator:
         result1 = CirclesGenerator.generate(params1)
         result2 = CirclesGenerator.generate(params2)
 
-        assert not np.allclose(result1["X_full"], result2["X_full"])
+        assert not np.allclose(whole(result1, "X"), whole(result2, "X"))
 
     def test_one_hot_labels(self) -> None:
         """Labels should be valid one-hot encoded."""
         params = CirclesParams(seed=42)
         result = CirclesGenerator.generate(params)
 
-        row_sums = result["y_full"].sum(axis=1)
+        row_sums = whole(result, "y").sum(axis=1)
         np.testing.assert_array_almost_equal(row_sums, np.ones(len(row_sums)))
 
-        for row in result["y_full"]:
+        for row in whole(result, "y"):
             assert np.sum(row == 1.0) == 1
             assert np.sum(row == 0.0) == 1
 
@@ -130,7 +131,7 @@ class TestCirclesGenerator:
         params = CirclesParams(n_samples=100, inner_ratio=0.5, seed=42)
         result = CirclesGenerator.generate(params)
 
-        class_counts = result["y_full"].sum(axis=0)
+        class_counts = whole(result, "y").sum(axis=0)
         # 100 train + 40 val + 30 test = 170 realised rows, split evenly.
         assert class_counts[0] == 85
         assert class_counts[1] == 85
@@ -140,7 +141,7 @@ class TestCirclesGenerator:
         params = CirclesParams(n_samples=100, inner_ratio=0.3, seed=42)
         result = CirclesGenerator.generate(params)
 
-        class_counts = result["y_full"].sum(axis=0)
+        class_counts = whole(result, "y").sum(axis=0)
         # 170 realised rows at inner_ratio 0.3 -> 51 inner, 119 outer.
         assert class_counts[0] == 119
         assert class_counts[1] == 51
@@ -176,9 +177,9 @@ class TestCirclesGenerator:
         # Select by CLASS rather than by position. The original slice assumed
         # the class boundary sat at row 50, which tied a geometry assertion to
         # the partition sizing; a mask asks the question directly.
-        labels = np.argmax(result["y_full"], axis=1)
-        outer_points = result["X_full"][labels == 0]
-        inner_points = result["X_full"][labels == 1]
+        labels = np.argmax(whole(result, "y"), axis=1)
+        outer_points = whole(result, "X")[labels == 0]
+        inner_points = whole(result, "X")[labels == 1]
 
         assert outer_points.shape[0] > 0 and inner_points.shape[0] > 0
 
@@ -196,8 +197,8 @@ class TestCirclesGenerator:
         result_no_noise = CirclesGenerator.generate(params_no_noise)
         result_with_noise = CirclesGenerator.generate(params_with_noise)
 
-        var_no_noise = np.var(np.linalg.norm(result_no_noise["X_full"], axis=1))
-        var_with_noise = np.var(np.linalg.norm(result_with_noise["X_full"], axis=1))
+        var_no_noise = np.var(np.linalg.norm(whole(result_no_noise, "X"), axis=1))
+        var_with_noise = np.var(np.linalg.norm(whole(result_with_noise, "X"), axis=1))
 
         assert var_with_noise > var_no_noise
 
@@ -214,8 +215,8 @@ class TestCirclesGenerator:
         )
         result = CirclesGenerator.generate(params)
 
-        labels = np.argmax(result["y_full"], axis=1)
-        inner_points = result["X_full"][labels == 1]
+        labels = np.argmax(whole(result, "y"), axis=1)
+        inner_points = whole(result, "X")[labels == 1]
 
         assert inner_points.shape[0] > 0
 
@@ -233,7 +234,7 @@ class TestCirclesGenerator:
         )
         result = CirclesGenerator.generate(params)
 
-        outer_distances = np.linalg.norm(result["X_full"][:50], axis=1)
+        outer_distances = np.linalg.norm(whole(result, "X")[:50], axis=1)
         assert not np.allclose(outer_distances, np.full(50, 1.0))
 
 

@@ -960,12 +960,16 @@ async def preview_dataset(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dataset '{dataset_id}' not found")
 
     with np.load(io.BytesIO(artifact_bytes)) as data:
-        if "X_full" in data and "y_full" in data:
-            X = data["X_full"]
-            y = data["y_full"]
-        else:
-            X = np.vstack([data["X_train"], data["X_test"]])
-            y = np.vstack([data["y_train"], data["y_test"]])
+        # The TRAINING partition, per design §9.5.4 item 3. This read ``X_full`` with a
+        # ``train + test`` fallback -- which was risk R-5 surviving in the preview path,
+        # silently skipping the validation rows whenever the artifact had them.
+        #
+        # Serving train rather than a reassembled whole is the design's stated choice and
+        # matches juniper-data-client's fake, so the two cannot disagree. It does shift the
+        # semantics for a SEQUENCE artifact, where train is the chronologically earliest
+        # block rather than a random sample.
+        X = data["X_train"]
+        y = data["y_train"]
 
     n_samples = min(n, len(X))
 

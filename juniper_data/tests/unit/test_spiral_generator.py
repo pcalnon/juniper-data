@@ -12,6 +12,7 @@ import pytest
 from pydantic import ValidationError
 
 from juniper_data.generators.spiral import SpiralGenerator, SpiralParams
+from juniper_data.tests.partitions import whole
 
 
 @pytest.mark.unit
@@ -28,16 +29,16 @@ class TestSpiralShapes:
         assert result["X_train"].shape == (200, 2)
         assert result["X_val"].shape == (80, 2)
         assert result["X_test"].shape == (60, 2)
-        assert result["X_full"].shape == (340, 2)
-        assert result["y_full"].shape == (340, 2)
+        assert whole(result, "X").shape == (340, 2)
+        assert whole(result, "y").shape == (340, 2)
 
     def test_3_spiral_shapes(self, three_spiral_params: SpiralParams) -> None:
         """Verify X is (150, 2) and y is (150, 3) for n_spirals=3, n_points=50."""
         result = SpiralGenerator.generate(three_spiral_params)
 
         # 3 x 50 = 150 TRAIN points, plus 60 val and 45 test.
-        assert result["X_full"].shape == (255, 2)
-        assert result["y_full"].shape == (255, 3)
+        assert whole(result, "X").shape == (255, 2)
+        assert whole(result, "y").shape == (255, 3)
 
     def test_train_test_split_sizes(self, two_spiral_params: SpiralParams) -> None:
         """Verify train/test sizes match ratios within ±1."""
@@ -80,7 +81,7 @@ class TestSpiralShapes:
 
     def test_output_keys_present(self, generated_minimal_dataset: dict[str, np.ndarray]) -> None:
         """Verify all expected keys are present in output."""
-        expected_keys = {"X_train", "y_train", "X_val", "y_val", "X_test", "y_test", "X_full", "y_full"}
+        expected_keys = {"X_train", "y_train", "X_val", "y_val", "X_test", "y_test"}
         assert set(generated_minimal_dataset.keys()) == expected_keys
 
 
@@ -92,7 +93,7 @@ class TestOneHotEncoding:
 
     def test_row_sums_to_one(self, generated_two_spiral_dataset: dict[str, np.ndarray]) -> None:
         """Verify each row of y sums to 1.0."""
-        y_full = generated_two_spiral_dataset["y_full"]
+        y_full = whole(generated_two_spiral_dataset, "y")
 
         row_sums = y_full.sum(axis=1)
         expected = np.ones(y_full.shape[0], dtype=np.float32)
@@ -108,7 +109,7 @@ class TestOneHotEncoding:
         )
         result = SpiralGenerator.generate(params)
 
-        y_full = result["y_full"]
+        y_full = whole(result, "y")
         class_counts = y_full.sum(axis=0).astype(int)
 
         # 3 x 50 = 150 train + 60 val + 45 test = 255 realised rows, 85 per spiral.
@@ -117,8 +118,8 @@ class TestOneHotEncoding:
 
     def test_dtype_is_float32(self, generated_two_spiral_dataset: dict[str, np.ndarray]) -> None:
         """Verify arrays are float32 dtype."""
-        assert generated_two_spiral_dataset["X_full"].dtype == np.float32
-        assert generated_two_spiral_dataset["y_full"].dtype == np.float32
+        assert whole(generated_two_spiral_dataset, "X").dtype == np.float32
+        assert whole(generated_two_spiral_dataset, "y").dtype == np.float32
         assert generated_two_spiral_dataset["X_train"].dtype == np.float32
         assert generated_two_spiral_dataset["y_train"].dtype == np.float32
         assert generated_two_spiral_dataset["X_test"].dtype == np.float32
@@ -126,7 +127,7 @@ class TestOneHotEncoding:
 
     def test_one_hot_values_binary(self, generated_minimal_dataset: dict[str, np.ndarray]) -> None:
         """Verify one-hot encoding contains only 0.0 and 1.0 values."""
-        y_full = generated_minimal_dataset["y_full"]
+        y_full = whole(generated_minimal_dataset, "y")
         unique_values = np.unique(y_full)
 
         assert len(unique_values) == 2
@@ -156,8 +157,8 @@ class TestDeterminism:
         result1 = SpiralGenerator.generate(params1)
         result2 = SpiralGenerator.generate(params2)
 
-        np.testing.assert_array_equal(result1["X_full"], result2["X_full"])
-        np.testing.assert_array_equal(result1["y_full"], result2["y_full"])
+        np.testing.assert_array_equal(whole(result1, "X"), whole(result2, "X"))
+        np.testing.assert_array_equal(whole(result1, "y"), whole(result2, "y"))
         np.testing.assert_array_equal(result1["X_train"], result2["X_train"])
         np.testing.assert_array_equal(result1["y_train"], result2["y_train"])
         np.testing.assert_array_equal(result1["X_test"], result2["X_test"])
@@ -179,7 +180,7 @@ class TestDeterminism:
         result1 = SpiralGenerator.generate(params1)
         result2 = SpiralGenerator.generate(params2)
 
-        assert not np.allclose(result1["X_full"], result2["X_full"])
+        assert not np.allclose(whole(result1, "X"), whole(result2, "X"))
 
     def test_multiple_calls_same_seed_identical(self) -> None:
         """Verify multiple sequential calls with same seed are identical."""
@@ -188,8 +189,8 @@ class TestDeterminism:
         results = [SpiralGenerator.generate(params) for _ in range(3)]
 
         for i in range(1, len(results)):
-            np.testing.assert_array_equal(results[0]["X_full"], results[i]["X_full"])
-            np.testing.assert_array_equal(results[0]["y_full"], results[i]["y_full"])
+            np.testing.assert_array_equal(whole(results[0], "X"), whole(results[i], "X"))
+            np.testing.assert_array_equal(whole(results[0], "y"), whole(results[i], "y"))
 
 
 @pytest.mark.unit
@@ -284,7 +285,7 @@ class TestSpiralGeometry:
 
     def test_coordinates_centered_near_origin(self, generated_two_spiral_dataset: dict[str, np.ndarray]) -> None:
         """Verify spiral coordinates are centered roughly around origin."""
-        X_full = generated_two_spiral_dataset["X_full"]
+        X_full = whole(generated_two_spiral_dataset, "X")
         mean_x = X_full[:, 0].mean()
         mean_y = X_full[:, 1].mean()
 
@@ -301,7 +302,7 @@ class TestSpiralGeometry:
         )
         result = SpiralGenerator.generate(params)
 
-        X_full = result["X_full"]
+        X_full = whole(result, "X")
         distances = np.sqrt(X_full[:, 0] ** 2 + X_full[:, 1] ** 2)
         max_distance = distances.max()
 
@@ -325,8 +326,8 @@ class TestSpiralGeometry:
         result_no_noise = SpiralGenerator.generate(params_no_noise)
         result_with_noise = SpiralGenerator.generate(params_with_noise)
 
-        var_no_noise = result_no_noise["X_full"].var()
-        var_with_noise = result_with_noise["X_full"].var()
+        var_no_noise = whole(result_no_noise, "X").var()
+        var_with_noise = whole(result_with_noise, "X").var()
 
         assert var_with_noise > var_no_noise
 
@@ -348,8 +349,8 @@ class TestSpiralGeneratorLegacyMode:
         result = SpiralGenerator.generate(params)
 
         # 100 TRAIN points, plus 40 val and 30 test.
-        assert result["X_full"].shape == (170, 2)
-        assert result["y_full"].shape == (170, 2)
+        assert whole(result, "X").shape == (170, 2)
+        assert whole(result, "y").shape == (170, 2)
         assert result["X_train"].shape[1] == 2
         assert result["y_train"].shape[1] == 2
 
@@ -371,8 +372,8 @@ class TestSpiralGeneratorLegacyMode:
         result1 = SpiralGenerator.generate(params1)
         result2 = SpiralGenerator.generate(params2)
 
-        np.testing.assert_array_equal(result1["X_full"], result2["X_full"])
-        np.testing.assert_array_equal(result1["y_full"], result2["y_full"])
+        np.testing.assert_array_equal(whole(result1, "X"), whole(result2, "X"))
+        np.testing.assert_array_equal(whole(result1, "y"), whole(result2, "y"))
 
     def test_legacy_mode_different_from_modern(self) -> None:
         """Verify legacy_cascor produces different results than modern algorithm."""
@@ -392,7 +393,7 @@ class TestSpiralGeneratorLegacyMode:
         result_modern = SpiralGenerator.generate(params_modern)
         result_legacy = SpiralGenerator.generate(params_legacy)
 
-        assert not np.allclose(result_modern["X_full"], result_legacy["X_full"])
+        assert not np.allclose(whole(result_modern, "X"), whole(result_legacy, "X"))
 
     def test_legacy_mode_uniform_noise_range(self) -> None:
         """Verify legacy mode uses uniform noise in [0, noise) range."""
@@ -414,8 +415,8 @@ class TestSpiralGeneratorLegacyMode:
         )
         result_no_noise = SpiralGenerator.generate(params_no_noise)
 
-        noise_x = result["X_full"][:, 0] - result_no_noise["X_full"][:, 0]
-        noise_y = result["X_full"][:, 1] - result_no_noise["X_full"][:, 1]
+        noise_x = whole(result, "X")[:, 0] - whole(result_no_noise, "X")[:, 0]
+        noise_y = whole(result, "X")[:, 1] - whole(result_no_noise, "X")[:, 1]
 
         assert noise_x.min() >= 0.0
         assert noise_x.max() < 1.0
@@ -433,7 +434,7 @@ class TestSpiralGeneratorLegacyMode:
         )
         result = SpiralGenerator.generate(params)
 
-        X = result["X_full"]
+        X = whole(result, "X")
         radii = np.sqrt(X[:, 0] ** 2 + X[:, 1] ** 2)
 
         radii_squared = radii**2
@@ -461,8 +462,8 @@ class TestSpiralGeneratorLegacyMode:
         result_centered = SpiralGenerator.generate(params_centered)
         result_offset = SpiralGenerator.generate(params_offset)
 
-        mean_centered = result_centered["X_full"].mean(axis=0)
-        mean_offset = result_offset["X_full"].mean(axis=0)
+        mean_centered = whole(result_centered, "X").mean(axis=0)
+        mean_offset = whole(result_offset, "X").mean(axis=0)
 
         np.testing.assert_allclose(mean_offset[0] - mean_centered[0], 5.0, atol=0.1)
         np.testing.assert_allclose(mean_offset[1] - mean_centered[1], 10.0, atol=0.1)
@@ -489,8 +490,8 @@ class TestSpiralGeneratorLegacyMode:
         result_small = SpiralGenerator.generate(params_small)
         result_large = SpiralGenerator.generate(params_large)
 
-        radii_small = np.sqrt(result_small["X_full"][:, 0] ** 2 + result_small["X_full"][:, 1] ** 2)
-        radii_large = np.sqrt(result_large["X_full"][:, 0] ** 2 + result_large["X_full"][:, 1] ** 2)
+        radii_small = np.sqrt(whole(result_small, "X")[:, 0] ** 2 + whole(result_small, "X")[:, 1] ** 2)
+        radii_large = np.sqrt(whole(result_large, "X")[:, 0] ** 2 + whole(result_large, "X")[:, 1] ** 2)
 
         max_small = radii_small.max()
         max_large = radii_large.max()
@@ -567,8 +568,8 @@ class TestParameterAliases:
         result = SpiralGenerator.generate(params)
 
         # 50 TRAIN points, plus 20 val and 15 test.
-        assert result["X_full"].shape == (85, 2)
-        assert result["y_full"].shape == (85, 2)
+        assert whole(result, "X").shape == (85, 2)
+        assert whole(result, "y").shape == (85, 2)
 
     def test_alias_determinism(self) -> None:
         """Verify same seed produces same results regardless of alias usage."""
@@ -578,5 +579,5 @@ class TestParameterAliases:
         result1 = SpiralGenerator.generate(params1)
         result2 = SpiralGenerator.generate(params2)
 
-        np.testing.assert_array_equal(result1["X_full"], result2["X_full"])
-        np.testing.assert_array_equal(result1["y_full"], result2["y_full"])
+        np.testing.assert_array_equal(whole(result1, "X"), whole(result2, "X"))
+        np.testing.assert_array_equal(whole(result1, "y"), whole(result2, "y"))

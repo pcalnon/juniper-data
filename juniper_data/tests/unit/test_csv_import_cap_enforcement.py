@@ -48,6 +48,7 @@ from juniper_data.core.limits import (  # noqa: E402
     InputTooLargeError,
 )
 from juniper_data.generators.csv_import import CsvImportGenerator, CsvImportParams  # noqa: E402
+from juniper_data.tests.partitions import whole  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.generators]
 
@@ -160,7 +161,7 @@ class TestLyingStatWithOptInAnnotatesObservedSize:
         assert annotation["requested"] != 0
         assert annotation["cap"] == TINY_CAP_BYTES
         assert 0 < annotation["records_imported"] < 40
-        assert result["X_full"].shape[0] == annotation["records_imported"]
+        assert whole(result, "X").shape[0] == annotation["records_imported"]
 
 
 class TestSchemaDefaultMaxBytesCannotRaiseTheCeiling:

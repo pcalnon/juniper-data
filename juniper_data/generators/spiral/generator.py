@@ -13,7 +13,7 @@ from juniper_data.core.split import partition_and_assemble, per_unit_count, reso
 
 from .params import SpiralParams
 
-VERSION = "2.0.0"
+VERSION = "3.0.0"
 
 
 class SpiralGenerator:
@@ -39,8 +39,6 @@ class SpiralGenerator:
                 - y_val: Validation labels (n_val, n_spirals)
                 - X_test: Test features (n_test, 2)
                 - y_test: Test labels (n_test, n_spirals)
-                - X_full: All three partitions stacked (n_total, 2)
-                - y_full: All three partitions stacked (n_total, n_spirals)
         """
         rng = np.random.default_rng(params.seed)
 

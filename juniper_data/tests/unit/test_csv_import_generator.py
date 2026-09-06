@@ -20,6 +20,7 @@ from juniper_data.generators.csv_import import (
     CsvImportParams,
     get_schema,
 )
+from juniper_data.tests.partitions import whole
 
 pytestmark = [pytest.mark.unit, pytest.mark.generators]
 
@@ -128,8 +129,8 @@ class TestCsvImportGenerator:
         )
         result = CsvImportGenerator.generate(params)
 
-        assert result["X_full"].shape == (4, 2)
-        assert result["y_full"].shape == (4, 2)
+        assert whole(result, "X").shape == (4, 2)
+        assert whole(result, "y").shape == (4, 2)
 
     def test_load_json_file(self, sample_json_file: Path) -> None:
         """Should load data from JSON file."""
@@ -139,8 +140,8 @@ class TestCsvImportGenerator:
         )
         result = CsvImportGenerator.generate(params)
 
-        assert result["X_full"].shape == (4, 2)
-        assert result["y_full"].shape == (4, 2)
+        assert whole(result, "X").shape == (4, 2)
+        assert whole(result, "y").shape == (4, 2)
 
     def test_load_jsonl_file(self, sample_jsonl_file: Path) -> None:
         """Should load data from JSONL file."""
@@ -150,8 +151,8 @@ class TestCsvImportGenerator:
         )
         result = CsvImportGenerator.generate(params)
 
-        assert result["X_full"].shape == (4, 2)
-        assert result["y_full"].shape == (4, 2)
+        assert whole(result, "X").shape == (4, 2)
+        assert whole(result, "y").shape == (4, 2)
 
     def test_feature_values(self, sample_csv_file: Path) -> None:
         """Feature values should be correctly parsed."""
@@ -162,7 +163,7 @@ class TestCsvImportGenerator:
         result = CsvImportGenerator.generate(params)
 
         expected_X = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]], dtype=np.float32)
-        np.testing.assert_array_equal(result["X_full"], expected_X)
+        np.testing.assert_array_equal(whole(result, "X"), expected_X)
 
     def test_one_hot_labels(self, sample_csv_file: Path) -> None:
         """Labels should be one-hot encoded."""
@@ -173,7 +174,7 @@ class TestCsvImportGenerator:
         )
         result = CsvImportGenerator.generate(params)
 
-        row_sums = result["y_full"].sum(axis=1)
+        row_sums = whole(result, "y").sum(axis=1)
         np.testing.assert_array_almost_equal(row_sums, np.ones(4))
 
     def test_non_one_hot_labels(self, sample_csv_file: Path) -> None:
@@ -185,7 +186,7 @@ class TestCsvImportGenerator:
         )
         result = CsvImportGenerator.generate(params)
 
-        assert result["y_full"].shape == (4, 1)
+        assert whole(result, "y").shape == (4, 1)
 
     def test_normalize_features(self, sample_csv_file: Path) -> None:
         """The FITTED partition is normalized to [0, 1] (juniper-data#314).
@@ -250,8 +251,8 @@ class TestCsvImportGenerator:
         )
         result = CsvImportGenerator.generate(params)
 
-        assert result["X_full"].shape == (4, 2)
-        assert result["y_full"].shape == (4, 2)
+        assert whole(result, "X").shape == (4, 2)
+        assert whole(result, "y").shape == (4, 2)
 
     def test_json_jsonl_format(self, import_dir: Path) -> None:
         """Should load JSONL (non-array) format via the else branch."""
@@ -261,7 +262,7 @@ class TestCsvImportGenerator:
         params = CsvImportParams(file_path="test.json", seed=42)
         result = CsvImportGenerator.generate(params)
 
-        assert result["X_full"].shape == (2, 2)
+        assert whole(result, "X").shape == (2, 2)
 
     def test_convert_to_arrays_empty_data(self, import_dir: Path) -> None:
         """Empty file should raise ValueError."""
@@ -284,7 +285,7 @@ class TestCsvImportGenerator:
         )
         result = CsvImportGenerator.generate(params)
 
-        assert result["X_full"].shape == (2, 2)
+        assert whole(result, "X").shape == (2, 2)
 
     def test_non_numeric_feature_values(self, import_dir: Path) -> None:
         """Non-numeric feature values should be replaced with 0.0."""
@@ -298,8 +299,8 @@ class TestCsvImportGenerator:
         )
         result = CsvImportGenerator.generate(params)
 
-        assert result["X_full"][0, 1] == 0.0
-        assert result["X_full"][1, 1] == 0.0
+        assert whole(result, "X")[0, 1] == 0.0
+        assert whole(result, "X")[1, 1] == 0.0
 
     def test_empty_csv_without_header_raises(self, import_dir: Path) -> None:
         """Empty CSV with header=False should raise ValueError."""
@@ -327,9 +328,9 @@ class TestCsvImportGenerator:
         )
         result = CsvImportGenerator.generate(params)
 
-        assert not np.any(np.isnan(result["X_full"]))
-        assert result["X_full"][:, 0].min() == 0.0
-        assert result["X_full"][:, 0].max() == 0.0
+        assert not np.any(np.isnan(whole(result, "X")))
+        assert whole(result, "X")[:, 0].min() == 0.0
+        assert whole(result, "X")[:, 0].max() == 0.0
 
     def test_explicit_csv_format(self, sample_csv_file: Path) -> None:
         """Explicit file_format='csv' should bypass auto-detect."""
@@ -340,7 +341,7 @@ class TestCsvImportGenerator:
         )
         result = CsvImportGenerator.generate(params)
 
-        assert result["X_full"].shape == (4, 2)
+        assert whole(result, "X").shape == (4, 2)
 
     def test_explicit_json_format(self, sample_json_file: Path) -> None:
         """Explicit file_format='json' should bypass auto-detect."""
@@ -351,7 +352,7 @@ class TestCsvImportGenerator:
         )
         result = CsvImportGenerator.generate(params)
 
-        assert result["X_full"].shape == (4, 2)
+        assert whole(result, "X").shape == (4, 2)
 
 
 class TestGetSchema:
@@ -446,7 +447,7 @@ class TestInputByteCap:
         assert 0 < annotation["records_imported"] < 40
         # The arrays must agree with the annotation -- an annotation that does
         # not match what was actually imported is worse than none.
-        assert result["X_full"].shape[0] == annotation["records_imported"]
+        assert whole(result, "X").shape[0] == annotation["records_imported"]
 
     def test_deployment_opt_in_truncates(self, bounded_import_dir) -> None:
         """The env-var / .env surface works without any request parameter."""
@@ -476,8 +477,8 @@ class TestInputByteCap:
         directory, _ = bounded_import_dir
         self._wide_csv(directory)
         result = CsvImportGenerator.generate(CsvImportParams(file_path="wide.csv", allow_truncation=True))
-        assert not np.isnan(result["X_full"]).any()
-        assert result["X_full"].shape[1] == 2
+        assert not np.isnan(whole(result, "X")).any()
+        assert whole(result, "X").shape[1] == 2
 
     @pytest.mark.parametrize(
         ("label", "text"),
@@ -521,7 +522,7 @@ class TestInputByteCap:
         result = CsvImportGenerator.generate(CsvImportParams(file_path="wide.json", allow_truncation=True))
         annotation = result[TRUNCATION_META_KEY]
         assert 0 < annotation["records_imported"] < 40
-        assert result["X_full"].shape[0] == annotation["records_imported"]
+        assert whole(result, "X").shape[0] == annotation["records_imported"]
 
     def test_truncated_jsonl_drops_the_partial_final_line(self, bounded_import_dir) -> None:
         """JSONL truncation drops only the last line, and only when unparseable."""
@@ -681,7 +682,7 @@ class TestInputByteCap:
         result = CsvImportGenerator.generate(CsvImportParams(file_path="wide.json", allow_truncation=True))
         annotation = result[TRUNCATION_META_KEY]
         assert 0 < annotation["records_imported"] < 40
-        assert result["X_full"].shape[0] == annotation["records_imported"]
+        assert whole(result, "X").shape[0] == annotation["records_imported"]
 
     def test_unclosed_quote_drops_last_row_even_when_all_fields_are_present(self) -> None:
         """A 2-column file whose unclosed quote swallows later lines has no None.
@@ -749,7 +750,7 @@ class TestInputByteCap:
         cap = path.stat().st_size
         result = CsvImportGenerator.generate(CsvImportParams(file_path="wide.csv", max_bytes=cap, shuffle=False))
         assert TRUNCATION_META_KEY not in result
-        assert result["X_full"].shape[0] == 4
+        assert whole(result, "X").shape[0] == 4
 
     def test_utf8_split_character_does_not_raise(self, import_dir: Path) -> None:
         """A cap that lands inside a multi-byte UTF-8 sequence must not 500.
@@ -769,5 +770,5 @@ class TestInputByteCap:
         assert cap < len(raw)
 
         result = CsvImportGenerator.generate(CsvImportParams(file_path="split.csv", max_bytes=cap, allow_truncation=True, shuffle=False))
-        assert result["X_full"].shape[0] == 1
+        assert whole(result, "X").shape[0] == 1
         assert result[TRUNCATION_META_KEY]["truncated"] is True

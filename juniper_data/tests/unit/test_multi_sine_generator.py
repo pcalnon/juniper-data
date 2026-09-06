@@ -22,32 +22,33 @@ import pytest
 
 from juniper_data.core.meta import compute_shape_meta, derive_sequence_meta
 from juniper_data.generators.multi_sine import MultiSineGenerator, MultiSineParams, get_schema
+from juniper_data.tests.partitions import whole
 
 pytestmark = [pytest.mark.unit, pytest.mark.generators]
 
 
 def _assert_regular_sequence_contract(arrays: dict, *, lookback: int, sample_dt: float, horizon: int) -> None:
     """Shared assertions for the regular-Δt 3-D regression NPZ contract."""
-    for split in ("train", "val", "test", "full"):
+    for split in ("train", "val", "test"):
         for key in ("X", "y", "dt", "target_dt", "observed_mask"):
             assert f"{key}_{split}" in arrays, f"missing {key}_{split}"
 
-    xf = arrays["X_full"]
+    xf = whole(arrays, "X")
     n_windows = xf.shape[0]
     assert xf.ndim == 3 and xf.shape[1:] == (lookback, 1)
     assert xf.dtype == np.float32
-    assert arrays["y_full"].shape == (n_windows, 1) and arrays["y_full"].dtype == np.float32
+    assert whole(arrays, "y").shape == (n_windows, 1) and whole(arrays, "y").dtype == np.float32
 
     # Regular Δt: first step is 0 by contract, the rest a constant sample_dt.
-    dt = arrays["dt_full"]
+    dt = whole(arrays, "dt")
     assert dt.shape == (n_windows, lookback) and dt.dtype == np.float32
     assert np.all(dt[:, 0] == 0)
     np.testing.assert_allclose(dt[:, 1:], np.float32(sample_dt))
-    assert arrays["target_dt_full"].shape == (n_windows,)
-    np.testing.assert_allclose(arrays["target_dt_full"], np.float32(horizon * sample_dt))
+    assert whole(arrays, "target_dt").shape == (n_windows,)
+    np.testing.assert_allclose(whole(arrays, "target_dt"), np.float32(horizon * sample_dt))
 
     # observed_mask is all-ones uint8 (nothing imputed/padded).
-    mask = arrays["observed_mask_full"]
+    mask = whole(arrays, "observed_mask")
     assert mask.shape == (n_windows, lookback) and mask.dtype == np.uint8
     assert np.all(mask == 1)
 
@@ -57,7 +58,7 @@ def _assert_regular_sequence_contract(arrays: dict, *, lookback: int, sample_dt:
     # so without it this assertion would pass on exactly the defect it exists to catch.
     assert arrays["X_val"].shape[0] > 0, "val partition must be non-empty"
     assert n_windows == arrays["X_train"].shape[0] + arrays["X_val"].shape[0] + arrays["X_test"].shape[0]
-    np.testing.assert_array_equal(arrays["X_full"], np.concatenate([arrays["X_train"], arrays["X_val"], arrays["X_test"]]))
+    np.testing.assert_array_equal(whole(arrays, "X"), np.concatenate([arrays["X_train"], arrays["X_val"], arrays["X_test"]]))
 
     # Task-type / sequence metadata dispatch: regression leaves classification
     # fields None; the 3-D X is reported as a sequence with lookback L.
@@ -92,31 +93,31 @@ class TestMultiSineGenerator:
         arrays = MultiSineGenerator.generate(params)
         k = np.arange(params.n_steps)
         expected = 1.0 * np.sin(2 * np.pi * 0.05 * k) + 0.5 * np.sin(2 * np.pi * 0.1 * k + 1.0)
-        np.testing.assert_allclose(arrays["X_full"][0, :, 0], expected[:16], atol=1e-4)
+        np.testing.assert_allclose(whole(arrays, "X")[0, :, 0], expected[:16], atol=1e-4)
         # Every target is the signal exactly ``horizon`` steps after the window end.
         ends = np.arange(15, params.n_steps - 1)  # lookback - 1 .. T - 1 - horizon
-        np.testing.assert_allclose(arrays["y_full"][:, 0], expected[ends + 1], atol=1e-4)
+        np.testing.assert_allclose(whole(arrays, "y")[:, 0], expected[ends + 1], atol=1e-4)
 
     def test_sample_dt_scales_time_axis(self) -> None:
         # With sample_dt != 1 the per-step dt equals sample_dt and t = k * sample_dt.
         params = MultiSineParams(n_components=1, frequencies=[0.5], amplitudes=[1.0], phases=[0.0], noise_std=0.0, n_steps=100, lookback=10, horizon=1, sample_dt=0.1, seed=0)
         arrays = MultiSineGenerator.generate(params)
-        np.testing.assert_allclose(arrays["dt_full"][:, 1:], np.float32(0.1))
+        np.testing.assert_allclose(whole(arrays, "dt")[:, 1:], np.float32(0.1))
         k = np.arange(params.n_steps)
         expected = np.sin(2 * np.pi * 0.5 * (k * 0.1))
-        np.testing.assert_allclose(arrays["X_full"][0, :, 0], expected[:10], atol=1e-4)
+        np.testing.assert_allclose(whole(arrays, "X")[0, :, 0], expected[:10], atol=1e-4)
 
     def test_determinism(self) -> None:
         first = MultiSineGenerator.generate(MultiSineParams(n_steps=300, lookback=20, seed=7))
         second = MultiSineGenerator.generate(MultiSineParams(n_steps=300, lookback=20, seed=7))
-        for key in ("X_full", "y_full", "dt_full"):
+        for key in ("dt_train", "dt_val", "dt_test"):
             np.testing.assert_array_equal(first[key], second[key])
 
     def test_noise_changes_signal_not_shape(self) -> None:
         clean = MultiSineGenerator.generate(MultiSineParams(n_steps=300, lookback=20, noise_std=0.0, seed=1))
         noisy = MultiSineGenerator.generate(MultiSineParams(n_steps=300, lookback=20, noise_std=0.5, seed=1))
-        assert clean["X_full"].shape == noisy["X_full"].shape
-        assert not np.allclose(clean["X_full"], noisy["X_full"])
+        assert whole(clean, "X").shape == whole(noisy, "X").shape
+        assert not np.allclose(whole(clean, "X"), whole(noisy, "X"))
 
     def test_component_length_mismatch_rejected(self) -> None:
         with pytest.raises(ValueError):

@@ -19,7 +19,7 @@ from juniper_data.core.split import partition_and_assemble, resolve_counts_for_p
 
 from .params import CsvImportParams
 
-VERSION = "2.0.0"
+VERSION = "3.0.0"
 
 
 class CsvImportGenerator:
@@ -44,8 +44,6 @@ class CsvImportGenerator:
                 - y_train: Training labels
                 - X_test: Test features
                 - y_test: Test labels
-                - X_full: Full dataset features
-                - y_full: Full dataset labels
                 - truncation: reserved non-array channel key, present ONLY when
                   the source exceeded its byte cap and a partial import was
                   authorised. The route pops it into ``DatasetMeta`` before
@@ -68,7 +66,6 @@ class CsvImportGenerator:
         X_train = split_result["X_train"]
         X_val = split_result["X_val"]
         X_test = split_result["X_test"]
-        X_full = split_result["X_full"]
 
         # Fit min-max on the TRAINING rows only, AFTER the split (juniper-data#314).
         #
@@ -77,7 +74,7 @@ class CsvImportGenerator:
         # applied to the training features. Splitting first is what makes a train-only fit
         # possible at all here.
         #
-        # CONSEQUENCE, deliberate: ``X_val``, ``X_test`` and ``X_full`` are no longer bounded
+        # CONSEQUENCE, deliberate: ``X_val`` and ``X_test`` are no longer bounded
         # by [0, 1]; rows outside the training range legitimately fall outside it. Only
         # ``X_train`` is bounded. That is decision 7 of the ecosystem partition design.
         #
@@ -86,11 +83,21 @@ class CsvImportGenerator:
         # in-loop signal on a different scale from the data selecting against it, which is
         # far worse than the leak decision 7 exists to prevent.
         if params.normalize_features:
-            minimum, scale = CsvImportGenerator._fit_minmax(X_train if X_train.shape[0] else X_full)
-            X_train = CsvImportGenerator._apply_minmax(X_train, minimum, scale)
-            X_val = CsvImportGenerator._apply_minmax(X_val, minimum, scale)
-            X_test = CsvImportGenerator._apply_minmax(X_test, minimum, scale)
-            X_full = CsvImportGenerator._apply_minmax(X_full, minimum, scale)
+            # An empty train partition leaves nothing to fit on; fall back to the
+            # concatenation of what IS present rather than to an X_full that no longer exists.
+            #
+            # ALL THREE can be empty, and then there is nothing to fit and nothing to
+            # normalise -- a no-op, not an error. `np.vstack([])` raises
+            # "need at least one array to concatenate", so an unguarded fallback turns a
+            # degenerate-but-valid request into a crash. The retired `X_full` covered this
+            # case for free by simply being empty too.
+            others = [a for a in (X_val, X_test) if a.shape[0]]
+            fit_source = X_train if X_train.shape[0] else (np.vstack(others) if others else None)
+            if fit_source is not None:
+                minimum, scale = CsvImportGenerator._fit_minmax(fit_source)
+                X_train = CsvImportGenerator._apply_minmax(X_train, minimum, scale)
+                X_val = CsvImportGenerator._apply_minmax(X_val, minimum, scale)
+                X_test = CsvImportGenerator._apply_minmax(X_test, minimum, scale)
 
         result: dict[str, Any] = {
             "X_train": X_train,
@@ -99,8 +106,6 @@ class CsvImportGenerator:
             "y_val": split_result["y_val"],
             "X_test": X_test,
             "y_test": split_result["y_test"],
-            "X_full": X_full,
-            "y_full": split_result["y_full"],
         }
 
         # APD-DATA-018: hand the route the permanent truncation annotation over

@@ -29,7 +29,7 @@ from juniper_data.storage.local_fs import LocalFSDatasetStore
 from juniper_data.storage.memory import InMemoryDatasetStore
 
 SHARED_TS = datetime(2026, 8, 23, 12, 0, 0, tzinfo=UTC)
-ARRAYS = {k: np.zeros((2, 2), dtype=np.float32) for k in ("X_train", "y_train", "X_test", "y_test", "X_full", "y_full")}
+ARRAYS = {k: np.zeros((2, 2), dtype=np.float32) for k in ("X_train", "y_train", "X_test", "y_test")}
 
 
 def _meta(ds_id: str, ts: datetime = SHARED_TS) -> DatasetMeta:

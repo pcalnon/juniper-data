@@ -77,8 +77,6 @@ Full REST API documentation is in [JUNIPER_DATA_API.md](api/JUNIPER_DATA_API.md)
 | `y_train` | `(n_train, n_classes)` | `float32` | Training labels (one-hot) |
 | `X_test` | `(n_test, n_features)` | `float32` | Test features |
 | `y_test` | `(n_test, n_classes)` | `float32` | Test labels (one-hot) |
-| `X_full` | `(n_samples, n_features)` | `float32` | Full dataset features |
-| `y_full` | `(n_samples, n_classes)` | `float32` | Full dataset labels (one-hot) |
 
 Live generator artifacts still write those six keys. `X_val` / `y_val` are carried by the store and by `DatasetMeta` (`n_val` defaults to `0` so a legacy two-partition `.meta.json` still loads). Generators emit them as of the three-partition work. See [DatasetMeta n_val and Three-Partition Counts](#datasetmeta-n_val-and-three-partition-counts).
 
