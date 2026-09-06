@@ -49,7 +49,7 @@ from juniper_data.generators.equities.generator import EQUITIES_DEPS_AVAILABLE, 
 
 from .params import EquitiesSeqParams
 
-VERSION = "2.0.0"
+VERSION = "3.0.0"
 
 _logger = logging.getLogger(__name__)
 
@@ -90,7 +90,7 @@ class EquitiesSeqGenerator:
     def generate(params: EquitiesSeqParams) -> dict[str, np.ndarray]:
         """Generate the windowed equities sequence dataset.
 
-        Returns the additive 3-D NPZ contract for train/test/full: ``X_{split}``
+        Returns the additive 3-D NPZ contract for train/val/test: ``X_{split}``
         ``(W, L, F)`` plus ``dt`` / ``target_dt`` / ``observed_mask`` / ``date`` /
         ``window_end_date`` / ``ticker_code`` and the one-hot ``y_{split}`` +
         regression ``y_reg_{split}`` targets, with a code -> ticker
@@ -206,37 +206,45 @@ class EquitiesSeqGenerator:
         # ``EquitiesSeqParams`` subclasses ``EquitiesParams``, so ``max_symbols``
         # and ``allow_truncation`` need no redeclaration here.
         if truncation is not None:
-            truncation["records_imported"] = int(arrays["X_full"].shape[0])
+            # The partition sum, not a retired `X_full`. `records_imported` is defined in
+            # `core/limits.py` as "rows in the resulting dataset", and the flat generator
+            # fills it from the CONDITIONED frame (`len(full)`) for the same reason -- it
+            # counts what survived, which is exactly what the three partitions hold.
+            # Reading `arrays["X_full"]` here raised KeyError against this generator's own
+            # `_assemble`, which stopped producing that key.
+            truncation["records_imported"] = int(sum(arrays[f"X_{name}"].shape[0] for name in ("train", "val", "test")))
             arrays[TRUNCATION_META_KEY] = truncation
 
         return arrays
 
     @staticmethod
     def _assemble(per_ticker: list[dict[str, dict[str, np.ndarray]]]) -> dict[str, np.ndarray]:
-        """Concatenate per-ticker windows into the train/val/test/full NPZ arrays.
+        """Concatenate per-ticker windows into the train / val / test NPZ arrays.
 
-        ``full`` is each ticker's train windows, then its validation windows, then
-        its test windows (chronological within ticker), concatenated across
-        tickers -- so ``full`` == ``train`` + ``val`` + ``test`` with no dropped or
-        duplicated window.
+        Decision 11 retired the ``*_full`` family, and with it the second loop that
+        built it. The row ORDER those two loops differed in is worth recording, because
+        consumers reconstructing "the whole dataset" inherit the difference:
 
-        The split list is a single tuple used for BOTH loops. Enumerating the
-        splits twice is how ``full`` silently stops containing a partition: the
-        per-split loop would gain ``val`` while the ``full`` loop kept stacking
-        two blocks, and the length identity would fail with nothing naming which
-        partition went missing.
+        - these per-split arrays are SPLIT-major -- every ticker's train windows, then
+          every ticker's val, then every ticker's test;
+        - ``*_full`` was ENTITY-major -- each ticker's train, val and test in turn,
+          concatenated across tickers.
+
+        Same windows, different permutation, and identical only for a single-ticker
+        request. A consumer that slices the whole view by row index -- walk-forward
+        cross-validation does exactly that -- gets different folds from the two orders.
+        ``juniper_recurrence_model.data.derive_full_split`` rebuilds the entity-major
+        order deliberately, by stable-sorting the concatenation on ``ticker_code``.
+
+        The split list is a single tuple rather than a literal per loop. Enumerating the
+        splits twice is how a partition silently goes missing from one view but not the
+        other.
         """
         splits = ("train", "val", "test")
         arrays: dict[str, np.ndarray] = {}
         for split in splits:
             for key in _WINDOW_KEYS:
                 arrays[f"{key}_{split}"] = np.concatenate([out[split][key] for out in per_ticker], axis=0)
-        for key in _WINDOW_KEYS:
-            blocks: list[np.ndarray] = []
-            for out in per_ticker:
-                for split in splits:
-                    blocks.append(out[split][key])
-            arrays[f"{key}_full"] = np.concatenate(blocks, axis=0)
         return arrays
 
 

@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from juniper_data.generators.mnist.params import MnistParams
+from juniper_data.tests.partitions import whole
 
 
 def _make_mock_hf_dataset(n_samples=20, n_classes=10):
@@ -136,8 +137,8 @@ class TestMnistGenerator:
         assert result["X_val"].shape[0] == n_val
         assert result["X_test"].shape[0] == n_test
         assert n_train + n_val + n_test == n_total
-        assert result["X_full"].shape[0] == n_total
-        assert result["y_full"].shape[0] == n_total
+        assert whole(result, "X").shape[0] == n_total
+        assert whole(result, "y").shape[0] == n_total
 
     def test_generate_flattened(self, mock_hf_load) -> None:
         """Flatten option produces 1D features (784 for 28x28)."""
@@ -149,7 +150,7 @@ class TestMnistGenerator:
         params = MnistParams(flatten=True, seed=42)
         result = MnistGenerator.generate(params)
 
-        assert result["X_full"].shape[1] == 784
+        assert whole(result, "X").shape[1] == 784
 
     def test_generate_not_flattened(self, mock_hf_load) -> None:
         """Non-flatten produces 2D features (28x28)."""
@@ -161,7 +162,7 @@ class TestMnistGenerator:
         params = MnistParams(flatten=False, seed=42)
         result = MnistGenerator.generate(params)
 
-        assert result["X_full"].shape[1:] == (28, 28)
+        assert whole(result, "X").shape[1:] == (28, 28)
 
     def test_generate_normalized(self, mock_hf_load) -> None:
         """Normalized values are in [0, 1]."""
@@ -173,8 +174,8 @@ class TestMnistGenerator:
         params = MnistParams(normalize=True, seed=42)
         result = MnistGenerator.generate(params)
 
-        assert result["X_full"].max() <= 1.0
-        assert result["X_full"].min() >= 0.0
+        assert whole(result, "X").max() <= 1.0
+        assert whole(result, "X").min() >= 0.0
 
     def test_generate_not_normalized(self, mock_hf_load) -> None:
         """Non-normalized values can exceed 1.0."""
@@ -186,7 +187,7 @@ class TestMnistGenerator:
         params = MnistParams(normalize=False, seed=42)
         result = MnistGenerator.generate(params)
 
-        assert result["X_full"].dtype == np.float32
+        assert whole(result, "X").dtype == np.float32
 
     def test_generate_one_hot_labels(self, mock_hf_load) -> None:
         """One-hot encoding produces correct label shape."""
@@ -198,8 +199,8 @@ class TestMnistGenerator:
         params = MnistParams(one_hot_labels=True, seed=42)
         result = MnistGenerator.generate(params)
 
-        assert result["y_full"].shape[1] == 10
-        row_sums = result["y_full"].sum(axis=1)
+        assert whole(result, "y").shape[1] == 10
+        row_sums = whole(result, "y").sum(axis=1)
         np.testing.assert_array_almost_equal(row_sums, np.ones(20))
 
     def test_generate_integer_labels(self, mock_hf_load) -> None:
@@ -212,7 +213,7 @@ class TestMnistGenerator:
         params = MnistParams(one_hot_labels=False, seed=42)
         result = MnistGenerator.generate(params)
 
-        assert result["y_full"].shape[1] == 1
+        assert whole(result, "y").shape[1] == 1
 
     def test_generate_with_seed_shuffle(self, mock_hf_load) -> None:
         """Seed triggers dataset shuffle."""
@@ -281,7 +282,7 @@ class TestMnistGenerator:
 
         params = MnistParams(seed=42)
         result = MnistGenerator.generate(params)
-        assert result["X_full"].shape[0] == 5
+        assert whole(result, "X").shape[0] == 5
 
     def test_generate_raises_without_datasets(self) -> None:
         """Raises ImportError when datasets not installed."""
@@ -316,7 +317,7 @@ class TestMnistGenerator:
         params = MnistParams(seed=42)
         result = MnistGenerator.generate(params)
 
-        for key in ["X_train", "y_train", "X_test", "y_test", "X_full", "y_full"]:
+        for key in ["X_train", "y_train", "X_val", "y_val", "X_test", "y_test"]:
             assert result[key].dtype == np.float32
 
     def test_generate_loads_namespaced_mnist_repo(self, mock_hf_load) -> None:

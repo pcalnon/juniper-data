@@ -28,6 +28,7 @@ import numpy as np
 import pytest
 
 from juniper_data.generators.csv_import import CsvImportGenerator, CsvImportParams
+from juniper_data.tests.partitions import whole
 
 # NOTE: this used to require pre-importing ``juniper_data.api.routes.generators`` for its side
 # effect, because ``csv_import`` could not be imported on its own (juniper-data#316). That
@@ -121,7 +122,7 @@ class TestCsvImportFitScope:
         common = {"file_path": "d.csv", "label_column": "label", "shuffle": False, "train_ratio": 0.5, "test_ratio": 0.5, "val_ratio": 0.0}
         raw = CsvImportGenerator.generate(CsvImportParams(**common))
         normed = CsvImportGenerator.generate(CsvImportParams(**common, normalize_features=True))
-        for key in ("X_train", "X_val", "X_test", "X_full", "y_train", "y_val", "y_test", "y_full"):
+        for key in ("X_train", "X_val", "X_test", "y_train", "y_val", "y_test"):
             assert raw[key].shape == normed[key].shape, f"{key} shape moved"
 
     def test_a_constant_column_does_not_divide_by_zero(self, csv_dir):
@@ -131,27 +132,34 @@ class TestCsvImportFitScope:
         assert np.isfinite(out["X_test"]).all()
 
     def test_same_train_statistics_are_applied_to_every_partition(self, csv_dir):
-        """X_full is the original rows scaled by the same stats as train and test.
+        """Every partition is scaled by the TRAIN fit, not by its own statistics.
 
-        With shuffle=False the split is positional, so X_full is the concatenation
-        train | val | test. Fitting each partition independently would bound all three
-        blocks and break this identity. A full-matrix fit would still satisfy it; the
-        discriminating leak guard is ``test_test_partition_escapes_the_bound``.
+        This used to assert that ``X_full``'s positional slices equalled the three
+        partitions. That check is VACUOUS after decision 11: the whole-dataset view is
+        now BUILT by concatenating those partitions, so slicing it back apart returns
+        them by construction and the assertion cannot fail. Asserting it would look like
+        coverage while testing nothing.
 
-        Harvested from a branch that predates the val partition, where this asserted a
-        TWO-way concatenation. Ratios are given explicitly rather than leaning on the
-        default val_ratio, and a NON-EMPTY val is used deliberately -- asserting over
-        three blocks of which one is empty would not have caught a val that is scaled by
-        its own statistics.
+        The claim worth keeping is the one the identity was standing in for -- a shared
+        fit. Under a per-partition fit each block would be independently squashed into
+        [0, 1]; under the train fit, train is bounded and the later blocks are free to
+        escape it. So bound train, and require that a later partition actually leaves
+        the bound. A full-matrix fit would also pass here; the guard that discriminates
+        THAT is ``test_test_partition_escapes_the_bound``.
+
+        Ratios are given explicitly rather than leaning on the default val_ratio, and a
+        NON-EMPTY val is used deliberately -- asserting over three blocks of which one
+        is empty would not catch a val scaled by its own statistics.
         """
         out = CsvImportGenerator.generate(CsvImportParams(file_path="d.csv", label_column="label", normalize_features=True, shuffle=False, train_ratio=0.5, val_ratio=0.2, test_ratio=0.3))
-        n_train = out["X_train"].shape[0]
-        n_val = out["X_val"].shape[0]
-        assert n_train and n_val and out["X_test"].shape[0]
-        np.testing.assert_allclose(out["X_full"][:n_train], out["X_train"], rtol=1e-5, atol=1e-6)
-        np.testing.assert_allclose(out["X_full"][n_train : n_train + n_val], out["X_val"], rtol=1e-5, atol=1e-6)
-        np.testing.assert_allclose(out["X_full"][n_train + n_val :], out["X_test"], rtol=1e-5, atol=1e-6)
-        assert out["X_full"].max() > 1.0 + 1e-6
+        assert out["X_train"].shape[0] and out["X_val"].shape[0] and out["X_test"].shape[0]
+
+        train = out["X_train"]
+        assert train.min() >= -1e-6 and train.max() <= 1.0 + 1e-6, "the fit partition must land inside [0, 1]"
+
+        escapes = [name for name in ("X_val", "X_test") if out[name].max() > 1.0 + 1e-6 or out[name].min() < -1e-6]
+        assert escapes, "no later partition escaped [0, 1]; each was scaled by its own statistics, not the train fit"
+        assert whole(out, "X").max() > 1.0 + 1e-6
 
     def test_empty_test_partition_is_applied_without_error(self, csv_dir):
         """``test_ratio=0`` yields an empty X_test; ``_apply_minmax`` must pass it through."""
@@ -171,7 +179,7 @@ class TestCsvImportFitScope:
         assert out["X_train"].shape[0] == 0
         assert out["X_test"].shape[0] == 1
         assert np.isfinite(out["X_test"]).all()
-        assert np.isfinite(out["X_full"]).all()
+        assert np.isfinite(whole(out, "X")).all()
         assert out["X_test"].min() >= -1e-6 and out["X_test"].max() <= 1.0 + 1e-6
 
 

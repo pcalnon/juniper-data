@@ -34,6 +34,7 @@ from juniper_data.generators.equities import generator as eq_gen  # noqa: E402
 from juniper_data.generators.equities.defaults import EQUITIES_FEATURE_COLUMNS  # noqa: E402
 from juniper_data.generators.equities_seq import EquitiesSeqGenerator, EquitiesSeqParams, get_schema  # noqa: E402
 from juniper_data.generators.equities_seq import generator as esq_gen  # noqa: E402
+from juniper_data.tests.partitions import whole
 
 pytestmark = [pytest.mark.unit, pytest.mark.generators]
 
@@ -97,49 +98,49 @@ class TestEquitiesSeqGenerator:
     def test_contract_keys_and_3d_shapes(self) -> None:
         lookback = 6
         arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=1), "MSFT": _ohlcv(seed=2)}, _shares(), lookback=lookback)
-        for split in ("train", "val", "test", "full"):
+        for split in ("train", "val", "test"):
             for key in ("X", "y", "y_reg", "date", "dt", "target_dt", "window_end_date", "ticker_code", "observed_mask"):
                 assert f"{key}_{split}" in arrays, f"missing {key}_{split}"
         assert "ticker_vocab" in arrays
 
-        n_windows = arrays["X_full"].shape[0]
-        assert arrays["X_full"].shape == (n_windows, lookback, len(EQUITIES_FEATURE_COLUMNS))
-        assert arrays["X_full"].dtype == np.float32
-        assert arrays["y_full"].shape == (n_windows, 2)
-        assert arrays["y_reg_full"].shape == (n_windows, 1)
-        assert arrays["date_full"].shape == (n_windows, lookback)
-        assert arrays["dt_full"].shape == (n_windows, lookback)
-        assert arrays["target_dt_full"].shape == (n_windows,)
-        assert arrays["window_end_date_full"].shape == (n_windows,)
-        assert arrays["observed_mask_full"].shape == (n_windows, lookback)
+        n_windows = whole(arrays, "X").shape[0]
+        assert whole(arrays, "X").shape == (n_windows, lookback, len(EQUITIES_FEATURE_COLUMNS))
+        assert whole(arrays, "X").dtype == np.float32
+        assert whole(arrays, "y").shape == (n_windows, 2)
+        assert whole(arrays, "y_reg").shape == (n_windows, 1)
+        assert whole(arrays, "date").shape == (n_windows, lookback)
+        assert whole(arrays, "dt").shape == (n_windows, lookback)
+        assert whole(arrays, "target_dt").shape == (n_windows,)
+        assert whole(arrays, "window_end_date").shape == (n_windows,)
+        assert whole(arrays, "observed_mask").shape == (n_windows, lookback)
         assert arrays["ticker_vocab"].tolist() == ["AAPL", "MSFT"]
 
     def test_full_equals_train_plus_val_plus_test(self) -> None:
         arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=3)}, _shares(), lookback=5)
         assert arrays["X_val"].shape[0] > 0, "val partition must be non-empty"
-        assert arrays["X_full"].shape[0] == arrays["X_train"].shape[0] + arrays["X_val"].shape[0] + arrays["X_test"].shape[0]
+        assert whole(arrays, "X").shape[0] == arrays["X_train"].shape[0] + arrays["X_val"].shape[0] + arrays["X_test"].shape[0]
 
     def test_dt_is_calendar_gap_with_weekend_jumps(self) -> None:
         arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=4)}, _shares(), lookback=5)
-        dt = arrays["dt_full"]
+        dt = whole(arrays, "dt")
         assert dt.dtype == np.float32
         assert np.all(dt[:, 0] == 0)  # first step has no predecessor
         assert np.all(dt[:, 1:] > 0)  # strictly positive gaps
         # business-day cadence => 1-day gaps within a week, 3-day gaps over weekends
         assert np.any(np.isclose(dt[:, 1:], 3.0)), "expected Fri->Mon weekend gaps of 3 calendar days"
         # dt must equal the diff of the per-step date ordinals (notes I3).
-        ords = np.vectorize(_ord)(arrays["date_full"])
+        ords = np.vectorize(_ord)(whole(arrays, "date"))
         np.testing.assert_allclose(dt[:, 1:], np.diff(ords, axis=1).astype(np.float32))
 
     def test_observed_mask_all_ones(self) -> None:
         arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=5)}, _shares(), lookback=4)
-        assert np.all(arrays["observed_mask_full"] == 1)
-        assert arrays["observed_mask_full"].dtype == np.uint8
+        assert np.all(whole(arrays, "observed_mask") == 1)
+        assert whole(arrays, "observed_mask").dtype == np.uint8
 
     def test_targets_onehot_and_positive_horizon(self) -> None:
         arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=6)}, _shares(), lookback=5)
-        assert np.allclose(arrays["y_full"].sum(axis=1), 1.0)  # valid one-hot
-        assert np.all(arrays["target_dt_full"] > 0)  # forecast horizon strictly positive
+        assert np.allclose(whole(arrays, "y").sum(axis=1), 1.0)  # valid one-hot
+        assert np.all(whole(arrays, "target_dt") > 0)  # forecast horizon strictly positive
 
     def test_no_future_leak_per_ticker(self) -> None:
         arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=7), "MSFT": _ohlcv(seed=8)}, _shares(), lookback=6, train_ratio=0.7)
@@ -200,11 +201,11 @@ class TestEquitiesSeqGenerator:
         frame = _ohlcv(seed=9)
         nc = _generate(["AAPL"], {"AAPL": frame}, _shares(), lookback=5)
         lr = _generate(["AAPL"], {"AAPL": frame}, _shares(), lookback=5, regression_target="log_return")
-        assert nc["y_reg_full"].shape == lr["y_reg_full"].shape
+        assert whole(nc, "y_reg").shape == whole(lr, "y_reg").shape
         assert "regression_target" in get_schema()["properties"]
         # next_close tracks the ~100 price level; log returns are centered near zero.
-        assert abs(float(lr["y_reg_full"].mean())) < abs(float(nc["y_reg_full"].mean()))
-        assert float(np.abs(lr["y_reg_full"]).mean()) < 1.0
+        assert abs(float(whole(lr, "y_reg").mean())) < abs(float(whole(nc, "y_reg").mean()))
+        assert float(np.abs(whole(lr, "y_reg")).mean()) < 1.0
 
 
 class TestEquitiesSeqGeneratorBranches:
@@ -244,14 +245,14 @@ class TestEquitiesSeqGeneratorBranches:
 
     def test_generate_with_normalized_features(self) -> None:
         arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=22), "MSFT": _ohlcv(seed=23)}, _shares(), lookback=5, normalize_features=True)
-        assert arrays["X_full"].shape[0] > 0
+        assert whole(arrays, "X").shape[0] > 0
 
     def test_generate_skips_ticker_shorter_than_lookback(self) -> None:
         # MSFT conditions to ~7 rows (<= lookback + 1 = 21) so no window is built for it,
         # while AAPL (400 rows) produces windows -> the per-ticker skip branch fires.
         arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=24, periods=400), "MSFT": _ohlcv(seed=25, periods=8)}, _shares(), lookback=20)
         assert "AAPL" in arrays["ticker_vocab"].tolist()
-        assert arrays["X_full"].shape[0] > 0
+        assert whole(arrays, "X").shape[0] > 0
 
     def test_generate_raises_when_all_tickers_too_short(self) -> None:
         with pytest.raises(ValueError, match="lookback"):

@@ -978,8 +978,6 @@ The NPZ artifact is the primary data contract between JuniperData and its consum
 | `y_val`   | `(n_val, n_classes)`      | `float32` | Validation labels (one-hot)   |
 | `X_test`  | `(n_test, n_features)`    | `float32` | Test features                 |
 | `y_test`  | `(n_test, n_classes)`     | `float32` | Test labels (one-hot)         |
-| `X_full`  | `(n_samples, n_features)` | `float32` | Full dataset features         |
-| `y_full`  | `(n_samples, n_classes)`  | `float32` | Full dataset labels (one-hot) |
 
 `X_val` / `y_val` are **not optional**. A consumer that early-stops on `X_test`
 because `X_val` was absent is selecting on the split it reports, and its reported
@@ -1049,14 +1047,22 @@ JuniperData guarantees:
 3. `y_*` arrays have shape `(n, n_classes)` -- or `(n, 1)` for regression targets
 4. `y_*` classification arrays are valid one-hot encodings (each row sums to 1.0)
 5. `X_train`, `X_val` and `X_test` are all present and all non-empty
-6. `len(X_train) + len(X_val) + len(X_test) == len(X_full)`
+6. The three partitions ARE the dataset: there is no whole-set array to compare them
+   against, and `meta.n_samples` equals `n_train + n_val + n_test`. A consumer that
+   wants the whole set concatenates the three, in that order.
 
-Guarantee 6 replaced `len(X_train) + len(X_test) == len(X_full)`, which held only
-while the contract was two-way. Any consumer still asserting the two-way form will
-fail against every three-way artifact. Artifacts are distinguishable without
-unpacking them: every generator that gained the `val` partition also bumped its
-`generator_version` to `2.0.0`, and that version is hashed into the `dataset_id`,
-so a cached two-way artifact can never be served for a three-way request.
+Guarantee 6 has now been rewritten twice in one day, and the second rewrite is the
+reason it is stated over the partitions rather than over an array. It read
+`len(X_train) + len(X_test) == len(X_full)` while the contract was two-way; 0.13.0
+made that `len(X_train) + len(X_val) + len(X_test) == len(X_full)`; decision 11 then
+removed `X_full`, invalidating the right-hand side. An invariant expressed over a
+DERIVED array is only as durable as that array.
+
+`X_full` / `y_full` are no longer emitted. Stored artifacts produced before
+2026-09-05 still carry them and readers tolerate that — but nothing requires them,
+and no new artifact has them. Artifacts remain distinguishable without unpacking:
+every generator that gained the `val` partition bumped its `generator_version` to
+`2.0.0`, and that version is hashed into the `dataset_id`.
 
 ---
 

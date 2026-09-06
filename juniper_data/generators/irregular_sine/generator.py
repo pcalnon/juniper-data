@@ -26,7 +26,7 @@ from juniper_data.generators._synthetic import attach_scaling
 
 from .params import IrregularSineParams
 
-VERSION = "2.0.0"
+VERSION = "3.0.0"
 
 # Ranges for seeded-random component parameters when not given explicitly
 # (mirrors ``multi_sine``).
@@ -44,7 +44,7 @@ class IrregularSineGenerator:
     def generate(params: IrregularSineParams) -> dict[str, np.ndarray]:
         """Generate the windowed irregular-Δt sine sequence dataset.
 
-        Returns the additive 3-D NPZ contract for train/test/full with a genuinely
+        Returns the additive 3-D NPZ contract for train/val/test with a genuinely
         non-uniform per-step ``dt`` and a variable ``target_dt``: ``X_{split}``
         ``(W, L, 1)``, the regression target ``y_{split}`` ``(W, 1)`` (signal value
         ``horizon`` steps after the window end), plus ``dt`` / ``target_dt`` /

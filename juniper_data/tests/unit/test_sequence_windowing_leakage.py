@@ -28,6 +28,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from juniper_data.generators._sequence import _yyyymmdd_to_ordinal, window_one_ticker, window_regular_series, window_timed_series
+from juniper_data.tests.partitions import whole
 
 pytestmark = [pytest.mark.unit, pytest.mark.generators]
 
@@ -172,25 +173,25 @@ def test_regular_windowing_invariants(n_steps, lookback, horizon, sample_dt, tra
     n_windows = n_steps - lookback - horizon + 1
 
     # RR1 -- shapes.
-    assert out["X_full"].shape == (n_windows, lookback, 1)
-    assert out["y_full"].shape == (n_windows, 1)
+    assert whole(out, "X").shape == (n_windows, lookback, 1)
+    assert whole(out, "y").shape == (n_windows, 1)
 
     # RR2 -- regular-Δt contract: dt[:,0]==0, a constant gap, a fixed target horizon.
-    assert np.all(out["dt_full"][:, 0] == 0)
-    assert np.allclose(out["dt_full"][:, 1:], np.float32(sample_dt))
-    assert np.allclose(out["target_dt_full"], np.float32(horizon * sample_dt))
-    assert np.all(out["observed_mask_full"] == 1)
+    assert np.all(whole(out, "dt")[:, 0] == 0)
+    assert np.allclose(whole(out, "dt")[:, 1:], np.float32(sample_dt))
+    assert np.allclose(whole(out, "target_dt"), np.float32(horizon * sample_dt))
+    assert np.all(whole(out, "observed_mask") == 1)
 
     # RR3 -- index encoding: each window is L consecutive steps; target == end + horizon.
-    steps = out["X_full"][:, :, 0]
+    steps = whole(out, "X")[:, :, 0]
     assert np.all(np.diff(steps, axis=1) == 1)
-    np.testing.assert_array_equal(out["y_full"][:, 0], steps[:, -1] + horizon)
+    np.testing.assert_array_equal(whole(out, "y")[:, 0], steps[:, -1] + horizon)
 
     # RR4 -- full == train + val + test, chronological. The identity spans THREE
     # partitions now; over train + test alone it would pass only while val is empty.
     assert out["X_val"].shape[0] > 0, "X_val must be non-empty, or RR4/RR5 hold vacuously"
     assert n_windows == out["X_train"].shape[0] + out["X_val"].shape[0] + out["X_test"].shape[0]
-    np.testing.assert_array_equal(out["X_full"], np.concatenate([out["X_train"], out["X_val"], out["X_test"]]))
+    np.testing.assert_array_equal(whole(out, "X"), np.concatenate([out["X_train"], out["X_val"], out["X_test"]]))
 
     # RR5 -- no future leak, TRANSITIVE: train targets precede val targets, which
     # precede test targets. Values encode their step index, so a plain max/min
@@ -226,26 +227,26 @@ def test_timed_windowing_invariants(n_steps, lookback, horizon, gaps, train_rati
     n_windows = n_steps - lookback - horizon + 1
 
     # TR1 -- shapes.
-    assert out["X_full"].shape == (n_windows, lookback, 1)
-    assert out["y_full"].shape == (n_windows, 1)
+    assert whole(out, "X").shape == (n_windows, lookback, 1)
+    assert whole(out, "y").shape == (n_windows, 1)
 
     # The X value at each cell encodes the original step index it spans.
-    steps = out["X_full"][:, :, 0].astype(np.int64)
+    steps = whole(out, "X")[:, :, 0].astype(np.int64)
 
     # TR2 -- dt[:,0]==0; dt[:,1:] == the within-window time differences; all > 0.
-    assert np.all(out["dt_full"][:, 0] == 0)
+    assert np.all(whole(out, "dt")[:, 0] == 0)
     expected_dt = np.diff(times[steps], axis=1).astype(np.float32)
-    np.testing.assert_allclose(out["dt_full"][:, 1:], expected_dt, rtol=1e-5, atol=1e-5)
-    assert np.all(out["dt_full"][:, 1:] > 0)
+    np.testing.assert_allclose(whole(out, "dt")[:, 1:], expected_dt, rtol=1e-5, atol=1e-5)
+    assert np.all(whole(out, "dt")[:, 1:] > 0)
 
     # TR3 -- target_dt == time(target step) - time(window end).
     ends = steps[:, -1]
     expected_target_dt = (times[ends + horizon] - times[ends]).astype(np.float32)
-    np.testing.assert_allclose(out["target_dt_full"], expected_target_dt, rtol=1e-5, atol=1e-5)
+    np.testing.assert_allclose(whole(out, "target_dt"), expected_target_dt, rtol=1e-5, atol=1e-5)
 
     # TR4 -- index encoding: each window is L consecutive steps; target == end + horizon.
     assert np.all(np.diff(steps, axis=1) == 1)
-    np.testing.assert_array_equal(out["y_full"][:, 0].astype(np.int64), ends + horizon)
+    np.testing.assert_array_equal(whole(out, "y")[:, 0].astype(np.int64), ends + horizon)
 
     # TR5 -- full == train + val + test; no future leak, TRANSITIVE.
     #
@@ -254,7 +255,7 @@ def test_timed_windowing_invariants(n_steps, lookback, horizon, gaps, train_rati
     # from silently degrading into a vacuous check.
     assert out["X_val"].shape[0] > 0, "X_val must be non-empty, or TR5 holds vacuously"
     assert n_windows == out["X_train"].shape[0] + out["X_val"].shape[0] + out["X_test"].shape[0]
-    np.testing.assert_array_equal(out["X_full"], np.concatenate([out["X_train"], out["X_val"], out["X_test"]]))
+    np.testing.assert_array_equal(whole(out, "X"), np.concatenate([out["X_train"], out["X_val"], out["X_test"]]))
     for earlier, later in (("train", "val"), ("val", "test"), ("train", "test")):
         if out[f"y_{earlier}"].shape[0] and out[f"y_{later}"].shape[0]:
             assert out[f"y_{earlier}"][:, 0].max() < out[f"y_{later}"][:, 0].min()
@@ -295,7 +296,7 @@ class TestSequenceWindowingValidation:
 
     def test_regular_series_accepts_1d_input(self) -> None:
         out = window_regular_series(np.arange(6.0), lookback=2, horizon=1, sample_dt=1.0, train_ratio=0.5, val_ratio=0.25)
-        assert out["X_full"].ndim == 3 and out["X_full"].shape[2] == 1  # 1-D reshaped to (W, L, 1)
+        assert whole(out, "X").ndim == 3 and whole(out, "X").shape[2] == 1  # 1-D reshaped to (W, L, 1)
 
     def test_regular_series_rejects_3d_input(self) -> None:
         with pytest.raises(ValueError, match="1-D or 2-D"):
@@ -315,7 +316,7 @@ class TestSequenceWindowingValidation:
 
     def test_timed_series_accepts_1d_values(self) -> None:
         out = window_timed_series(np.arange(6.0), np.arange(6.0), lookback=2, horizon=1, train_ratio=0.5, val_ratio=0.25)
-        assert out["X_full"].ndim == 3 and out["X_full"].shape[2] == 1
+        assert whole(out, "X").ndim == 3 and whole(out, "X").shape[2] == 1
 
     def test_timed_series_rejects_3d_values(self) -> None:
         with pytest.raises(ValueError, match="1-D or 2-D"):

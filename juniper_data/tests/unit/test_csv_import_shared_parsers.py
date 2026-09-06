@@ -44,6 +44,7 @@ import pytest
 importlib.import_module("juniper_data.api.routes.generators")
 
 from juniper_data.generators.csv_import import CsvImportGenerator, CsvImportParams  # noqa: E402
+from juniper_data.tests.partitions import whole  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.generators]
 
@@ -127,7 +128,7 @@ class TestWholeFileAndInMemoryParsersAgree:
         settings.csv_import_allow_truncation = False
         with patch("juniper_data.generators.csv_import.generator.get_settings", return_value=settings):
             result = CsvImportGenerator.generate(params.model_copy(update={"file_path": name}))
-        return cls._pairs(result["X_full"], result["y_full"])
+        return cls._pairs(whole(result, "X"), whole(result, "y"))
 
     @classmethod
     def _from_text(cls, path: Path, params: CsvImportParams, *, csv_format: bool) -> list:

@@ -25,6 +25,7 @@ pytest.importorskip("datasets", reason="mnist extra not installed (pip install '
 
 from juniper_data.generators.mnist.generator import MnistGenerator  # noqa: E402
 from juniper_data.generators.mnist.params import MnistParams  # noqa: E402
+from juniper_data.tests.partitions import whole
 
 # Class-name fragments that identify "the Hub is unreachable and no cache can
 # serve the request" failures anywhere in the exception chain: builtin/requests
@@ -80,13 +81,13 @@ class TestMnistRealGeneration:
         n_samples = 64
         result = _generate_or_skip(MnistParams(n_samples=n_samples, seed=42))
 
-        assert set(result) == {"X_train", "y_train", "X_val", "y_val", "X_test", "y_test", "X_full", "y_full"}
+        assert set(result) == {"X_train", "y_train", "X_val", "y_val", "X_test", "y_test"}
         for key, array in result.items():
             assert array.dtype == np.float32, f"{key} must be float32, got {array.dtype}"
 
         # Flattened 28x28 images -> rank-2 (n, 784); one-hot labels -> (n, 10).
-        assert result["X_full"].shape == (n_samples, 784)
-        assert result["y_full"].shape == (n_samples, 10)
+        assert whole(result, "X").shape == (n_samples, 784)
+        assert whole(result, "y").shape == (n_samples, 10)
         assert result["X_train"].shape[1] == 784
         assert result["y_train"].shape[1] == 10
 
@@ -102,9 +103,9 @@ class TestMnistRealGeneration:
         assert result["X_test"].shape[0] == result["y_test"].shape[0]
 
         # One-hot labels: exactly one class per row.
-        np.testing.assert_array_almost_equal(result["y_full"].sum(axis=1), np.ones(n_samples))
+        np.testing.assert_array_almost_equal(whole(result, "y").sum(axis=1), np.ones(n_samples))
 
         # Normalized pixels live in [0, 1] and the digits are not a constant image.
-        assert result["X_full"].min() >= 0.0
-        assert result["X_full"].max() <= 1.0
-        assert result["X_full"].std() > 0.0
+        assert whole(result, "X").min() >= 0.0
+        assert whole(result, "X").max() <= 1.0
+        assert whole(result, "X").std() > 0.0

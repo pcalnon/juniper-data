@@ -11,7 +11,7 @@ from juniper_data.core.split import partition_and_assemble, resolve_counts_for_p
 
 from .params import CheckerboardParams
 
-VERSION = "2.0.0"
+VERSION = "3.0.0"
 
 
 class CheckerboardGenerator:
@@ -39,8 +39,6 @@ class CheckerboardGenerator:
                 - y_val: Validation labels (n_val, 2)
                 - X_test: Test features (n_test, 2)
                 - y_test: Test labels (n_test, 2)
-                - X_full: Full dataset features (n_samples, 2)
-                - y_full: Full dataset labels (n_samples, 2)
         """
         rng = np.random.default_rng(params.seed)
 

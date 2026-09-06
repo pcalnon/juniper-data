@@ -27,6 +27,7 @@ from juniper_data.api.app import create_app
 from juniper_data.api.routes import datasets
 from juniper_data.api.settings import Settings
 from juniper_data.storage.memory import InMemoryDatasetStore
+from juniper_data.tests.partitions import whole
 
 pytestmark = [pytest.mark.integration]
 
@@ -73,11 +74,11 @@ def test_e2e_regression_sequence_meta_and_artifact(client: TestClient, generator
     artifact = client.get(f"/v1/datasets/{body['dataset_id']}/artifact")
     assert artifact.status_code == 200
     with np.load(io.BytesIO(artifact.content)) as data:
-        assert data["X_full"].shape == (expected_w, lookback, 1)
-        assert data["y_full"].shape == (expected_w, 1)
-        assert data["dt_full"].shape == (expected_w, lookback)
-        assert np.all(data["dt_full"][:, 0] == 0)
-        assert np.all(data["observed_mask_full"] == 1)
+        assert whole(data, "X").shape == (expected_w, lookback, 1)
+        assert whole(data, "y").shape == (expected_w, 1)
+        assert whole(data, "dt").shape == (expected_w, lookback)
+        assert np.all(whole(data, "dt")[:, 0] == 0)
+        assert np.all(whole(data, "observed_mask") == 1)
 
 
 @pytest.mark.parametrize("generator,params", SYNTHETIC_CASES)

@@ -280,7 +280,6 @@ def window_regular_series(
         out[f"{key}_train"] = full[:train_end]
         out[f"{key}_val"] = full[train_end:val_end]
         out[f"{key}_test"] = full[val_end:]
-        out[f"{key}_full"] = full
     return out
 
 
@@ -379,5 +378,4 @@ def window_timed_series(
         out[f"{key}_train"] = full[:train_end]
         out[f"{key}_val"] = full[train_end:val_end]
         out[f"{key}_test"] = full[val_end:]
-        out[f"{key}_full"] = full
     return out

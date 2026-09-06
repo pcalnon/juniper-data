@@ -42,6 +42,7 @@ from juniper_data.core.split import (
 from juniper_data.generators.spiral.defaults import MAX_POINTS
 from juniper_data.generators.spiral.generator import SpiralGenerator
 from juniper_data.generators.spiral.params import SpiralParams
+from juniper_data.tests.partitions import whole
 
 pytestmark = [pytest.mark.unit]
 
@@ -156,7 +157,7 @@ class TestCarveSizing:
         X = np.zeros((n_native, 2), dtype=np.float32)
         y = np.zeros((n_native, 1), dtype=np.float32)
         split = partition_and_assemble(X, y, counts, seed=0, shuffle=False)
-        assert split["X_full"].shape[0] == n_native
+        assert whole(split, "X").shape[0] == n_native
 
 
 class TestPerUnitCount:
@@ -181,14 +182,27 @@ class TestPartitionAndAssemble:
         y[:, 0] = 1.0
         return X, y
 
-    def test_full_is_the_union_of_the_three_partitions(self) -> None:
+    def test_the_three_partitions_are_a_disjoint_cover_of_n_total(self) -> None:
+        """The claim the retired ``X_full`` length identity was really making.
+
+        Restating that identity against ``whole()`` would be VACUOUS: ``whole()``
+        concatenates the same three partitions, so its length equals their sum by
+        construction and the assertion cannot fail for any input. What the old check
+        was worth was the CONTENT claim underneath it -- that the cut drops no row,
+        duplicates no row, and hands back exactly ``n_total`` of them. That is
+        asserted here over row identities instead of row counts.
+
+        ``_arrays`` numbers every row distinctly, so column 0 is a usable row id.
+        """
         counts = resolve_partition_counts(sizing_mode=SIZING_MODE_ADDITIVE, n_native=100)
         X, y = self._arrays(counts["n_raw_required"])
 
         result = partition_and_assemble(X, y, counts, seed=42, shuffle=True)
 
-        assert result["X_full"].shape[0] == result["X_train"].shape[0] + result["X_val"].shape[0] + result["X_test"].shape[0]
-        assert result["y_full"].shape[0] == result["X_full"].shape[0]
+        per_partition = [set(result[f"X_{p}"][:, 0].tolist()) for p in ("train", "val", "test")]
+        assert sum(len(ids) for ids in per_partition) == counts["n_total"], "a row was duplicated inside a partition"
+        assert len(set().union(*per_partition)) == counts["n_total"], "the partitions overlap, so a row is in two of them"
+        assert whole(result, "y").shape[0] == counts["n_total"]
 
     def test_surplus_rows_do_not_break_the_length_identity(self) -> None:
         """Rounding a per-unit knob up can over-produce; full must still match."""
@@ -197,7 +211,7 @@ class TestPartitionAndAssemble:
 
         result = partition_and_assemble(X, y, counts, seed=42, shuffle=True)
 
-        assert result["X_full"].shape[0] == counts["n_total"]
+        assert whole(result, "X").shape[0] == counts["n_total"]
 
     def test_unshuffled_preserves_generation_order(self) -> None:
         counts = resolve_partition_counts(sizing_mode=SIZING_MODE_CARVE, n_native=10, train_ratio=0.8, val_ratio=0.1, test_ratio=0.1)
@@ -205,7 +219,7 @@ class TestPartitionAndAssemble:
 
         result = partition_and_assemble(X, y, counts, seed=None, shuffle=False)
 
-        np.testing.assert_array_equal(result["X_full"], X)
+        np.testing.assert_array_equal(whole(result, "X"), X)
 
 
 class TestPartitionParamsModel:

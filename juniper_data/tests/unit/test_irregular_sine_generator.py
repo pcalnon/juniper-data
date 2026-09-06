@@ -21,30 +21,31 @@ import pytest
 
 from juniper_data.core.meta import compute_shape_meta, derive_sequence_meta
 from juniper_data.generators.irregular_sine import IrregularSineGenerator, IrregularSineParams, get_schema
+from juniper_data.tests.partitions import whole
 
 pytestmark = [pytest.mark.unit, pytest.mark.generators]
 
 
 def _assert_irregular_sequence_contract(arrays: dict, *, lookback: int, horizon: int) -> None:
     """Shared assertions for the irregular-Δt 3-D regression NPZ contract (non-uniform dt)."""
-    for split in ("train", "val", "test", "full"):
+    for split in ("train", "val", "test"):
         for key in ("X", "y", "dt", "target_dt", "observed_mask"):
             assert f"{key}_{split}" in arrays, f"missing {key}_{split}"
 
-    xf = arrays["X_full"]
+    xf = whole(arrays, "X")
     n_windows = xf.shape[0]
     assert xf.ndim == 3 and xf.shape[1:] == (lookback, 1) and xf.dtype == np.float32
-    assert arrays["y_full"].shape == (n_windows, 1) and arrays["y_full"].dtype == np.float32
+    assert whole(arrays, "y").shape == (n_windows, 1) and whole(arrays, "y").dtype == np.float32
 
     # Irregular Δt: first step is 0 by contract; the rest are strictly positive
     # (strictly-increasing sample times) -- but NOT constant (asserted separately).
-    dt = arrays["dt_full"]
+    dt = whole(arrays, "dt")
     assert dt.shape == (n_windows, lookback) and dt.dtype == np.float32
     assert np.all(dt[:, 0] == 0)
     assert np.all(dt[:, 1:] > 0)
-    assert arrays["target_dt_full"].shape == (n_windows,) and np.all(arrays["target_dt_full"] > 0)
+    assert whole(arrays, "target_dt").shape == (n_windows,) and np.all(whole(arrays, "target_dt") > 0)
 
-    mask = arrays["observed_mask_full"]
+    mask = whole(arrays, "observed_mask")
     assert mask.shape == (n_windows, lookback) and mask.dtype == np.uint8 and np.all(mask == 1)
 
     # full == train + val + test, chronological. The non-empty check comes first
@@ -52,7 +53,7 @@ def _assert_irregular_sequence_contract(arrays: dict, *, lookback: int, horizon:
     # so without it this assertion would pass on exactly the defect it exists to catch.
     assert arrays["X_val"].shape[0] > 0, "val partition must be non-empty"
     assert n_windows == arrays["X_train"].shape[0] + arrays["X_val"].shape[0] + arrays["X_test"].shape[0]
-    np.testing.assert_array_equal(arrays["X_full"], np.concatenate([arrays["X_train"], arrays["X_val"], arrays["X_test"]]))
+    np.testing.assert_array_equal(whole(arrays, "X"), np.concatenate([arrays["X_train"], arrays["X_val"], arrays["X_test"]]))
 
     shape_meta = compute_shape_meta(arrays, "regression")
     assert shape_meta["n_features"] == 1
@@ -72,10 +73,10 @@ class TestIrregularSineGenerator:
         # The whole point of this generator: dt varies step-to-step (unlike the
         # regular synthetics, where window_regular_series gives a constant dt).
         arrays = IrregularSineGenerator.generate(IrregularSineParams(n_steps=400, lookback=24, jitter=0.6, sample_dt=1.0, seed=0))
-        dt = arrays["dt_full"]
+        dt = whole(arrays, "dt")
         assert dt[:, 1:].std() > 0.05
         assert not np.allclose(dt[:, 1:], dt[0, 1])  # not a constant gap
-        assert arrays["target_dt_full"].std() > 0.0  # the forecast horizon also varies
+        assert whole(arrays, "target_dt").std() > 0.0  # the forecast horizon also varies
 
     def test_closed_form_known_answer_at_irregular_times(self) -> None:
         params = IrregularSineParams(
@@ -97,22 +98,22 @@ class TestIrregularSineGenerator:
         gaps = 1.0 * rng.uniform(0.5, 1.5, params.n_steps - 1)
         times = np.concatenate([[0.0], np.cumsum(gaps)])
         signal = 1.0 * np.sin(2 * np.pi * 0.05 * times) + 0.5 * np.sin(2 * np.pi * 0.1 * times + 1.0)
-        np.testing.assert_allclose(arrays["X_full"][0, :, 0], signal[:16], atol=1e-4)
+        np.testing.assert_allclose(whole(arrays, "X")[0, :, 0], signal[:16], atol=1e-4)
         ends = np.arange(15, params.n_steps - 1)  # lookback - 1 .. T - 1 - horizon
-        np.testing.assert_allclose(arrays["y_full"][:, 0], signal[ends + 1], atol=1e-4)
+        np.testing.assert_allclose(whole(arrays, "y")[:, 0], signal[ends + 1], atol=1e-4)
         # dt within the first window equals the per-step time differences.
-        np.testing.assert_allclose(arrays["dt_full"][0, 1:], np.diff(times[:16]).astype(np.float32), atol=1e-5)
+        np.testing.assert_allclose(whole(arrays, "dt")[0, 1:], np.diff(times[:16]).astype(np.float32), atol=1e-5)
 
     def test_jitter_controls_irregularity(self) -> None:
         # Larger jitter => a more dispersed per-step dt.
         low = IrregularSineGenerator.generate(IrregularSineParams(n_steps=400, lookback=24, jitter=0.1, seed=0))
         high = IrregularSineGenerator.generate(IrregularSineParams(n_steps=400, lookback=24, jitter=0.8, seed=0))
-        assert high["dt_full"][:, 1:].std() > low["dt_full"][:, 1:].std()
+        assert whole(high, "dt")[:, 1:].std() > whole(low, "dt")[:, 1:].std()
 
     def test_determinism(self) -> None:
         first = IrregularSineGenerator.generate(IrregularSineParams(n_steps=300, lookback=20, seed=7))
         second = IrregularSineGenerator.generate(IrregularSineParams(n_steps=300, lookback=20, seed=7))
-        for key in ("X_full", "y_full", "dt_full", "target_dt_full"):
+        for key in ("dt_train", "target_dt_train", "dt_val", "dt_test"):
             np.testing.assert_array_equal(first[key], second[key])
 
     def test_component_length_mismatch_rejected(self) -> None:

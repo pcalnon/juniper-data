@@ -75,7 +75,7 @@ def _seed_store(storage: Path) -> LocalFSDatasetStore:
         tags=[],
         created_at=datetime.now(UTC),
     )
-    arrays = {k: np.zeros((2, 2), dtype=np.float32) for k in ("X_train", "y_train", "X_test", "y_test", "X_full", "y_full")}
+    arrays = {k: np.zeros((2, 2), dtype=np.float32) for k in ("X_train", "y_train", "X_test", "y_test")}
     store.save(DATASET_ID, meta, arrays)
     return store
 

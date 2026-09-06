@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from juniper_data.generators.xor import VERSION, XorGenerator, XorParams, get_schema
+from juniper_data.tests.partitions import whole
 
 
 @pytest.mark.unit
@@ -79,8 +80,8 @@ class TestXorGenerator:
         assert result["y_val"].shape == (n_val, 2)
         assert result["X_test"].shape == (n_test, 2)
         assert result["y_test"].shape == (n_test, 2)
-        assert result["X_full"].shape == (n_total, 2)
-        assert result["y_full"].shape == (n_total, 2)
+        assert whole(result, "X").shape == (n_total, 2)
+        assert whole(result, "y").shape == (n_total, 2)
 
     def test_generate_correct_dtypes(self) -> None:
         """Generated arrays have float32 dtype."""
@@ -97,8 +98,8 @@ class TestXorGenerator:
         result1 = XorGenerator.generate(params)
         result2 = XorGenerator.generate(params)
 
-        np.testing.assert_array_equal(result1["X_full"], result2["X_full"])
-        np.testing.assert_array_equal(result1["y_full"], result2["y_full"])
+        np.testing.assert_array_equal(whole(result1, "X"), whole(result2, "X"))
+        np.testing.assert_array_equal(whole(result1, "y"), whole(result2, "y"))
 
     def test_generate_different_seeds_different_data(self) -> None:
         """Different seeds produce different data."""
@@ -108,14 +109,14 @@ class TestXorGenerator:
         result1 = XorGenerator.generate(params1)
         result2 = XorGenerator.generate(params2)
 
-        assert not np.array_equal(result1["X_full"], result2["X_full"])
+        assert not np.array_equal(whole(result1, "X"), whole(result2, "X"))
 
     def test_generate_one_hot_labels(self) -> None:
         """Labels are valid one-hot encodings."""
         params = XorParams(n_points_per_quadrant=10, seed=42)
         result = XorGenerator.generate(params)
 
-        y_full = result["y_full"]
+        y_full = whole(result, "y")
         row_sums = y_full.sum(axis=1)
         np.testing.assert_array_almost_equal(row_sums, np.ones(len(y_full)))
 
@@ -126,7 +127,7 @@ class TestXorGenerator:
         params = XorParams(n_points_per_quadrant=25, seed=42)
         result = XorGenerator.generate(params)
 
-        y_full = result["y_full"]
+        y_full = whole(result, "y")
         class_0_count = y_full[:, 0].sum()
         class_1_count = y_full[:, 1].sum()
 
@@ -146,8 +147,8 @@ class TestXorGenerator:
         params = XorParams(n_points_per_quadrant=50, margin=0.1, seed=42, shuffle=False, noise=0)
         result = XorGenerator.generate(params)
 
-        X = result["X_full"]
-        y = result["y_full"]
+        X = whole(result, "X")
+        y = whole(result, "y")
         # Quadrants are equal-sized blocks of the unshuffled array; the block size
         # follows the realised row count rather than the requested per-quadrant knob.
         n = X.shape[0] // 4
@@ -184,14 +185,14 @@ class TestXorGenerator:
         result_no_noise = XorGenerator.generate(params_no_noise)
         result_with_noise = XorGenerator.generate(params_with_noise)
 
-        assert not np.array_equal(result_no_noise["X_full"], result_with_noise["X_full"])
+        assert not np.array_equal(whole(result_no_noise, "X"), whole(result_with_noise, "X"))
 
     def test_generate_respects_range(self) -> None:
         """Points are within specified range (before noise)."""
         params = XorParams(n_points_per_quadrant=100, x_range=2.0, y_range=3.0, margin=0.2, noise=0, seed=42)
         result = XorGenerator.generate(params)
 
-        X = result["X_full"]
+        X = whole(result, "X")
         assert np.all(np.abs(X[:, 0]) <= 2.0)
         assert np.all(np.abs(X[:, 1]) <= 3.0)
 
@@ -200,7 +201,7 @@ class TestXorGenerator:
         params = XorParams(n_points_per_quadrant=100, margin=0.2, noise=0, seed=42)
         result = XorGenerator.generate(params)
 
-        X = result["X_full"]
+        X = whole(result, "X")
         assert np.all(np.abs(X[:, 0]) >= 0.2)
         assert np.all(np.abs(X[:, 1]) >= 0.2)
 

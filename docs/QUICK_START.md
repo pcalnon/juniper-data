@@ -100,7 +100,7 @@ curl http://localhost:8100/v1/datasets/{dataset_id}/preview
 curl -O http://localhost:8100/v1/datasets/{dataset_id}/artifact
 ```
 
-The NPZ artifact contains keys: `X_train`, `y_train`, `X_val`, `y_val`, `X_test`, `y_test`, `X_full`, `y_full` (all `float32`).
+The NPZ artifact contains keys: `X_train`, `y_train`, `X_val`, `y_val`, `X_test`, `y_test` (all `float32`).
 
 ---
 

@@ -15,7 +15,7 @@ from juniper_data.core.split import partition_and_assemble, resolve_counts_for_p
 
 from .params import ArcAgiParams
 
-VERSION = "2.0.0"
+VERSION = "3.0.0"
 
 logger = logging.getLogger(__name__)
 
@@ -78,8 +78,6 @@ class ArcAgiGenerator:
                 - y_train: Training output grids
                 - X_test: Test input grids
                 - y_test: Test output grids
-                - X_full: All input grids
-                - y_full: All output grids
                 - task_ids: Task identifiers for each sample
 
         Raises:
@@ -108,11 +106,15 @@ class ArcAgiGenerator:
         counts = resolve_counts_for_params(params, X.shape[0])
 
         # `task_ids` must ride THROUGH the split, not be stapled on after it.
-        # `partition_and_assemble` shuffles and rebuilds `X_full` from the shuffled
-        # partitions; assigning the raw generation-order ids to that result made
-        # `task_ids[i]` name a different grid than `X_full[i]` for almost every i, with
-        # nothing downstream able to detect it -- both arrays are the right length and
-        # every id is a real task.
+        # `partition_and_assemble` SHUFFLES before it cuts; assigning the raw
+        # generation-order ids to the result made `task_ids[i]` name a different grid
+        # than row i for almost every i, with nothing downstream able to detect it --
+        # both arrays are the right length and every id is a real task.
+        #
+        # Passing them as `extras` is what keeps them aligned: they are permuted with the
+        # SAME permutation as the rows, then truncated to the partition sum, so
+        # `task_ids[i]` describes row i of `concatenate([X_train, X_val, X_test])`. That
+        # is the alignment the retired `X_full` used to give, preserved without the key.
         return partition_and_assemble(X, y, counts, params.seed, params.shuffle, extras={"task_ids": task_ids})
 
     @staticmethod

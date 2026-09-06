@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from juniper_data.generators.moon import VERSION, MoonGenerator, MoonParams, get_schema
+from juniper_data.tests.partitions import whole
 
 pytestmark = [pytest.mark.unit, pytest.mark.generators]
 
@@ -45,7 +46,7 @@ class TestMoonGenerator:
     def test_generate_returns_expected_keys(self) -> None:
         params = MoonParams(seed=42)
         result = MoonGenerator.generate(params)
-        assert set(result.keys()) == {"X_train", "y_train", "X_val", "y_val", "X_test", "y_test", "X_full", "y_full"}
+        assert set(result.keys()) == {"X_train", "y_train", "X_val", "y_val", "X_test", "y_test"}
 
     def test_generate_shapes(self) -> None:
         params = MoonParams(n_samples=150, seed=42)
@@ -54,21 +55,21 @@ class TestMoonGenerator:
         assert result["X_train"].shape == (150, 2)
         assert result["X_val"].shape == (60, 2)
         assert result["X_test"].shape == (45, 2)
-        assert result["X_full"].shape == (255, 2)
-        assert result["y_full"].shape == (255, 2)
+        assert whole(result, "X").shape == (255, 2)
+        assert whole(result, "y").shape == (255, 2)
 
     def test_generate_dtypes(self) -> None:
         params = MoonParams(seed=42)
         result = MoonGenerator.generate(params)
-        for key in ("X_train", "y_train", "X_test", "y_test", "X_full", "y_full"):
+        for key in ("X_train", "y_train", "X_test", "y_test"):
             assert result[key].dtype == np.float32
 
     def test_determinism_with_seed(self) -> None:
         params = MoonParams(seed=123)
         result1 = MoonGenerator.generate(params)
         result2 = MoonGenerator.generate(params)
-        np.testing.assert_array_equal(result1["X_full"], result2["X_full"])
-        np.testing.assert_array_equal(result1["y_full"], result2["y_full"])
+        np.testing.assert_array_equal(whole(result1, "X"), whole(result2, "X"))
+        np.testing.assert_array_equal(whole(result1, "y"), whole(result2, "y"))
 
     def test_different_seeds_produce_different_data(self) -> None:
         params_a = MoonParams(seed=1)
@@ -76,18 +77,18 @@ class TestMoonGenerator:
         result_a = MoonGenerator.generate(params_a)
         result_b = MoonGenerator.generate(params_b)
         # Any noise jitter under a distinct seed is enough — compare with allclose.
-        assert not np.allclose(result_a["X_full"], result_b["X_full"])
+        assert not np.allclose(whole(result_a, "X"), whole(result_b, "X"))
 
     def test_one_hot_labels(self) -> None:
         params = MoonParams(seed=42)
         result = MoonGenerator.generate(params)
-        row_sums = result["y_full"].sum(axis=1)
+        row_sums = whole(result, "y").sum(axis=1)
         np.testing.assert_array_almost_equal(row_sums, np.ones(len(row_sums)))
 
     def test_class_balance(self) -> None:
         params = MoonParams(n_samples=200, seed=42)
         result = MoonGenerator.generate(params)
-        counts = result["y_full"].sum(axis=0)
+        counts = whole(result, "y").sum(axis=0)
         # 200 train + 80 val + 60 test = 340 realised rows, evenly halved.
         assert counts[0] == 170
         assert counts[1] == 170
@@ -104,7 +105,7 @@ class TestMoonGenerator:
         params_noisy = MoonParams(n_samples=200, noise=0.5, seed=42)
         result_clean = MoonGenerator.generate(params_clean)
         result_noisy = MoonGenerator.generate(params_noisy)
-        assert np.var(result_noisy["X_full"]) > np.var(result_clean["X_full"])
+        assert np.var(whole(result_noisy, "X")) > np.var(whole(result_clean, "X"))
 
     def test_geometry_without_noise(self) -> None:
         """With zero noise the two moons should lie on their analytic curves."""
@@ -114,13 +115,13 @@ class TestMoonGenerator:
         # The boundary is derived from the realised array rather than hardcoded:
         # n_samples now denotes TRAIN, so the realised row count is larger and the
         # two moons meet at its midpoint, not at row 50.
-        n_upper = result["X_full"].shape[0] // 2
-        upper = result["X_full"][:n_upper]
+        n_upper = whole(result, "X").shape[0] // 2
+        upper = whole(result, "X")[:n_upper]
         # Upper moon: y = sin(theta), x = cos(theta) — satisfies x^2 + y^2 == 1
         radii = np.linalg.norm(upper, axis=1)
         np.testing.assert_array_almost_equal(radii, np.ones(n_upper), decimal=5)
 
-        lower = result["X_full"][n_upper:]
+        lower = whole(result, "X")[n_upper:]
         # Lower moon: x = 1 - cos, y = 0.5 - sin — so (x-1)^2 + (y-0.5)^2 == 1
         centered = lower - np.array([1.0, 0.5], dtype=np.float32)
         lower_radii = np.linalg.norm(centered, axis=1)

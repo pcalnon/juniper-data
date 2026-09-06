@@ -8,8 +8,8 @@ cost basis -- and formats the result into the JuniperData NPZ contract.
 
 Targets (per the dataset spec) are dual:
   * canonical one-hot **next-day direction** (up/down) in ``y_*`` -- keeps
-    ``n_classes == 2`` and the route's ``argmax(y_full)`` class distribution
-    correct;
+    ``n_classes == 2`` and the route's class distribution, taken over the
+    partitions, correct;
   * auxiliary **next-day regression** target carried in extra ``y_reg_*``
     arrays (preserved through ``save_versioned`` / ``save_npz``); its
     representation is configurable via ``regression_target`` -- raw next-day
@@ -54,7 +54,7 @@ from juniper_data.core.limits import DATA_QUALITY_META_KEY, INCOMPLETE_ACCEPT, I
 from .defaults import CONSTITUENTS_FILENAME, EQUITIES_FEATURE_COLUMNS
 from .params import EquitiesParams
 
-VERSION = "2.0.0"
+VERSION = "3.0.0"
 
 _logger = logging.getLogger(__name__)
 
@@ -229,7 +229,7 @@ class EquitiesGenerator:
 
         Returns:
             Dictionary with the canonical NPZ keys (X_train, y_train, X_val,
-            y_val, X_test, y_test, X_full, y_full) plus auxiliary arrays: y_reg_* (next-day
+            y_val, X_test, y_test) plus auxiliary arrays: y_reg_* (next-day
             close regression target), ticker_code_* / date_* (row-aligned
             identifiers), and ticker_vocab (code -> ticker lookup).
 
@@ -350,7 +350,7 @@ class EquitiesGenerator:
         # (juniper-ml notes/JUNIPER_2026-08-29_JUNIPER-ECOSYSTEM_TRAIN-EVAL-TEST-PARTITION-DESIGN.md):
         # no quantity derived from a later partition may reach the training data.
         #
-        # CONSEQUENCE, deliberate: ``X_full``, ``X_val`` and ``X_test`` are no longer guaranteed to lie
+        # CONSEQUENCE, deliberate: ``X_val`` and ``X_test`` are no longer guaranteed to lie
         # within [0, 1]. They are scaled by train's statistics, and later rows legitimately
         # exceed the training range -- that excursion IS the information the old code was
         # leaking away. Only ``X_train`` is bounded now.
@@ -364,7 +364,10 @@ class EquitiesGenerator:
             norm = EquitiesGenerator._fit_normalizer(fit_frame)
 
         arrays: dict[str, np.ndarray] = {}
-        for name, frame in (("full", full), ("train", train), ("val", val), ("test", test)):
+        # ``full`` left this tuple with decision 11. ``full`` the FRAME is still used
+        # above as the normaliser fallback when train is empty -- that is a fit scope, not
+        # an emitted array, and dropping the key does not change it.
+        for name, frame in (("train", train), ("val", val), ("test", test)):
             features = EquitiesGenerator._features(frame, norm)
             arrays[f"X_{name}"] = features
             arrays[f"y_{name}"] = EquitiesGenerator._direction_onehot(frame)

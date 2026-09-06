@@ -13,7 +13,7 @@ from juniper_data.core.split import partition_and_assemble, resolve_counts_for_p
 
 from .params import MoonParams
 
-VERSION = "2.0.0"
+VERSION = "3.0.0"
 
 
 class MoonGenerator:
@@ -38,9 +38,9 @@ class MoonGenerator:
             params: ``MoonParams`` instance defining the generation config.
 
         Returns:
-            Dictionary with keys ``X_train``, ``y_train``, ``X_test``,
-            ``y_test``, ``X_full``, ``y_full``. All arrays are float32;
-            labels are one-hot encoded with shape ``(n_samples, 2)``.
+            Dictionary with keys ``X_train``, ``y_train``, ``X_val``, ``y_val``,
+            ``X_test``, ``y_test``. All arrays are float32; labels are one-hot
+            encoded with shape ``(n_samples, 2)``.
         """
         rng = np.random.default_rng(params.seed)
 

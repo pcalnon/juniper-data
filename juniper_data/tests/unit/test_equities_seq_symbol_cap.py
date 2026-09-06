@@ -39,6 +39,7 @@ from juniper_data.core.limits import (
 )
 from juniper_data.generators.equities import EquitiesParams
 from juniper_data.generators.equities import generator as eq_gen
+from juniper_data.tests.partitions import whole
 
 pd = pytest.importorskip("pandas")
 pytest.importorskip("yfinance")
@@ -134,7 +135,7 @@ class TestEquitiesSeqSymbolCap:
         assert annotation["imported"] == 14
         assert annotation["cap"] == 14
         # Resolver leaves -1; generate() must overwrite with a real window count.
-        assert annotation["records_imported"] == arrays["X_full"].shape[0]
+        assert annotation["records_imported"] == whole(arrays, "X").shape[0]
         assert annotation["records_imported"] > 0
         assert annotation["records_imported"] != 16
         assert len(arrays["ticker_vocab"]) == 14

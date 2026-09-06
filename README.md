@@ -81,12 +81,12 @@ Or generate one in-process, without the service:
 from juniper_data.generators import SpiralGenerator, SpiralParams
 
 dataset = SpiralGenerator.generate(SpiralParams(n_spirals=2, n_points_per_spiral=100, noise=0.1))
-# dataset: dict of float32 arrays — X_train, y_train, X_val, y_val, X_test, y_test, X_full, y_full
+# dataset: dict of float32 arrays — X_train, y_train, X_val, y_val, X_test, y_test
 ```
 
 ## Data contract
 
-Datasets are NPZ archives with the keys `X_train`, `y_train`, `X_val`, `y_val`, `X_test`, `y_test`, `X_full`, `y_full`,
+Datasets are NPZ archives with the keys `X_train`, `y_train`, `X_val`, `y_val`, `X_test`, `y_test`,
 all `float32`. This is the contract every Juniper consumer reads.
 
 ## Configuration

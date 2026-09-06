@@ -24,7 +24,7 @@ from juniper_data.generators._synthetic import build_sequence_arrays
 
 from .params import MultiSineParams
 
-VERSION = "2.0.0"
+VERSION = "3.0.0"
 
 # Ranges for seeded-random component parameters when not given explicitly. The
 # frequency band keeps the period (1 / f, in steps at sample_dt == 1) within a
@@ -44,7 +44,7 @@ class MultiSineGenerator:
     def generate(params: MultiSineParams) -> dict[str, np.ndarray]:
         """Generate the windowed multi-sine sequence dataset.
 
-        Returns the additive 3-D NPZ contract for train/test/full:
+        Returns the additive 3-D NPZ contract for train/val/test:
         ``X_{split}`` ``(W, L, 1)``, the regression target ``y_{split}`` ``(W, 1)``
         (signal value ``horizon`` steps after the window end), plus ``dt`` /
         ``target_dt`` / ``observed_mask``.

@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from juniper_data.generators.arc_agi.params import ArcAgiParams
+from juniper_data.tests.partitions import whole
 
 
 def _make_sample_tasks(n_tasks=3, train_pairs=2, test_pairs=1):
@@ -132,8 +133,8 @@ class TestArcAgiGeneratorHuggingFace:
         assert "y_train" in result
         assert "X_test" in result
         assert "y_test" in result
-        assert "X_full" in result
-        assert "y_full" in result
+        assert "X_train" in result
+        assert "y_train" in result
         assert "task_ids" in result
 
     def test_generate_correct_shapes_flattened(self, mock_hf_load) -> None:
@@ -148,8 +149,8 @@ class TestArcAgiGeneratorHuggingFace:
         result = ArcAgiGenerator.generate(params)
 
         n_total = 2 * 2 + 2 * 1  # 2 tasks * 2 train + 2 tasks * 1 test
-        assert result["X_full"].shape == (n_total, 25)
-        assert result["y_full"].shape == (n_total, 25)
+        assert whole(result, "X").shape == (n_total, 25)
+        assert whole(result, "y").shape == (n_total, 25)
 
     def test_generate_correct_shapes_not_flattened(self, mock_hf_load) -> None:
         """Non-flattened output has correct shape (n_pairs, pad_to, pad_to)."""
@@ -163,7 +164,7 @@ class TestArcAgiGeneratorHuggingFace:
         result = ArcAgiGenerator.generate(params)
 
         n_total = 2 * 2 + 2 * 1
-        assert result["X_full"].shape == (n_total, 5, 5)
+        assert whole(result, "X").shape == (n_total, 5, 5)
 
     def test_generate_without_test_pairs(self, mock_hf_load) -> None:
         """Generate without test pairs only uses train pairs."""
@@ -177,7 +178,7 @@ class TestArcAgiGeneratorHuggingFace:
         result = ArcAgiGenerator.generate(params)
 
         n_total = 2 * 3  # only train pairs
-        assert result["X_full"].shape[0] == n_total
+        assert whole(result, "X").shape[0] == n_total
 
     def test_generate_with_n_tasks_seed(self, mock_hf_load) -> None:
         """n_tasks with seed selects random subset."""
@@ -190,7 +191,7 @@ class TestArcAgiGeneratorHuggingFace:
         params = ArcAgiParams(n_tasks=3, seed=42, include_test=False, pad_to=5)
         result = ArcAgiGenerator.generate(params)
 
-        assert result["X_full"].shape[0] == 3
+        assert whole(result, "X").shape[0] == 3
 
     def test_generate_with_n_tasks_no_seed(self, mock_hf_load) -> None:
         """n_tasks without seed takes first N tasks."""
@@ -203,7 +204,7 @@ class TestArcAgiGeneratorHuggingFace:
         params = ArcAgiParams(n_tasks=3, seed=None, include_test=False, pad_to=5)
         result = ArcAgiGenerator.generate(params)
 
-        assert result["X_full"].shape[0] == 3
+        assert whole(result, "X").shape[0] == 3
 
     def test_generate_hf_source_unavailable_raises(self, mock_hf_load) -> None:
         """A network failure raises RuntimeError naming the repo and split.
@@ -327,7 +328,7 @@ class TestArcAgiGeneratorLocal:
         params = ArcAgiParams(source="local", local_path=str(tmp_path), subset="training", pad_to=5, seed=42)
         result = ArcAgiGenerator.generate(params)
 
-        assert result["X_full"].shape[0] == 4  # 2 tasks * (1 train + 1 test)
+        assert whole(result, "X").shape[0] == 4  # 2 tasks * (1 train + 1 test)
         assert result["task_ids"].shape[0] == 4
 
     def test_generate_local_evaluation_subset(self, tmp_path) -> None:
@@ -343,7 +344,7 @@ class TestArcAgiGeneratorLocal:
         params = ArcAgiParams(source="local", local_path=str(tmp_path), subset="evaluation", include_test=False, pad_to=5, seed=42)
         result = ArcAgiGenerator.generate(params)
 
-        assert result["X_full"].shape[0] == 1
+        assert whole(result, "X").shape[0] == 1
 
     def test_generate_local_all_subsets(self, tmp_path) -> None:
         """Generate from all subsets."""
@@ -361,7 +362,7 @@ class TestArcAgiGeneratorLocal:
         params = ArcAgiParams(source="local", local_path=str(tmp_path), subset="all", include_test=False, pad_to=5, seed=42)
         result = ArcAgiGenerator.generate(params)
 
-        assert result["X_full"].shape[0] == 2
+        assert whole(result, "X").shape[0] == 2
 
     def test_generate_local_missing_path(self) -> None:
         """Raises ValueError when local_path is None."""
@@ -393,7 +394,7 @@ class TestArcAgiGeneratorLocal:
         params = ArcAgiParams(source="local", local_path=str(tmp_path), n_tasks=3, seed=42, include_test=False, pad_to=5)
         result = ArcAgiGenerator.generate(params)
 
-        assert result["X_full"].shape[0] == 3
+        assert whole(result, "X").shape[0] == 3
 
     def test_generate_local_with_n_tasks_no_seed(self, tmp_path) -> None:
         """n_tasks without seed takes first N local tasks."""
@@ -409,13 +410,13 @@ class TestArcAgiGeneratorLocal:
         params = ArcAgiParams(source="local", local_path=str(tmp_path), n_tasks=3, seed=None, include_test=False, pad_to=5)
         result = ArcAgiGenerator.generate(params)
 
-        assert result["X_full"].shape[0] == 3
+        assert whole(result, "X").shape[0] == 3
 
     def test_generate_local_missing_subdirs_raises(self, tmp_path) -> None:
         """An empty local path must RAISE, not return an empty dataset.
 
         **This assertion is inverted from what it used to say, deliberately.** It
-        previously asserted ``result["X_full"].shape[0] == 0`` and described that
+        previously asserted ``whole(result, "X").shape[0] == 0`` and described that
         as handling the case "gracefully" -- pinning the silent-empty behaviour as
         correct. It is not graceful: a caller who typos ``local_path`` received a
         syntactically valid zero-sample dataset, which juniper-data then persists
@@ -433,14 +434,21 @@ class TestArcAgiGeneratorLocal:
         with pytest.raises(RuntimeError, match="produced 0 samples"):
             ArcAgiGenerator.generate(params)
 
-    def test_task_ids_stay_aligned_with_shuffled_full(self, tmp_path) -> None:
-        """Each X_full row must name the task that actually produced it.
+    def test_task_ids_stay_aligned_with_the_shuffled_partitions(self, tmp_path) -> None:
+        """Each row must name the task that actually produced it.
 
-        ``partition_and_assemble`` rebuilds ``X_full`` from the shuffled
-        partitions. Sticking the raw generation-order ``task_ids`` on that
-        result makes ``task_ids[i]`` describe a different grid than
-        ``X_full[i]``. Distinct per-task fill values make the mismatch
+        ``partition_and_assemble`` SHUFFLES before it cuts. Sticking the raw
+        generation-order ``task_ids`` on the result makes ``task_ids[i]`` describe a
+        different grid than row i. Distinct per-task fill values make the mismatch
         observable: after a shuffle, row 0 is almost never still task_a.
+
+        The row index is now taken over the concatenated partitions rather than the
+        retired ``X_full``, which is the same sequence -- ``split_three_way`` cuts
+        contiguously in train | val | test order.
+
+        This also guards ``task_ids`` being emitted AT ALL. Removing the ``*_full``
+        assembly dropped the permuted extras on the floor: correctly ordered, never
+        written back into the result, and absent from the artifact with no error.
         """
         from juniper_data.generators.arc_agi.generator import ArcAgiGenerator
 
@@ -466,8 +474,8 @@ class TestArcAgiGeneratorLocal:
         )
         result = ArcAgiGenerator.generate(params)
 
-        assert result["X_full"].shape[0] == result["task_ids"].shape[0] == 6
-        for row, task_id in zip(result["X_full"], result["task_ids"], strict=True):
+        assert whole(result, "X").shape[0] == result["task_ids"].shape[0] == 6
+        for row, task_id in zip(whole(result, "X"), result["task_ids"], strict=True):
             fill = int(row[0, 0])
             assert task_id == {1: "task_a", 2: "task_b", 3: "task_c"}[fill]
 
