@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The JD-PERF-02 metadata cache was inert in production, and its test suite could not see that.**
+  `DatasetStore.__init__` creates the cache state, and `_list_all_metadata_cached` degrades to an
+  uncached walk when `_metadata_cache_lock` is absent. **Six of seven stores never called
+  `super().__init__()`** — including `LocalFSDatasetStore`, the store `api/app.py` actually wires.
+  So every `filter_datasets` / `get_stats` / `list_versions` / `delete_expired` call paid a full
+  disk walk, for months, while the cache looked present.
+
+  Measured on `LocalFSDatasetStore` after the fix: **114.8× at 100 datasets** (18.87 → 0.16 ms) and
+  **92.9× at 1,000** (157.16 → 1.69 ms).
+
+  **Wiring it alone would have shipped a read-your-writes bug.** `_invalidate_metadata_cache()` was
+  called only by `InMemoryDatasetStore`; a create against any other store would have stayed
+  invisible for the whole TTL. All three mutation paths (`save`, `delete`, `update_meta`) now
+  invalidate on **every** store, plus the two lazy-download paths in `hf_store` / `kaggle_store`
+  that bypass their own `save`.
+
+  **Why the tests were green.** `test_metadata_cache.py` exercised only `_CountingStore`, a
+  purpose-built subclass that *does* call `super().__init__()` — and
+  `test_subclass_without_super_init_degrades_gracefully` documented the dead path as a "legacy code"
+  hypothetical when it was the production path. Added `TestCacheAgainstRealStores`: four real
+  stores × (cache-is-live, save-visible, delete-visible, update-visible), plus a census arm that
+  fails if a new concrete `DatasetStore` subclass is neither covered nor explicitly excluded with a
+  reason. Verified non-vacuous — removing the `super().__init__()` line turns it red.
+
+  Re-scopes `APD-DATA-019`, which named `total = len(filtered)` as the cost. It is not: `total` is
+  an O(1) `len()` on an already-materialised list, **0.000012%** of the call. The O(N) work is
+  `list_all_metadata()` (96.8%), which this cache is what bounds.
+
 ### Changed
 
 - **BREAKING (default): `fundamentals_fill` is now `"nan"`, was `"zero"`.** Owner decision,
@@ -16,11 +46,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   apart from a measurement: it survives every dtype, range and NaN check, and a model trained on it
   learns from a number a fill policy invented. NaN propagates visibly instead.
 
-  **Know the blast radius before upgrading.** This is not limited to the handful of tickers no
-  rescue path resolves. SEC XBRL reaches back to only ~2009, so **every ticker has trade rows before
-  its first filing** — a default request with `start_date=2000` now yields roughly **nine years of
-  NaN** in `total_shares`, `market_cap` and `days_since_report` for *every* symbol, where it
-  previously yielded `0.0`.
+  **Know the blast radius before upgrading — measured 2026-09-07, not estimated.** This is not
+  limited to the handful of tickers no rescue path resolves. SEC XBRL reaches back only to ~2009,
+  and `EQUITIES_DEFAULT_START_DATE` is `2000-01-01`, so **every ticker has trade rows before its
+  first filing**. Across the 485-payload SEC cache:
+
+  | Measure | Value |
+  |---|---|
+  | Earliest first filing, any ticker | **2009-04-15** |
+  | Median first filing | **2009-12-18** |
+  | Tickers with *no* pre-filing span | **0 of 485** |
+  | Mean share of a default window that precedes the first filing | **43.1%** |
+  | Median share | **37.3%** |
+
+  Those rows carry NaN in `total_shares`, `market_cap` **and** `days_since_report` (the last is
+  filled only under `fundamentals_fill="zero"` — `generator.py`), where they previously carried
+  `0.0`.
+
+  **No consumer receives this today**, which is why it shipped as a default rather than behind a
+  flag: `equities_seq` is barred from juniper-cascor at three layers (its `dataset_type` Literal,
+  the driver's staging map, and the 3-D rejection in the lifecycle manager), and the recurrence
+  tier rejects non-finite `X` by name. The figure is a property of the artifact, not an outage.
 
   Consumers that cannot take NaN in `X` have two explicit options, and choosing one is now a
   decision rather than a default: `fundamentals_fill="zero"` restores the old behaviour, and

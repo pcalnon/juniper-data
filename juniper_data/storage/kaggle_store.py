@@ -53,6 +53,8 @@ class KaggleDatasetStore(DatasetStore):
 
         self._download_path = download_path or Path("./data/kaggle")
         self._download_path.mkdir(parents=True, exist_ok=True)
+        # JD-PERF-02: without this the metadata cache is inert for this store.
+        super().__init__()
         self._cache_store = cache_store or InMemoryDatasetStore()
 
         self._api: Any | None = None
@@ -244,6 +246,8 @@ class KaggleDatasetStore(DatasetStore):
         }
 
         self._cache_store.save(dataset_id, meta, arrays)
+        # Bypasses this store's own ``save``, so invalidate here too.
+        self._invalidate_metadata_cache()
 
         return dataset_id, meta, arrays
 
@@ -302,6 +306,7 @@ class KaggleDatasetStore(DatasetStore):
     ) -> None:
         """Save to cache store."""
         self._cache_store.save(dataset_id, meta, arrays)
+        self._invalidate_metadata_cache()
 
     def get_meta(self, dataset_id: str) -> DatasetMeta | None:
         """Get from cache store."""
@@ -317,7 +322,10 @@ class KaggleDatasetStore(DatasetStore):
 
     def delete(self, dataset_id: str) -> bool:
         """Delete from cache store."""
-        return self._cache_store.delete(dataset_id)
+        deleted = self._cache_store.delete(dataset_id)
+        if deleted:
+            self._invalidate_metadata_cache()
+        return deleted
 
     def list_datasets(self, limit: int = 100, offset: int = 0) -> list[str]:
         """List from cache store."""
@@ -325,7 +333,10 @@ class KaggleDatasetStore(DatasetStore):
 
     def update_meta(self, dataset_id: str, meta: DatasetMeta) -> bool:
         """Update in cache store."""
-        return self._cache_store.update_meta(dataset_id, meta)
+        updated = self._cache_store.update_meta(dataset_id, meta)
+        if updated:
+            self._invalidate_metadata_cache()
+        return updated
 
     def list_all_metadata(self) -> list[DatasetMeta]:
         """List from cache store."""

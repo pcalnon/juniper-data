@@ -18,11 +18,16 @@ from __future__ import annotations
 import time
 from datetime import UTC, datetime
 
+import numpy as np
 import pytest
 
 from juniper_data.core.models import DatasetMeta
 from juniper_data.storage import base as base_module
 from juniper_data.storage.base import DatasetStore
+from juniper_data.storage.cached import CachedDatasetStore
+from juniper_data.storage.hf_store import HuggingFaceDatasetStore
+from juniper_data.storage.local_fs import LocalFSDatasetStore
+from juniper_data.storage.memory import InMemoryDatasetStore
 
 
 def _make_meta(dataset_id: str = "ds_1", **overrides) -> DatasetMeta:
@@ -210,3 +215,141 @@ class TestMetadataCacheConcurrency:
         # call count is at most 10 (worst case: all 10 race the initial
         # miss), and at least 1.
         assert 1 <= store.list_all_metadata_calls <= 10
+
+
+# ---------------------------------------------------------------------------
+# The cache against REAL stores.
+#
+# Everything above this line runs against ``_CountingStore``, which calls
+# ``super().__init__()`` -- so it exercises a path that, before 2026-09-07, NO
+# production store took. ``LocalFSDatasetStore`` (the store ``api/app.py``
+# wires) omitted the call, ``_list_all_metadata_cached`` silently degraded to an
+# uncached walk, and the whole of JD-PERF-02 was inert in production while its
+# test suite stayed green. `test_subclass_without_super_init_degrades_gracefully`
+# documented that as a "legacy code" hypothetical; it was the live path.
+#
+# These tests therefore construct the real classes. They are the arm that would
+# have caught it.
+# ---------------------------------------------------------------------------
+
+
+def _arrays() -> dict:
+    """Minimal NPZ payload accepted by every store."""
+    return {
+        "X_train": np.zeros((8, 2), dtype=np.float32),
+        "y_train": np.zeros((8, 2), dtype=np.float32),
+        "X_val": np.zeros((2, 2), dtype=np.float32),
+        "y_val": np.zeros((2, 2), dtype=np.float32),
+        "X_test": np.zeros((2, 2), dtype=np.float32),
+        "y_test": np.zeros((2, 2), dtype=np.float32),
+    }
+
+
+_COVERED = ("LocalFSDatasetStore", "InMemoryDatasetStore", "CachedDatasetStore", "HuggingFaceDatasetStore")
+
+
+def _real_stores(tmp_path) -> dict[str, DatasetStore]:
+    """Every concrete store constructible without an external service."""
+    return {
+        "LocalFSDatasetStore": LocalFSDatasetStore(tmp_path / "local"),
+        "InMemoryDatasetStore": InMemoryDatasetStore(),
+        "CachedDatasetStore": CachedDatasetStore(LocalFSDatasetStore(tmp_path / "primary"), InMemoryDatasetStore()),
+        "HuggingFaceDatasetStore": HuggingFaceDatasetStore(),
+    }
+
+
+# Stores this suite cannot construct here, with the REASON, listed EXPLICITLY so
+# the census below cannot go quietly stale: a new subclass is either covered by
+# ``_real_stores`` or named here, on purpose.
+#
+# ``HuggingFaceDatasetStore`` is deliberately NOT in this set -- it constructs
+# with an in-memory cache store and no network, so it is covered above.
+_NOT_CONSTRUCTIBLE_HERE = {
+    "RedisDatasetStore",  # __init__ builds a live client
+    "PostgresDatasetStore",  # __init__ requires psycopg2 + a reachable server
+    "KaggleDatasetStore",  # optional dependency, absent by default
+}
+
+
+class TestCacheAgainstRealStores:
+    """The cache must be LIVE and read-your-writes correct on real stores."""
+
+    @pytest.mark.parametrize("store_name", _COVERED)
+    def test_the_cache_is_actually_live(self, store_name, tmp_path) -> None:
+        """``super().__init__()`` must have run, or the cache is a no-op.
+
+        This is the whole defect in one assertion: ``_list_all_metadata_cached``
+        checks ``getattr(self, "_metadata_cache_lock", None)`` and falls back to
+        an uncached walk when it is absent. A store that skips the super call
+        therefore pays the full O(N) cost on every request while looking, from
+        the outside, exactly like a store that does not.
+        """
+        store = _real_stores(tmp_path)[store_name]
+        assert getattr(store, "_metadata_cache_lock", None) is not None, f"{store_name} skipped super().__init__() -- its metadata cache is inert"
+
+    @pytest.mark.parametrize("store_name", _COVERED)
+    def test_a_save_is_visible_immediately(self, store_name, tmp_path) -> None:
+        """READ-YOUR-WRITES. A created dataset must not wait out the TTL.
+
+        Wiring the cache without invalidating on write is worse than leaving it
+        inert: ``POST /v1/datasets`` returns 201 and the dataset is then absent
+        from ``/v1/datasets/filter`` for up to the TTL. Reproduced on
+        ``LocalFSDatasetStore`` before the fix -- two saves, ``total`` stuck at 1.
+        """
+        store = _real_stores(tmp_path)[store_name]
+        store.save("ds_a", _make_meta("ds_a"), _arrays())
+        first, total_first = store.filter_datasets(limit=10)
+        assert total_first == 1, f"{store_name}: first save invisible"
+
+        store.save("ds_b", _make_meta("ds_b"), _arrays())
+        second, total_second = store.filter_datasets(limit=10)
+        assert total_second == 2, f"{store_name}: second save invisible -- the cache was not invalidated (read-your-writes broken)"
+        assert {m.dataset_id for m in second} == {"ds_a", "ds_b"}
+
+    @pytest.mark.parametrize("store_name", _COVERED)
+    def test_a_delete_is_visible_immediately(self, store_name, tmp_path) -> None:
+        """The other direction: a deleted dataset must not linger in the cache."""
+        store = _real_stores(tmp_path)[store_name]
+        store.save("ds_a", _make_meta("ds_a"), _arrays())
+        store.save("ds_b", _make_meta("ds_b"), _arrays())
+        assert store.filter_datasets(limit=10)[1] == 2
+
+        assert store.delete("ds_a") is True
+        remaining, total = store.filter_datasets(limit=10)
+        assert total == 1, f"{store_name}: deleted dataset still counted -- cache not invalidated"
+        assert {m.dataset_id for m in remaining} == {"ds_b"}
+
+    @pytest.mark.parametrize("store_name", _COVERED)
+    def test_an_update_meta_is_visible_immediately(self, store_name, tmp_path) -> None:
+        """``update_meta`` changes what a filter matches, so it must invalidate too.
+
+        Filtering on a mutated field is the case that makes this load-bearing:
+        the row count can stay the same while the row that *matches* changes.
+        """
+        store = _real_stores(tmp_path)[store_name]
+        store.save("ds_a", _make_meta("ds_a", tags=["before"]), _arrays())
+        assert store.filter_datasets(limit=10, tags=["before"])[1] == 1
+
+        assert store.update_meta("ds_a", _make_meta("ds_a", tags=["after"])) is True
+        assert store.filter_datasets(limit=10, tags=["before"])[1] == 0, f"{store_name}: stale tag still matches -- cache not invalidated"
+        assert store.filter_datasets(limit=10, tags=["after"])[1] == 1
+
+    def test_every_concrete_store_is_covered_or_explicitly_excluded(self) -> None:
+        """The census that stops this suite going vacuous again.
+
+        A new store subclass that skips ``super().__init__()`` would reproduce
+        the original defect silently. This fails until the author either adds it
+        to the parametrised set above or names it in
+        ``_REQUIRES_EXTERNAL_SERVICE`` -- a decision, not an omission.
+        """
+        import juniper_data.storage as storage_pkg
+
+        concrete = set()
+        for module in vars(storage_pkg).values():
+            if isinstance(module, type) and issubclass(module, DatasetStore) and module is not DatasetStore:
+                if not getattr(module, "__abstractmethods__", None):
+                    concrete.add(module.__name__)
+
+        covered = set(_COVERED)
+        unaccounted = concrete - covered - _NOT_CONSTRUCTIBLE_HERE
+        assert not unaccounted, f"concrete DatasetStore subclasses neither covered nor explicitly excluded: {sorted(unaccounted)}"

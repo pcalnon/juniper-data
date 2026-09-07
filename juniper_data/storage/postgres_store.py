@@ -291,6 +291,8 @@ class PostgresDatasetStore(DatasetStore):
         if not POSTGRES_AVAILABLE:
             raise ImportError("psycopg2 package not installed. Install with: pip install psycopg2-binary")
 
+        # JD-PERF-02: without this the metadata cache is inert for this store.
+        super().__init__()
         self._artifact_path = artifact_path or Path("./data/datasets")
         self._artifact_path.mkdir(parents=True, exist_ok=True)
 
@@ -435,6 +437,8 @@ class PostgresDatasetStore(DatasetStore):
             tmp_artifact_path.unlink(missing_ok=True)
             raise
 
+        self._invalidate_metadata_cache()
+
     def get_meta(self, dataset_id: str) -> DatasetMeta | None:
         """Get dataset metadata from PostgreSQL.
 
@@ -504,6 +508,8 @@ class PostgresDatasetStore(DatasetStore):
         if artifact_path.exists():
             artifact_path.unlink()
 
+        if deleted:
+            self._invalidate_metadata_cache()
         return deleted
 
     def list_datasets(self, limit: int = 100, offset: int = 0) -> list[str]:
@@ -549,6 +555,8 @@ class PostgresDatasetStore(DatasetStore):
                 updated = cur.rowcount > 0
             conn.commit()
 
+        if updated:
+            self._invalidate_metadata_cache()
         return updated
 
     def list_all_metadata(self) -> list[DatasetMeta]:
