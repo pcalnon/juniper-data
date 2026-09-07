@@ -10,7 +10,7 @@ annotated-doc==0.0.5
     # via fastapi
 annotated-types==0.8.0
     # via pydantic
-anyio==4.15.0
+anyio==4.15.1
     # via
     #   httpx
     #   starlette
@@ -88,7 +88,7 @@ multidict==6.7.1
     #   yarl
 multiprocess==0.70.19
     # via datasets
-numpy==2.5.2
+numpy==2.5.3
     # via
     #   juniper-data (pyproject.toml)
     #   datasets
