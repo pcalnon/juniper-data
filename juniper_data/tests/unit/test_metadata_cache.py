@@ -15,6 +15,7 @@ Pins the cache contract added to ``DatasetStore``:
 
 from __future__ import annotations
 
+import importlib
 import time
 from datetime import UTC, datetime
 
@@ -26,11 +27,8 @@ from juniper_data.storage import base as base_module
 from juniper_data.storage.base import DatasetStore
 from juniper_data.storage.cached import CachedDatasetStore
 from juniper_data.storage.hf_store import HuggingFaceDatasetStore
-from juniper_data.storage.kaggle_store import KaggleDatasetStore  # noqa: F401  -- imported to register the subclass for the census below
 from juniper_data.storage.local_fs import LocalFSDatasetStore
 from juniper_data.storage.memory import InMemoryDatasetStore
-from juniper_data.storage.postgres_store import PostgresDatasetStore  # noqa: F401  -- ditto
-from juniper_data.storage.redis_store import RedisDatasetStore  # noqa: F401  -- ditto
 
 
 def _make_meta(dataset_id: str = "ds_1", **overrides) -> DatasetMeta:
@@ -349,6 +347,14 @@ class TestCacheAgainstRealStores:
         to the parametrised set above or names it in
         ``_REQUIRES_EXTERNAL_SERVICE`` -- a decision, not an omission.
         """
+
+        # Import for the SIDE EFFECT of registering the subclass, as a call rather
+        # than as a bare import. A plain `import X  # noqa: F401` satisfies ruff and
+        # is still reported by CodeQL's py/unused-import -- a suppression that
+        # convinces the linter but not the scanner that gates the merge is worse
+        # than none, because it looks handled.
+        for module_name in ("kaggle_store", "postgres_store", "redis_store"):
+            importlib.import_module(f"juniper_data.storage.{module_name}")
 
         def _walk(cls):
             for sub in cls.__subclasses__():
