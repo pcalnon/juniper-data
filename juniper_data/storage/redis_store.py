@@ -67,6 +67,8 @@ class RedisDatasetStore(DatasetStore):
         if not REDIS_AVAILABLE:
             raise ImportError("Redis package not installed. Install with: pip install redis")
 
+        # JD-PERF-02: without this the metadata cache is inert for this store.
+        super().__init__()
         self._key_prefix = key_prefix
         self._default_ttl = default_ttl
 
@@ -134,6 +136,7 @@ class RedisDatasetStore(DatasetStore):
             pipe.set(meta_key, meta_bytes)
             pipe.set(artifact_key, artifact_bytes)
         pipe.execute()
+        self._invalidate_metadata_cache()
 
     def get_meta(self, dataset_id: str) -> DatasetMeta | None:
         """Get dataset metadata from Redis.
@@ -184,6 +187,8 @@ class RedisDatasetStore(DatasetStore):
         artifact_key = self._artifact_key(dataset_id)
 
         deleted = self._client.delete(meta_key, artifact_key)
+        if deleted > 0:
+            self._invalidate_metadata_cache()
         return deleted > 0
 
     def list_datasets(self, limit: int = DEFAULT_LIST_LIMIT, offset: int = DEFAULT_LIST_OFFSET) -> list[str]:
@@ -230,6 +235,7 @@ class RedisDatasetStore(DatasetStore):
         else:
             self._client.set(meta_key, meta_bytes)
 
+        self._invalidate_metadata_cache()
         return True
 
     def list_all_metadata(self) -> list[DatasetMeta]:
