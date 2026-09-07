@@ -51,6 +51,8 @@ class CachedDatasetStore(DatasetStore):
             write_through: If True, writes go to both stores. If False,
             writes only go to primary and cache is populated on read.
         """
+        # JD-PERF-02: without this the metadata cache is inert for this store.
+        super().__init__()
         self._primary = primary
         self._cache = cache
         self._write_through = write_through
@@ -94,6 +96,9 @@ class CachedDatasetStore(DatasetStore):
             with contextlib.suppress(Exception):
                 self._cache.save(dataset_id, meta, arrays)
             self._emit_cached_count()
+        # This store keeps its OWN metadata cache, independent of ``self._cache``.
+        # The primary write above changed what ``list_all_metadata`` returns.
+        self._invalidate_metadata_cache()
 
     def get_meta(self, dataset_id: str) -> DatasetMeta | None:
         """Get metadata, checking cache first.
@@ -169,7 +174,10 @@ class CachedDatasetStore(DatasetStore):
             cache_touched = True
         if cache_touched:
             self._emit_cached_count()
-        return self._primary.delete(dataset_id)
+        deleted = self._primary.delete(dataset_id)
+        if deleted:
+            self._invalidate_metadata_cache()
+        return deleted
 
     def list_datasets(self, limit: int = DEFAULT_LIST_LIMIT, offset: int = DEFAULT_LIST_OFFSET) -> list[str]:
         """List datasets from primary store.
@@ -198,6 +206,7 @@ class CachedDatasetStore(DatasetStore):
         if result:
             with contextlib.suppress(Exception):
                 self._cache.update_meta(dataset_id, meta)
+            self._invalidate_metadata_cache()
         return result
 
     def list_all_metadata(self) -> list[DatasetMeta]:
