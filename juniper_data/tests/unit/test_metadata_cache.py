@@ -26,8 +26,11 @@ from juniper_data.storage import base as base_module
 from juniper_data.storage.base import DatasetStore
 from juniper_data.storage.cached import CachedDatasetStore
 from juniper_data.storage.hf_store import HuggingFaceDatasetStore
+from juniper_data.storage.kaggle_store import KaggleDatasetStore  # noqa: F401  -- imported to register the subclass for the census below
 from juniper_data.storage.local_fs import LocalFSDatasetStore
 from juniper_data.storage.memory import InMemoryDatasetStore
+from juniper_data.storage.postgres_store import PostgresDatasetStore  # noqa: F401  -- ditto
+from juniper_data.storage.redis_store import RedisDatasetStore  # noqa: F401  -- ditto
 
 
 def _make_meta(dataset_id: str = "ds_1", **overrides) -> DatasetMeta:
@@ -314,7 +317,10 @@ class TestCacheAgainstRealStores:
         store.save("ds_b", _make_meta("ds_b"), _arrays())
         assert store.filter_datasets(limit=10)[1] == 2
 
-        assert store.delete("ds_a") is True
+        # Bound outside the assert: a mutation inside one disappears under
+        # ``python -O``, and the test would then pass without ever deleting.
+        deleted = store.delete("ds_a")
+        assert deleted is True
         remaining, total = store.filter_datasets(limit=10)
         assert total == 1, f"{store_name}: deleted dataset still counted -- cache not invalidated"
         assert {m.dataset_id for m in remaining} == {"ds_b"}
@@ -330,7 +336,8 @@ class TestCacheAgainstRealStores:
         store.save("ds_a", _make_meta("ds_a", tags=["before"]), _arrays())
         assert store.filter_datasets(limit=10, tags=["before"])[1] == 1
 
-        assert store.update_meta("ds_a", _make_meta("ds_a", tags=["after"])) is True
+        updated = store.update_meta("ds_a", _make_meta("ds_a", tags=["after"]))
+        assert updated is True
         assert store.filter_datasets(limit=10, tags=["before"])[1] == 0, f"{store_name}: stale tag still matches -- cache not invalidated"
         assert store.filter_datasets(limit=10, tags=["after"])[1] == 1
 
@@ -342,13 +349,19 @@ class TestCacheAgainstRealStores:
         to the parametrised set above or names it in
         ``_REQUIRES_EXTERNAL_SERVICE`` -- a decision, not an omission.
         """
-        import juniper_data.storage as storage_pkg
 
-        concrete = set()
-        for module in vars(storage_pkg).values():
-            if isinstance(module, type) and issubclass(module, DatasetStore) and module is not DatasetStore:
-                if not getattr(module, "__abstractmethods__", None):
-                    concrete.add(module.__name__)
+        def _walk(cls):
+            for sub in cls.__subclasses__():
+                yield sub
+                yield from _walk(sub)
+
+        # Every store module is imported at the top of this file precisely so that
+        # ``__subclasses__`` sees it here -- a subclass Python has not imported does
+        # not exist to this census, which would make it quietly incomplete.
+        # Scoped to ``juniper_data.storage``: the census is about PRODUCTION stores.
+        # Test doubles defined in this file are subclasses too, and counting them
+        # would make the assertion fail for a reason it does not care about.
+        concrete = {sub.__name__ for sub in _walk(DatasetStore) if not getattr(sub, "__abstractmethods__", None) and sub.__module__.startswith("juniper_data.storage")}
 
         covered = set(_COVERED)
         unaccounted = concrete - covered - _NOT_CONSTRUCTIBLE_HERE
