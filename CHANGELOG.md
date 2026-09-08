@@ -72,6 +72,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   affected and no artifact the API serves carries either shape. Whether those stores should partition at
   all is an open product decision, not a change made here.
 
+### Added
+
+- **`publish-image.yml` -- the service container image is published to GHCR on every `v*`
+  release** as a multi-arch manifest (`linux/amd64` + `linux/arm64`, native runners, no QEMU),
+  tagged `X.Y.Z` / `X.Y` / `latest`, pushed by digest with tags written exactly once by the merge
+  job. Wave 2 of the container-registry rollout (juniper-ml
+  `notes/JUNIPER_2026-09-05_JUNIPER-ECOSYSTEM_CONTAINER-REGISTRY-PUBLISHING-PLAN.md`); template
+  `juniper-cascor-worker/.github/workflows/publish-image.yml`. The PR arm builds both arches and
+  pushes nothing. This image ships no torch, and `util/check_image_cpu_only.py` asserts exactly that
+  (`EXPECT_TORCH=absent`: no torch, no `nvidia-*` / `triton` distribution) on the PR arm and on the
+  publish path, so the 3 GB CUDA stack that reached the worker's first published image cannot creep
+  in here unnoticed. Not a required status check (it is `paths:`-filtered).
+
 ### Fixed
 
 - **The JD-PERF-02 metadata cache was inert in production, and its test suite could not see that.**
