@@ -211,8 +211,9 @@ def window_regular_series(
     every test target -- the same no-future-leak guarantee as the per-entity
     windower, here structural because there is a single series and two chronological
     cuts. Validation sits BETWEEN train and test in time, so early stopping never
-    sees data from after the reported window. ``full`` is ``train``, then ``val``,
-    then ``test``.
+    sees data from after the reported window. The three partitions are contiguous in
+    that order, so a consumer reconstructing the whole set concatenates ``train``,
+    then ``val``, then ``test``.
 
     Args:
         series: ``(T, F)`` (or ``(T,)``) float series, ascending in time.
@@ -225,13 +226,13 @@ def window_regular_series(
             immediately after train, ``[0, 1)``. Test is every later window.
 
     Returns:
-        Flat NPZ dict mapping ``{X, y, dt, target_dt, observed_mask}_{train,val,test,full}``:
+        Flat NPZ dict mapping ``{X, y, dt, target_dt, observed_mask}_{train,val,test}``:
         ``X`` ``(W, L, F)`` f32; ``y`` ``(W, F)`` f32 (the series value at the
         horizon step); ``dt`` ``(W, L)`` f32 ``[0, sample_dt, ...]``; ``target_dt``
         ``(W,)`` f32 ``= horizon * sample_dt``; ``observed_mask`` ``(W, L)`` uint8
-        all-ones. ``X_full == concatenate([X_train, X_val, X_test])`` -- the
-        identity spans THREE partitions now, and ``test`` takes the remainder so
-        no window is lost to rounding.
+        all-ones. No ``*_full`` key -- decision 11 retired that family; the whole set
+        is ``concatenate([X_train, X_val, X_test])``, and ``test`` takes the remainder
+        so no window is lost to rounding.
 
     Raises:
         ValueError: if ``lookback < 1``, ``horizon < 1``, ``sample_dt <= 0``, the
@@ -304,8 +305,9 @@ def window_timed_series(
     later (index ``i + horizon``).
 
     Windows are split at :func:`~juniper_data.core.split.temporal_split_indices` --
-    the same no-future-leak guarantee as :func:`window_regular_series`. ``full`` is
-    ``train`` followed by ``val`` followed by ``test``.
+    the same no-future-leak guarantee as :func:`window_regular_series`. The three
+    partitions are contiguous in chronological order, so a consumer reconstructing the
+    whole set concatenates ``train``, then ``val``, then ``test``.
 
     Args:
         values: ``(T, F)`` (or ``(T,)``) float series, ascending in time.
@@ -318,13 +320,13 @@ def window_timed_series(
             immediately after train, ``[0, 1)``. Test is every later window.
 
     Returns:
-        Flat NPZ dict mapping ``{X, y, dt, target_dt, observed_mask}_{train,val,test,full}``:
+        Flat NPZ dict mapping ``{X, y, dt, target_dt, observed_mask}_{train,val,test}``:
         ``X`` ``(W, L, F)`` f32; ``y`` ``(W, F)`` f32; ``dt`` ``(W, L)`` f32
         ``[0, diff(window times)]`` (non-uniform); ``target_dt`` ``(W,)`` f32
         ``= times[i + horizon] - times[i]``; ``observed_mask`` ``(W, L)`` uint8
-        all-ones. ``X_full == concatenate([X_train, X_val, X_test])`` -- the
-        identity spans THREE partitions now, and ``test`` takes the remainder so
-        no window is lost to rounding.
+        all-ones. No ``*_full`` key -- decision 11 retired that family; the whole set
+        is ``concatenate([X_train, X_val, X_test])``, and ``test`` takes the remainder
+        so no window is lost to rounding.
 
     Raises:
         ValueError: if ``lookback < 1``, ``horizon < 1``, ``values`` is not
