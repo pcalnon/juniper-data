@@ -102,6 +102,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`equities_seq` now binds the deployment policy before hashing, so its `dataset_id` follows the
+  policy it actually runs under.** `bind_deployment_defaults` existed only on `EquitiesGenerator`,
+  and the create route finds the binder by `getattr` — so for `equities_seq` nothing was bound while
+  its `generate` still applied the same symbol cap and the same `allow_truncation` OR through
+  `EquitiesGenerator._resolve_symbols`. `generate_dataset_id` therefore hashed the **schema**
+  defaults (`max_symbols` unclamped, `allow_truncation=false`) rather than the effective values.
+  Proven by execution on 2026-09-08: two `equities_seq` requests, identical but for
+  `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION` off vs on, hashed to the **same** id, so toggling the
+  deployment opt-in kept serving the artifact built under the old policy; `equities` gave two ids
+  for the same pair. The sequence generator now delegates to the flat generator's binder
+  (`EquitiesSeqParams` subclasses `EquitiesParams`; `model_copy` keeps the concrete class).
+
+  **Deliberate consequence: every `equities_seq` `dataset_id` changes once.** `max_symbols=None`
+  now hashes as the bound cap and `allow_truncation` as the effective value, so the first request
+  after this ships regenerates. That one-time cache turnover is the point — the old ids were
+  computed from a policy the generator did not run under.
+
+- **`equities_seq` now applies the fail / accept / drop contract to rows no rescue path could
+  recover.** The sequence generator reuses the flat generator's universe resolution, conditioning
+  and normalisation, but had no copy of the incomplete-data block: an unrescued ticker shipped
+  there with NaN (or, under `fundamentals_fill="zero"`, `0.0`) `total_shares` / `market_cap` —
+  no refusal, no `data_quality` annotation, whatever `allow_truncation` said — while the identical
+  request to `equities` was refused with 422. The classify / resolve / fail-or-drop / annotate block
+  is extracted into one shared helper, `EquitiesGenerator._apply_incomplete_policy`, called by both
+  generators (for the sequence generator: after conditioning and **before** the normaliser fit and
+  the windowing, so a dropped ticker reaches neither). The flat generator's behaviour is unchanged
+  and its existing tests pin it. Pinned for the sequence generator by
+  `test_equities_seq_deployment_policy.py` (default refusal, accept annotates, drop removes the
+  ticker from every window and still annotates, drop-that-empties still fails, clean carries no
+  annotation).
+
+  **The seq test fixtures were silently exercising the defect.** Their synthetic shares were filed
+  after the mocked frame's last trade date, so `total_shares` was all-NaN in every sequence test
+  and nothing noticed — there was no policy to notice with. The first filing now lands inside the
+  frame; tests that want the refused case pass `shares=None` explicitly.
+
+  Both found by the round-38 handoff validation in juniper-ml (2026-09-08). Also in this change:
+  three stale comments corrected in `equities/generator.py` and `params.py` (the KO / ABT
+  "no shares concept" example — the on-disk cache holds 71 and 68 dei facts for them; the
+  circular-import paragraph, obsolete since juniper-data#333; and two "10-column" feature counts
+  that now reference `EQUITIES_FEATURE_COLUMNS`), and the measurement instruments behind the
+  round-37 validation's SEC-shares-cache findings graduated from a session scratch directory into
+  `util/ad-hoc/2026-09-08_equities_shares_cache_census/` (read-only on the cache, network blocked).
+
 - **The JD-PERF-02 metadata cache was inert in production, and its test suite could not see that.**
   `DatasetStore.__init__` creates the cache state, and `_list_all_metadata_cached` degrades to an
   uncached walk when `_metadata_cache_lock` is absent. **Six of seven stores never called
@@ -109,8 +153,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   So every `filter_datasets` / `get_stats` / `list_versions` / `delete_expired` call paid a full
   disk walk, for months, while the cache looked present.
 
-  Measured on `LocalFSDatasetStore` after the fix: **114.8× at 100 datasets** (18.87 → 0.16 ms) and
-  **92.9× at 1,000** (157.16 → 1.69 ms).
+  Measured on `LocalFSDatasetStore` after the fix: of order **100×** at both 100 and 1,000 datasets.
+  The exact ratio is instrument- and machine-specific — independent re-measurements on 2026-09-08
+  ranged 96–180× at N=100 — so only the order is quotable; the four-significant-figure values an
+  earlier version of this entry carried were not reproducible and are withdrawn.
 
   **Wiring it alone would have shipped a read-your-writes bug.** `_invalidate_metadata_cache()` was
   called only by `InMemoryDatasetStore`; a create against any other store would have stayed

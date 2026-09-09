@@ -264,46 +264,11 @@ class EquitiesGenerator:
         if not conditioned:
             raise ValueError("No data could be retrieved for the requested symbols.")
 
-        # APD-DATA-018 follow-up: classify what came back BEFORE assembling it.
-        #
-        # Two distinct problems, kept apart because a consumer has to ask about
-        # them separately: `degraded` recovered a value from a weaker source (a
-        # period average is not a point-in-time share count, so its market_cap is
-        # a different quantity); `unrescued` recovered nothing at all, and under
-        # fundamentals_fill="zero" would ship a market cap of 0.0 -- a number no
-        # listed company can have.
-        degraded: dict[str, str] = {}
-        unrescued: dict[str, str] = {}
-        for ticker, frame in conditioned.items():
-            quality = str(frame["shares_quality"].iloc[0]) if "shares_quality" in frame.columns and len(frame) else SHARES_QUALITY_UNRESCUED
-            if quality == SHARES_QUALITY_UNRESCUED:
-                unrescued[ticker] = "no shares-outstanding concept in companyconcept or companyfacts"
-            elif quality != SHARES_QUALITY_POINT_IN_TIME:
-                degraded[ticker] = quality
-
-        rows_affected = sum(len(conditioned[ticker]) for ticker in unrescued)
-        policy = EquitiesGenerator._resolve_incomplete_policy(params, bool(unrescued))
-
-        if unrescued:
-            _logger.warning("equities: %d symbol(s) have no shares data after every rescue path: %s", len(unrescued), ", ".join(sorted(unrescued)))
-        if policy == INCOMPLETE_FAIL:
-            raise IncompleteDataError(
-                detail="Shares outstanding could not be resolved for part of the requested universe, so total_shares and market_cap would be fabricated for those rows.",
-                unrescued=sorted(unrescued),
-                rows_affected=rows_affected,
-                opt_in_env="JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION",
-            )
-        if policy == INCOMPLETE_DROP:
-            for ticker in unrescued:
-                conditioned.pop(ticker, None)
-            _logger.warning("equities: dropped %d symbol(s) with unresolvable shares data per incomplete_rows='drop'", len(unrescued))
-            if not conditioned:
-                raise IncompleteDataError(
-                    detail="Every requested symbol had unresolvable shares data, so dropping them leaves no dataset.",
-                    unrescued=sorted(unrescued),
-                    rows_affected=rows_affected,
-                    opt_in_env="JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION",
-                )
+        # Classify, refuse or prune, and build the annotation -- BEFORE assembling
+        # anything. Shared with ``equities_seq``, which reuses this whole pipeline
+        # and went a release without the policy at all (found by the round-38
+        # handoff validation in juniper-ml, 2026-09-08).
+        conditioned, quality_meta = EquitiesGenerator._apply_incomplete_policy(params, conditioned)
 
         vocab = sorted(conditioned)
         code_of = {ticker: code for code, ticker in enumerate(vocab)}
@@ -395,19 +360,10 @@ class EquitiesGenerator:
             truncation["records_imported"] = int(len(full))
             arrays[TRUNCATION_META_KEY] = truncation
 
-        # The permanent data-quality annotation. Absent entirely when nothing is
-        # wrong, so its presence alone answers "is anything degraded here".
-        # DROP still annotates. The symbols are gone from the arrays, but a
-        # dataset that quietly contains fewer symbols than were asked for is the
-        # same silent-partial-data problem in a different costume -- the record of
-        # WHAT was dropped is the whole point. Only `rows_affected` goes to zero,
-        # because those rows are genuinely not in the dataset to be affected.
-        quality_meta = build_data_quality_meta(
-            unrescued=unrescued,
-            degraded=degraded,
-            rows_affected=0 if policy == INCOMPLETE_DROP else rows_affected,
-            policy=policy,
-        )
+        # The permanent data-quality annotation, built by ``_apply_incomplete_policy``
+        # above and attached here so it rides the same reserved-key channel as the
+        # truncation descriptor. Absent entirely when nothing is wrong, so its
+        # presence alone answers "is anything degraded here".
         if quality_meta is not None:
             arrays[DATA_QUALITY_META_KEY] = quality_meta
 
@@ -455,13 +411,18 @@ class EquitiesGenerator:
         Returns:
             ``(cap_symbols, allow_truncation)``.
         """
-        # Imported HERE, not at module scope, deliberately. juniper-data carries
-        # a circular import that csv_import already sits inside: importing a
-        # generator package runs its __init__ -> generator -> api.settings ->
-        # api/__init__ -> app -> routes.generators -> back into the half-built
-        # package. csv_import pays that cost at module scope and is therefore
-        # un-runnable in isolation; there is no reason to add a second entry
-        # point to the same cycle for one settings lookup.
+        # Imported HERE, not at module scope, for the settings lookup alone.
+        #
+        # THE CIRCULAR-IMPORT REASON NO LONGER APPLIES. This comment used to
+        # describe a live cycle -- generator -> api.settings -> api/__init__ ->
+        # app -> routes.generators -> back into the half-built generator package --
+        # and said csv_import was un-runnable in isolation because it pays that
+        # cost at module scope. juniper-data#333 (650c91c, 2026-09-04) deferred
+        # ``create_app`` behind PEP 562, so importing ``api.settings`` no longer
+        # drags in the app or the routes; csv_import imports it at module scope
+        # today and ``tests/unit/test_no_import_cycles.py`` pins every generator
+        # subpackage importing standalone in a cold interpreter. Keeping the
+        # import local is now a style choice, not a workaround.
         from juniper_data.api.settings import get_settings
 
         settings = get_settings()
@@ -503,6 +464,92 @@ class EquitiesGenerator:
             return INCOMPLETE_FAIL
         choice = params.incomplete_rows or settings.equities_incomplete_rows
         return INCOMPLETE_DROP if choice == INCOMPLETE_DROP else INCOMPLETE_ACCEPT
+
+    @staticmethod
+    def _apply_incomplete_policy(params: EquitiesParams, conditioned: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | None]:
+        """Classify the conditioned frames, apply fail / accept / drop, and build the annotation.
+
+        APD-DATA-018 follow-up, extracted from ``generate`` so that BOTH equities
+        generators run it. ``equities_seq`` reuses this module's universe resolution,
+        conditioning and normalisation but had no copy of this block, so an unrescued
+        ticker shipped there with a ``total_shares`` / ``market_cap`` of NaN -- or of
+        0.0 under ``fundamentals_fill="zero"``, a value no listed company can have --
+        with no refusal and no annotation, whatever ``allow_truncation`` said. The flat
+        generator refused the identical request. One helper rather than two copies,
+        because a second copy is how the two paths drifted in the first place.
+
+        Two categories, kept apart because a consumer has to ask about them separately:
+        ``degraded`` recovered a value from a weaker source (a period average is not a
+        point-in-time share count, so its ``market_cap`` is a different quantity);
+        ``unrescued`` recovered nothing at all.
+
+        Call it AFTER the conditioning loop and BEFORE anything reads the frames --
+        for the sequence generator that means before the normaliser fit and the
+        windowing, so a dropped ticker never reaches either.
+
+        Args:
+            params: the request's params; supplies the ``allow_truncation`` gate and
+                the ``incomplete_rows`` choice via ``_resolve_incomplete_policy``.
+            conditioned: ticker -> conditioned frame, as the conditioning loop built it.
+
+        Returns:
+            ``(conditioned, quality_meta)``. The mapping is the same one under FAIL /
+            ACCEPT and a pruned copy under DROP (the caller's ``vocab`` is derived from
+            it, so dropped tickers leave ``ticker_vocab`` too). ``quality_meta`` is the
+            ``build_data_quality_meta`` descriptor, or ``None`` when nothing is wrong --
+            absence is the signal, the same contract ``DatasetMeta.truncation`` keeps.
+
+        Raises:
+            IncompleteDataError: under ``INCOMPLETE_FAIL`` (the default: the gate is
+                shut), and under ``INCOMPLETE_DROP`` when dropping empties the dataset.
+                Subclasses ValueError; the route maps it to 422.
+        """
+        degraded: dict[str, str] = {}
+        unrescued: dict[str, str] = {}
+        for ticker, frame in conditioned.items():
+            quality = str(frame["shares_quality"].iloc[0]) if "shares_quality" in frame.columns and len(frame) else SHARES_QUALITY_UNRESCUED
+            if quality == SHARES_QUALITY_UNRESCUED:
+                unrescued[ticker] = "no shares-outstanding concept in companyconcept or companyfacts"
+            elif quality != SHARES_QUALITY_POINT_IN_TIME:
+                degraded[ticker] = quality
+
+        rows_affected = sum(len(conditioned[ticker]) for ticker in unrescued)
+        policy = EquitiesGenerator._resolve_incomplete_policy(params, bool(unrescued))
+
+        # The messages say "equities:" for both callers deliberately -- this IS the
+        # equities pipeline, and the sequence generator is a windowing layer on top of it.
+        if unrescued:
+            _logger.warning("equities: %d symbol(s) have no shares data after every rescue path: %s", len(unrescued), ", ".join(sorted(unrescued)))
+        if policy == INCOMPLETE_FAIL:
+            raise IncompleteDataError(
+                detail="Shares outstanding could not be resolved for part of the requested universe, so total_shares and market_cap would be fabricated for those rows.",
+                unrescued=sorted(unrescued),
+                rows_affected=rows_affected,
+                opt_in_env="JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION",
+            )
+        if policy == INCOMPLETE_DROP:
+            conditioned = {ticker: frame for ticker, frame in conditioned.items() if ticker not in unrescued}
+            _logger.warning("equities: dropped %d symbol(s) with unresolvable shares data per incomplete_rows='drop'", len(unrescued))
+            if not conditioned:
+                raise IncompleteDataError(
+                    detail="Every requested symbol had unresolvable shares data, so dropping them leaves no dataset.",
+                    unrescued=sorted(unrescued),
+                    rows_affected=rows_affected,
+                    opt_in_env="JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION",
+                )
+
+        # DROP still annotates. The symbols are gone from the arrays, but a dataset
+        # that quietly contains fewer symbols than were asked for is the same
+        # silent-partial-data problem in a different costume -- the record of WHAT was
+        # dropped is the whole point. Only `rows_affected` goes to zero, because those
+        # rows are genuinely not in the dataset to be affected.
+        quality_meta = build_data_quality_meta(
+            unrescued=unrescued,
+            degraded=degraded,
+            rows_affected=0 if policy == INCOMPLETE_DROP else rows_affected,
+            policy=policy,
+        )
+        return conditioned, quality_meta
 
     @staticmethod
     def bind_deployment_defaults(params: EquitiesParams) -> EquitiesParams:
@@ -726,13 +773,22 @@ class EquitiesGenerator:
         if frame["total_shares"].isna().all():
             frame["shares_quality"] = SHARES_QUALITY_UNRESCUED
             frame["shares_origin"] = SHARES_QUALITY_UNRESCUED
-            # SAY SO. Under the default fundamentals_fill="zero" this ticker's
-            # total_shares and market_cap become 0.0 for every row -- a value no
-            # listed company can have, and one nothing downstream distinguishes
-            # from a measurement. Roughly 4-6% of the bundled S&P 500 universe
-            # reports no shares concept to SEC at all (KO and ABT among them);
-            # before this line, that produced a silently zero-filled feature
-            # column and no signal anywhere.
+            # SAY SO. Under fundamentals_fill="zero" this ticker's total_shares
+            # and market_cap become 0.0 for every row -- a value no listed
+            # company can have, and one nothing downstream distinguishes from a
+            # measurement. This branch is the LAST word on a symbol: it fires
+            # when every rescue rung came back empty, and also when a payload's
+            # facts all fell out of the alignment above, so it catches the second
+            # case no earlier check sees. Before this line, either produced a
+            # silently zero-filled feature column and no signal anywhere.
+            #
+            # It used to add "roughly 4-6% of the bundled S&P 500 universe
+            # reports no shares concept to SEC at all (KO and ABT among them)".
+            # KO and ABT are the wrong examples and the claim as phrased is
+            # false: the on-disk cache holds 71 dei facts for KO (CIK 21344) and
+            # 68 for ABT (CIK 1800), which is exactly why the rescue ladder above
+            # names KO as the case it recovers. No population figure is restated
+            # here -- the ladder comment carries the measured one.
             _logger.warning("equities: %s has NO shares-outstanding data from SEC; total_shares/market_cap will be filled per fundamentals_fill=%r", ticker, params.fundamentals_fill)
 
         frame["market_cap"] = frame["close"] * frame["total_shares"]
@@ -963,7 +1019,7 @@ class EquitiesGenerator:
 
     @staticmethod
     def _raw_features(frame: Any) -> np.ndarray:
-        """Stack the ordered feature columns into a float32 (n, 10) matrix."""
+        """Stack the ordered feature columns into a float32 ``(n, len(EQUITIES_FEATURE_COLUMNS))`` matrix."""
         return np.column_stack([frame[column].to_numpy(dtype=np.float32) for column in EQUITIES_FEATURE_COLUMNS])
 
     @staticmethod
