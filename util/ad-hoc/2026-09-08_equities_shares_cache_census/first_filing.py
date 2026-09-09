@@ -27,7 +27,6 @@ for the generator-faithful column and the replica for the alternatives.
 """
 
 import sys
-from datetime import date
 from pathlib import Path
 
 import pandas as pd
