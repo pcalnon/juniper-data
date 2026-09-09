@@ -142,6 +142,13 @@ repos:
         additional_dependencies:
           - types-redis
           - types-cachetools
+          # `--ignore-missing-imports` does NOT cover this: it silences
+          # `import-not-found` (no such module), while PyYAML is installed and merely
+          # lacks inline types, which mypy reports as a separate `import-untyped`
+          # error. A test that imports yaml therefore fails this hook until the stubs
+          # are declared here -- first hit by
+          # juniper_data/tests/unit/test_main_verify_catchup_base.py.
+          - types-PyYAML
         files: ^juniper_data/tests/.*\.py$
 
   # ═══════════════════════════════════════════════════════════════════════════
