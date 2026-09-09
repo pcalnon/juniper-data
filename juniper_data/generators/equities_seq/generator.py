@@ -15,7 +15,9 @@ irregular Δt), the irregular forecast horizon ``target_dt``, an all-ones
 and the per-window ``window_end_date`` / ``ticker_code``, plus the targets
 ``y`` (one-hot next-day direction) and ``y_reg`` (the configurable next-day
 regression target -- raw close / return / log-return, per ``regression_target``).
-``full`` is each ticker's train windows followed by its test windows.
+The splits are ``train`` / ``val`` / ``test``; decision 11 retired the ``*_full``
+family, so there is no whole-dataset key. Reconstructing one is not a plain
+concatenation here -- see the row-order note on ``_assemble``.
 
 See ``juniper-ml/notes/JUNIPER_2026-06-05_JUNIPER-RECURRENCE_RECURSE-DELTA-T-HANDLING.md`` §3
 (schema delta) and §6 (the dt / observed_mask contract).

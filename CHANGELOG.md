@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **BREAKING: no generator emits `X_full` / `y_full`, or any per-generator `*_full` sibling.** Decision 11
+  (§9.5) of the ecosystem partition design, juniper-ml
+  `notes/JUNIPER_2026-08-29_JUNIPER-ECOSYSTEM_TRAIN-EVAL-TEST-PARTITION-DESIGN.md`. Shipped by #369, merged
+  2026-09-06; this section carried no entry for it until now, and 0.14.0 is cut from here.
+
+  **A consumer that wants the whole dataset concatenates the three partitions, in `train | val | test`
+  order.** That is exactly how the key was built: `core/split.py` assembled it as
+  `np.vstack([X_train, X_val, X_test])` over the contiguous, non-overlapping blocks `split_three_way` cuts
+  in that order. For every generator that goes through `core/split.py` the concatenation is therefore
+  row-for-row identical to the retired array.
+
+  **Every generator's `VERSION` went `2.0.0` → `3.0.0`** — all sixteen of them. `generate_dataset_id`
+  (`core/dataset_id.py`) hashes the version into the id, so a seeded request made after this change
+  resolves to a *new* id and a cached `*_full`-bearing artifact can never answer a post-change request.
+  That is risk **R-1** of juniper-ml
+  `notes/JUNIPER_2026-08-30_JUNIPER-ECOSYSTEM_PARTITION-IMPLEMENTATION-PLAN.md`: without the bump, cache
+  state rather than the contract decides which shape a consumer sees. Removing keys is a *second* contract
+  change, so the `val` addition's earlier bump does not cover it.
+
+  **Tolerate the family; never require its absence.** Every artifact stored before this change still
+  carries `X_full` / `y_full`, and consumers are obliged to keep loading those — `core/meta.py` reads
+  `y_full` with `.get()` and falls back to stacking whichever partitions are present. A check that asserts
+  `X_full` is *absent* is as wrong as one that requires it.
+
+  **Two generators are row-order exceptions: `equities` and `equities_seq`.** Both built `*_full`
+  **entity-major** — each ticker's train, val and test in turn, concatenated across tickers — while their
+  partitions are **split-major** (every ticker's train, then every ticker's val, then every ticker's test).
+  Same rows, different permutation, identical only for a single-ticker request. Anything that slices the
+  whole view by row index — walk-forward cross-validation does — gets different folds from the two orders.
+  `juniper_recurrence_model.data.derive_full_split` (juniper-recurrence#150) rebuilds the entity-major
+  order by stable-sorting the concatenation on `ticker_code`.
+
+  **For the tabular `equities` generator the concatenation is additionally a lower bound, not a
+  permutation.** The retired `*_full` appended each ticker's **entire** conditioned frame
+  (`generators/equities/generator.py`, `full_frames.append(frame)`), while `train` / `val` / `test` are
+  ratio-bounded slices of that same frame; and the params validator rejects only ratio sums **above** 1.0
+  (`generators/equities/params.py`, `train_ratio + val_ratio + test_ratio > 1.0`). So a perfectly legal
+  `train=0.6 / val=0.2 / test=0.1` left roughly a tenth of every ticker's rows in no partition at all, and
+  `concatenate([train, val, test])` returns fewer rows than the legacy array held.
+
+  **Four repairs landed with the removal, so that nothing regressed on the way out.** Three of them are
+  faults the removal itself would have introduced, caught before merge rather than after: `equities_seq`
+  would have raised `KeyError: 'X_full'` on **every capped request**, because `records_imported` read an
+  array `_assemble` had stopped producing — it is the partition sum now; ARC-AGI's `task_ids` would have
+  been dropped from the artifact silently, because `shuffle_and_split_three_way` permutes `extras` in place
+  and returns only the six partition keys, and the code merging them back in went out with the `*_full`
+  assembly — they are merged in `partition_and_assemble` now, truncated to the partition sum; and
+  `csv_import` would have reached `np.vstack([])` (`ValueError: need at least one array to concatenate`)
+  for the degenerate-but-valid request whose three partitions are all empty — normalisation is a guarded
+  no-op there now. The fourth was already stale on `main`: generator docstrings advertising a `X_full` /
+  `y_full` return key, several of which had also never been updated for `val`. A new guard,
+  `TestEveryGeneratorBumpedForDecision11` (`tests/unit/test_val_emission_guards.py`), enumerates the
+  generators package and pins every `VERSION` — the `val` bump had been verified by a single assertion in
+  one generator's suite, so fifteen generators had no guard at all.
+
+  **Not changed here, deliberately: `storage/hf_store.py` and `storage/kaggle_store.py`.** Both still cut
+  **two** ways with no `X_val` (`hf_store.py:110`, `kaggle_store.py:212`), still write `X_full` / `y_full`
+  (`hf_store.py:147-148`, `kaggle_store.py:244-245`), and still hardcode `generator_version="1.0.0"`
+  (`hf_store.py:121`, `kaggle_store.py:220`). Neither `HuggingFaceDatasetStore` nor `KaggleDatasetStore` is
+  referenced anywhere outside `juniper_data/storage/` and `juniper_data/tests/`, so no service path is
+  affected and no artifact the API serves carries either shape. Whether those stores should partition at
+  all is an open product decision, not a change made here.
+
 ### Added
 
 - **`publish-image.yml` -- the service container image is published to GHCR on every `v*`
