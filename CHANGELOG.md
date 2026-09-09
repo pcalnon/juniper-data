@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`util/check_image_cpu_only.py` let the `cuda-*` family through, and the merge job's
+  digest-identity step accepted any number of linux images per pushed digest.** The 2026-09-07 CUDA
+  worker image carried `cuda-toolkit`, `cuda-bindings` and `cuda-pathfinder` next to the `nvidia-*`
+  wheels and `triton`; the census forbade only the latter two families, so an image carrying those
+  three would have read `cuda_stack=0` (this image runs the census with `EXPECT_TORCH=absent`; the
+  rule matters equally there). It now forbids `nvidia-*`, `cuda-*` and `triton`. `publish-image.yml`'s
+  merge job also asserts that each pushed per-arch digest resolves to exactly **one** linux image
+  whose architecture is the digest file's name, so a multi-platform index could never count an image
+  the census did not run on as verified. Follow-up 6a of juniper-ml
+  `prompts/thread-handoff_automated-prompts/HANDOFF_2026-09-08_container-registry-rollout-wave-2-opened-and-the-cuda-class-in-three-shapes.md`.
+
+## [0.14.0] - 2026-09-08
+
 ### Removed
 
 - **BREAKING: no generator emits `X_full` / `y_full`, or any per-generator `*_full` sibling.** Decision 11
