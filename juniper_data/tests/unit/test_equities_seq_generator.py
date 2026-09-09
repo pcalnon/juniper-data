@@ -52,17 +52,24 @@ def _ohlcv(start: str = "2008-01-01", periods: int = 400, seed: int = 0):
     return pd.DataFrame({"Open": open_, "High": high, "Low": low, "Close": close, "Adj Close": close, "Volume": volume}, index=index)
 
 
-def _shares(start: str = "2009-06-30"):
+def _shares(start: str = "2007-12-31"):
     """Synthetic shares-outstanding history, as ``_fetch_shares`` now returns it.
 
     A DataFrame of ``shares`` + ``filed``, not a bare Series: the filing date is
     what feeds ``report_date`` / ``days_since_report``, and it is deliberately
     LATER than the period end it describes, because that lag is the thing those
     columns exist to represent.
+
+    The first filing lands INSIDE the mocked 400-session frame (which ends in July
+    2009). Until 2026-09-08 it was filed 2009-08-14 -- past the frame's last trade
+    date -- so ``total_shares`` was all-NaN in every test here, and nothing noticed:
+    the sequence generator had no incomplete-data policy. Now it does, and a fixture
+    whose shares are unreachable is a fixture for a REFUSED request; the tests that
+    want that case pass ``shares=None`` explicitly.
     """
     return pd.DataFrame(
-        {"shares": [1_000_000_000.0, 1_100_000_000.0], "filed": [pd.Timestamp("2009-08-14"), pd.Timestamp("2010-08-13")]},
-        index=pd.to_datetime([pd.Timestamp(start), pd.Timestamp("2010-06-30")]),
+        {"shares": [1_000_000_000.0, 1_100_000_000.0], "filed": [pd.Timestamp("2008-01-04"), pd.Timestamp("2009-01-15")]},
+        index=pd.to_datetime([pd.Timestamp(start), pd.Timestamp("2008-12-31")]),
     )
 
 
@@ -230,7 +237,7 @@ class TestEquitiesSeqGeneratorBranches:
                 raise RuntimeError("download exploded")
             return good.copy()
 
-        with patch.object(eq_gen.yf, "download", side_effect=fake_download), patch.object(eq_gen.EquitiesGenerator, "_fetch_shares", staticmethod(lambda *_a: None)):
+        with patch.object(eq_gen.yf, "download", side_effect=fake_download), patch.object(eq_gen.EquitiesGenerator, "_fetch_shares", staticmethod(lambda *_a: _shares())):
             arrays = EquitiesSeqGenerator.generate(EquitiesSeqParams(symbols=["AAPL", "MSFT"], start_date="2008-01-01", end_date="2011-01-01", use_cache=False, lookback=5, fundamentals_fill="zero"))
         assert arrays["ticker_vocab"].tolist() == ["AAPL"]
 

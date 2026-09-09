@@ -49,7 +49,8 @@ class EquitiesParams(BaseModel):
     """Configuration parameters for the equities time-series generator.
 
     Downloads and conditions daily S&P 500 equities data into the JuniperData
-    NPZ contract: a 10-column numeric feature matrix, a one-hot next-day
+    NPZ contract: a numeric feature matrix with one column per entry of
+    ``EQUITIES_FEATURE_COLUMNS`` (``defaults.py``; 16 as of generator 3.0.0), a one-hot next-day
     direction label, and a configurable next-day regression target (raw
     close, simple return, or log return -- see ``regression_target``).
     """

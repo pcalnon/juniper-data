@@ -7,71 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Removed
-
-- **BREAKING: no generator emits `X_full` / `y_full`, or any per-generator `*_full` sibling.** Decision 11
-  (§9.5) of the ecosystem partition design, juniper-ml
-  `notes/JUNIPER_2026-08-29_JUNIPER-ECOSYSTEM_TRAIN-EVAL-TEST-PARTITION-DESIGN.md`. Shipped by #369, merged
-  2026-09-06; this section carried no entry for it until now, and 0.14.0 is cut from here.
-
-  **A consumer that wants the whole dataset concatenates the three partitions, in `train | val | test`
-  order.** That is exactly how the key was built: `core/split.py` assembled it as
-  `np.vstack([X_train, X_val, X_test])` over the contiguous, non-overlapping blocks `split_three_way` cuts
-  in that order. For every generator that goes through `core/split.py` the concatenation is therefore
-  row-for-row identical to the retired array.
-
-  **Every generator's `VERSION` went `2.0.0` → `3.0.0`** — all sixteen of them. `generate_dataset_id`
-  (`core/dataset_id.py`) hashes the version into the id, so a seeded request made after this change
-  resolves to a *new* id and a cached `*_full`-bearing artifact can never answer a post-change request.
-  That is risk **R-1** of juniper-ml
-  `notes/JUNIPER_2026-08-30_JUNIPER-ECOSYSTEM_PARTITION-IMPLEMENTATION-PLAN.md`: without the bump, cache
-  state rather than the contract decides which shape a consumer sees. Removing keys is a *second* contract
-  change, so the `val` addition's earlier bump does not cover it.
-
-  **Tolerate the family; never require its absence.** Every artifact stored before this change still
-  carries `X_full` / `y_full`, and consumers are obliged to keep loading those — `core/meta.py` reads
-  `y_full` with `.get()` and falls back to stacking whichever partitions are present. A check that asserts
-  `X_full` is *absent* is as wrong as one that requires it.
-
-  **Two generators are row-order exceptions: `equities` and `equities_seq`.** Both built `*_full`
-  **entity-major** — each ticker's train, val and test in turn, concatenated across tickers — while their
-  partitions are **split-major** (every ticker's train, then every ticker's val, then every ticker's test).
-  Same rows, different permutation, identical only for a single-ticker request. Anything that slices the
-  whole view by row index — walk-forward cross-validation does — gets different folds from the two orders.
-  `juniper_recurrence_model.data.derive_full_split` (juniper-recurrence#150) rebuilds the entity-major
-  order by stable-sorting the concatenation on `ticker_code`.
-
-  **For the tabular `equities` generator the concatenation is additionally a lower bound, not a
-  permutation.** The retired `*_full` appended each ticker's **entire** conditioned frame
-  (`generators/equities/generator.py`, `full_frames.append(frame)`), while `train` / `val` / `test` are
-  ratio-bounded slices of that same frame; and the params validator rejects only ratio sums **above** 1.0
-  (`generators/equities/params.py`, `train_ratio + val_ratio + test_ratio > 1.0`). So a perfectly legal
-  `train=0.6 / val=0.2 / test=0.1` left roughly a tenth of every ticker's rows in no partition at all, and
-  `concatenate([train, val, test])` returns fewer rows than the legacy array held.
-
-  **Four repairs landed with the removal, so that nothing regressed on the way out.** Three of them are
-  faults the removal itself would have introduced, caught before merge rather than after: `equities_seq`
-  would have raised `KeyError: 'X_full'` on **every capped request**, because `records_imported` read an
-  array `_assemble` had stopped producing — it is the partition sum now; ARC-AGI's `task_ids` would have
-  been dropped from the artifact silently, because `shuffle_and_split_three_way` permutes `extras` in place
-  and returns only the six partition keys, and the code merging them back in went out with the `*_full`
-  assembly — they are merged in `partition_and_assemble` now, truncated to the partition sum; and
-  `csv_import` would have reached `np.vstack([])` (`ValueError: need at least one array to concatenate`)
-  for the degenerate-but-valid request whose three partitions are all empty — normalisation is a guarded
-  no-op there now. The fourth was already stale on `main`: generator docstrings advertising a `X_full` /
-  `y_full` return key, several of which had also never been updated for `val`. A new guard,
-  `TestEveryGeneratorBumpedForDecision11` (`tests/unit/test_val_emission_guards.py`), enumerates the
-  generators package and pins every `VERSION` — the `val` bump had been verified by a single assertion in
-  one generator's suite, so fifteen generators had no guard at all.
-
-  **Not changed here, deliberately: `storage/hf_store.py` and `storage/kaggle_store.py`.** Both still cut
-  **two** ways with no `X_val` (`hf_store.py:110`, `kaggle_store.py:212`), still write `X_full` / `y_full`
-  (`hf_store.py:147-148`, `kaggle_store.py:244-245`), and still hardcode `generator_version="1.0.0"`
-  (`hf_store.py:121`, `kaggle_store.py:220`). Neither `HuggingFaceDatasetStore` nor `KaggleDatasetStore` is
-  referenced anywhere outside `juniper_data/storage/` and `juniper_data/tests/`, so no service path is
-  affected and no artifact the API serves carries either shape. Whether those stores should partition at
-  all is an open product decision, not a change made here.
-
 ### Added
 
 - **`publish-image.yml` -- the service container image is published to GHCR on every `v*`
@@ -87,6 +22,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`equities_seq` now binds the deployment policy before hashing, so its `dataset_id` follows the
+  policy it actually runs under.** `bind_deployment_defaults` existed only on `EquitiesGenerator`,
+  and the create route finds the binder by `getattr` — so for `equities_seq` nothing was bound while
+  its `generate` still applied the same symbol cap and the same `allow_truncation` OR through
+  `EquitiesGenerator._resolve_symbols`. `generate_dataset_id` therefore hashed the **schema**
+  defaults (`max_symbols` unclamped, `allow_truncation=false`) rather than the effective values.
+  Proven by execution on 2026-09-08: two `equities_seq` requests, identical but for
+  `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION` off vs on, hashed to the **same** id, so toggling the
+  deployment opt-in kept serving the artifact built under the old policy; `equities` gave two ids
+  for the same pair. The sequence generator now delegates to the flat generator's binder
+  (`EquitiesSeqParams` subclasses `EquitiesParams`; `model_copy` keeps the concrete class).
+
+  **Deliberate consequence: every `equities_seq` `dataset_id` changes once.** `max_symbols=None`
+  now hashes as the bound cap and `allow_truncation` as the effective value, so the first request
+  after this ships regenerates. That one-time cache turnover is the point — the old ids were
+  computed from a policy the generator did not run under.
+
+- **`equities_seq` now applies the fail / accept / drop contract to rows no rescue path could
+  recover.** The sequence generator reuses the flat generator's universe resolution, conditioning
+  and normalisation, but had no copy of the incomplete-data block: an unrescued ticker shipped
+  there with NaN (or, under `fundamentals_fill="zero"`, `0.0`) `total_shares` / `market_cap` —
+  no refusal, no `data_quality` annotation, whatever `allow_truncation` said — while the identical
+  request to `equities` was refused with 422. The classify / resolve / fail-or-drop / annotate block
+  is extracted into one shared helper, `EquitiesGenerator._apply_incomplete_policy`, called by both
+  generators (for the sequence generator: after conditioning and **before** the normaliser fit and
+  the windowing, so a dropped ticker reaches neither). The flat generator's behaviour is unchanged
+  and its existing tests pin it. Pinned for the sequence generator by
+  `test_equities_seq_deployment_policy.py` (default refusal, accept annotates, drop removes the
+  ticker from every window and still annotates, drop-that-empties still fails, clean carries no
+  annotation).
+
+  **The seq test fixtures were silently exercising the defect.** Their synthetic shares were filed
+  after the mocked frame's last trade date, so `total_shares` was all-NaN in every sequence test
+  and nothing noticed — there was no policy to notice with. The first filing now lands inside the
+  frame; tests that want the refused case pass `shares=None` explicitly.
+
+  Both found by the round-38 handoff validation in juniper-ml (2026-09-08). Also in this change:
+  three stale comments corrected in `equities/generator.py` and `params.py` (the KO / ABT
+  "no shares concept" example — the on-disk cache holds 71 and 68 dei facts for them; the
+  circular-import paragraph, obsolete since juniper-data#333; and two "10-column" feature counts
+  that now reference `EQUITIES_FEATURE_COLUMNS`), and the measurement instruments behind the
+  round-37 validation's SEC-shares-cache findings graduated from a session scratch directory into
+  `util/ad-hoc/2026-09-08_equities_shares_cache_census/` (read-only on the cache, network blocked).
+
 - **The JD-PERF-02 metadata cache was inert in production, and its test suite could not see that.**
   `DatasetStore.__init__` creates the cache state, and `_list_all_metadata_cached` degrades to an
   uncached walk when `_metadata_cache_lock` is absent. **Six of seven stores never called
@@ -94,8 +73,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   So every `filter_datasets` / `get_stats` / `list_versions` / `delete_expired` call paid a full
   disk walk, for months, while the cache looked present.
 
-  Measured on `LocalFSDatasetStore` after the fix: **114.8× at 100 datasets** (18.87 → 0.16 ms) and
-  **92.9× at 1,000** (157.16 → 1.69 ms).
+  Measured on `LocalFSDatasetStore` after the fix: of order **100×** at both 100 and 1,000 datasets.
+  The exact ratio is instrument- and machine-specific — independent re-measurements on 2026-09-08
+  ranged 96–180× at N=100 — so only the order is quotable; the four-significant-figure values an
+  earlier version of this entry carried were not reproducible and are withdrawn.
 
   **Wiring it alone would have shipped a read-your-writes bug.** `_invalidate_metadata_cache()` was
   called only by `InMemoryDatasetStore`; a create against any other store would have stayed

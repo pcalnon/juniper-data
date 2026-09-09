@@ -15,9 +15,7 @@ irregular Δt), the irregular forecast horizon ``target_dt``, an all-ones
 and the per-window ``window_end_date`` / ``ticker_code``, plus the targets
 ``y`` (one-hot next-day direction) and ``y_reg`` (the configurable next-day
 regression target -- raw close / return / log-return, per ``regression_target``).
-The splits are ``train`` / ``val`` / ``test``; decision 11 retired the ``*_full``
-family, so there is no whole-dataset key. Reconstructing one is not a plain
-concatenation here -- see the row-order note on ``_assemble``.
+``full`` is each ticker's train windows followed by its test windows.
 
 See ``juniper-ml/notes/JUNIPER_2026-06-05_JUNIPER-RECURRENCE_RECURSE-DELTA-T-HANDLING.md`` §3
 (schema delta) and §6 (the dt / observed_mask contract).
@@ -44,7 +42,7 @@ try:
 except ImportError:  # pragma: no cover - exercised only without the equities extra
     pd = None  # type: ignore[assignment]
 
-from juniper_data.core.limits import TRUNCATION_META_KEY
+from juniper_data.core.limits import DATA_QUALITY_META_KEY, TRUNCATION_META_KEY
 from juniper_data.core.split import temporal_split_indices
 from juniper_data.generators._sequence import _yyyymmdd_to_ordinal, window_one_ticker
 from juniper_data.generators.equities.generator import EQUITIES_DEPS_AVAILABLE, EquitiesGenerator
@@ -87,6 +85,38 @@ class EquitiesSeqGenerator:
             The curated, actionable install instruction for the missing extra.
         """
         return 'The "equities" extra is required. Install with: pip install "juniper-data[equities]"'
+
+    @staticmethod
+    def bind_deployment_defaults(params: EquitiesSeqParams) -> EquitiesSeqParams:
+        """Copy the effective symbol cap and truncation opt-in onto the params object.
+
+        Delegates to :meth:`EquitiesGenerator.bind_deployment_defaults`, which is the
+        single implementation of the clamp (``min(request, deployment)``) and the OR
+        (``request or deployment``). ``model_copy`` returns the CONCRETE class it was
+        called on, so an ``EquitiesSeqParams`` in is an ``EquitiesSeqParams`` out, with
+        ``lookback`` and every other subclass field intact -- pinned by
+        ``test_equities_seq_deployment_policy.py`` rather than assumed.
+
+        **The defect this closes.** The create route looks the binder up with
+        ``getattr(generator_class, "bind_deployment_defaults", None)``
+        (``api/routes/datasets.py``), so a generator opts in simply by defining it --
+        and this one did not. ``generate_dataset_id`` hashes ``params.model_dump()``,
+        and dump fills Field defaults, so an omitted ``max_symbols`` hashed as the
+        schema default and ``allow_truncation`` hashed as ``false`` no matter what the
+        deployment said. Proven by execution on 2026-09-08: two ``equities_seq``
+        requests, identical but for ``JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION`` being
+        off then on, hashed to the SAME ``equities_seq-3.0.0-e9b10e26ed01ae0e``, so
+        toggling the deployment opt-in kept serving the artifact built under the old
+        policy. The flat ``equities`` generator produced two different ids for the
+        same pair.
+
+        **DELIBERATE CONSEQUENCE: every ``equities_seq`` dataset_id changes once.**
+        ``max_symbols=None`` now hashes as the bound cap and ``allow_truncation`` as
+        the effective value, so the first request after this ships resolves to a new
+        id and regenerates. That one-time cache turnover IS the point -- the old ids
+        were computed from a policy that was not the one the generator ran under.
+        """
+        return EquitiesGenerator.bind_deployment_defaults(params)  # type: ignore[return-value]  # model_copy preserves the concrete subclass
 
     @staticmethod
     def generate(params: EquitiesSeqParams) -> dict[str, np.ndarray]:
@@ -132,6 +162,14 @@ class EquitiesSeqGenerator:
 
         if not conditioned:
             raise ValueError("No data could be retrieved for the requested symbols.")
+
+        # The incomplete-data policy, the flat generator's own helper (APD-DATA-018).
+        # This generator had no copy of it, so an unrescued ticker shipped here with a
+        # fabricated total_shares / market_cap, no refusal and no annotation -- while
+        # the identical request to `equities` was refused. Called HERE, after
+        # conditioning and before the normaliser fit and the windowing, so a dropped
+        # ticker reaches neither: `vocab` below is derived from the returned mapping.
+        conditioned, quality_meta = EquitiesGenerator._apply_incomplete_policy(params, conditioned)
 
         vocab = sorted(conditioned)
         code_of = {ticker: code for code, ticker in enumerate(vocab)}
@@ -216,6 +254,12 @@ class EquitiesSeqGenerator:
             # `_assemble`, which stopped producing that key.
             truncation["records_imported"] = int(sum(arrays[f"X_{name}"].shape[0] for name in ("train", "val", "test")))
             arrays[TRUNCATION_META_KEY] = truncation
+
+        # The permanent data-quality annotation, over the same reserved-key channel and
+        # in the same order as the flat generator. Absent entirely when nothing is
+        # wrong, so its presence alone answers "is anything degraded here".
+        if quality_meta is not None:
+            arrays[DATA_QUALITY_META_KEY] = quality_meta
 
         return arrays
 

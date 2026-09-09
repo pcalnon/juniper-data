@@ -76,10 +76,16 @@ def _shares() -> object:
     argument 'subset'`` -- every ticker skipped, then "No data could be retrieved".
     The stale half was the FIXTURE, not the generator: a test's mock encodes the
     production contract as it stood when the test was written.
+
+    Stale a second time on 2026-09-08, the same way: the filings were dated past the
+    40-session mocked frame (which ends in February 2008), so ``total_shares`` was
+    all-NaN in every test here and nothing noticed -- the sequence generator had no
+    incomplete-data policy. Now it does, and unreachable shares are a REFUSED
+    request, so the first filing lands inside the frame.
     """
     return pd.DataFrame(
-        {"shares": [1_000_000_000.0, 1_100_000_000.0], "filed": [pd.Timestamp("2009-08-14"), pd.Timestamp("2010-08-13")]},
-        index=pd.to_datetime([pd.Timestamp("2009-06-30"), pd.Timestamp("2010-06-30")]),
+        {"shares": [1_000_000_000.0, 1_100_000_000.0], "filed": [pd.Timestamp("2008-01-04"), pd.Timestamp("2009-01-15")]},
+        index=pd.to_datetime([pd.Timestamp("2007-12-31"), pd.Timestamp("2008-12-31")]),
     )
 
 
