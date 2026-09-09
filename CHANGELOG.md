@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-09-08
+
 ### Removed
 
 - **BREAKING: no generator emits `X_full` / `y_full`, or any per-generator `*_full` sibling.** Decision 11

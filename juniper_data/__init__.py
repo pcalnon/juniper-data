@@ -23,7 +23,7 @@ except ImportError:
 try:
     __version__ = importlib.metadata.version("juniper-data")
 except importlib.metadata.PackageNotFoundError:  # pragma: no cover - source checkout
-    __version__ = "0.13.0"
+    __version__ = "0.14.0"
 __author__ = "Paul Calnon"
 
 

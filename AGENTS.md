@@ -4,8 +4,8 @@
 **Repository**: pcalnon/juniper-data
 **Author**: Paul Calnon
 **License**: MIT License
-**Version**: 0.13.0
-**Last Updated**: 2026-09-06
+**Version**: 0.14.0
+**Last Updated**: 2026-09-08
 
 ---
 
