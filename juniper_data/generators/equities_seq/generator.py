@@ -49,7 +49,7 @@ from juniper_data.generators.equities.generator import EQUITIES_DEPS_AVAILABLE, 
 
 from .params import EquitiesSeqParams
 
-VERSION = "3.0.0"
+VERSION = "4.0.0"
 
 _logger = logging.getLogger(__name__)
 
@@ -105,7 +105,9 @@ class EquitiesSeqGenerator:
         schema default and ``allow_truncation`` hashed as ``false`` no matter what the
         deployment said. Proven by execution on 2026-09-08: two ``equities_seq``
         requests, identical but for ``JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION`` being
-        off then on, hashed to the SAME ``equities_seq-3.0.0-e9b10e26ed01ae0e``, so
+        off then on, hashed to the SAME ``equities_seq-3.0.0-e9b10e26ed01ae0e`` (the id is quoted as
+        it was measured, under the generator version current at the time; the binder fix and the
+        4.0.0 bump have both changed it since), so
         toggling the deployment opt-in kept serving the artifact built under the old
         policy. The flat ``equities`` generator produced two different ids for the
         same pair.

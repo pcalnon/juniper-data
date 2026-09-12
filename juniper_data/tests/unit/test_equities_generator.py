@@ -16,6 +16,8 @@ the suite runs fast and offline. Requires the optional ``equities`` extra
 from __future__ import annotations
 
 import json
+import os
+import time
 import urllib.error
 from contextlib import contextmanager
 from typing import Any
@@ -25,6 +27,7 @@ import numpy as np
 import pytest
 
 from juniper_data.core import limits as eq_limits
+from juniper_data.core.limits import DATA_QUALITY_META_KEY
 
 pd = pytest.importorskip("pandas")
 pytest.importorskip("yfinance")
@@ -199,7 +202,24 @@ class TestEquitiesGenerator:
         arrays = _generate(["AAPL"], {"AAPL": frame}, _shares(), purchase_date=purchase)
         expected = float(frame.loc[frame.index <= pd.Timestamp(purchase), "Close"].iloc[-1])
         basis_column = whole(arrays, "X")[:, _FEATURES.index("cost_basis")]
-        assert np.allclose(basis_column, np.float32(expected)), "cost basis is constant per ticker = price on purchase date"
+        # From the purchase onward the basis is that constant. BEFORE it there is no basis:
+        # writing the purchase price onto earlier rows is a future price reaching the past, which
+        # is what the 2026-09-09 ruling on APD-DATA-042 closed. Under the default
+        # ``fundamentals_fill="nan"`` those rows arrive NaN and are dropped from the matrix, so the
+        # observable assertion is that every surviving basis value equals the purchase price and
+        # the column is strictly shorter than the unfiltered frame.
+        # From the purchase onward the basis is that constant. BEFORE it there is no basis:
+        # writing the purchase price onto earlier rows is a future price reaching the past, which
+        # is what the 2026-09-09 ruling on APD-DATA-042 closed. Under the default
+        # ``fundamentals_fill="nan"`` the earlier rows stay in the matrix carrying NaN.
+        missing = np.isnan(basis_column)
+        assert missing.any(), "rows before the purchase must not carry a basis"
+        assert not missing.all()
+        assert np.allclose(basis_column[~missing], np.float32(expected)), "from the purchase date on, cost basis is the purchase price"
+        # The absent values are a PREFIX: causality is an ordering claim, so a scattered set of
+        # NaNs would satisfy the two assertions above while meaning something entirely different.
+        first_known = int(np.argmax(~missing))
+        assert missing[:first_known].all() and not missing[first_known:].any()
 
     def test_fundamentals_fill_zero(self) -> None:
         arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=9)}, _shares(), fundamentals_fill="zero")
@@ -382,7 +402,13 @@ class TestEquitiesParams:
         # Fleet-wide coverage lives in `test_val_emission_guards.py` -- this guard existed
         # for exactly one of sixteen generators, which is how the decision-11 bump came to
         # be skipped for the other fifteen.
-        assert VERSION == "3.0.0"
+        # 4.0.0 since the 2026-09-09 owner rulings. Two of them are breaking on their own --
+        # the default matrix lost a column (``adj_close``, APD-DATA-041) and ``cost_basis`` is
+        # absent before the purchase date instead of constant (APD-DATA-042) -- and three more
+        # change values without changing shape: the as-of publication history, the absolute
+        # floor, and the causal median. Any one of those is a reason the same params must not
+        # resolve to the same dataset ID as before.
+        assert VERSION == "4.0.0"
 
     def test_get_schema_returns_json_schema(self) -> None:
         schema = get_schema()
@@ -500,13 +526,36 @@ class TestEquitiesGeneratorInternals:
         assert eq_gen.EquitiesGenerator._load_sec_ticker_map() == {}
 
     def test_fetch_shares_reads_cache(self, monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+        # The key carries a layout version (APD-DATA-039): a payload written under the old
+        # CIK-only key is not read by the new code, which is the point -- a cache whose shape
+        # changed must not be served as if it had not.
         monkeypatch.setattr(eq_gen, "_CACHE_DIR", tmp_path)
-        cache = tmp_path / "shares" / f"{320193:010d}.json"
+        cache = tmp_path / "shares" / f"v{eq_gen._SHARES_CACHE_VERSION}" / f"{320193:010d}.json"
         cache.parent.mkdir(parents=True)
         cache.write_text(json.dumps({"units": {"shares": [{"end": "2009-06-30", "val": 1.0e9, "filed": "2009-07-01"}]}}))
         series = eq_gen.EquitiesGenerator._fetch_shares(320193, use_cache=True)
         assert series is not None
         assert len(series) == 1
+
+    def test_fetch_shares_ignores_a_cache_older_than_the_ttl(self, monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+        """A stale cache file is re-fetched, not served (APD-DATA-039).
+
+        The key was CIK-only with no TTL, so a payload written once could disagree with SEC
+        indefinitely while a warm hit also skipped the rescue ladder. Here the cached payload and
+        the live one differ, and the assertion is that the LIVE one wins once the file ages past
+        the TTL -- which is the only observable difference between trusting and re-reading.
+        """
+        monkeypatch.setattr(eq_gen, "_CACHE_DIR", tmp_path)
+        cache = tmp_path / "shares" / f"v{eq_gen._SHARES_CACHE_VERSION}" / f"{320193:010d}.json"
+        cache.parent.mkdir(parents=True)
+        cache.write_text(json.dumps({"units": {"shares": [{"end": "2009-06-30", "val": 1.0e9, "filed": "2009-07-01"}]}}))
+        stale = time.time() - (eq_gen._SHARES_CACHE_TTL_DAYS + 1) * 86400
+        os.utime(cache, (stale, stale))
+        live = {"units": {"shares": [{"end": "2009-06-30", "val": 1.0e9, "filed": "2009-07-01"}, {"end": "2010-06-30", "val": 1.1e9, "filed": "2010-07-01"}]}}
+        monkeypatch.setattr(eq_gen, "_sec_get", lambda *_a, **_k: live)
+        series = eq_gen.EquitiesGenerator._fetch_shares(320193, use_cache=True)
+        assert series is not None
+        assert len(series) == 2, "the expired cache must be re-fetched, not served"
 
     def test_fetch_shares_fetches_and_caches(self, monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
         monkeypatch.setattr(eq_gen, "_CACHE_DIR", tmp_path)
@@ -515,7 +564,7 @@ class TestEquitiesGeneratorInternals:
         series = eq_gen.EquitiesGenerator._fetch_shares(999999, use_cache=True)
         assert series is not None
         assert len(series) == 2
-        assert (tmp_path / "shares" / "0000999999.json").exists()
+        assert (tmp_path / "shares" / f"v{eq_gen._SHARES_CACHE_VERSION}" / "0000999999.json").exists()
 
     def test_an_empty_concept_does_not_suppress_the_fallback(self, monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
         """A present-but-EMPTY dei concept must not stop the us-gaap fallback.
@@ -850,7 +899,12 @@ class TestFreeFields:
     def test_the_matrix_widened_by_exactly_the_free_fields(self) -> None:
         """Order is part of the contract: existing columns keep their positions."""
         assert EQUITIES_FEATURE_COLUMNS[:10] == ["open", "high", "low", "close", "volume", "week52_high", "week52_low", "total_shares", "market_cap", "cost_basis"]
-        assert EQUITIES_FEATURE_COLUMNS[10:] == ["adj_close", "dividend", "split_ratio", "days_since_week52_high", "days_since_week52_low", "days_since_report"]
+        # ``adj_close`` sat at position 10 until the 2026-09-09 ruling on APD-DATA-041 removed it
+        # from the DEFAULTS (it remains requestable). Fifteen columns, and the generator version
+        # went to 4.0.0 in the same change precisely because this list is part of the contract.
+        assert EQUITIES_FEATURE_COLUMNS[10:] == ["dividend", "split_ratio", "days_since_week52_high", "days_since_week52_low", "days_since_report"]
+        assert "adj_close" not in EQUITIES_FEATURE_COLUMNS
+        assert len(EQUITIES_FEATURE_COLUMNS) == 15
 
     def test_splits_and_dividends_ride_the_same_download(self) -> None:
         """``actions=True`` on the existing call -- no second request."""
@@ -925,11 +979,26 @@ class TestFreeFields:
             assert ages[row] == pytest.approx(expected)
 
     def test_adj_close_is_carried_not_recomputed(self) -> None:
-        """``Adj Close`` was already in the response and dropped at the feature step."""
+        """``Adj Close`` is carried from the response, and is still available on request.
+
+        It left the DEFAULT column set on 2026-09-09 (APD-DATA-041) because ``close / adj_close``
+        encodes dividends paid after each row. Removing it from the defaults must not remove the
+        capability, so this pins the conditioned frame rather than the default matrix.
+        """
         frame = _ohlcv(seed=17)
-        arrays = _generate(["AAPL"], {"AAPL": frame}, _shares())
-        adj = whole(arrays, "X")[:, _FEATURES.index("adj_close")]
-        np.testing.assert_allclose(adj, frame["Adj Close"].to_numpy()[: len(adj)], rtol=1e-5)
+        captured: dict[str, Any] = {}
+        real_condition = eq_gen.EquitiesGenerator._condition_one
+
+        def spy(ticker, info, params, end_date):
+            out = real_condition(ticker, info, params, end_date)
+            if out is not None:
+                captured["frame"] = out
+            return out
+
+        with patch.object(eq_gen.EquitiesGenerator, "_condition_one", staticmethod(spy)):
+            _generate(["AAPL"], {"AAPL": frame}, _shares())
+        assert "adj_close" in captured["frame"].columns, "the column must still be PRODUCED, just not defaulted"
+        np.testing.assert_allclose(captured["frame"]["adj_close"].to_numpy()[:5], frame["Adj Close"].to_numpy()[:5], rtol=1e-5)
 
     def test_rolling_extreme_positions_matches_a_naive_scan(self) -> None:
         """The strided implementation must agree with the obvious O(n*w) one.
@@ -1213,3 +1282,126 @@ class TestUnresolvableFundamentals:
         shares = whole(arrays, "X")[:, _FEATURES.index("total_shares")]
         assert np.isnan(shares).any(), "the pre-filing span must be NaN, not 0.0"
         assert not np.any(shares == 0.0), "a fabricated zero is exactly what this default exists to remove"
+
+
+class TestTheOwnerRulingsOf20260909:
+    """The equities data-quality rulings, each pinned against the payload that motivated it.
+
+    These are register rows APD-DATA-039 through -045. The figures in the docstrings come from
+    the 485-payload SEC cache the rulings were taken against, re-derived on the day.
+    """
+
+    def test_a_restatement_no_longer_rewrites_when_a_value_became_knowable(self) -> None:
+        """APD-DATA-040: every fact is an observation, not a correction to collapse.
+
+        The method kept one value per PERIOD END -- the latest-filed one -- so a later filing that
+        restated an earlier period moved that period's ``filed`` date forward, and the value
+        appeared to become knowable months or years after it actually was. 162 of 485 cached CIKs
+        carry such a restatement, 17,569 rows move, and 9 CIKs had their first count deferred
+        outright.
+
+        Here one period end is reported twice: originally in 2009, restated in 2012. The original
+        publication must survive, because a reader in 2010 could see it.
+        """
+        payload = {
+            "units": {
+                "shares": [
+                    {"end": "2009-06-30", "val": 1.0e9, "filed": "2009-07-15"},
+                    {"end": "2009-06-30", "val": 1.02e9, "filed": "2012-02-20"},
+                    {"end": "2010-06-30", "val": 1.1e9, "filed": "2010-07-15"},
+                ]
+            }
+        }
+        with patch.object(eq_gen, "_sec_get", return_value=payload):
+            frame = eq_gen.EquitiesGenerator._fetch_shares(320193, use_cache=False)
+        assert frame is not None
+        filings = pd.to_datetime(frame["filed"]).dt.strftime("%Y-%m-%d").tolist()
+        assert "2009-07-15" in filings, "the ORIGINAL publication must survive the restatement"
+        assert "2012-02-20" in filings, "and so must the restatement itself"
+        assert len(frame) == 3, "three facts in, three observations out -- nothing is collapsed"
+
+    def test_the_absolute_floor_removes_placeholders_and_keeps_real_counts(self) -> None:
+        """APD-DATA-043 / -044: the floor, at the two boundaries that decided its value.
+
+        1,000 shares is PSKY's placeholder; 941,481 is Berkshire's genuine Class-A low. The floor
+        was sited at 100,000 precisely to separate them, so this asserts both directions at once --
+        a floor above Berkshire's low would delete real history, one below PSKY's placeholders
+        would keep junk.
+        """
+        payload = {
+            "units": {
+                "shares": [
+                    {"end": "2019-03-31", "val": 1000.0, "filed": "2019-04-01"},
+                    {"end": "2019-06-30", "val": 1000.0, "filed": "2019-07-01"},
+                    {"end": "2019-09-30", "val": 941_481.0, "filed": "2019-10-01"},
+                    {"end": "2019-12-31", "val": 1_071_666_977.0, "filed": "2020-01-02"},
+                ]
+            }
+        }
+        with patch.object(eq_gen, "_sec_get", return_value=payload):
+            frame = eq_gen.EquitiesGenerator._fetch_shares(320193, use_cache=False)
+        assert frame is not None
+        kept = sorted(float(v) for v in frame["shares"])
+        assert kept == [941_481.0, 1_071_666_977.0], "placeholders out, genuine Class-A scale in"
+
+    def test_a_series_of_only_placeholders_is_unrescued_not_zero(self) -> None:
+        """APD-DATA-044: an all-placeholder series is absent data, not a measurement of zero.
+
+        TAP, CVNA and DDOG delivered ``total_shares == 0`` for 100% of their rows and a
+        ``market_cap`` of 0.0 -- a number no listed company can have -- while passing every guard,
+        because zero is not NaN. Returning None routes them into the incomplete-data contract
+        instead, where the default policy refuses and an opt-in annotates.
+        """
+        payload = {"units": {"shares": [{"end": "2019-03-31", "val": 0.0, "filed": "2019-04-01"}, {"end": "2019-06-30", "val": 0.0, "filed": "2019-07-01"}]}}
+        with patch.object(eq_gen, "_sec_get", return_value=payload):
+            assert eq_gen.EquitiesGenerator._fetch_shares(320193, use_cache=False) is None
+
+    def test_the_causal_median_does_not_consult_later_filings(self) -> None:
+        """APD-DATA-043: which points survive must not depend on filings that had not happened.
+
+        The old filter compared every point to the median of the WHOLE history, so a value's
+        survival depended on its own future. Two payloads share a prefix and differ only in facts
+        filed later; the surviving prefix must be identical.
+        """
+        # The numbers are chosen so the two filters DISAGREE, which an earlier version of this
+        # test failed to do -- it passed against the old whole-history median as well, making it
+        # vacuous. Three counts near 1e9, then one at 5e6. Judged against the prefix alone the
+        # 5e6 is an outlier and goes. Judged against a history that later fills with twenty more
+        # 5e6 points, the median MOVES to 5e6 and it is the three 1e9 values that get dropped
+        # instead -- a past rewritten by the future, which is the defect.
+        prefix = [
+            {"end": "2009-03-31", "val": 1.00e9, "filed": "2009-04-01"},
+            {"end": "2009-06-30", "val": 1.00e9, "filed": "2009-07-01"},
+            {"end": "2009-09-30", "val": 1.00e9, "filed": "2009-10-01"},
+            {"end": "2009-12-31", "val": 5.00e6, "filed": "2010-01-01"},
+        ]
+        # Mid-month dates on purpose: an earlier draft used the 28th/29th, and February 2010 has
+        # no 29th, so that fact's ``filed`` coerced to NaT, sorted to the front as always-known,
+        # and failed the test for a reason with nothing to do with causality.
+        later = [{"end": f"2010-{month:02d}-15", "val": 5.00e6, "filed": f"2010-{month:02d}-20"} for month in range(1, 13)] + [{"end": f"2011-{month:02d}-15", "val": 5.00e6, "filed": f"2011-{month:02d}-20"} for month in range(1, 9)]
+        with patch.object(eq_gen, "_sec_get", return_value={"units": {"shares": list(prefix)}}):
+            short = eq_gen.EquitiesGenerator._fetch_shares(320193, use_cache=False)
+        with patch.object(eq_gen, "_sec_get", return_value={"units": {"shares": prefix + later}}):
+            long = eq_gen.EquitiesGenerator._fetch_shares(320193, use_cache=False)
+        assert short is not None and long is not None
+        assert [float(v) for v in short["shares"]] == [float(v) for v in long["shares"]][: len(short)]
+
+    def test_a_stale_share_count_is_annotated_degraded(self) -> None:
+        """APD-DATA-039 / -045: a year-old count is reported, and reported AS stale.
+
+        The hard part of this defect is that nothing looks wrong: the count is real, the source is
+        the best one available, and the resulting market cap is plausible. 26 of 485 cached issuers
+        stop filing before 2025-06-01 and every later row silently reuses the last value. The
+        annotation is the whole remedy -- the rows are still served.
+        """
+        frame = _ohlcv(seed=21)
+        # One filing, early, and then silence for the rest of the window.
+        stale_shares = pd.DataFrame(
+            {"shares": [1_000_000_000.0], "filed": [pd.Timestamp("2008-02-01")]},
+            index=pd.to_datetime([pd.Timestamp("2007-12-31")]),
+        )
+        with _mocked({"AAPL": frame}, stale_shares):
+            meta = eq_gen.EquitiesGenerator.generate(EquitiesParams(symbols=["AAPL"], start_date="2008-01-01", end_date="2011-01-01", use_cache=False, allow_truncation=True, incomplete_rows="accept")).get(DATA_QUALITY_META_KEY)
+        assert meta is not None, "a stale series must not be reported as clean"
+        assert "AAPL" in meta["degraded"]
+        assert eq_gen.SHARES_QUALITY_STALE in meta["degraded"]["AAPL"]

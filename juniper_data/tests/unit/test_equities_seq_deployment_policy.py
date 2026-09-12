@@ -145,6 +145,16 @@ class TestIncompleteDataPolicy:
             _generate(["AAPL"], {"AAPL": _ohlcv(seed=64)}, shares=None, allow_truncation=True, incomplete_rows="drop")
 
     def test_a_clean_dataset_carries_no_annotation(self) -> None:
-        """Absence is the signal, exactly as for truncation."""
+        """Absence is the signal, exactly as for truncation.
+
+        Worth knowing why this fixture is clean under the staleness annotation added on
+        2026-09-11 (APD-DATA-039 / -045), because a first implementation made it dirty. Its last
+        filing is 2009-01-15 and the frame ends 2009-07-13: 179 days of silence, well inside the
+        365-day bound. It has a >365-day GAP earlier in the series, between the 2008-01-04 and
+        2009-01-15 filings, and a per-row reading of staleness flagged the rows in that gap. That
+        reading is wrong: an annual filer produces a 365-day gap once a year by definition. The
+        ruled question is whether a series has STOPPED, so the annotation measures the silence
+        before the window ends, not the age of each row's backing filing.
+        """
         arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=65)}, _shares())
         assert eq_limits.DATA_QUALITY_META_KEY not in arrays

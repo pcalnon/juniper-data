@@ -20,6 +20,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the census did not run on as verified. Follow-up 6a of juniper-ml
   `prompts/thread-handoff_automated-prompts/HANDOFF_2026-09-08_container-registry-rollout-wave-2-opened-and-the-cuda-class-in-three-shapes.md`.
 
+- **BREAKING (contract): `equities` and `equities_seq` go to `generator_version` 4.0.0, and the
+  share history they serve is now causal.** Six owner rulings taken 2026-09-09, shipped together
+  because each changes artifact content and the version is hashed into `dataset_id` -- which is the
+  only thing stopping a cached artifact of the old shape from answering a request made against the
+  new one. Every `equities` / `equities_seq` dataset ID changes once.
+
+  - **Every SEC fact is now an observation, not a correction to collapse** (APD-DATA-040).
+    `_fetch_shares` kept one value per PERIOD END, the latest-filed one, which discarded the
+    original publication whenever a later filing restated the same period -- so the value appeared
+    to become knowable on the restatement date, months or years after it actually was, and rows in
+    between saw the previous period's figure or nothing. 162 of 485 cached CIKs carry such a
+    restatement, 17,569 rows move, ADM (inside the default 14-symbol prefix) by up to +11.55%, and
+    9 CIKs had their first count deferred outright -- EXPE by 521 rows. Keyed by `(end, filed)`
+    instead, the frame carries the publication history, and `_condition_one`'s as-of join was
+    already correct: it was being fed a rewritten past.
+  - **The scale-typo filter is causal, and has absolute bounds** (APD-DATA-043, APD-DATA-044). It
+    judged every point against the median of the WHOLE history, so which points survived depended
+    on filings made after the rows they affect (61 of 485 CIKs lose at least one point). It is now
+    an expanding median over facts already filed, plus a floor at **100,000 shares** -- sited above
+    PSKY's 1,000-share placeholders and below Berkshire's genuine Class-A low of 941,481. The floor
+    is what rescues PSKY, whose placeholders dominated the median that deleted its one real count,
+    and it retires the six unusable series outright: TAP, CVNA and FOX now return no shares at all
+    and route into the incomplete-data contract, where the default policy refuses, instead of
+    delivering a `market_cap` of 0. DDOG recovers a real count it never used to deliver.
+    A **ceiling at 1e13** was added in the same change and was NOT part of the ruling: making the
+    median causal would otherwise have silently dropped typo detection for early points, since a
+    value arriving second of four has no prior basis to be judged against.
+  - **A share count that stopped being filed is annotated, not forward-filled in silence**
+    (APD-DATA-039, APD-DATA-045). 26 of 485 cached issuers stop before 2025-06-01, one 16.7 years
+    back, against a cache-wide median last-as-of of 2026-04-24; every later row reused that value
+    and produced an entirely plausible wrong market cap. A series with more than **365 days** of
+    silence before its window ends is now `degraded` with the count of affected rows. Measured per
+    SERIES, deliberately: a per-row reading flags the tail of every gap, and an annual filer
+    produces a 365-day gap once a year by definition.
+  - **The SEC shares cache key carries a version, and a TTL** (APD-DATA-039). It was CIK-only with
+    neither, so a payload written once could disagree with the endpoint indefinitely while a warm
+    hit also skipped the rescue ladder. Existing cache files are orphaned by the new key, which is
+    the intended behaviour for a shape change.
+  - **`adj_close` left the DEFAULT feature columns** (APD-DATA-041), taking the matrix from 16
+    columns to 15. `yf.download(..., auto_adjust=False)` -- which overrides yfinance's own default
+    of `True`, so that single argument is what creates the channel -- leaves `close` split-adjusted
+    but not dividend-adjusted, making `close / adj_close` a running product of dividends paid AFTER
+    each row: 1.0 at the download date, and still 1.13% on the last row of a window ending two and
+    a half years earlier. The column is still produced; note that there is currently **no parameter
+    to request it back into a dataset**, so this removes the capability until one exists.
+  - **`cost_basis` is causal** (APD-DATA-042). It wrote one constant to every row, which is inert
+    at the default `purchase_date` and a full future-price leak at any later one -- and
+    `purchase_date` is a plain public request field. Rows before the purchase now carry no basis.
+
 ## [0.14.0] - 2026-09-08
 
 ### Removed

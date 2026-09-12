@@ -135,7 +135,18 @@ EQUITIES_FEATURE_COLUMNS = [
     "total_shares",
     "market_cap",
     "cost_basis",
-    "adj_close",
+    # ``adj_close`` was here, and is DELIBERATELY not any more (owner ruling 2026-09-09,
+    # register APD-DATA-041). It is still a perfectly good column to request explicitly; it is
+    # not safe as a DEFAULT. ``yf.download(..., auto_adjust=False)`` -- which overrides
+    # yfinance's own default of True, so that one argument is what creates the channel --
+    # leaves ``close`` split-adjusted but not dividend-adjusted, so ``close / adj_close`` is a
+    # running product of dividends paid AFTER each row. It reaches exactly 1.0 at the download
+    # date and still carries a 1.13% adjustment on the last row of a window ending two and a
+    # half years earlier: a quantity unknowable at a row's date, reaching that row, which is
+    # the rule this module states for itself.
+    #
+    # Rejected alternative: auto_adjust=True, which removes the channel by changing what every
+    # price column means for every existing consumer.
     "dividend",
     "split_ratio",
     "days_since_week52_high",
