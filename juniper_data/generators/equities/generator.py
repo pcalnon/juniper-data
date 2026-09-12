@@ -54,7 +54,7 @@ from juniper_data.core.limits import DATA_QUALITY_META_KEY, INCOMPLETE_ACCEPT, I
 from .defaults import CONSTITUENTS_FILENAME, EQUITIES_FEATURE_COLUMNS
 from .params import EquitiesParams
 
-VERSION = "3.0.0"
+VERSION = "4.0.0"
 
 _logger = logging.getLogger(__name__)
 
@@ -77,6 +77,45 @@ _SEC_MIN_INTERVAL = 0.12  # seconds between SEC calls
 # this factor: such jumps are XBRL filer scale typos (e.g. a cover-page value
 # entered 1e6x too large), not real splits/buybacks/issuance.
 _SHARES_OUTLIER_FACTOR = 100.0
+# Absolute plausibility floor for a share count, in shares. Owner ruling 2026-09-09
+# (register APD-DATA-043 / -044). A listed issuer cannot have 1,000 shares outstanding; the
+# six unusable series in the bundled universe deliver 0, 1 or 1,000. Sited deliberately
+# between those and the smallest GENUINE count in the same cache -- Berkshire's Class-A
+# series bottoms at 941,481, and the smallest ordinary issuer, NVR, at 2,699,292. A floor
+# above 941,481 would start deleting real history.
+#
+# The floor does what the relative median filter cannot: a series whose BAD points are the
+# majority drags its own median down to meet them, which is exactly how PSKY's two 1,000-share
+# placeholders survived while its one real count (1,071,666,977) was filtered out as the
+# outlier.
+_SHARES_ABSOLUTE_FLOOR = 100_000.0
+# The symmetric instrument, and the one that survives making the median causal. A cover-page
+# typo entered 1e6x too large (the ORCL 2012-09-17 class) used to be caught by comparing it to
+# the median of the WHOLE history -- which means it was caught by looking at filings that had
+# not happened yet. A causal median cannot catch a typo that arrives second of four: there is
+# no basis to judge it against. An absolute ceiling can, because no issuer has 1e13 shares.
+# Sited 588x above the largest genuine count in the bundled universe (AAPL, 17,001,802,000)
+# and 100x below the 1e15 typo the regression test pins.
+#
+# NOT part of the 2026-09-09 ruling, which named a floor. Added because implementing the
+# causal half of that same ruling would otherwise have silently DROPPED typo detection for
+# early points, trading one look-ahead for a new blind spot.
+_SHARES_ABSOLUTE_CEILING = 1.0e13
+# A share count older than this is reported but marked degraded rather than silently
+# forward-filled for years. Owner ruling 2026-09-09 (register APD-DATA-039 / -045), chosen
+# against the measured distribution of the 485-payload cache: median last-as-of age 138 days,
+# p90 180, and the count of flagged series is flat from 270d (28) through 365d (27) to 730d
+# (24), so the exact figure is not load-bearing. Anything under ~200 days measures cache age
+# rather than issuer staleness -- a 120-day bound flags 95% of the universe. Every 10-K and
+# 10-Q carries a share count, so a year of silence is the issuer, not the calendar.
+_SHARES_STALE_AFTER_DAYS = 365
+# Cache layout version, and how long a cached payload is trusted before re-fetching.
+# The key was CIK-only with neither, so a cache written in June could disagree with SEC
+# indefinitely while a warm hit skipped the rescue ladder entirely. Bump the version whenever
+# the SHAPE of the cached payload changes; the TTL covers the content going stale underneath
+# an unchanged shape.
+_SHARES_CACHE_VERSION = 2
+_SHARES_CACHE_TTL_DAYS = 7
 
 # XBRL shares-outstanding concepts, tried in order (dei cover-page first).
 _SHARES_CONCEPTS = (("dei", "EntityCommonStockSharesOutstanding"), ("us-gaap", "CommonStockSharesOutstanding"))
@@ -86,6 +125,14 @@ SHARES_SOURCE_CONCEPT = "companyconcept"
 SHARES_SOURCE_FACTS = "companyfacts"
 SHARES_QUALITY_POINT_IN_TIME = "point_in_time"
 SHARES_QUALITY_PERIOD_AVERAGE = "period_average"
+# The count was point-in-time when it was filed -- and then nothing replaced it for longer
+# than _SHARES_STALE_AFTER_DAYS, so the rows carrying it forward are asserting a figure the
+# issuer stopped confirming. Distinct from `period_average` (recovered from a weaker SOURCE)
+# and from `unrescued` (recovered from nothing): here the source was the best one available
+# and the problem is its AGE. Harder to notice than either, because the resulting market cap
+# is entirely plausible -- 26 of the 485 cached issuers stop before 2025-06-01, one of them
+# 16.7 years back, and every later row silently reuses that last value.
+SHARES_QUALITY_STALE = "stale"
 # ISSUED IS A DIFFERENT QUANTITY, not a weaker measurement of the same one.
 # Issued includes treasury stock, so it is >= outstanding -- materially so for a
 # company that has bought back stock. A ``market_cap`` built on it silently means
@@ -510,8 +557,35 @@ class EquitiesGenerator:
             quality = str(frame["shares_quality"].iloc[0]) if "shares_quality" in frame.columns and len(frame) else SHARES_QUALITY_UNRESCUED
             if quality == SHARES_QUALITY_UNRESCUED:
                 unrescued[ticker] = "no shares-outstanding concept in companyconcept or companyfacts"
-            elif quality != SHARES_QUALITY_POINT_IN_TIME:
+                continue
+            if quality != SHARES_QUALITY_POINT_IN_TIME:
                 degraded[ticker] = quality
+            # STALENESS IS A SEPARATE AXIS from source quality, and is checked for every ticker
+            # that got a value at all -- including the point-in-time ones, which is precisely the
+            # population the old annotation called clean. Owner ruling 2026-09-09
+            # (APD-DATA-039 / -045): report it as degraded rather than forward-filling in silence.
+            #
+            # Measured from ``report_date`` rather than the ``days_since_report`` COLUMN, because
+            # that column is zero-filled under some ``fundamentals_fill`` policies and a zero age
+            # reads as perfectly fresh -- the fill would hide exactly what this is looking for.
+            if "report_date" in frame.columns and len(frame) and frame["report_date"].notna().any():
+                # PER SERIES, not per row, and the difference is the whole rule.
+                #
+                # A per-row test -- "is this row's backing filing more than a year old" -- flags the
+                # tail of EVERY gap, and an annual filer legitimately produces a 365-day gap once a
+                # year, so the rows just before each new filing would all be marked. That is a
+                # different and much broader claim than the one ruled on 2026-09-09, which was
+                # taken against the age of each series' LAST filing: 27 of 485 cached issuers had
+                # stopped filing, one of them 16.7 years ago, and those are the series whose later
+                # rows are asserting a figure nobody is confirming any more.
+                #
+                # So: has this series STOPPED, as of the end of the window it is serving?
+                last_filed = frame["report_date"].dropna().max()
+                silence_days = int((frame.index.max() - last_filed).days)
+                if silence_days > _SHARES_STALE_AFTER_DAYS:
+                    affected = int((pd.Series(frame.index, index=frame.index) > last_filed + pd.Timedelta(days=_SHARES_STALE_AFTER_DAYS)).sum())
+                    note = f"{SHARES_QUALITY_STALE}: no share count filed in the {silence_days} days before this window ends; {affected} of {len(frame)} rows carry a figure the issuer stopped confirming"
+                    degraded[ticker] = f"{degraded[ticker]}; {note}" if ticker in degraded else note
 
         rows_affected = sum(len(conditioned[ticker]) for ticker in unrescued)
         policy = EquitiesGenerator._resolve_incomplete_policy(params, bool(unrescued))
@@ -807,11 +881,25 @@ class EquitiesGenerator:
         if params.fundamentals_fill == "zero":
             frame["days_since_report"] = frame["days_since_report"].fillna(0.0)
 
+        # COST BASIS IS CAUSAL: no row before the purchase knows the purchase price.
+        #
+        # This wrote one constant to EVERY row. At the default ``purchase_date`` (the first
+        # session in the window) that is inert -- the basis is the first row's own close. At any
+        # LATER date it is a full future-price leak: every row before the purchase carries a price
+        # from its own future, and ``purchase_date`` is a plain public request field, rendered as a
+        # text input in canopy's sidebar. Owner ruling 2026-09-09 (register APD-DATA-042): make it
+        # causal rather than deleting the feature or forbidding later purchase dates, so the leak
+        # closes at EVERY purchase_date instead of only the default one.
+        #
+        # NaN, not zero, before the purchase: a cost basis of 0.0 is a real price a consumer would
+        # divide by, and ``fundamentals_fill`` exists precisely so the caller decides how absent
+        # fundamentals are represented.
         basis_field = params.basis_price_field if params.basis_price_field in frame.columns else "close"
         purchase = pd.to_datetime(params.purchase_date)
         on_or_before = frame.loc[frame.index <= purchase]
         basis = float(on_or_before[basis_field].iloc[-1]) if len(on_or_before) else float(frame[basis_field].iloc[0])
-        frame["cost_basis"] = basis
+        basis_known_from = on_or_before.index[-1] if len(on_or_before) else frame.index[0]
+        frame["cost_basis"] = np.where(frame.index >= basis_known_from, basis, np.nan)
 
         frame["name"] = info.get("name", ticker)
         frame["ticker"] = ticker
@@ -922,13 +1010,22 @@ class EquitiesGenerator:
         publicly knowable. Only the second is safe to condition on at a given
         trade date -- using the period end would leak, sometimes by months.
         """
-        cache = _CACHE_DIR / "shares" / f"{int(cik):010d}.json"
+        cache = _CACHE_DIR / "shares" / f"v{_SHARES_CACHE_VERSION}" / f"{int(cik):010d}.json"
         data = None
         if use_cache and cache.exists():
+            # A cached payload is trusted for _SHARES_CACHE_TTL_DAYS and then re-fetched. An
+            # unreadable mtime is treated as expired rather than fresh: failing towards a
+            # network call costs a request, failing towards the cache can serve a year-old
+            # figure forever, which is the defect this replaces.
             try:
-                data = json.loads(cache.read_text())
-            except (OSError, json.JSONDecodeError):
-                data = None
+                age_days = (time.time() - cache.stat().st_mtime) / 86400.0
+            except OSError:
+                age_days = float("inf")
+            if age_days <= _SHARES_CACHE_TTL_DAYS:
+                try:
+                    data = json.loads(cache.read_text())
+                except (OSError, json.JSONDecodeError):
+                    data = None
         quality = SHARES_QUALITY_POINT_IN_TIME
         origin = SHARES_SOURCE_CONCEPT
         if data is None:
@@ -966,41 +1063,70 @@ class EquitiesGenerator:
         if not data or not any(data.get("units", {}).values()):
             return None
 
-        # Keep the latest-filed value per period-end date, and the filing date
-        # that supplied it -- the sort key already orders by (end, filed), so the
-        # last write per end date wins and both facts come from the same point.
-        best: dict[str, float] = {}
-        filed_on: dict[str, str] = {}
+        # EVERY FACT IS AN OBSERVATION, not a correction to be collapsed.
+        #
+        # This used to keep one value per PERIOD END -- the latest-filed one -- which threw
+        # away the original publication whenever a later filing restated the same period. The
+        # value then appeared to become knowable on the restatement date, months or years after
+        # it was actually public, and every row in between saw the previous period's figure or
+        # nothing at all. Measured over the 485-payload cache: 162 CIKs carry such a
+        # restatement, 17,569 rows move, ADM (inside the default 14-symbol prefix) by up to
+        # +11.55%, and 9 CIKs had their first count deferred outright -- EXPE by 521 rows.
+        #
+        # Keyed by (end, filed) instead, the frame carries the full publication history and
+        # ``_condition_one``'s existing as-of join -- index by ``filed``, stable sort on
+        # (filed, end), forward-fill onto trading days -- reads exactly what was knowable on
+        # each date. That join was always right; it was being fed a rewritten past.
+        records: list[tuple[Any, Any, float]] = []
         for unit_points in data["units"].values():
-            for point in sorted(unit_points, key=lambda item: (item.get("end", ""), item.get("filed", ""))):
-                if point.get("val") is not None and point.get("end"):
-                    best[point["end"]] = float(point["val"])
-                    if point.get("filed"):
-                        filed_on[point["end"]] = point["filed"]
-        if not best:
+            for point in unit_points:
+                if point.get("val") is None or not point.get("end"):
+                    continue
+                records.append((point["end"], point.get("filed") or None, float(point["val"])))
+        if not records:
             return None
-        series = pd.Series(best)
-        series.index = pd.to_datetime(series.index)
-        series = series.sort_index()
-        # Drop XBRL filer scale errors (isolated points ~1e6x off): forward-fill
-        # then carries the last good value across the dropped point. Median is
-        # robust to the minority of bad points.
-        median = float(series.median())
-        if median > 0:
-            series = series[(series >= median / _SHARES_OUTLIER_FACTOR) & (series <= median * _SHARES_OUTLIER_FACTOR)]
-        if not len(series):
+        observations = pd.DataFrame(records, columns=["end", "filed", "shares"])
+        observations["end"] = pd.to_datetime(observations["end"], errors="coerce")
+        observations["filed"] = pd.to_datetime(observations["filed"], errors="coerce")
+        observations = observations.dropna(subset=["end"])
+        # The same (period, filing) reported twice is one observation, not two.
+        observations = observations.drop_duplicates(subset=["end", "filed"], keep="last")
+        # Stable, and ordered the way the data became knowable. ``na_position='first'`` puts
+        # facts with no filing date at the start, where they are treated as always-known --
+        # the same reading the downstream join gives them by dropping them from the as-of index.
+        observations = observations.sort_values(["filed", "end"], kind="stable", na_position="first").reset_index(drop=True)
+
+        # ABSOLUTE FLOOR FIRST, and deliberately before the relative filter: a series whose bad
+        # points are the majority drags its own median down to meet them, so the relative test
+        # cannot be trusted until the impossible values are gone. See _SHARES_ABSOLUTE_FLOOR.
+        observations = observations[(observations["shares"] >= _SHARES_ABSOLUTE_FLOOR) & (observations["shares"] <= _SHARES_ABSOLUTE_CEILING)]
+        if not len(observations):
             return None
 
-        frame = series.to_frame(name="shares")
+        # CAUSAL scale-typo filter. The old one compared every point to the median of the whole
+        # history, so which points survived depended on filings made after the rows they
+        # affect -- a look-ahead in the filter itself (61 of 485 CIKs lose at least one point,
+        # and 15 or 16 keep a different set under a causal median). An expanding median sees
+        # only what was already filed. ``min_periods`` keeps the opening points: a median over
+        # one or two observations is not a basis for deleting a third.
+        running_median = observations["shares"].expanding(min_periods=3).median()
+        keep = running_median.isna() | ((observations["shares"] >= running_median / _SHARES_OUTLIER_FACTOR) & (observations["shares"] <= running_median * _SHARES_OUTLIER_FACTOR))
+        observations = observations[keep]
+        if not len(observations):
+            return None
+
+        frame = observations.set_index("end")[["shares"]]
         # Provenance rides ALONG with the values, as a constant column, so it
         # survives every reindex/ffill downstream without a second return value
         # or a fragile ``.attrs``. A consumer must be able to tell a market cap
         # built on point-in-time shares from one built on a period average.
         frame["shares_quality"] = quality
         frame["shares_origin"] = origin
-        # A point with no ``filed`` (rare, older filings) becomes NaT rather than
-        # a guess -- the consumer sees "unknown", not a fabricated date.
-        frame["filed"] = pd.to_datetime(pd.Series({pd.Timestamp(end): filed_on.get(end) for end in best}, dtype="object")).reindex(frame.index)
+        # A point with no ``filed`` (rare, older filings) stays NaT rather than becoming a
+        # guess -- the consumer sees "unknown", not a fabricated date. It rides the frame
+        # positionally now, because the index is no longer unique: one period end can carry
+        # several filings, which is the whole point of the change above.
+        frame["filed"] = observations["filed"].to_numpy()
         return frame
 
     # ------------------------------------------------------------------ #
