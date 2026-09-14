@@ -42,7 +42,7 @@ fastapi==0.141.1
     #   juniper-data (pyproject.toml)
     #   juniper-service-core
     #   sentry-sdk
-filelock==3.32.5
+filelock==3.32.6
     # via
     #   datasets
     #   huggingface-hub
@@ -68,7 +68,7 @@ httpx==0.28.1
     # via
     #   datasets
     #   huggingface-hub
-huggingface-hub==1.30.0
+huggingface-hub==1.31.0
     # via datasets
 idna==3.19
     # via
@@ -76,13 +76,13 @@ idna==3.19
     #   httpx
     #   requests
     #   yarl
-juniper-model-core==0.3.1
+juniper-model-core==0.3.2
     # via juniper-service-core
 juniper-observability==0.4.0
     # via juniper-data (pyproject.toml)
 juniper-service-core==0.7.0
     # via juniper-data (pyproject.toml)
-multidict==6.7.1
+multidict==6.8.0
     # via
     #   aiohttp
     #   yarl
@@ -137,7 +137,7 @@ pyyaml==6.0.3
     #   uvicorn
 requests==2.34.2
     # via datasets
-sentry-sdk==2.68.1
+sentry-sdk==2.69.1
     # via juniper-data (pyproject.toml)
 six==1.17.0
     # via python-dateutil
@@ -146,7 +146,7 @@ starlette==1.6.0
     #   juniper-data (pyproject.toml)
     #   fastapi
     #   juniper-observability
-tqdm==4.70.0
+tqdm==4.70.1
     # via
     #   datasets
     #   huggingface-hub
@@ -167,7 +167,7 @@ urllib3==2.7.0
     # via
     #   requests
     #   sentry-sdk
-uvicorn==0.52.4
+uvicorn==0.53.0
     # via juniper-data (pyproject.toml)
 uvloop==0.22.1
     # via uvicorn
