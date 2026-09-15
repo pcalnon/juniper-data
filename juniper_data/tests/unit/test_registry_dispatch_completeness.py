@@ -32,11 +32,15 @@ from pathlib import Path
 import pytest
 
 from juniper_data.api.routes.generators import GENERATOR_REGISTRY
+from juniper_data.core.meta import TASK_TYPE_CLASSIFICATION, TASK_TYPE_REGRESSION, TASK_TYPE_STRUCTURED
 from juniper_data.generators._synthetic import SYNTHETIC_TIME_UNIT, SyntheticSequenceParams
 
 pytestmark = [pytest.mark.unit, pytest.mark.generators]
 
-_ALLOWED_TASK_TYPES = frozenset({"classification", "regression"})
+# Sourced from the constants rather than restated, so a new task type cannot be added to the
+# vocabulary in core/meta.py without this allowlist seeing it. ``structured`` is the grid-to-grid
+# case (juniper-data#401): ``y`` carries the shape of the thing predicted, not a label.
+_ALLOWED_TASK_TYPES = frozenset({TASK_TYPE_CLASSIFICATION, TASK_TYPE_REGRESSION, TASK_TYPE_STRUCTURED})
 
 
 def _on_disk_generator_packages() -> set[str]:
@@ -54,7 +58,14 @@ class TestTaskTypeIsExplicit:
     @pytest.mark.parametrize("name", sorted(GENERATOR_REGISTRY))
     def test_task_type_is_a_known_value(self, name: str) -> None:
         task_type = GENERATOR_REGISTRY[name]["task_type"]
-        assert task_type in _ALLOWED_TASK_TYPES, f"{name}: task_type={task_type!r} is not classification or regression"
+        assert task_type in _ALLOWED_TASK_TYPES, f"{name}: task_type={task_type!r} is not one of {sorted(_ALLOWED_TASK_TYPES)}"
+
+    def test_arc_agi_declares_structured_not_classification(self) -> None:
+        """juniper-data#401. Its ``y`` is the stacked padded output GRID, the same shape as
+        ``X`` -- not a one-hot. Declared ``classification`` it was argmax'd into an
+        ``n_classes`` equal to the grid's cell count, over cell POSITIONS.
+        """
+        assert GENERATOR_REGISTRY["arc_agi"]["task_type"] == TASK_TYPE_STRUCTURED
 
 
 class TestTimeUnitFollowsLookback:

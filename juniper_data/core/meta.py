@@ -37,6 +37,27 @@ from juniper_data.core.scaling import SCALING_META_KEY
 #: The only task type that populates n_classes / class_distribution.
 TASK_TYPE_CLASSIFICATION = "classification"
 
+#: A continuous target. Leaves n_classes / class_distribution as None.
+TASK_TYPE_REGRESSION = "regression"
+
+#: A STRUCTURED target -- ``y`` has the shape of the thing being predicted rather than the
+#: shape of a label. ``arc_agi`` is the case this exists for: its ``y`` is the stacked padded
+#: output GRID, the same shape as ``X``, so flattened it is ``(n, pad_to*pad_to)`` -- 900 cells
+#: valued in [-1..9] at the default ``pad_to=30``, not a 10-way one-hot.
+#:
+#: Declared ``classification``, such a ``y`` is argmax'd by ``_classification_meta`` as though
+#: the grid were a one-hot, publishing ``n_classes = 900`` and a ``class_distribution`` over
+#: grid-cell POSITIONS. Both numbers are fabricated. This module's own contract (see the header)
+#: says non-classification artifacts exist so they "need not fake a one-hot label"; before this
+#: constant, a grid-to-grid map had no value that let it say so.
+#:
+#: Consumers are not required to know this value. It is deliberately additive: ``compute_shape_meta``
+#: populates the class fields for ``TASK_TYPE_CLASSIFICATION`` ONLY, so any unrecognised value
+#: already falls through with ``None``; and a consumer that gates on a capability set (canopy's
+#: ``model.supported_task_types``) simply matches no model, which is the correct answer for a
+#: target nothing here can fit. See juniper-data#401.
+TASK_TYPE_STRUCTURED = "structured"
+
 
 def compute_shape_meta(
     arrays: dict[str, np.ndarray],

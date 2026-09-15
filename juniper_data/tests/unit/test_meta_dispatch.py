@@ -19,7 +19,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from juniper_data.core.meta import compute_shape_meta, derive_sequence_meta, pop_scaling_meta
+from juniper_data.core.meta import TASK_TYPE_STRUCTURED, compute_shape_meta, derive_sequence_meta, pop_scaling_meta
 from juniper_data.core.models import DatasetMeta
 
 pytestmark = [pytest.mark.unit]
@@ -296,3 +296,57 @@ def test_non_empty_train_is_unchanged(shape, expected):
         "y_test": np.zeros((2, 1), np.float32),
     }
     assert compute_shape_meta(arrays, "regression")["n_features"] == expected
+
+
+def test_structured_grid_target_is_not_argmaxed_into_fake_classes():
+    """juniper-data#401: a STRUCTURED ``y`` must not be read as a one-hot.
+
+    ``arc_agi``'s ``y`` is the stacked padded output GRID -- the same shape as ``X`` -- so
+    flattened it is ``(n, pad_to*pad_to)``: cells valued in [-1..9], not a 10-way one-hot.
+    Declared ``classification`` it was argmax'd by ``_classification_meta``, publishing
+    ``n_classes`` equal to the GRID CELL COUNT and a ``class_distribution`` over cell
+    POSITIONS. Both are fabricated.
+
+    Shaped like the real thing: a 5x5 grid flattened to 25 columns, values in the ARC
+    palette plus the -1 pad sentinel.
+    """
+    rng = np.random.default_rng(0)
+    y_train = rng.integers(-1, 10, size=(6, 25)).astype(np.float32)
+    y_test = rng.integers(-1, 10, size=(2, 25)).astype(np.float32)
+    arrays = {
+        "X_train": np.zeros((6, 25), np.float32),
+        "X_test": np.zeros((2, 25), np.float32),
+        "y_train": y_train,
+        "y_test": y_test,
+    }
+
+    structured = compute_shape_meta(arrays, TASK_TYPE_STRUCTURED)
+    assert structured["n_classes"] is None
+    assert structured["class_distribution"] is None
+    # The shape fields are still derived -- only the CLASS fields are withheld.
+    assert structured["n_features"] == 25
+    assert structured["n_samples"] == 8
+
+    # The defect this pins: the SAME arrays under "classification" fabricate a class count
+    # equal to the grid's cell count. If this stops being true the guard above is vacuous.
+    misdeclared = compute_shape_meta(arrays, "classification")
+    assert misdeclared["n_classes"] == 25, "the argmax path no longer fabricates; re-check this test's premise"
+
+
+def test_an_unknown_task_type_also_withholds_the_class_fields():
+    """The dispatch is an allowlist of ONE, not a denylist.
+
+    This is what makes TASK_TYPE_STRUCTURED additive: a consumer that has never heard of a
+    new task type gets ``None`` rather than a wrong number, so introducing one needs no
+    coordinated change. Pinned so a future refactor to ``if task_type != REGRESSION`` -- which
+    would silently argmax every unrecognised value -- fails here.
+    """
+    arrays = {
+        "X_train": np.zeros((4, 3), np.float32),
+        "X_test": np.zeros((2, 3), np.float32),
+        "y_train": np.eye(3, dtype=np.float32)[[0, 1, 2, 0]],
+        "y_test": np.eye(3, dtype=np.float32)[[1, 2]],
+    }
+    m = compute_shape_meta(arrays, "a_task_type_from_the_future")
+    assert m["n_classes"] is None
+    assert m["class_distribution"] is None
