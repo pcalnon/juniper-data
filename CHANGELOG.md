@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`arc_agi` declared `task_type="classification"` over a target that is not a class vector, so
+  its `n_classes` and `class_distribution` were fabricated.** Its `y` is the stacked padded output
+  GRID — the same shape as `X` (`generators/arc_agi/generator.py`) — so flattened it is
+  `(n, pad_to*pad_to)`: 900 cells valued in `[-1..9]` at the default `pad_to=30`, not a 10-way
+  one-hot. `compute_shape_meta` populates the class fields for `classification` only, by argmax
+  over the class axis, so a grid was argmax'd as though it were a one-hot and published
+  `n_classes = 900` with a `class_distribution` over grid-cell **positions**. This module's own
+  contract says non-classification artifacts exist so they "need not fake a one-hot label";
+  `arc_agi` was the artifact being made to fake one.
+
+  A third task type, **`structured`** (`core.meta.TASK_TYPE_STRUCTURED`), now names the case where
+  `y` carries the shape of the thing predicted rather than the shape of a label, and `arc_agi`
+  declares it. `TASK_TYPE_REGRESSION` gains a constant alongside it; the registry test's allowlist
+  is now sourced from those constants rather than restating them, so the vocabulary cannot grow
+  without the allowlist seeing it.
+
+  **Additive by construction — no consumer change is required.** `compute_shape_meta` already
+  populates the class fields for `TASK_TYPE_CLASSIFICATION` **only**, so any unrecognised value
+  falls through with `None`; and a consumer gating on a capability set (juniper-canopy's
+  `model.supported_task_types`) simply matches no model, which is the correct answer for a target
+  nothing in the platform can fit. The persisted column is a plain `TEXT` with a default and no
+  `CHECK`, so existing rows and deployments are unaffected. juniper-data#401.
+
 - **`util/check_image_cpu_only.py` let the `cuda-*` family through, and the merge job's
   digest-identity step accepted any number of linux images per pushed digest.** The 2026-09-07 CUDA
   worker image carried `cuda-toolkit`, `cuda-bindings` and `cuda-pathfinder` next to the `nvidia-*`

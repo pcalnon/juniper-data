@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from starlette import status
 
+from juniper_data.core.meta import TASK_TYPE_STRUCTURED
 from juniper_data.core.models import GeneratorInfo
 from juniper_data.generators.ar_p import VERSION as AR_P_VERSION
 from juniper_data.generators.ar_p import ArPGenerator, ArPParams
@@ -169,8 +170,13 @@ GENERATOR_REGISTRY: dict[str, dict[str, Any]] = {
         "generator": ArcAgiGenerator,
         "params_class": ArcAgiParams,
         "version": ARC_AGI_VERSION,
-        "task_type": "classification",
-        "description": "ARC-AGI (Abstraction and Reasoning Corpus) dataset generator. Generates visual reasoning tasks from the ARC benchmark.",
+        # STRUCTURED, not classification: ``y`` is the stacked padded output GRID, the same
+        # shape as ``X`` (generators/arc_agi/generator.py), so flattened it is
+        # ``(n, pad_to*pad_to)`` -- 900 cells valued in [-1..9] at the default pad_to, not a
+        # 10-way one-hot. Declared classification it was argmax'd into a fabricated
+        # ``n_classes = 900`` over grid-cell positions. juniper-data#401.
+        "task_type": TASK_TYPE_STRUCTURED,
+        "description": "ARC-AGI (Abstraction and Reasoning Corpus) dataset generator. Generates visual reasoning tasks from the ARC benchmark. Grid-to-grid map: y carries the padded OUTPUT GRID, not a class label.",
     },
 }
 
