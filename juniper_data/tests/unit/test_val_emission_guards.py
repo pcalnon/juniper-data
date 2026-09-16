@@ -288,4 +288,6 @@ class TestEveryGeneratorBumpedForDecision11:
         stale = {name: version for name, version in versions.items() if int(version.split(".")[0]) < 3}
         assert not stale, f"generators still on a pre-decision-11 VERSION: {stale}. The dataset ID hashes this, so each one can serve a cached *_full-bearing artifact."
         ahead = {name: version for name, version in versions.items() if version != "3.0.0"}
-        assert ahead == {"equities": "4.0.0", "equities_seq": "4.0.0"}, f"only the equities pair is deliberately past 3.0.0 (owner rulings 2026-09-09); found {ahead}. A generator that moves on its own needs its reason recorded here, or the next reader cannot tell a decision from a drift."
+        assert ahead == {"equities": "5.0.0", "equities_seq": "5.0.0"}, (
+            f"only the equities pair is deliberately past 3.0.0 (owner rulings 2026-09-09; 5.0.0 since the 2026-09-15 head-typo regression fix); found {ahead}. A generator that moves on its own needs its reason recorded here, or the next reader cannot tell a decision from a drift."
+        )

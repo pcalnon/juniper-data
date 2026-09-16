@@ -9,6 +9,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The causal scale-typo filter shipped in #395 included each point in the median that judged
+  it, so a cover-page typo in a series' opening filings survived and was delivered.**
+  `pandas.Series.expanding().median()` at position *i* includes position *i*, so an outlier
+  dominates its own basis and no `min_periods` value repairs it -- the problem is membership, not
+  sample size. Measured against the shipped module and the real SEC cache, AIZ's typo at position
+  1 and EOG's at position 0 survived at `min_periods` 1, 2 and 3 alike:
+
+  | ticker | delivered at 4.0.0 | correct | factor |
+  |--------|--------------------|---------|--------|
+  | AIZ    | 116,799,796,000    | 117,926,517 | 990x |
+  | EOG    | 251,931,774,000    | 587,723,622 | 428x |
+
+  The pre-#395 filter caught both, but only by consulting filings that had not happened yet --
+  the look-ahead #395 was written to remove. So this is not a revert; it is two changes that keep
+  causality and close the hole, and **neither is redundant -- the two regressions prove it one
+  each**:
+
+  1. **Every point is judged against the LOWER MEDIAN of what was filed strictly BEFORE it**
+     (`generators/equities/generator.py`) -- `prior[(n-1)//2]` of the sorted priors. Both halves of
+     that were chosen against a failure the other half causes, and both were found by running the
+     code rather than reading it.
+
+     - **Prior, not prior-*accepted*.** Excluding rejected values looks strictly safer and makes
+       the filter **absorbing**: if the first value a series offers is a typo the ceiling cannot
+       reach, the accepted set is that typo alone, every genuine value is more than a hundredfold
+       away from it, and nothing is ever accepted again. The whole real series is deleted and the
+       typo is what ships, with no way back, because only an acceptance could widen the basis.
+       Both ingredients are in the bundled cache -- a position-0 typo is real (EOG), and four
+       series carry sub-ceiling ~1000x typos (PNR 9.84e10, PKG 8.99e10, REG 8.19e10, MAA 7.50e10).
+       Only their coincidence is absent, and the shares cache has a 7-day TTL. Pinned by
+       `test_a_sub_ceiling_typo_in_the_first_filing_does_not_delete_the_series`, which loses
+       **0 of 20** genuine counts under the accepted-only basis and 19 of 20 survive under this one.
+     - **Lower median, not the interpolating one.** `statistics.median` of two disagreeing values
+       returns their mean, a magnitude neither is near: after a genuine 1.0e8 and a 5.0e10 typo the
+       basis for the third point becomes 2.55e10 and the genuine third filing is deleted as a
+       hundredfold-low outlier. The lower median is always a number some filing actually reported.
+
+     `min_periods` is gone: with nothing filed before it, position 0 has no relative basis at all,
+     and inventing one means looking forward. This alone returns AIZ (position 1) to 117,926,517.
+
+     All three candidate bases deliver **identical multisets across the 483 in-bounds series** of
+     the real cache, because the ceiling removes the poisoners before the relative test runs --
+     which is exactly why the wrong one looked correct. The separation is visible only on
+     constructed shapes; `util/ad-hoc/2026-09-15_compare_outlier_basis_designs.py` is that
+     comparison and `util/ad-hoc/2026-09-15_verify_lower_median_over_cache.py` is the whole-cache
+     equivalence check.
+  2. **`_SHARES_ABSOLUTE_CEILING` tightened from `1e13` to `1e11`.** Nothing relative can reach a
+     typo in a series' *first* filing, which is EOG's case, and `1e13` was chosen for headroom
+     rather than against the data: over the 486-payload cache, 18 observations across 9 series
+     sit in `(1e11, 1e13]` (39 observations across 24 series sit above `1e11` in total). `1e11`
+     sits between the largest genuine count in the cache (Citigroup, 2.92e10; NVIDIA second at
+     2.45e10) and the smallest demonstrated typo in it (AIZ, 1.168e11) -- 3.4x of headroom below.
+
+     **The ceiling is deliberately not tightened further.** The four largest values that pass it
+     are themselves typos -- Pentair 9.84e10 (592x its own median), Packaging Corp 8.99e10
+     (949x), Regency Centers 8.19e10 (483x), Mid-America 7.50e10 (659x) -- and the relative
+     filter catches every one, delivering all four correctly. Reaching them absolutely would mean
+     dropping below Citigroup's genuine 2.92e10 and deleting real mega-cap history. The ceiling
+     exists for the one case nothing relative can reach: a typo in a series' first filing.
+     Re-measure with `util/ad-hoc/2026-09-15_remeasure_shares_cache_figures.py`.
+
+  **A known false positive is pinned rather than papered over.** Two genuine share classes in one
+  series (Berkshire's Class A at 941,481 and Class B at 1,071,666,977) are 1,138x apart, which no
+  scale filter can distinguish from a typo of the same magnitude; the later class is now rejected.
+  It survived before only because `min_periods=3` switched the filter off for a series' opening
+  points -- the same hole that delivered AIZ. The remedy is a class-aware `dei` lookup, recorded
+  as `APD-DATA-046` on the Juniper defect register; until it lands, one filtered class is the better trade
+  than a scale typo in every series' first filings.
+
+  **`equities` and `equities_seq` go to generator version `5.0.0`.** `generator_version` is hashed
+  into `dataset_id`, so without the bump the corrected values would be served under the ID that
+  carried the wrong ones. Every artifact minted at `4.0.0` for a symbol with such a typo carries
+  it.
+
+  The staleness annotation also stops naming the issuer as the cause: Ford, Nike, Hershey and
+  Regeneron are all flagged over a window ending today and all four file a share count on every
+  10-Q -- what stopped is this cache's extraction of the `dei` concept, not the company. The
+  annotation is still correct; it now says *available* rather than *filed*. juniper-data#395.
+
 - **`arc_agi` declared `task_type="classification"` over a target that is not a class vector, so
   its `n_classes` and `class_distribution` were fabricated.** Its `y` is the stacked padded output
   GRID — the same shape as `X` (`generators/arc_agi/generator.py`) — so flattened it is
