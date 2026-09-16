@@ -1367,8 +1367,8 @@ class TestTheOwnerRulingsOf20260909:
 
         The remedy is a class-aware lookup (resolve the requested ticker to ONE ``dei`` class
         rather than pooling every share concept in the payload), recorded as deferred future work
-        on the register row for this defect. Until that lands this behaviour is the correct trade:
-        one filtered class, versus a scale typo in every series' first filings.
+        as ``APD-DATA-046`` on the Juniper defect register. Until that lands this behaviour is the
+        correct trade: one filtered class, versus a scale typo in every series' first filings.
         """
         payload = {
             "units": {

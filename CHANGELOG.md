@@ -46,7 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scale filter can distinguish from a typo of the same magnitude; the later class is now rejected.
   It survived before only because `min_periods=3` switched the filter off for a series' opening
   points -- the same hole that delivered AIZ. The remedy is a class-aware `dei` lookup, recorded
-  as deferred work on the register row; until it lands, one filtered class is the better trade
+  as `APD-DATA-046` on the Juniper defect register; until it lands, one filtered class is the better trade
   than a scale typo in every series' first filings.
 
   **`equities` and `equities_seq` go to generator version `5.0.0`.** `generator_version` is hashed
