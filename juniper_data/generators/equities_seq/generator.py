@@ -49,7 +49,7 @@ from juniper_data.generators.equities.generator import EQUITIES_DEPS_AVAILABLE, 
 
 from .params import EquitiesSeqParams
 
-VERSION = "4.0.0"
+VERSION = "5.0.0"
 
 _logger = logging.getLogger(__name__)
 

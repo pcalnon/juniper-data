@@ -35,6 +35,7 @@ Requires the optional ``equities`` extra: ``pip install "juniper-data[equities]"
 
 from __future__ import annotations
 
+import bisect
 import contextlib
 import csv
 import json
@@ -54,7 +55,7 @@ from juniper_data.core.limits import DATA_QUALITY_META_KEY, INCOMPLETE_ACCEPT, I
 from .defaults import CONSTITUENTS_FILENAME, EQUITIES_FEATURE_COLUMNS
 from .params import EquitiesParams
 
-VERSION = "4.0.0"
+VERSION = "5.0.0"
 
 _logger = logging.getLogger(__name__)
 
@@ -92,15 +93,34 @@ _SHARES_ABSOLUTE_FLOOR = 100_000.0
 # The symmetric instrument, and the one that survives making the median causal. A cover-page
 # typo entered 1e6x too large (the ORCL 2012-09-17 class) used to be caught by comparing it to
 # the median of the WHOLE history -- which means it was caught by looking at filings that had
-# not happened yet. A causal median cannot catch a typo that arrives second of four: there is
-# no basis to judge it against. An absolute ceiling can, because no issuer has 1e13 shares.
-# Sited 588x above the largest genuine count in the bundled universe (AAPL, 17,001,802,000)
-# and 100x below the 1e15 typo the regression test pins.
+# not happened yet. A causal median SHIFTED BY ONE can judge a typo that arrives second of
+# four -- against the genuine first filing -- but nothing relative can judge the FIRST
+# observation, which has no prior basis at all. An absolute ceiling can, because no issuer
+# has 1e11 shares.
+#
+# Sited between the largest GENUINE count in the cache (Citigroup, 2.92e10; NVIDIA is second
+# at 2.45e10) and the smallest DEMONSTRATED typo in it (AIZ, 1.168e11): 3.4x of headroom
+# below. It was 1e13 until 2026-09-15, chosen for headroom alone, and headroom alone made it
+# nearly inert -- measured over the 486-payload cache, 18 observations across 9 series sit in
+# (1e11, 1e13], and two of those series (AIZ, EOG) were DELIVERED, because the relative filter
+# could not judge a typo in a series' opening filings either.
+#
+# DO NOT TIGHTEN IT FURTHER TO CHASE THE REST. The four largest values that pass this ceiling
+# are themselves typos -- Pentair 9.84e10 (592x its own median), Packaging Corp 8.99e10
+# (949x), Regency Centers 8.19e10 (483x), Mid-America 7.50e10 (659x) -- and every one of them
+# is caught by the relative filter, which delivers all four correctly. Reaching them with an
+# absolute bound would mean dropping below Citigroup's genuine 2.92e10 and deleting real
+# mega-cap history. That is the division of labour: the ceiling exists for the ONE case
+# nothing relative can reach, a typo in a series' first filing.
+#
+# An earlier draft of this comment said 1e11 sits above "the largest genuine count in the
+# bundled universe (AAPL, 1.70e10)" with 5.9x of headroom. AAPL is the largest in the DEFAULT
+# 14-SYMBOL PREFIX, not in the universe, and the two are not the same population.
 #
 # NOT part of the 2026-09-09 ruling, which named a floor. Added because implementing the
 # causal half of that same ruling would otherwise have silently DROPPED typo detection for
 # early points, trading one look-ahead for a new blind spot.
-_SHARES_ABSOLUTE_CEILING = 1.0e13
+_SHARES_ABSOLUTE_CEILING = 1.0e11
 # A share count older than this is reported but marked degraded rather than silently
 # forward-filled for years. Owner ruling 2026-09-09 (register APD-DATA-039 / -045), chosen
 # against the measured distribution of the 485-payload cache: median last-as-of age 138 days,
@@ -580,11 +600,19 @@ class EquitiesGenerator:
                 # rows are asserting a figure nobody is confirming any more.
                 #
                 # So: has this series STOPPED, as of the end of the window it is serving?
+                #
+                # The note says AVAILABLE, not filed, and deliberately does not name the
+                # issuer as the cause. Ford, Nike, Hershey and Regeneron are all flagged over
+                # a window ending today, and all four file a share count on every 10-Q: what
+                # stopped is this cache's extraction of the dei concept, not the company. The
+                # annotation is still correct -- those rows ARE carrying a stale figure
+                # forward -- but an annotation that names the wrong cause sends whoever reads
+                # it to the wrong place.
                 last_filed = frame["report_date"].dropna().max()
                 silence_days = int((frame.index.max() - last_filed).days)
                 if silence_days > _SHARES_STALE_AFTER_DAYS:
                     affected = int((pd.Series(frame.index, index=frame.index) > last_filed + pd.Timedelta(days=_SHARES_STALE_AFTER_DAYS)).sum())
-                    note = f"{SHARES_QUALITY_STALE}: no share count filed in the {silence_days} days before this window ends; {affected} of {len(frame)} rows carry a figure the issuer stopped confirming"
+                    note = f"{SHARES_QUALITY_STALE}: no share count available for the {silence_days} days before this window ends; {affected} of {len(frame)} rows carry a value forward from the last one"
                     degraded[ticker] = f"{degraded[ticker]}; {note}" if ticker in degraded else note
 
         rows_affected = sum(len(conditioned[ticker]) for ticker in unrescued)
@@ -1105,13 +1133,68 @@ class EquitiesGenerator:
 
         # CAUSAL scale-typo filter. The old one compared every point to the median of the whole
         # history, so which points survived depended on filings made after the rows they
-        # affect -- a look-ahead in the filter itself (61 of 485 CIKs lose at least one point,
-        # and 15 or 16 keep a different set under a causal median). An expanding median sees
-        # only what was already filed. ``min_periods`` keeps the opening points: a median over
-        # one or two observations is not a basis for deleting a third.
-        running_median = observations["shares"].expanding(min_periods=3).median()
-        keep = running_median.isna() | ((observations["shares"] >= running_median / _SHARES_OUTLIER_FACTOR) & (observations["shares"] <= running_median * _SHARES_OUTLIER_FACTOR))
-        observations = observations[keep]
+        # affect -- a look-ahead in the filter itself. An expanding median sees only what was
+        # already filed.
+        #
+        # EVERY POINT IS JUDGED AGAINST WHAT CAME STRICTLY BEFORE IT, and that exclusion is
+        # the whole correctness of this. ``expanding().median()`` INCLUDES the point it is
+        # judging, so an outlier dominates its own basis and can never be rejected -- and no
+        # ``min_periods`` value repairs that, because the problem is membership, not sample
+        # size. That is not a corner case; it shipped in #395. Measured on the real cache,
+        # AIZ's typo at position 1 and EOG's at position 0 survived at min_periods 1, 2 and 3
+        # alike, and were delivered 990x and 428x too large.
+        #
+        # Position 0 is left unjudged on purpose: with nothing filed before it there is no
+        # relative basis at all, and inventing one means looking forward. That case belongs to
+        # _SHARES_ABSOLUTE_CEILING, which is why the ceiling had to be tightened in the same
+        # change -- a typo in a series' first filing is exactly what no relative test can reach.
+        #
+        # NEITHER half is redundant, and the two regressions prove it one each: AIZ's typo
+        # sits at position 1 and the relative test alone returns it to 117,926,517 under
+        # either ceiling; EOG's sits at position 0, survives the relative test untouched, and
+        # only the 1e11 ceiling brings it back to 587,723,622. Over the 486-payload cache the
+        # relative test rejects at least one observation in 6 series and the ceiling in 24;
+        # re-measure with
+        # ``util/ad-hoc/2026-09-15_remeasure_shares_cache_figures.py``.
+        #
+        # The basis is the LOWER MEDIAN of the prior values -- ``prior[(n-1)//2]`` of the sorted
+        # priors -- and both halves of that were chosen against a failure the other half causes.
+        #
+        # PRIOR, not prior-ACCEPTED. Excluding rejected values looks strictly safer and is not:
+        # it makes the filter ABSORBING. If the first value a series offers is a typo the
+        # ceiling cannot reach, the accepted set is that typo alone, every genuine value is more
+        # than a hundredfold away from it, and nothing is ever accepted again -- the entire real
+        # series is deleted and the typo is what ships. Only an acceptance could widen the
+        # basis, so there is no way back. Counting rejected values towards the SAMPLE (never
+        # towards the output) lets the basis re-converge within a couple of observations. Both
+        # ingredients for that trap are in the bundled cache: a position-0 typo is real (EOG),
+        # and four series carry sub-ceiling ~1000x typos (PNR 9.84e10, PKG 8.99e10, REG 8.19e10,
+        # MAA 7.50e10); only their coincidence is absent, and the cache TTL is 7 days.
+        #
+        # LOWER median, not the interpolating one. ``statistics.median`` of two disagreeing
+        # values returns their mean, a magnitude neither is near: with a genuine 1.0e8 followed
+        # by a 5.0e10 typo, the basis for the THIRD point becomes 2.55e10 and the genuine third
+        # filing is deleted as a hundredfold-low outlier. The lower median is always a number
+        # some filing actually reported, so it cannot land in between.
+        #
+        # On the bundled cache all three candidates deliver identical multisets across the 483
+        # in-bounds series -- the ceiling removes the poisoners before the relative test runs --
+        # which is exactly why the wrong one would have looked fine. The separation is only
+        # visible on the shapes in ``util/ad-hoc/2026-09-15_compare_outlier_basis_designs.py``.
+        # The series are short (median 66 observations, longest 86), so the loop is free.
+        prior_values: list[float] = []
+        keep: list[bool] = []
+        for value in observations["shares"]:
+            if prior_values:
+                # LOWER median: the element at (n-1)//2 of the sorted priors, which is always a
+                # number some filing actually reported.
+                basis = prior_values[(len(prior_values) - 1) // 2]
+                accepted = basis <= 0 or (basis / _SHARES_OUTLIER_FACTOR) <= value <= (basis * _SHARES_OUTLIER_FACTOR)
+            else:
+                accepted = True
+            keep.append(bool(accepted))
+            bisect.insort(prior_values, float(value))
+        observations = observations[pd.Series(keep, index=observations.index)]
         if not len(observations):
             return None
 
