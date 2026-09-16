@@ -402,13 +402,19 @@ class TestEquitiesParams:
         # Fleet-wide coverage lives in `test_val_emission_guards.py` -- this guard existed
         # for exactly one of sixteen generators, which is how the decision-11 bump came to
         # be skipped for the other fifteen.
-        # 4.0.0 since the 2026-09-09 owner rulings. Two of them are breaking on their own --
+        # 4.0.0 at the 2026-09-09 owner rulings. Two of them are breaking on their own --
         # the default matrix lost a column (``adj_close``, APD-DATA-041) and ``cost_basis`` is
         # absent before the purchase date instead of constant (APD-DATA-042) -- and three more
         # change values without changing shape: the as-of publication history, the absolute
         # floor, and the causal median. Any one of those is a reason the same params must not
         # resolve to the same dataset ID as before.
-        assert VERSION == "4.0.0"
+        #
+        # 5.0.0 on 2026-09-15, because 4.0.0 shipped a REGRESSION and the corrected values
+        # must not be served under the ID that addressed the wrong ones: the causal median
+        # included the point it was judging, so a scale typo in a series' opening filings
+        # survived and was delivered (AIZ 990x, EOG 428x too large). Every artifact minted
+        # at 4.0.0 for a symbol with such a typo carries it.
+        assert VERSION == "5.0.0"
 
     def test_get_schema_returns_json_schema(self) -> None:
         schema = get_schema()
@@ -1327,6 +1333,12 @@ class TestTheOwnerRulingsOf20260909:
         was sited at 100,000 precisely to separate them, so this asserts both directions at once --
         a floor above Berkshire's low would delete real history, one below PSKY's placeholders
         would keep junk.
+
+        The genuine values here are deliberately the same ORDER OF MAGNITUDE as each other. An
+        earlier version of this test put Berkshire's Class-B count (1,071,666,977) in the same
+        payload, which made it depend on the relative scale filter as well as the floor, and it
+        broke the moment that filter started judging early points at all. What the mixed payload
+        was really demonstrating now has its own test, below.
         """
         payload = {
             "units": {
@@ -1334,7 +1346,7 @@ class TestTheOwnerRulingsOf20260909:
                     {"end": "2019-03-31", "val": 1000.0, "filed": "2019-04-01"},
                     {"end": "2019-06-30", "val": 1000.0, "filed": "2019-07-01"},
                     {"end": "2019-09-30", "val": 941_481.0, "filed": "2019-10-01"},
-                    {"end": "2019-12-31", "val": 1_071_666_977.0, "filed": "2020-01-02"},
+                    {"end": "2019-12-31", "val": 950_000.0, "filed": "2020-01-02"},
                 ]
             }
         }
@@ -1342,7 +1354,36 @@ class TestTheOwnerRulingsOf20260909:
             frame = eq_gen.EquitiesGenerator._fetch_shares(320193, use_cache=False)
         assert frame is not None
         kept = sorted(float(v) for v in frame["shares"])
-        assert kept == [941_481.0, 1_071_666_977.0], "placeholders out, genuine Class-A scale in"
+        assert kept == [941_481.0, 950_000.0], "placeholders out, genuine Class-A scale in"
+
+    def test_two_share_classes_in_one_series_are_treated_as_a_scale_error(self) -> None:
+        """A KNOWN and currently accepted false positive, pinned so it cannot change silently.
+
+        Berkshire's Class A (941,481) and Class B (1,071,666,977) are both genuine counts of
+        genuinely different things, 1,138x apart. Nothing in the filter can tell that step from a
+        cover-page typo of the same magnitude, so the later class is rejected. Before 2026-09-15
+        it survived only because ``min_periods=3`` switched the filter off for a series' opening
+        points -- the same hole that delivered AIZ 990x too large.
+
+        The remedy is a class-aware lookup (resolve the requested ticker to ONE ``dei`` class
+        rather than pooling every share concept in the payload), recorded as deferred future work
+        on the register row for this defect. Until that lands this behaviour is the correct trade:
+        one filtered class, versus a scale typo in every series' first filings.
+        """
+        payload = {
+            "units": {
+                "shares": [
+                    {"end": "2019-09-30", "val": 941_481.0, "filed": "2019-10-01"},
+                    {"end": "2019-12-31", "val": 1_071_666_977.0, "filed": "2020-01-02"},
+                    {"end": "2020-03-31", "val": 943_000.0, "filed": "2020-04-01"},
+                ]
+            }
+        }
+        with patch.object(eq_gen, "_sec_get", return_value=payload):
+            frame = eq_gen.EquitiesGenerator._fetch_shares(320193, use_cache=False)
+        assert frame is not None
+        kept = sorted(float(v) for v in frame["shares"])
+        assert kept == [941_481.0, 943_000.0], "the second share class was kept, or a genuine Class-A count was poisoned out of the basis"
 
     def test_a_series_of_only_placeholders_is_unrescued_not_zero(self) -> None:
         """APD-DATA-044: an all-placeholder series is absent data, not a measurement of zero.
@@ -1385,6 +1426,82 @@ class TestTheOwnerRulingsOf20260909:
             long = eq_gen.EquitiesGenerator._fetch_shares(320193, use_cache=False)
         assert short is not None and long is not None
         assert [float(v) for v in short["shares"]] == [float(v) for v in long["shares"]][: len(short)]
+
+    def test_a_typo_in_a_series_second_filing_is_rejected(self) -> None:
+        """APD-DATA-047: a plain expanding median cannot reject an early outlier, because the
+        outlier is IN the median that judges it.
+
+        This is the AIZ shape, and it shipped in #395: the typo sits at position 1, and at
+        min_periods 1, 2 and 3 alike it survived -- delivered 990x too large. ``shift(1)`` judges
+        the point against what was filed strictly before it, so the genuine first filing does the
+        rejecting.
+
+        Discriminating on purpose: 5.0e10 is BELOW _SHARES_ABSOLUTE_CEILING, so the ceiling
+        cannot be what removes it. Only the shift can.
+        """
+        payload = {
+            "units": {
+                "shares": [
+                    {"end": "2009-03-31", "val": 1.00e8, "filed": "2009-04-01"},
+                    {"end": "2009-06-30", "val": 5.00e10, "filed": "2009-07-01"},
+                    {"end": "2009-09-30", "val": 1.01e8, "filed": "2009-10-01"},
+                    {"end": "2009-12-31", "val": 1.02e8, "filed": "2010-01-01"},
+                ]
+            }
+        }
+        assert eq_gen._SHARES_ABSOLUTE_CEILING > 5.00e10, "the ceiling must not be what rejects this point"
+        with patch.object(eq_gen, "_sec_get", return_value=payload):
+            frame = eq_gen.EquitiesGenerator._fetch_shares(320193, use_cache=False)
+        assert frame is not None
+        assert float(frame["shares"].max()) == pytest.approx(1.02e8), "the second-filing typo survived the relative filter"
+        assert len(frame) == 3
+
+    def test_a_typo_in_a_series_first_filing_is_rejected_by_the_ceiling(self) -> None:
+        """APD-DATA-047: nothing RELATIVE can judge the first observation -- it has no prior.
+
+        This is the EOG shape, and it also shipped in #395: the typo sits at position 0, survives
+        the shift untouched (correctly -- there is no basis to judge it against), and was
+        delivered 428x too large. The absolute ceiling is the only instrument that reaches it,
+        which is why tightening 1e13 -> 1e11 was part of the same change and not a tidy-up.
+        """
+        payload = {
+            "units": {
+                "shares": [
+                    {"end": "2009-03-31", "val": 5.00e11, "filed": "2009-04-01"},
+                    {"end": "2009-06-30", "val": 1.00e8, "filed": "2009-07-01"},
+                    {"end": "2009-09-30", "val": 1.01e8, "filed": "2009-10-01"},
+                ]
+            }
+        }
+        assert eq_gen._SHARES_ABSOLUTE_CEILING < 5.00e11 < 1.0e13, "this point passed the pre-2026-09-15 ceiling of 1e13, which is the regression"
+        with patch.object(eq_gen, "_sec_get", return_value=payload):
+            frame = eq_gen.EquitiesGenerator._fetch_shares(320193, use_cache=False)
+        assert frame is not None
+        assert float(frame["shares"].max()) == pytest.approx(1.01e8), "the first-filing typo was delivered"
+        assert len(frame) == 2
+
+    def test_a_genuine_first_filing_is_not_dropped(self) -> None:
+        """The other side of the same bound: position 0 is unjudged, not distrusted.
+
+        A series whose first filing is simply the largest genuine count it ever reports must keep
+        it. AAPL's real maximum (1.70e10) sits 5.9x below the ceiling, so the bound has room for
+        the largest count in the bundled universe and still catches the smallest demonstrated
+        typo in the cache (AIZ, 1.168e11).
+        """
+        payload = {
+            "units": {
+                "shares": [
+                    {"end": "2009-03-31", "val": 1.70e10, "filed": "2009-04-01"},
+                    {"end": "2009-06-30", "val": 1.65e10, "filed": "2009-07-01"},
+                    {"end": "2009-09-30", "val": 1.60e10, "filed": "2009-10-01"},
+                ]
+            }
+        }
+        with patch.object(eq_gen, "_sec_get", return_value=payload):
+            frame = eq_gen.EquitiesGenerator._fetch_shares(320193, use_cache=False)
+        assert frame is not None
+        assert len(frame) == 3, "the ceiling must not reject a genuine mega-cap share count"
+        assert float(frame["shares"].max()) == pytest.approx(1.70e10)
 
     def test_a_stale_share_count_is_annotated_degraded(self) -> None:
         """APD-DATA-039 / -045: a year-old count is reported, and reported AS stale.
