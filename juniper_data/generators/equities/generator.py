@@ -41,7 +41,6 @@ import csv
 import json
 import logging
 import os
-import statistics
 import time
 import urllib.error
 import urllib.request
@@ -99,13 +98,24 @@ _SHARES_ABSOLUTE_FLOOR = 100_000.0
 # observation, which has no prior basis at all. An absolute ceiling can, because no issuer
 # has 1e11 shares.
 #
-# Sited between the largest GENUINE count in the bundled universe (AAPL, 1.70e10) and the
-# smallest DEMONSTRATED typo in the cache (AIZ, 1.168e11): 5.9x of headroom below it, and
-# every observed scale error above it. It was 1e13 until 2026-09-15, chosen for headroom
-# alone, and headroom alone made it nearly inert -- measured over the 486-payload cache, 18
-# observations across 24 series sit between 1e11 and 1e13, and two of those series (AIZ,
-# EOG) were DELIVERED, because the relative filter could not judge a typo in a series' first
-# filings either. A bound chosen for comfort rather than against the data does no work.
+# Sited between the largest GENUINE count in the cache (Citigroup, 2.92e10; NVIDIA is second
+# at 2.45e10) and the smallest DEMONSTRATED typo in it (AIZ, 1.168e11): 3.4x of headroom
+# below. It was 1e13 until 2026-09-15, chosen for headroom alone, and headroom alone made it
+# nearly inert -- measured over the 486-payload cache, 18 observations across 9 series sit in
+# (1e11, 1e13], and two of those series (AIZ, EOG) were DELIVERED, because the relative filter
+# could not judge a typo in a series' opening filings either.
+#
+# DO NOT TIGHTEN IT FURTHER TO CHASE THE REST. The four largest values that pass this ceiling
+# are themselves typos -- Pentair 9.84e10 (592x its own median), Packaging Corp 8.99e10
+# (949x), Regency Centers 8.19e10 (483x), Mid-America 7.50e10 (659x) -- and every one of them
+# is caught by the relative filter, which delivers all four correctly. Reaching them with an
+# absolute bound would mean dropping below Citigroup's genuine 2.92e10 and deleting real
+# mega-cap history. That is the division of labour: the ceiling exists for the ONE case
+# nothing relative can reach, a typo in a series' first filing.
+#
+# An earlier draft of this comment said 1e11 sits above "the largest genuine count in the
+# bundled universe (AAPL, 1.70e10)" with 5.9x of headroom. AAPL is the largest in the DEFAULT
+# 14-SYMBOL PREFIX, not in the universe, and the two are not the same population.
 #
 # NOT part of the 2026-09-09 ruling, which named a floor. Added because implementing the
 # causal half of that same ruling would otherwise have silently DROPPED typo detection for
@@ -1147,23 +1157,43 @@ class EquitiesGenerator:
         # re-measure with
         # ``util/ad-hoc/2026-09-15_remeasure_shares_cache_figures.py``.
         #
-        # The basis is the median of the values ALREADY ACCEPTED, not of everything already
-        # seen, so a rejected typo cannot go on to poison the judgement of its neighbours.
-        # ``expanding().median().shift(1)`` would be the one-liner, and it is wrong for the
-        # same family of reason as the unshifted median: with a genuine 1.0e8 followed by a
-        # 5.0e10 typo, its basis for the THIRD point is median(1e8, 5e10) = 2.55e10, so the
-        # genuine third filing is deleted as a hundredfold-low outlier. On the bundled cache
-        # the two agree on every one of the 486 series -- the ceiling removes the poisoners
-        # first -- which is exactly why the one-liner would have looked fine and stayed wrong.
+        # The basis is the LOWER MEDIAN of the prior values -- ``prior[(n-1)//2]`` of the sorted
+        # priors -- and both halves of that were chosen against a failure the other half causes.
+        #
+        # PRIOR, not prior-ACCEPTED. Excluding rejected values looks strictly safer and is not:
+        # it makes the filter ABSORBING. If the first value a series offers is a typo the
+        # ceiling cannot reach, the accepted set is that typo alone, every genuine value is more
+        # than a hundredfold away from it, and nothing is ever accepted again -- the entire real
+        # series is deleted and the typo is what ships. Only an acceptance could widen the
+        # basis, so there is no way back. Counting rejected values towards the SAMPLE (never
+        # towards the output) lets the basis re-converge within a couple of observations. Both
+        # ingredients for that trap are in the bundled cache: a position-0 typo is real (EOG),
+        # and four series carry sub-ceiling ~1000x typos (PNR 9.84e10, PKG 8.99e10, REG 8.19e10,
+        # MAA 7.50e10); only their coincidence is absent, and the cache TTL is 7 days.
+        #
+        # LOWER median, not the interpolating one. ``statistics.median`` of two disagreeing
+        # values returns their mean, a magnitude neither is near: with a genuine 1.0e8 followed
+        # by a 5.0e10 typo, the basis for the THIRD point becomes 2.55e10 and the genuine third
+        # filing is deleted as a hundredfold-low outlier. The lower median is always a number
+        # some filing actually reported, so it cannot land in between.
+        #
+        # On the bundled cache all three candidates deliver identical multisets across the 483
+        # in-bounds series -- the ceiling removes the poisoners before the relative test runs --
+        # which is exactly why the wrong one would have looked fine. The separation is only
+        # visible on the shapes in ``util/ad-hoc/2026-09-15_compare_outlier_basis_designs.py``.
         # The series are short (median 66 observations, longest 86), so the loop is free.
-        kept_values: list[float] = []
+        prior_values: list[float] = []
         keep: list[bool] = []
         for value in observations["shares"]:
-            basis = statistics.median(kept_values) if kept_values else 0.0
-            accepted = not kept_values or basis <= 0 or (basis / _SHARES_OUTLIER_FACTOR) <= value <= (basis * _SHARES_OUTLIER_FACTOR)
+            if prior_values:
+                # LOWER median: the element at (n-1)//2 of the sorted priors, which is always a
+                # number some filing actually reported.
+                basis = prior_values[(len(prior_values) - 1) // 2]
+                accepted = basis <= 0 or (basis / _SHARES_OUTLIER_FACTOR) <= value <= (basis * _SHARES_OUTLIER_FACTOR)
+            else:
+                accepted = True
             keep.append(bool(accepted))
-            if accepted:
-                bisect.insort(kept_values, float(value))
+            bisect.insort(prior_values, float(value))
         observations = observations[pd.Series(keep, index=observations.index)]
         if not len(observations):
             return None

@@ -1484,9 +1484,10 @@ class TestTheOwnerRulingsOf20260909:
         """The other side of the same bound: position 0 is unjudged, not distrusted.
 
         A series whose first filing is simply the largest genuine count it ever reports must keep
-        it. AAPL's real maximum (1.70e10) sits 5.9x below the ceiling, so the bound has room for
-        the largest count in the bundled universe and still catches the smallest demonstrated
-        typo in the cache (AIZ, 1.168e11).
+        it. The largest genuine count in the cache is Citigroup's 2.92e10, which sits 3.4x below
+        the ceiling; the smallest demonstrated typo is AIZ's 1.168e11, above it. This fixture
+        uses AAPL's 1.70e10 -- the largest in the DEFAULT 14-SYMBOL PREFIX -- because that is the
+        population the rest of this module's fixtures are drawn from.
         """
         payload = {
             "units": {
@@ -1502,6 +1503,44 @@ class TestTheOwnerRulingsOf20260909:
         assert frame is not None
         assert len(frame) == 3, "the ceiling must not reject a genuine mega-cap share count"
         assert float(frame["shares"].max()) == pytest.approx(1.70e10)
+
+    def test_a_sub_ceiling_typo_in_the_first_filing_does_not_delete_the_series(self) -> None:
+        """APD-DATA-050: the relative basis must not be ABSORBING.
+
+        Judging each point against the median of the values already ACCEPTED closes the poisoning
+        hole and opens a worse one. If the first value a series offers is a typo the ceiling cannot
+        reach, the accepted set is that typo alone, every genuine value is more than a hundredfold
+        away from it, and nothing is ever accepted again -- the whole real series is deleted and the
+        typo is what ships. Only an acceptance could widen the basis, so there is no way back.
+
+        Both ingredients are in the bundled cache: a position-0 scale typo is real (EOG), and four
+        series carry sub-ceiling ~1000x typos (PNR 9.84e10, PKG 8.99e10, REG 8.19e10, MAA 7.50e10).
+        Only their coincidence is absent, and the shares cache has a 7-day TTL.
+
+        9.84e10 is Pentair's real typo value, and it is BELOW ``_SHARES_ABSOLUTE_CEILING`` on
+        purpose: the ceiling must not be what rescues this, or the test proves nothing about the
+        basis.
+        """
+        assert eq_gen._SHARES_ABSOLUTE_CEILING > 9.84e10, "the ceiling must not be what rescues this series"
+        payload = {
+            "units": {
+                # Quarter ends on the 1st, filings on the 15th of the SAME month. An earlier
+                # version of this fixture filed on the 1st of the FOLLOWING month, which produced
+                # "2010-13-01" every fourth quarter; ``errors="coerce"`` turned those into NaT,
+                # ``na_position="first"`` sorted them ahead of the typo, and the head was no longer
+                # the head -- so the test passed against the absorbing implementation it exists to
+                # catch. Same trap as ``test_the_causal_median_does_not_consult_later_filings``.
+                "shares": [{"end": "2009-03-01", "val": 9.84e10, "filed": "2009-03-15"}] + [{"end": f"20{10 + i // 4:02d}-{3 * (i % 4) + 3:02d}-01", "val": 9.87e7 + i * 1.0e5, "filed": f"20{10 + i // 4:02d}-{3 * (i % 4) + 3:02d}-15"} for i in range(20)]
+            }
+        }
+        with patch.object(eq_gen, "_sec_get", return_value=payload):
+            frame = eq_gen.EquitiesGenerator._fetch_shares(320193, use_cache=False)
+        assert frame is not None, "the series was deleted entirely -- the basis is absorbing"
+        genuine = [float(v) for v in frame["shares"] if v < 1.0e10]
+        assert len(genuine) >= 19, f"only {len(genuine)} of 20 genuine counts survived a head typo"
+        # The head typo itself is unreachable by any CAUSAL relative test -- it has no prior to be
+        # judged against. That is the ceiling's job, and 9.84e10 is deliberately under it here.
+        # What this test pins is that ONE bad value costs one bad value, not the series.
 
     def test_a_stale_share_count_is_annotated_degraded(self) -> None:
         """APD-DATA-039 / -045: a year-old count is reported, and reported AS stale.

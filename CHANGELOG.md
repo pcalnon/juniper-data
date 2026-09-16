@@ -26,20 +26,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   causality and close the hole, and **neither is redundant -- the two regressions prove it one
   each**:
 
-  1. **Every point is judged against what was accepted strictly BEFORE it**
-     (`generators/equities/generator.py`). The basis is the median of the values already
-     *accepted*, not of everything already *seen*, so a rejected typo cannot go on to poison its
-     neighbours -- `expanding().median().shift(1)` is the tempting one-liner and gets that wrong,
-     deleting the genuine third filing after a typo in the second. `min_periods` is gone: with
-     nothing filed before it, position 0 has no relative basis at all, and inventing one means
-     looking forward. This alone returns AIZ (position 1) to 117,926,517.
+  1. **Every point is judged against the LOWER MEDIAN of what was filed strictly BEFORE it**
+     (`generators/equities/generator.py`) -- `prior[(n-1)//2]` of the sorted priors. Both halves of
+     that were chosen against a failure the other half causes, and both were found by running the
+     code rather than reading it.
+
+     - **Prior, not prior-*accepted*.** Excluding rejected values looks strictly safer and makes
+       the filter **absorbing**: if the first value a series offers is a typo the ceiling cannot
+       reach, the accepted set is that typo alone, every genuine value is more than a hundredfold
+       away from it, and nothing is ever accepted again. The whole real series is deleted and the
+       typo is what ships, with no way back, because only an acceptance could widen the basis.
+       Both ingredients are in the bundled cache -- a position-0 typo is real (EOG), and four
+       series carry sub-ceiling ~1000x typos (PNR 9.84e10, PKG 8.99e10, REG 8.19e10, MAA 7.50e10).
+       Only their coincidence is absent, and the shares cache has a 7-day TTL. Pinned by
+       `test_a_sub_ceiling_typo_in_the_first_filing_does_not_delete_the_series`, which loses
+       **0 of 20** genuine counts under the accepted-only basis and 19 of 20 survive under this one.
+     - **Lower median, not the interpolating one.** `statistics.median` of two disagreeing values
+       returns their mean, a magnitude neither is near: after a genuine 1.0e8 and a 5.0e10 typo the
+       basis for the third point becomes 2.55e10 and the genuine third filing is deleted as a
+       hundredfold-low outlier. The lower median is always a number some filing actually reported.
+
+     `min_periods` is gone: with nothing filed before it, position 0 has no relative basis at all,
+     and inventing one means looking forward. This alone returns AIZ (position 1) to 117,926,517.
+
+     All three candidate bases deliver **identical multisets across the 483 in-bounds series** of
+     the real cache, because the ceiling removes the poisoners before the relative test runs --
+     which is exactly why the wrong one looked correct. The separation is visible only on
+     constructed shapes; `util/ad-hoc/2026-09-15_compare_outlier_basis_designs.py` is that
+     comparison and `util/ad-hoc/2026-09-15_verify_lower_median_over_cache.py` is the whole-cache
+     equivalence check.
   2. **`_SHARES_ABSOLUTE_CEILING` tightened from `1e13` to `1e11`.** Nothing relative can reach a
      typo in a series' *first* filing, which is EOG's case, and `1e13` was chosen for headroom
-     rather than against the data: over the 486-payload cache, 18 observations across 24 series
-     sit between `1e11` and `1e13`. `1e11` sits between the largest genuine count in the bundled
-     universe (AAPL, 1.70e10) and the smallest demonstrated typo in it (AIZ, 1.168e11) -- 5.9x of
-     headroom below, every observed scale error above. Re-measure with
-     `util/ad-hoc/2026-09-15_remeasure_shares_cache_figures.py`.
+     rather than against the data: over the 486-payload cache, 18 observations across 9 series
+     sit in `(1e11, 1e13]` (39 observations across 24 series sit above `1e11` in total). `1e11`
+     sits between the largest genuine count in the cache (Citigroup, 2.92e10; NVIDIA second at
+     2.45e10) and the smallest demonstrated typo in it (AIZ, 1.168e11) -- 3.4x of headroom below.
+
+     **The ceiling is deliberately not tightened further.** The four largest values that pass it
+     are themselves typos -- Pentair 9.84e10 (592x its own median), Packaging Corp 8.99e10
+     (949x), Regency Centers 8.19e10 (483x), Mid-America 7.50e10 (659x) -- and the relative
+     filter catches every one, delivering all four correctly. Reaching them absolutely would mean
+     dropping below Citigroup's genuine 2.92e10 and deleting real mega-cap history. The ceiling
+     exists for the one case nothing relative can reach: a typo in a series' first filing.
+     Re-measure with `util/ad-hoc/2026-09-15_remeasure_shares_cache_figures.py`.
 
   **A known false positive is pinned rather than papered over.** Two genuine share classes in one
   series (Berkshire's Class A at 941,481 and Class B at 1,071,666,977) are 1,138x apart, which no
