@@ -40,9 +40,13 @@ wheels/
 
 # Test and coverage
 .pytest_cache/
+**/.pytest_cache/
 .mypy_cache/
+**/.mypy_cache/
 .coverage
+**/.coverage
 htmlcov/
+**/htmlcov/
 reports/
 *.prof
 TEST*.xml
@@ -73,6 +77,7 @@ src/
 *.tmp
 *.temp
 *.log
+**/*.log
 *.out
 
 # Large media files
@@ -91,3 +96,48 @@ src/
 *.tar
 *.zip
 *.bz
+
+# Test suite and its artifacts.
+#
+# `COPY juniper_data/ ./juniper_data/` (Dockerfile:30) is DIRECTORY-grained, not
+# file-grained, so without these rules the published image carries the suite.
+# Measured 2026-09-21 INSIDE the pulled artifact, not inferred:
+# `juniper-data:0.14.0` shipped **87** files named `test_*.py` -- 95 `.py` files and 190
+# files in total under `tests/`, `tests/fixtures/` included. (#405 said 22; recounted in
+# the pulled image 2026-09-21 and no criterion reproduces it -- top-level is 3, and the
+# per-subdir test_*.py split is unit 75 / integration 9 / performance 2 / api 1. The rule
+# #405 added is correct and unchanged; only the figure moved.)
+#
+# The `**/` prefix is load-bearing, and the existing `reports/` and `htmlcov/`
+# entries above show why: a bare pattern matches the CONTEXT ROOT only, so
+# `reports/` never protected `juniper_data/tests/reports/`. The suite lives at
+# `juniper_data/tests/`, one level down.
+#
+# This is also a credential guard. A CI publish builds from a CLEAN CHECKOUT, so
+# only COMMITTED files can reach an image -- which is what keeps the juniper-deploy
+# `secrets/` class (eight live credential files in a working tree with no
+# `.dockerignore`) from reproducing here. But a credential COMMITTED anywhere under
+# `juniper_data/tests/` would ship into a published production image, and no
+# Docker-level control would stop it.
+#
+# Nothing depends on the tests being present in the image.
+**/tests/
+**/reports/
+
+# -- Credentials. Docker does NOT honour .gitignore, and this image is PUBLIC.
+#    The Dockerfile copies a DIRECTORY allowlist, which is not a file allowlist:
+#    `COPY <pkg>/ ./<pkg>/` ships everything tracked beneath it. Patterns are
+#    root-anchored (Go filepath.Match), so the `**/` twins are load-bearing.
+secrets/
+**/secrets/
+*.key
+**/*.key
+*.pem
+**/*.pem
+*.p12
+*.pfx
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
