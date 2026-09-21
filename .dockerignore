@@ -91,3 +91,26 @@ src/
 *.tar
 *.zip
 *.bz
+
+# Test suite and its artifacts.
+#
+# `COPY juniper_data/ ./juniper_data/` (Dockerfile:30) is DIRECTORY-grained, not
+# file-grained, so without these rules the published image carries the suite.
+# Measured 2026-09-21 INSIDE the pulled artifact, not inferred:
+# `juniper-data:0.14.0` shipped **22** test files, `tests/fixtures/` included.
+#
+# The `**/` prefix is load-bearing, and the existing `reports/` and `htmlcov/`
+# entries above show why: a bare pattern matches the CONTEXT ROOT only, so
+# `reports/` never protected `juniper_data/tests/reports/`. The suite lives at
+# `juniper_data/tests/`, one level down.
+#
+# This is also a credential guard. A CI publish builds from a CLEAN CHECKOUT, so
+# only COMMITTED files can reach an image -- which is what keeps the juniper-deploy
+# `secrets/` class (eight live credential files in a working tree with no
+# `.dockerignore`) from reproducing here. But a credential COMMITTED anywhere under
+# `juniper_data/tests/` would ship into a published production image, and no
+# Docker-level control would stop it.
+#
+# Nothing depends on the tests being present in the image.
+**/tests/
+**/reports/
