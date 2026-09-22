@@ -7,7 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The published container image no longer carries the test suite** (#405). `COPY
+  juniper_data/ ./juniper_data/` is a DIRECTORY allowlist, not a file-grained one, and
+  `.dockerignore` had no tests rule -- so `juniper-data:0.14.0` shipped its whole suite.
+  Measured inside the pulled artifact rather than inferred: **87 named `test_*.py`, 95
+  `.py`, 190 files total** (#408 recounted this; #405's own message says 22).
+  `juniper-canopy:0.8.0` shipped **zero**, because its `.dockerignore` already carried
+  `src/tests/` -- the negative control that makes this a real gap rather than a guess. The
+  `**` prefix is load-bearing and was verified against a discriminating control: a bare
+  `tests/` matches the context root only and still copies nested test files.
+- **`juniper-ci-tools` floor raised to `>=0.9.0` and ceiling widened to `<0.10.0`**
+  (#394, #392).
+
 ### Fixed
+
+- **`.dockerignore` carried no credential exclusions, and the release path never asserted
+  that the app loads** (#408). Docker does not honour `.gitignore`, and the `COPY` is a
+  directory allowlist, so a committed `secrets/`, `*.key`, `*.pem`, `.env` or `.env.*`
+  would have shipped into a published production image. **Nothing leaked** -- the published
+  0.14.0 image was pulled and inspected -- so this closes a latent gap rather than an
+  incident. Adds `util/check_image_no_secrets.py`, asserted on both the smoke and publish
+  paths; it walks `/app` **and** every installed `juniper*` package, because this image's
+  `/app` holds only `['data']` and a top-level listing would pass vacuously, and it exits 2
+  on an empty scan rather than reporting success. Also re-enables the import smoke for
+  releases: the path that SHIPS previously asserted only torch posture, never that the
+  application imports.
 
 - **The causal scale-typo filter shipped in #395 included each point in the median that judged
   it, so a cover-page typo in a series' opening filings survived and was delivered.**
