@@ -177,13 +177,14 @@ All arrays `float32`. Keys: `X_train`, `y_train`, `X_val`, `y_val`, `X_test`, `y
 
 ---
 
-<<<<<<< HEAD
 ## Empty-train shape metadata
 
 `compute_shape_meta` (called from `POST /v1/datasets` for every generator) takes `n_features` from `X_train.shape[-1]` even when `n_train == 0`. Empty arrays still have a defined trailing axis. Do not restore `else 2` — a 2-D import with F=5 or a 3-D sequence with F=3 would persist `n_features=2`. Classification `n_classes` already falls back to `y_test`. Pin: `test_meta_dispatch.py` empty-train cases (#340).
 
 > See: [REFERENCE.md -- Empty-Train Shape Metadata](REFERENCE.md#empty-train-shape-metadata)
-=======
+
+---
+
 ## Equities symbol cap
 
 `equities` / `equities_seq` fan out one Yahoo `download` plus 1–2 SEC `companyconcept` calls **per ticker**. APD-DATA-018's bound is `max_symbols` (default **14**), not bytes.
@@ -199,7 +200,6 @@ EquitiesParams(symbols=["AAPL", "MSFT", "AMZN"], max_symbols=2, allow_truncation
 ```
 
 > See: [REFERENCE.md -- Equities Symbol Cap](REFERENCE.md#equities-symbol-cap)
->>>>>>> 03b3b94c6b3b10526e5894a1d892fd5db1d18379
 
 ---
 
@@ -219,7 +219,6 @@ Coverage thresholds: **80% aggregate** (default; set in `pyproject.toml` `[tool.
 
 ---
 
-<<<<<<< HEAD
 ## Standalone generator imports
 
 A generator subpackage must import in a **cold interpreter** (`import juniper_data.generators.csv_import` with nothing else loaded). `create_app` is lazy on `juniper_data.api` (PEP 562) so `from juniper_data.api.settings import get_settings` does not pull the routes. Restoring `from .app import create_app` in `api/__init__.py` re-opens the cycle (#316 / #333).
@@ -227,13 +226,14 @@ A generator subpackage must import in a **cold interpreter** (`import juniper_da
 Do not import `juniper_data.api.app` or `juniper_data.api.routes` from generator code. Do not pre-import routes to make a test collect. Pin with `pytest juniper_data/tests/unit/test_no_import_cycles.py` — every assertion there is a **subprocess**; an in-process check cannot fail.
 
 > See: [REFERENCE.md -- API Package Import Graph](REFERENCE.md#api-package-import-graph)
-=======
+
+---
+
 ## DatasetMeta `n_val`
 
 The store carries a validation partition and generators emit one; `n_val` reads `0` only for an artifact written before the change. The field is **defaulted** so legacy `.meta.json` still loads via `DatasetMeta(**meta_dict)`. `compute_shape_meta` reads `X_val` only if present and sets `n_samples = n_train + n_val + n_test`. Classification fallback without `y_full` must stack `y_val`. Sizing helpers (`partition_row_counts`, `split_three_way`) are on `main` (#353) and now wired -- `core/split.py` calls both. Do not invent `val_ratio`. Pins: `test_meta_dispatch.py`, on `main` since #358.
 
 > See: [REFERENCE.md -- DatasetMeta n_val and Three-Partition Counts](REFERENCE.md#datasetmeta-n_val-and-three-partition-counts)
->>>>>>> 8d9b71ea2639a1c20d18b0a6fc039408d8f58125
 
 ---
 
@@ -297,15 +297,12 @@ pre-commit install --hook-type pre-push  # coverage gate (one-time)
 | Artifact 200 with empty body | Existence check moved inside the generator | Return `None` from `open_artifact_stream` before yielding |
 | `ImportError: redis`    | Optional backend   | `pip install redis`                                      |
 | Coverage pre-push fails | Below threshold    | Add tests; see `scripts/check_module_coverage.py`        |
-<<<<<<< HEAD
 | `ImportError: cannot import name 'VERSION'` collecting a generator test in isolation | `api/__init__.py` eagerly imported `create_app` | Keep `create_app` lazy. Do not pre-import routes. See [API Package Import Graph](REFERENCE.md#api-package-import-graph) |
 | `csv_import` 422 naming MB + `allow_truncation` | Source over the byte cap | Pass `"allow_truncation": true`, or set `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION=true`. A huge request `max_bytes` cannot raise the deployment ceiling. `meta.truncation is None` means complete. See [CSV Import Byte Cap](REFERENCE.md#csv-import-byte-cap). |
 | Path traversal / file not found on `csv_import` | `file_path` outside `JUNIPER_DATA_IMPORT_DIR` | Put the file under the import dir and pass a relative path. This is not the 10 MB HTTP body limit. |
-=======
 | Equities `422` / `InputTooLargeError` | Default universe is 503 names; cap is 14 | Pass `symbols` ≤ cap, or set `allow_truncation=true` / `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION` |
 | Equities generate hangs / times out | Uncached fan-out still costs ~2.1 s/symbol | Keep `use_cache=True`; do not raise the cap without re-measuring |
 | Equities `total_shares` all zeros | SEC returned no facts; default `fundamentals_fill="zero"` | Check CIK / logs; try `fundamentals_fill="nan"`; do not read 0 as "no shares" |
->>>>>>> 03b3b94c6b3b10526e5894a1d892fd5db1d18379
 
 ---
 
