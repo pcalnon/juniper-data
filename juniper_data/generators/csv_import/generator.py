@@ -389,7 +389,7 @@ class CsvImportGenerator:
         ``false or settings.X`` and now resolves to ``settings.X``, the same
         value. Only the case whose behaviour deliberately changed -- an explicit
         ``false`` against a deployment opt-in, which now refuses instead of
-        truncating -- hashes differently, and it mints no artifact at all.
+        truncating -- hashes differently. That caller regenerates once, and whether it gets an artifact depends on the input: a request that would have truncated is now refused with 422 and mints nothing, while one already within the cap succeeds under the new id. (This read "and it mints no artifact at all" until 2026-09-22, when adversarial validation refuted it by execution -- the flag is hashed even when it is behaviourally inert.)
         """
         cap, allow = CsvImportGenerator._resolve_bounds(params)
         return params.model_copy(update={"max_bytes": cap, "allow_truncation": allow})

@@ -91,8 +91,9 @@ class EquitiesSeqGenerator:
         """Copy the effective symbol cap and truncation opt-in onto the params object.
 
         Delegates to :meth:`EquitiesGenerator.bind_deployment_defaults`, which is the
-        single implementation of the clamp (``min(request, deployment)``) and the OR
-        (``request or deployment``). ``model_copy`` returns the CONCRETE class it was
+        single implementation of the clamp (``min(request, deployment)``) and of the
+        truncation tri-state (``deployment if request is None else request`` -- a
+        logical OR until APD-DATA-052). ``model_copy`` returns the CONCRETE class it was
         called on, so an ``EquitiesSeqParams`` in is an ``EquitiesSeqParams`` out, with
         ``lookback`` and every other subclass field intact -- pinned by
         ``test_equities_seq_deployment_policy.py`` rather than assumed.

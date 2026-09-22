@@ -189,7 +189,7 @@ All arrays `float32`. Keys: `X_train`, `y_train`, `X_val`, `y_val`, `X_test`, `y
 
 `equities` / `equities_seq` fan out one Yahoo `download` plus 1–2 SEC `companyconcept` calls **per ticker**. APD-DATA-018's bound is `max_symbols` (default **14**), not bytes.
 
-An oversized universe is **refused with 422** unless `allow_truncation`, `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION`, or the matching `.env` entry is set. A request may only *lower* the cap (`min(requested, JUNIPER_DATA_EQUITIES_MAX_SYMBOLS)`); `max_symbols=None` means "no request-side limit", not unbounded.
+An oversized universe is **refused with 422** unless `allow_truncation`, `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION`, or the matching `.env` entry is set. `allow_truncation` is a **tri-state** since APD-DATA-052: `true` opts in, `false` refuses *even where the deployment opted in*, `null`/omitted defers to the deployment — and it gates the unresolvable-fundamentals policy as well as the symbol cap. A request may only *lower* the cap (`min(requested, JUNIPER_DATA_EQUITIES_MAX_SYMBOLS)`); `max_symbols=None` means "no request-side limit", not unbounded.
 
 Default `EquitiesParams()` is the 503-name snapshot and **refuses**. Authorised cuts write `DatasetMeta.truncation` (`unit=symbols`, `reason=universe_exceeded_symbol_cap`). Prefix is alphabetical (or caller order). Extra: `pip install "juniper-data[equities]"`.
 

@@ -152,9 +152,23 @@ def apply(edits: list[tuple[Path, str, str]]) -> dict[Path, str]:
     return originals
 
 
-def restore(originals: dict[Path, str]) -> None:
+def restore(originals: dict[Path, str]) -> bool:
+    """Put every touched file back, then PROVE it. Returns True when the tree is clean.
+
+    Verifying the restore is not paranoia. This script rewrites tracked source in
+    place, so a restore that silently half-applies leaves mutated code in the
+    working tree, and the next commit ships it. The sibling instrument
+    ``2026-09-04_apd_data_018_mutation_check.py`` re-runs its baseline for exactly
+    this reason; this one did not until adversarial validation pointed it out.
+    """
+    ok = True
     for path, text in originals.items():
         path.write_text(text, encoding="utf-8")
+    for path, text in originals.items():
+        if path.read_text(encoding="utf-8") != text:
+            print(f"  RESTORE FAILED: {path} does not match its pre-mutation content")
+            ok = False
+    return ok
 
 
 def main() -> int:
@@ -170,12 +184,17 @@ def main() -> int:
     for mutation in MUTATIONS:
         print(f"\n{mutation.name}")
         print(f"  ({mutation.why})")
-        originals = apply(mutation.edits)
+        # apply() INSIDE the try: it edits file-by-file, so a failure partway
+        # through leaves earlier files mutated. Its own rollback covers the
+        # pattern-mismatch path, but not an IOError on the third of three writes.
+        originals: dict[Path, str] = {}
         try:
+            originals = apply(mutation.edits)
             caught = run_tests(mutation.must_fail)
             survived = run_tests(mutation.must_still_pass)
         finally:
-            restore(originals)
+            if not restore(originals):
+                failures.append(f"{mutation.name}: RESTORE FAILED -- the working tree still holds mutated source")
 
         for node_id, passed in caught.items():
             verdict = "CAUGHT " if not passed else "VACUOUS"

@@ -37,7 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **No `dataset_id` churn.** `bind_deployment_defaults` stores the *resolved* opt-in, exactly as
   before: an omitted flag used to resolve `false or settings.X` and now resolves to `settings.X`,
   the same value. Only an explicit `false` against a deployment opt-in hashes differently, and
-  that request is refused rather than minting an artifact.
+  **that caller regenerates once**. Whether it gets an artifact depends on the input: a request
+  that would have truncated is now refused with 422 and mints nothing, while one already within
+  the cap succeeds under the new id. The flag is hashed even when it is behaviourally inert.
 
   **Migration.** A caller that sends `allow_truncation: false` *and* relies on the deployment
   opt-in overriding it now receives **422** instead of a truncated dataset. Send `true`, or omit

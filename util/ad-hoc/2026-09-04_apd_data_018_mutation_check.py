@@ -85,8 +85,17 @@ MUTATIONS = [
     Mutation(
         name="M2-record-boundary-trim-removed",
         path=GENERATOR,
-        old='        if drop_trailing_partial and data and any(value is None for value in data[-1].values()):\n            data.pop()',
-        new='        if False and data and any(value is None for value in data[-1].values()):\n            data.pop()',
+        # Re-anchored 2026-09-22, and this arm was NOT broken by APD-DATA-052 -- it was
+        # already dead on `main`. The old anchor was the pre-#372 condition
+        #     if drop_trailing_partial and data and any(value is None for value in data[-1].values()):
+        # but #372 moved the trim into ``_parse_csv_stream`` and widened it with the
+        # unclosed-quote clause, and nobody re-anchored. So this matrix has been
+        # reporting 11/12 for some time while the APD-DATA-018 row in the ecosystem
+        # defect register still records "Matrix is 12/12". Found only by running the
+        # whole matrix after re-anchoring M3 -- a SKIPPED arm prints one line among
+        # twelve and the script still exits 0.
+        old="        if drop_trailing_partial and data and (any(value is None for value in data[-1].values()) or (source_text is not None and CsvImportGenerator._has_unclosed_quote(source_text))):\n            data.pop()",
+        new="        if False and data and (any(value is None for value in data[-1].values()) or (source_text is not None and CsvImportGenerator._has_unclosed_quote(source_text))):\n            data.pop()",
         why="Lets a half-row through when the cap lands inside a quoted field.",
     ),
     Mutation(
