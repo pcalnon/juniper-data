@@ -80,6 +80,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The PyPI wheel no longer carries the test suite** (#420) -- the wheel half of what #405
+  fixed for the image. `juniper_data/tests/` is a subpackage, so
+  `[tool.setuptools.packages.find] include = ["juniper_data*"]` matched it:
+  `juniper_data-0.14.0-py3-none-any.whl` shipped **95 of its 199 members** under
+  `juniper_data/tests/`, and a 0.15.0 wheel built from `main` before this change carried 97 of
+  201. `.dockerignore` could not reach this -- it governs Docker build contexts, not wheels.
+  Fixed with `exclude = ["juniper_data.tests", "juniper_data.tests.*"]`; both are needed, since
+  the starred form alone leaves the `juniper_data.tests` package itself. Verified on the built
+  artifact rather than on the config: the fixed wheel drops **exactly** those 97 members, and
+  its other 103 are byte-identical (dist-info `RECORD` aside), `sp500_constituents.csv`
+  included. Measured the same way, the 16 other Juniper wheels on PyPI carry **zero** test
+  members, so this was data-specific. Because the Dockerfile installs with `pip install .`, the
+  image's exclusion no longer rests on `.dockerignore` alone. The sdist loses the suite too
+  (102 files to 0); nothing runs it from there -- CI runs it from a checkout, and the TestPyPI
+  verify reads installed metadata only. `ci.yml`'s *Verify build artifacts* step now asserts
+  that the built wheel holds no `juniper_data/tests/` member, beside the existing
+  `sp500_constituents.csv` guard.
+
 - **`.dockerignore` carried no credential exclusions, and the release path never asserted
   that the app loads** (#408). Docker does not honour `.gitignore`, and the `COPY` is a
   directory allowlist, so a committed `secrets/`, `*.key`, `*.pem`, `.env` or `.env.*`
