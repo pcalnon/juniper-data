@@ -4,7 +4,7 @@
 **Repository**: pcalnon/juniper-data
 **Author**: Paul Calnon
 **License**: MIT License
-**Version**: 0.14.0
+**Version**: 0.15.0
 **Last Updated**: 2026-09-22
 
 ---
@@ -374,7 +374,7 @@ All configuration uses the `JUNIPER_DATA_` environment variable prefix (via Pyda
 | `JUNIPER_DATA_METRICS_ENABLED` | bool | `false` | Enable Prometheus metrics at `/metrics` |
 | `JUNIPER_DATA_IMPORT_DIR` | str | `/data/imports` | Root for `csv_import` files (`file_path` is relative) |
 | `JUNIPER_DATA_CSV_IMPORT_MAX_BYTES` | int | `134217728` | `csv_import` byte-cap **ceiling** (128 MiB). Request `max_bytes` may only lower it |
-| `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION` | bool | `false` | Deployment-wide opt-in to a partial `csv_import`; OR'd with the request flag |
+| `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION` | bool | `false` | Deployment-wide opt-in to a partial `csv_import`. Applies only when the request's tri-state `allow_truncation` is `null`/omitted; an explicit `false` refuses regardless (APD-DATA-052) |
 
 Reference: `.env.example` provides a template with all variables. See
 [`docs/REFERENCE.md` § CSV Import Byte Cap](docs/REFERENCE.md#csv-import-byte-cap).

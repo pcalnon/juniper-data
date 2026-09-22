@@ -9,17 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **The published container image no longer carries the test suite** (#405). `COPY
-  juniper_data/ ./juniper_data/` is a DIRECTORY allowlist, not a file-grained one, and
-  `.dockerignore` had no tests rule -- so `juniper-data:0.14.0` shipped its whole suite.
-  Measured inside the pulled artifact rather than inferred: **87 named `test_*.py`, 95
-  `.py`, 190 files total** (#408 recounted this; #405's own message says 22).
-  `juniper-canopy:0.8.0` shipped **zero**, because its `.dockerignore` already carried
-  `src/tests/` -- the negative control that makes this a real gap rather than a guess. The
-  `**` prefix is load-bearing and was verified against a discriminating control: a bare
-  `tests/` matches the context root only and still copies nested test files.
-- **`juniper-ci-tools` floor raised to `>=0.9.0` and ceiling widened to `<0.10.0`**
-  (#394, #392).
 - **`allow_truncation` is now a tri-state, so a caller can REFUSE truncation where the operator
   enabled it** (`APD-DATA-052`). `bool | None`, default `None`: `true` opts in for this request,
   `false` refuses for this request *even where the deployment opted in*, and `null` — the schema
@@ -52,8 +41,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   **Migration.** A caller that sends `allow_truncation: false` *and* relies on the deployment
   opt-in overriding it now receives **422** instead of a truncated dataset. Send `true`, or omit
-  the field, to keep the previous outcome. juniper-canopy already stopped sending the field
-  (canopy#605). `tests/unit/test_csv_import_generator.py::test_request_cannot_opt_out_of_deployment_allow_truncation`
+  the field, to keep the previous outcome. juniper-canopy stopped sending the field in
+  canopy#605, but **juniper-cascor forwards an explicit `false` by design** — `manager.py:3879`
+  applies its deployment default only when the key is absent, and
+  `test_an_explicit_false_survives_the_deployment_default` pins that. That is the intended
+  direction: cascor's own refusal message ("this run explicitly refused a partial one") was a
+  cross-repo falsehood before this change and becomes true with it. Neither
+  `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION` nor `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION` is set
+  anywhere in juniper-deploy, so the one changed combination is unreachable on the shipped
+  deployment today.
+  `tests/unit/test_csv_import_generator.py::test_request_cannot_opt_out_of_deployment_allow_truncation`
   was **inverted, not deleted**, to
   `test_request_can_opt_out_of_deployment_allow_truncation`; the half that survives is pinned by
   the new `test_omitted_allow_truncation_still_defers_to_the_deployment`, with equities
@@ -61,6 +58,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `util/ad-hoc/2026-09-22_verify_tristate_tests_are_not_vacuous.py` proves those six tests are not
   vacuous: reverting the sites to the OR reddens exactly the three opt-out tests, and reverting
   the schemas to a plain `bool` reddens exactly the three deference tests.
+
+## [0.15.0] - 2026-09-22
+
+### Changed
+
+- **The published container image no longer carries the test suite** (#405). `COPY
+  juniper_data/ ./juniper_data/` is a DIRECTORY allowlist, not a file-grained one, and
+  `.dockerignore` had no tests rule -- so `juniper-data:0.14.0` shipped its whole suite.
+  Measured inside the pulled artifact rather than inferred: **87 named `test_*.py`, 95
+  `.py`, 190 files total** (#408 recounted this; #405's own message says 22).
+  `juniper-canopy:0.8.0` shipped **zero**, because its `.dockerignore` already carried
+  `src/tests/` -- the negative control that makes this a real gap rather than a guess. The
+  `**` prefix is load-bearing and was verified against a discriminating control: a bare
+  `tests/` matches the context root only and still copies nested test files.
+- **`juniper-ci-tools` floor raised to `>=0.9.0` and ceiling widened to `<0.10.0`**
+  (#394, #392).
 
 ### Fixed
 

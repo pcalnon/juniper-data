@@ -92,7 +92,17 @@ MUTATIONS = [
     Mutation(
         name="M3-deployment-opt-in-ignored",
         path=GENERATOR,
-        old="        allow = bool(params.allow_truncation or settings.csv_import_allow_truncation)",
+        # Re-anchored 2026-09-22 for APD-DATA-052. The old anchor was
+        #     allow = bool(params.allow_truncation or settings.csv_import_allow_truncation)
+        # and `allow_truncation` is a tri-state now, so that line no longer exists. The anchor had
+        # to move or this arm would report `SKIPPED -- anchor matched 0 times` forever: a mutation
+        # instrument that cannot find its own target scores a false verdict, and the APD-DATA-018
+        # matrix would quietly drop from 12 arms to 11.
+        #
+        # The mutation still says the same thing. `params.allow_truncation` is `None` whenever the
+        # caller omitted the flag, so returning it directly is exactly "ignore the deployment
+        # opt-in for a caller who said nothing" -- the surface the owner required for CLI callers.
+        old="        allow = settings.csv_import_allow_truncation if params.allow_truncation is None else params.allow_truncation",
         new="        allow = bool(params.allow_truncation)",
         why="Drops the env-var / .env opt-in surface the owner required for CLI callers.",
     ),
