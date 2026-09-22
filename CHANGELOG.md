@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-09-22
+
 ### Changed
 
 - **`allow_truncation` is now a tri-state, so a caller can REFUSE truncation where the operator
@@ -61,7 +63,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   vacuous: reverting the sites to the OR reddens exactly the three opt-out tests, and reverting
   the schemas to a plain `bool` reddens exactly the three deference tests.
 
-## [0.15.0] - 2026-09-22
 
 ### Changed
 
