@@ -20,6 +20,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tests/` matches the context root only and still copies nested test files.
 - **`juniper-ci-tools` floor raised to `>=0.9.0` and ceiling widened to `<0.10.0`**
   (#394, #392).
+- **`allow_truncation` is now a tri-state, so a caller can REFUSE truncation where the operator
+  enabled it** (`APD-DATA-052`). `bool | None`, default `None`: `true` opts in for this request,
+  `false` refuses for this request *even where the deployment opted in*, and `null` — the schema
+  default, and what an omitted field means — defers to
+  `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION` / `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION`. Applies
+  to `csv_import`, `equities` and `equities_seq` (which inherits `EquitiesParams`).
+
+  **This REVERSES a deliberate, documented, test-pinned rule.** "A client cannot opt *out* of the
+  operator's choice" was the design until the owner ruled on 2026-09-09 that refusing partial data
+  is a **caller** right — the partial-data contract's "option 3", fail the load completely. The
+  three `or settings.*` sites became
+  `settings.X if params.allow_truncation is None else params.allow_truncation`:
+  `generators/csv_import/generator.py` (`_resolve_bounds`) and
+  `generators/equities/generator.py` (`_resolve_bounds` **and** `_resolve_incomplete_policy` —
+  the flag gates the symbol cap and the unresolvable-fundamentals policy separately, and `false`
+  now closes both).
+
+  **`max_bytes` / `max_symbols` still clamp, and that is not an inconsistency.** A resource bound
+  may only be pushed toward *more* safety, which is the same direction an explicit `false` pushes;
+  neither field lets a request weaken what the operator chose. The stance rides in the *value*
+  rather than in `model_fields_set` because `bind_deployment_defaults` ends in
+  `model_copy(update=...)`, which adds the key to `model_fields_set` before `generate` runs — a
+  presence guard is constant-true downstream of the binder, and would also misread a generated
+  client's serialised `false` as a deliberate refusal.
+
+  **No `dataset_id` churn.** `bind_deployment_defaults` stores the *resolved* opt-in, exactly as
+  before: an omitted flag used to resolve `false or settings.X` and now resolves to `settings.X`,
+  the same value. Only an explicit `false` against a deployment opt-in hashes differently, and
+  that request is refused rather than minting an artifact.
+
+  **Migration.** A caller that sends `allow_truncation: false` *and* relies on the deployment
+  opt-in overriding it now receives **422** instead of a truncated dataset. Send `true`, or omit
+  the field, to keep the previous outcome. juniper-canopy already stopped sending the field
+  (canopy#605). `tests/unit/test_csv_import_generator.py::test_request_cannot_opt_out_of_deployment_allow_truncation`
+  was **inverted, not deleted**, to
+  `test_request_can_opt_out_of_deployment_allow_truncation`; the half that survives is pinned by
+  the new `test_omitted_allow_truncation_still_defers_to_the_deployment`, with equities
+  equivalents in `test_equities_generator.py` and `test_equities_seq_deployment_policy.py`.
+  `util/ad-hoc/2026-09-22_verify_tristate_tests_are_not_vacuous.py` proves those six tests are not
+  vacuous: reverting the sites to the OR reddens exactly the three opt-out tests, and reverting
+  the schemas to a plain `bool` reddens exactly the three deference tests.
 
 ### Fixed
 

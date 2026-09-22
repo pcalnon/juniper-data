@@ -129,9 +129,19 @@ class CsvImportGenerator:
         This was not the first design, and the first one was wrong. It let an
         explicitly-supplied ``max_bytes`` win outright, which made the DoS bound
         caller-controlled: ``max_bytes: 10000000000`` on a request skipped the
-        cap entirely. It also inverted the privilege model used one line below
-        for ``allow_truncation`` -- there the operator's choice cannot be undone
-        by a client, and there is no reason the byte bound should be weaker.
+        cap entirely. A bound the bounded party can raise is not a bound.
+
+        **``allow_truncation`` used to be cited here as the precedent for that
+        clamp, and no longer is** (APD-DATA-052). It became a tri-state the
+        caller can set to ``false``, so a client CAN now undo the operator's
+        opt-in. The two fields are asymmetric on purpose, and the axis is which
+        direction the caller is pushing: ``max_bytes`` is a resource bound, so a
+        caller may only move it toward MORE safety (a lower cap) and clamping
+        blocks the other direction; ``allow_truncation`` is a data-quality
+        stance whose safe direction is refusal, so a caller setting it ``false``
+        is also asking for more safety and there is nothing to protect the
+        deployment from. Neither field lets a request weaken what the operator
+        chose. Do not "restore" the OR by appeal to this paragraph.
 
         The subtler half is why ``model_fields_set`` alone cannot carry this:
         **a generated client that serialises schema defaults sends
@@ -139,10 +149,25 @@ class CsvImportGenerator:
         explicitly set and would override a *lower* operator ceiling without
         anyone intending it. Clamping makes that harmless.
 
-        ``allow_truncation`` stays a logical OR for the same reason in the same
-        direction: either the caller opts in for this request, or the deployment
-        has opted in for every request, and a client cannot opt *out* of the
-        operator's choice.
+        ``allow_truncation`` is a **tri-state**, and was a logical OR until
+        APD-DATA-052. ``None`` -- the schema default, and what an omitted field
+        means -- defers to the deployment; ``True`` opts in for this request;
+        ``False`` refuses truncation for this request even where the deployment
+        enabled it. The owner ruled that refusing partial data is a CALLER
+        right, so the old "a client cannot opt *out* of the operator's choice"
+        rule is reversed, not merely relaxed.
+
+        **Why the stance is carried in the VALUE and not by a presence check.**
+        ``bind_deployment_defaults`` ends in ``model_copy(update=...)``, which
+        ADDS the key to ``model_fields_set``, and the create route binds before
+        ``generate`` -- so ``"allow_truncation" in params.model_fields_set`` is
+        constant-true downstream of the binder and cannot distinguish an
+        omitted flag from an explicit ``false``. A tri-state is immune: nothing
+        upstream can erase a value. It is also immune to the serialised-defaults
+        hazard described above for ``max_bytes`` -- a generated client that
+        ships schema defaults now sends ``null``, which reads as "defer",
+        whereas under a presence guard it would have read as a deliberate
+        refusal.
 
         Returns:
             ``(cap_bytes, allow_truncation)``.
@@ -150,8 +175,8 @@ class CsvImportGenerator:
         settings = get_settings()
         requested = params.max_bytes if "max_bytes" in params.model_fields_set else settings.csv_import_max_bytes
         cap = min(requested, settings.csv_import_max_bytes)
-        allow = bool(params.allow_truncation or settings.csv_import_allow_truncation)
-        return cap, allow
+        allow = settings.csv_import_allow_truncation if params.allow_truncation is None else params.allow_truncation
+        return cap, bool(allow)
 
     @staticmethod
     def _fit_minmax(matrix: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -347,14 +372,24 @@ class CsvImportGenerator:
 
         ``generate_dataset_id`` hashes ``params.model_dump()``. Dump fills Field
         defaults, so an omitted ``max_bytes`` is stored as 128 MiB even when the
-        deployment cap is tighter (or ``allow_truncation`` is stored as false
+        deployment cap is tighter (or ``allow_truncation`` is stored as the raw
+        request stance -- ``None`` since APD-DATA-052, ``false`` before it --
         even when the operator opted in globally). The create route binds first
         so the cache key matches the policy that will actually run -- otherwise
         a restart that raises the cap, or turns truncation off, keeps serving
         the old truncated artifact for the same request.
 
         Idempotent: ``_resolve_bounds`` clamps with ``min(requested, ceiling)``,
-        so re-binding an already-bound params object returns the same values.
+        and it resolves the tri-state opt-in to a concrete bool that then
+        answers ``is None`` with False, so re-binding an already-bound params
+        object returns the same values.
+
+        **The tri-state does not churn cache keys.** What lands here is the
+        RESOLVED opt-in, exactly as before: an omitted flag used to resolve
+        ``false or settings.X`` and now resolves to ``settings.X``, the same
+        value. Only the case whose behaviour deliberately changed -- an explicit
+        ``false`` against a deployment opt-in, which now refuses instead of
+        truncating -- hashes differently, and it mints no artifact at all.
         """
         cap, allow = CsvImportGenerator._resolve_bounds(params)
         return params.model_copy(update={"max_bytes": cap, "allow_truncation": allow})

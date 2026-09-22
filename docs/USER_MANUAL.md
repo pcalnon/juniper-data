@@ -222,7 +222,7 @@ curl -X POST http://localhost:8100/v1/datasets \
 | `file_format` | string | `"auto"` | `"csv"`, `"json"`, or `"auto"` (from extension) |
 | `label_column` | string | `"label"` | Label column name |
 | `max_bytes` | int | `134217728` (128 MiB) | Per-request cap. May only **lower** `JUNIPER_DATA_CSV_IMPORT_MAX_BYTES`; a huge value cannot skip the ceiling |
-| `allow_truncation` | bool | `false` | Accept a prefix of the source when it exceeds the cap |
+| `allow_truncation` | bool \| null | `null` | Accept a prefix of the source when it exceeds the cap. Tri-state: `true` accepts, `false` refuses even where the deployment opted in, `null` (or omitted) defers to `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION` — itself `false` by default, so omitting the field still refuses on a default deployment |
 
 The HTTP JSON body is still limited to 10 MB (`RequestBodyLimitMiddleware`). That is a different cap: the CSV is read from disk, not uploaded in the request.
 

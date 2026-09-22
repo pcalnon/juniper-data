@@ -27,7 +27,12 @@ reference section in the same PR rather than waiving the budget gate.
   `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION`, or `.env`) and is recorded permanently on
   `DatasetMeta.truncation` (`None` means complete). Cuts land on a record boundary. **A request
   may only lower the cap** (`min(request, deployment)`); `stat` is a pre-check, the read is the
-  bound. Pins: `test_csv_import_generator.py`, `test_api_routes.py` (422 not 500). Full rule:
+  bound. **`allow_truncation` is a TRI-STATE** since APD-DATA-052 (`true` / `false` / `null`,
+  default `null` = defer to the deployment) — the owner reversed the old "a client cannot opt
+  *out* of the operator's choice" rule, so an explicit `false` now refuses even where the
+  deployment opted in. `max_bytes` still clamps: a caller may push a resource bound only toward
+  more safety, which is the same direction `false` pushes. Do not "restore" the OR.
+  Pins: `test_csv_import_generator.py`, `test_api_routes.py` (422 not 500). Full rule:
   [`docs/REFERENCE.md` § CSV Import Byte Cap](docs/REFERENCE.md#csv-import-byte-cap).
 - **Sequence windowing is leak-free by CONSTRUCTION, not by a check — never vectorize it into a
   concat-then-slide.** `generators/_sequence.py` windows **one entity at a time** and assigns each

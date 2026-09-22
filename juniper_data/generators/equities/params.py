@@ -18,7 +18,6 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from juniper_data.core.constants import DEFAULT_GENERATOR_SEED
 
 from .defaults import (
-    EQUITIES_DEFAULT_ALLOW_TRUNCATION,
     EQUITIES_DEFAULT_BASIS_PRICE_FIELD,
     EQUITIES_DEFAULT_END_DATE,
     EQUITIES_DEFAULT_FUNDAMENTALS_FILL,
@@ -105,9 +104,9 @@ class EquitiesParams(BaseModel):
         default=None,
         description="What to do with rows whose fundamentals no rescue path could resolve, once allow_truncation has opened the gate: 'accept' keeps them (filled per fundamentals_fill) or 'drop' excludes those symbols entirely. Either way the dataset is PERMANENTLY annotated in DatasetMeta.data_quality. None inherits the deployment default (JUNIPER_DATA_EQUITIES_INCOMPLETE_ROWS). Without allow_truncation this has no effect -- the request is refused instead.",
     )
-    allow_truncation: bool = Field(
-        default=EQUITIES_DEFAULT_ALLOW_TRUNCATION,
-        description="Accept a partial universe when it exceeds max_symbols. Default false: an oversized universe is refused with 422 rather than silently truncated to the first N tickers. When true, the leading max_symbols symbols are imported and the dataset is PERMANENTLY annotated as truncated in its metadata. Can also be enabled deployment-wide via JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION or the matching .env entry.",
+    allow_truncation: bool | None = Field(
+        default=None,
+        description="Accept a partial universe when it exceeds max_symbols, and open the gate on unresolvable-fundamentals rows. TRI-STATE (APD-DATA-052): true opts in for this request; false REFUSES truncation for this request even where the deployment enabled it; null -- the default, and what an omitted field means -- defers to JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION (or the matching .env entry), which is itself false by default, so an omitted field on a default deployment still refuses with 422. When truncation is in force the leading max_symbols symbols are imported and the dataset is PERMANENTLY annotated as truncated in its metadata.",
     )
     use_cache: bool = Field(
         default=EQUITIES_DEFAULT_USE_CACHE,

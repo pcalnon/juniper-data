@@ -336,7 +336,7 @@ Ratios always denote absolute dataset rows regardless of which mode produced the
 | `label_column` | string | `"label"` | Label column name |
 | `feature_columns` | array[string] \| null | `null` | Feature columns (`null` = all except the label) |
 | `max_bytes` | int | `134217728` (128 MiB) | Per-request byte cap. May only **lower** `JUNIPER_DATA_CSV_IMPORT_MAX_BYTES` (`min(request, deployment)`). A generated client that serialises schema defaults cannot raise a tighter operator ceiling. |
-| `allow_truncation` | bool | `false` | Accept a prefix when the source exceeds the cap. OR'd with `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION`. |
+| `allow_truncation` | bool \| null | `null` | Accept a prefix when the source exceeds the cap. **Tri-state** (APD-DATA-052): `true` accepts; `false` refuses for this request even where `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION` is set; `null` (or omitted) defers to that deployment setting, which is `false` by default. |
 
 **Response:**
 

@@ -189,7 +189,7 @@ On-disk sources, not the HTTP body. `file_path` is resolved inside `JUNIPER_DATA
 |----------|------|---------|-------------|
 | `JUNIPER_DATA_IMPORT_DIR` | string | `/data/imports` | Root directory for `csv_import` files. Paths that resolve outside it are refused (path traversal). |
 | `JUNIPER_DATA_CSV_IMPORT_MAX_BYTES` | int | `134217728` (128 MiB) | Deployment **ceiling**. Effective cap is `min(request, this)`. Must be `> 0` (`gt=0`): Python `read(n)` with `n < 0` means "read everything". |
-| `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION` | bool | `false` | Deployment-wide opt-in to a partial import when the source exceeds the cap. Logical OR with the request `allow_truncation` flag; a request cannot opt *out* of a deployment-wide opt-in. |
+| `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION` | bool | `false` | Deployment-wide opt-in to a partial import when the source exceeds the cap. The request `allow_truncation` flag is a **tri-state** and wins when it is not null: this value applies only when the request omits the field or sends `null`. A request **can** opt *out* of a deployment-wide opt-in by sending `false` (APD-DATA-052). |
 
 #### Integration Variables (Used by Consumers)
 
@@ -880,14 +880,17 @@ Above that size the binding constraint is memory, not time. `_parse_csv_stream` 
 
 | Surface | Cap (`max_bytes`) | Truncation opt-in (`allow_truncation`) |
 |---------|-------------------|----------------------------------------|
-| Request params (`CsvImportParams`) | May only **lower** the deployment ceiling: `min(requested, deployment)` | Per-request flag |
-| Environment / `.env` | `JUNIPER_DATA_CSV_IMPORT_MAX_BYTES` — **hard ceiling**, `gt=0` | `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION` |
-| Compiled default | 128 MiB | `false` |
+| Request params (`CsvImportParams`) | May only **lower** the deployment ceiling: `min(requested, deployment)` | Per-request **tri-state** — `true` / `false` / `null` (default) |
+| Environment / `.env` | `JUNIPER_DATA_CSV_IMPORT_MAX_BYTES` — **hard ceiling**, `gt=0` | `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION` — applies only when the request is `null` |
+| Compiled default | 128 MiB | request `null`; deployment `false` |
 
-Precedence is asymmetric on purpose, and both sides treat the operator as the privileged party:
+Precedence is asymmetric on purpose. Neither field lets a request *weaken* what the operator chose — but they differ in which direction a caller may push, and that difference is the whole design:
 
-- **`max_bytes`:** the effective cap is `min(requested, settings.csv_import_max_bytes)`. A request cannot raise the operator ceiling. Omitting the field uses the deployment value. `model_fields_set` still decides "was this sent", but even an explicit huge value is clamped. That clamp is load-bearing for generated clients: serialising schema defaults sends `max_bytes=134217728` on every request, which would otherwise override a *lower* operator ceiling with nobody intending it. The first design let an explicit request win outright (`max_bytes: 10000000000` skipped the cap); that inverted the privilege model used for `allow_truncation` and made the DoS bound caller-controlled.
-- **`allow_truncation`:** logical **OR**. Either the request opts in, or the deployment has opted in for every request. There is no way to opt *out* of a deployment-wide opt-in.
+- **`max_bytes`:** the effective cap is `min(requested, settings.csv_import_max_bytes)`. A request cannot raise the operator ceiling. Omitting the field uses the deployment value. `model_fields_set` still decides "was this sent", but even an explicit huge value is clamped. That clamp is load-bearing for generated clients: serialising schema defaults sends `max_bytes=134217728` on every request, which would otherwise override a *lower* operator ceiling with nobody intending it. The first design let an explicit request win outright (`max_bytes: 10000000000` skipped the cap), and a bound the bounded party can raise is not a bound.
+- **`allow_truncation`:** **tri-state** since APD-DATA-052, a logical **OR** before it. `true` opts in for this request; `false` refuses truncation for this request *even where the deployment enabled it*; `null` — the schema default, and what an omitted field means — defers to `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION`. The owner ruled that refusing partial data is a **caller** right, so the former "there is no way to opt *out* of a deployment-wide opt-in" rule is reversed, not merely relaxed.
+  - **Why this is not a privilege escalation, and why `max_bytes` still clamps.** `max_bytes` is a resource bound, so a caller may only move it toward *more* safety (a lower cap) and the clamp blocks the other direction. `allow_truncation` is a data-quality stance whose safe direction *is* refusal, so a caller sending `false` is also asking for more safety and there is nothing to protect the deployment from.
+  - **Why the stance rides in the value and not in `model_fields_set`.** `bind_deployment_defaults` ends in `model_copy(update=...)`, which *adds* the key to `model_fields_set`, and `POST /v1/datasets` binds before `generate` — so a presence check is constant-true downstream of the binder and cannot tell an omitted flag from an explicit `false`. A tri-state is also immune to the serialised-defaults hazard above: a generated client shipping schema defaults now sends `null`, which reads as "defer".
+  - **No cache-key churn.** `bind_deployment_defaults` stores the *resolved* opt-in, exactly as before — an omitted flag used to resolve `false or settings.X` and now resolves to `settings.X`, the same value, so existing `dataset_id`s are unchanged. Only the case whose behaviour deliberately changed (explicit `false` against a deployment opt-in) hashes differently, and it mints no artifact at all.
 
 Constants live in `juniper_data/core/limits.py` (not `csv_import/defaults.py`) so `api/settings.py` can import them without a package cycle. `defaults.py` re-exports the names.
 
@@ -1335,7 +1338,7 @@ On the #326 path, `_load_and_preprocess` always ran `_trim_to_record_boundary` o
 
 ### Bind the effective policy before the cache key
 
-`POST /v1/datasets` hashes `params.model_dump()` via `generate_dataset_id`. Dump fills Field defaults, so an omitted `max_bytes` is stored as 128 MiB (`CSV_IMPORT_DEFAULT_MAX_BYTES`) even when generation used a tighter deployment ceiling. The same dump stores `allow_truncation=false` when the operator opted in globally.
+`POST /v1/datasets` hashes `params.model_dump()` via `generate_dataset_id`. Dump fills Field defaults, so an omitted `max_bytes` is stored as 128 MiB (`CSV_IMPORT_DEFAULT_MAX_BYTES`) even when generation used a tighter deployment ceiling. The same dump stores the caller's raw `allow_truncation` stance — `null` since APD-DATA-052, `false` before it — when the operator opted in globally. Binding replaces both with the resolved values, and the resolved opt-in is the same value it was before the tri-state, so existing `dataset_id`s did not churn.
 
 Raising the cap — or turning truncation off — then reuses the truncated artifact for the "same" request.
 
@@ -1482,12 +1485,13 @@ Same privilege model as `csv_import`'s byte cap:
 
 | Surface | Cap (`max_symbols`) | Truncation opt-in (`allow_truncation`) |
 |---------|---------------------|----------------------------------------|
-| Request params (`EquitiesParams`) | May only **lower** the deployment ceiling: `min(requested, deployment)` | Per-request flag |
-| Environment / `.env` | `JUNIPER_DATA_EQUITIES_MAX_SYMBOLS` — hard ceiling, `gt=0` | `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION` |
-| Compiled default | **14** | `false` |
+| Request params (`EquitiesParams`) | May only **lower** the deployment ceiling: `min(requested, deployment)` | Per-request **tri-state** — `true` / `false` / `null` (default) |
+| Environment / `.env` | `JUNIPER_DATA_EQUITIES_MAX_SYMBOLS` — hard ceiling, `gt=0` | `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION` — applies only when the request is `null` |
+| Compiled default | **14** | request `null`; deployment `false` |
 
 - **`max_symbols`:** omit the field (or send `None`) to inherit the deployment ceiling. That is **not** unbounded — a caller cannot raise the operator cap, including via `max_symbols=9999` or `max_symbols=None`. `Settings.equities_max_symbols` rejects non-positive values at boot (`gt=0`).
-- **`allow_truncation`:** logical **OR**. Either the request opts in, or the deployment has opted in for every request. A client cannot opt *out* of the operator's choice.
+- **`allow_truncation`:** **tri-state** since APD-DATA-052, a logical **OR** before it. `true` opts in for this request; `false` refuses truncation for this request *even where the deployment enabled it*; `null` — the schema default, and what an omitted field means — defers to `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION`. The owner ruled that refusing partial data is a **caller** right, so the former "a client cannot opt *out* of the operator's choice" rule is reversed. See the `csv_import` section above for why this is not a privilege escalation while `max_symbols` still clamps, and why the stance rides in the value rather than in `model_fields_set`.
+- **The flag governs two gates, and `false` closes both.** `_resolve_bounds` reads it for the symbol cap; `_resolve_incomplete_policy` reads it again as the gate on unresolvable-fundamentals rows. A caller sending `false` therefore reaches the spec's **option 3** — fail the load completely — on either trigger.
 
 `_resolve_bounds` imports `get_settings` **inside the method**, not at module scope, so this generator does not join `csv_import`'s settings cycle.
 

@@ -724,18 +724,44 @@ class TestInputByteCap:
         with pytest.raises(ValueError, match="No data found"):
             CsvImportGenerator.generate(CsvImportParams(file_path="oneline.csv", allow_truncation=True))
 
-    def test_request_cannot_opt_out_of_deployment_allow_truncation(self, bounded_import_dir) -> None:
-        """The OR is asymmetric: a request cannot override a deployment-wide opt-in.
+    def test_request_can_opt_out_of_deployment_allow_truncation(self, bounded_import_dir) -> None:
+        """INVERTED by APD-DATA-052: an explicit ``false`` refuses, deployment opt-in or not.
 
-        The deployment operator is the more privileged party. If a caller
-        could pass ``allow_truncation=false`` and undo ``JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION``,
-        the env-var surface the owner required for CLI callers would be a
-        suggestion rather than a bound.
+        This test is the inversion of
+        ``test_request_cannot_opt_out_of_deployment_allow_truncation``, which
+        pinned the OR's asymmetry -- that a caller passing
+        ``allow_truncation=false`` could not undo
+        ``JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION``. The owner overruled that
+        design: refusing partial data is the CALLER's right (the spec's
+        "option 3" -- fail the load completely), because a caller asking for
+        MORE safety is not escalating privilege. It was inverted rather than
+        deleted; the half that survives is the test below.
+
+        The direction matters. Reverting the site to ``or`` leaves the other
+        test green -- only this one can see it.
         """
         directory, mock_settings = bounded_import_dir
         self._wide_csv(directory)
         mock_settings.csv_import_allow_truncation = True
-        result = CsvImportGenerator.generate(CsvImportParams(file_path="wide.csv", allow_truncation=False))
+        with pytest.raises(InputTooLargeError) as excinfo:
+            CsvImportGenerator.generate(CsvImportParams(file_path="wide.csv", allow_truncation=False))
+        assert "allow_truncation" in str(excinfo.value)
+
+    def test_omitted_allow_truncation_still_defers_to_the_deployment(self, bounded_import_dir) -> None:
+        """The surviving half of the inverted test: omission is deference, not refusal.
+
+        ``None`` is the schema default and what an omitted field means, so a
+        deployment-wide opt-in still reaches a caller who said nothing. Only an
+        EXPLICIT ``false`` refuses. Collapsing the tri-state back to a plain
+        ``bool`` -- whose default is ``False`` -- would turn every silent caller
+        into a refusal and break every existing CLI and deployment-driven
+        request; this test is what notices.
+        """
+        directory, mock_settings = bounded_import_dir
+        self._wide_csv(directory)
+        mock_settings.csv_import_allow_truncation = True
+        assert CsvImportParams(file_path="wide.csv").allow_truncation is None
+        result = CsvImportGenerator.generate(CsvImportParams(file_path="wide.csv"))
         assert result[TRUNCATION_META_KEY]["truncated"] is True
 
     def test_source_exactly_at_cap_is_complete(self, import_dir: Path) -> None:

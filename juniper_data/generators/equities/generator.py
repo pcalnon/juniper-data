@@ -471,9 +471,21 @@ class EquitiesGenerator:
         the deployment ceiling still applies. There is deliberately no way for a
         caller to ask for an unbounded universe.
 
-        ``allow_truncation`` is a logical OR: either the caller opts in for this
-        request, or the deployment has opted in for every request. A client
-        cannot opt *out* of the operator's choice.
+        ``allow_truncation`` is a **tri-state**, and was a logical OR until
+        APD-DATA-052. ``None`` -- the schema default, and what an omitted field
+        means -- defers to the deployment; ``True`` opts in for this request;
+        ``False`` refuses truncation for this request even where the deployment
+        enabled it. The owner ruled that refusing partial data is a CALLER
+        right, so the old "a client cannot opt *out* of the operator's choice"
+        rule is reversed, not merely relaxed. ``max_symbols`` is unaffected and
+        still clamps: a caller may only move a resource bound toward MORE
+        safety, and that is the same direction an explicit ``false`` moves in.
+
+        The stance rides in the VALUE because a presence check cannot carry it:
+        ``bind_deployment_defaults`` ends in ``model_copy(update=...)``, which
+        ADDS the key to ``model_fields_set`` before ``generate`` ever runs, so
+        downstream of the binder an omitted flag and an explicit ``false`` are
+        indistinguishable.
 
         Returns:
             ``(cap_symbols, allow_truncation)``.
@@ -496,8 +508,8 @@ class EquitiesGenerator:
         ceiling = settings.equities_max_symbols
         requested = params.max_symbols if params.max_symbols is not None else ceiling
         cap = min(requested, ceiling)
-        allow = bool(params.allow_truncation or settings.equities_allow_truncation)
-        return cap, allow
+        allow = settings.equities_allow_truncation if params.allow_truncation is None else params.allow_truncation
+        return cap, bool(allow)
 
     @staticmethod
     def _resolve_incomplete_policy(params: EquitiesParams, has_unrescued: bool) -> str:
@@ -506,12 +518,15 @@ class EquitiesGenerator:
         Two knobs, because the owner's spec needs two different shapes from one
         contract:
 
-        * ``allow_truncation`` is the **gate** -- the same boolean that governs an
+        * ``allow_truncation`` is the **gate** -- the same tri-state that governs an
           over-cap universe, and settable the same three ways (request parameter,
           ``JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION``, matching ``.env`` entry).
-          Unset means **fail**, which is the default and the safe direction: a
-          dataset silently carrying a fabricated market cap is the failure this
-          area exists to prevent.
+          Resolving to false means **fail**, which is the default and the safe
+          direction: a dataset silently carrying a fabricated market cap is the
+          failure this area exists to prevent. Since APD-DATA-052 a request may
+          also reach that outcome deliberately, by sending ``false`` where the
+          deployment opted in -- the owner's "option 3", fail the load
+          completely. An omitted flag (``None``) still defers to the deployment.
         * ``incomplete_rows`` says what to do once the gate is open -- ``accept``
           the affected rows or ``drop`` them. An interactive consumer maps its
           three choices onto these two knobs; a command-line consumer that only
@@ -526,7 +541,7 @@ class EquitiesGenerator:
         from juniper_data.api.settings import get_settings
 
         settings = get_settings()
-        allowed = bool(params.allow_truncation or settings.equities_allow_truncation)
+        allowed = settings.equities_allow_truncation if params.allow_truncation is None else params.allow_truncation
         if not allowed:
             return INCOMPLETE_FAIL
         choice = params.incomplete_rows or settings.equities_incomplete_rows
@@ -661,15 +676,25 @@ class EquitiesGenerator:
         ``generate_dataset_id`` hashes ``params.model_dump()``, and dump fills Field
         defaults -- so an omitted ``max_symbols`` is stored as its schema default even
         when the deployment ceiling is tighter, and ``allow_truncation`` is stored as
-        false even when the operator opted in globally. Two requests that will run under
+        the raw request stance (``None`` since APD-DATA-052, ``false`` before it) even
+        when the operator opted in globally. Two requests that will run under
         DIFFERENT policies therefore hash to the SAME dataset_id, and a restart that
         raises the ceiling keeps serving the artifact truncated under the old one.
 
         The create route calls this through a ``getattr`` hook, so a generator opts in
         simply by defining it; there is no registry to keep in step.
 
-        Idempotent: ``_resolve_bounds`` clamps with ``min(requested, ceiling)`` and ORs
-        the opt-in, so re-binding an already-bound params object returns the same values.
+        Idempotent: ``_resolve_bounds`` clamps with ``min(requested, ceiling)``, and it
+        resolves the tri-state opt-in to a concrete bool that then answers ``is None``
+        with False, so re-binding an already-bound params object returns the same
+        values.
+
+        **The tri-state does not churn cache keys.** What lands here is the RESOLVED
+        opt-in, exactly as before: an omitted flag used to resolve ``false or
+        settings.X`` and now resolves to ``settings.X``, which is the same value. Only
+        the case whose behaviour deliberately changed -- an explicit ``false`` against
+        a deployment opt-in, which now refuses instead of truncating -- hashes
+        differently, and it mints no artifact at all.
         """
         cap, allow = EquitiesGenerator._resolve_bounds(params)
         return params.model_copy(update={"max_symbols": cap, "allow_truncation": allow})

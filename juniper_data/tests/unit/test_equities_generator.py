@@ -778,6 +778,46 @@ class TestUniverseSymbolCap:
         assert truncation["requested"] == 40
         assert truncation["imported"] == 14
 
+    def test_explicit_false_refuses_against_a_deployment_opt_in(self) -> None:
+        """APD-DATA-052: the owner ruled refusing partial data is a CALLER right.
+
+        This is the equities half of the inversion applied to
+        ``test_csv_import_generator.py::test_request_can_opt_out_of_deployment_allow_truncation``.
+        Before the tri-state, ``params.allow_truncation or settings.equities_allow_truncation``
+        made an explicit ``false`` unreachable: the operator's opt-in won every time,
+        so the spec's "option 3" (fail the load completely) could not be expressed by a
+        caller on a deployment that had truncation on.
+
+        Reverting the site to ``or`` leaves every other test in this class green --
+        they all run against the default deployment, where the OR and the tri-state
+        agree. Only an opt-in deployment separates them, which is what this mocks.
+        """
+        settings = MagicMock()
+        settings.equities_max_symbols = 14
+        settings.equities_allow_truncation = True
+        with patch("juniper_data.api.settings.get_settings", return_value=settings):
+            with pytest.raises(eq_limits.InputTooLargeError) as excinfo:
+                eq_gen.EquitiesGenerator._resolve_symbols(EquitiesParams(allow_truncation=False), self._universe(40))
+        assert excinfo.value.cap == 14
+        assert excinfo.value.actual == 40
+
+    def test_omitted_allow_truncation_still_defers_to_the_deployment(self) -> None:
+        """The surviving half of the inversion: omission is deference, not refusal.
+
+        ``None`` is the schema default and what an omitted field means. Collapsing the
+        tri-state back to a plain ``bool`` would default every silent caller to
+        ``False``, turning a deployment-wide opt-in into a refusal for callers who
+        never asked to refuse.
+        """
+        assert EquitiesParams().allow_truncation is None
+        settings = MagicMock()
+        settings.equities_max_symbols = 14
+        settings.equities_allow_truncation = True
+        with patch("juniper_data.api.settings.get_settings", return_value=settings):
+            ordered, _meta, truncation = eq_gen.EquitiesGenerator._resolve_symbols(EquitiesParams(), self._universe(40))
+        assert len(ordered) == 14
+        assert truncation["truncated"] is True
+
     def test_the_kept_prefix_is_deterministic(self) -> None:
         """Which symbols survive must not depend on iteration or download order.
 
