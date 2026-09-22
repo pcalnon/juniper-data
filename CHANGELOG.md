@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`allow_truncation` is now a tri-state, so a caller can REFUSE truncation where the operator
+  enabled it** (`APD-DATA-052`). `bool | None`, default `None`: `true` opts in for this request,
+  `false` refuses for this request *even where the deployment opted in*, and `null` — the schema
+  default, and what an omitted field means — defers to
+  `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION` / `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION`. Applies
+  to `csv_import`, `equities` and `equities_seq` (which inherits `EquitiesParams`).
+
+  **This REVERSES a deliberate, documented, test-pinned rule.** "A client cannot opt *out* of the
+  operator's choice" was the design until the owner ruled on 2026-09-09 that refusing partial data
+  is a **caller** right — the partial-data contract's "option 3", fail the load completely. The
+  three `or settings.*` sites became
+  `settings.X if params.allow_truncation is None else params.allow_truncation`:
+  `generators/csv_import/generator.py` (`_resolve_bounds`) and
+  `generators/equities/generator.py` (`_resolve_bounds` **and** `_resolve_incomplete_policy` —
+  the flag gates the symbol cap and the unresolvable-fundamentals policy separately, and `false`
+  now closes both).
+
+  **`max_bytes` / `max_symbols` still clamp, and that is not an inconsistency.** A resource bound
+  may only be pushed toward *more* safety, which is the same direction an explicit `false` pushes;
+  neither field lets a request weaken what the operator chose. The stance rides in the *value*
+  rather than in `model_fields_set` because `bind_deployment_defaults` ends in
+  `model_copy(update=...)`, which adds the key to `model_fields_set` before `generate` runs — a
+  presence guard is constant-true downstream of the binder, and would also misread a generated
+  client's serialised `false` as a deliberate refusal.
+
+  **No `dataset_id` churn.** `bind_deployment_defaults` stores the *resolved* opt-in, exactly as
+  before: an omitted flag used to resolve `false or settings.X` and now resolves to `settings.X`,
+  the same value. Only an explicit `false` against a deployment opt-in hashes differently, and
+  **that caller regenerates once**. Whether it gets an artifact depends on the input: a request
+  that would have truncated is now refused with 422 and mints nothing, while one already within
+  the cap succeeds under the new id. The flag is hashed even when it is behaviourally inert.
+
+  **Migration.** A caller that sends `allow_truncation: false` *and* relies on the deployment
+  opt-in overriding it now receives **422** instead of a truncated dataset. Send `true`, or omit
+  the field, to keep the previous outcome. juniper-canopy stopped sending the field in
+  canopy#605, but **juniper-cascor forwards an explicit `false` by design** — `manager.py:3879`
+  applies its deployment default only when the key is absent, and
+  `test_an_explicit_false_survives_the_deployment_default` pins that. That is the intended
+  direction: cascor's own refusal message ("this run explicitly refused a partial one") was a
+  cross-repo falsehood before this change and becomes true with it. Neither
+  `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION` nor `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION` is set
+  anywhere in juniper-deploy, so the one changed combination is unreachable on the shipped
+  deployment today.
+  `tests/unit/test_csv_import_generator.py::test_request_cannot_opt_out_of_deployment_allow_truncation`
+  was **inverted, not deleted**, to
+  `test_request_can_opt_out_of_deployment_allow_truncation`; the half that survives is pinned by
+  the new `test_omitted_allow_truncation_still_defers_to_the_deployment`, with equities
+  equivalents in `test_equities_generator.py` and `test_equities_seq_deployment_policy.py`.
+  `util/ad-hoc/2026-09-22_verify_tristate_tests_are_not_vacuous.py` proves those six tests are not
+  vacuous: reverting the sites to the OR reddens exactly the three opt-out tests, and reverting
+  the schemas to a plain `bool` reddens exactly the three deference tests.
+
 ## [0.15.0] - 2026-09-22
 
 ### Changed

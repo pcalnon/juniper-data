@@ -8,7 +8,6 @@ from juniper_data.core.constants import DEFAULT_GENERATOR_SEED
 from juniper_data.core.partition_params import CarveOnlyPartitionParams
 
 from .defaults import (
-    CSV_IMPORT_DEFAULT_ALLOW_TRUNCATION,
     CSV_IMPORT_DEFAULT_DELIMITER,
     CSV_IMPORT_DEFAULT_FILE_FORMAT,
     CSV_IMPORT_DEFAULT_HEADER,
@@ -64,9 +63,9 @@ class CsvImportParams(CarveOnlyPartitionParams):
         gt=0,
         description="Maximum bytes to read from the source file (APD-DATA-018). A source larger than this is REFUSED unless allow_truncation is set. Omit to use the deployment default (JUNIPER_DATA_CSV_IMPORT_MAX_BYTES).",
     )
-    allow_truncation: bool = Field(
-        default=CSV_IMPORT_DEFAULT_ALLOW_TRUNCATION,
-        description="Accept a partial import when the source exceeds max_bytes. Default false: an oversized source is refused with 422 rather than silently truncated. When true, the import stops at the last complete record inside the cap and the dataset is PERMANENTLY annotated as truncated in its metadata. Can also be enabled deployment-wide via JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION or the matching .env entry.",
+    allow_truncation: bool | None = Field(
+        default=None,
+        description="Accept a partial import when the source exceeds max_bytes. TRI-STATE (APD-DATA-052): true opts in for this request; false REFUSES truncation for this request even where the deployment enabled it; null -- the default, and what an omitted field means -- defers to JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION (or the matching .env entry), which is itself false by default, so an omitted field on a default deployment still refuses with 422. When truncation is in force the import stops at the last complete record inside the cap and the dataset is PERMANENTLY annotated as truncated in its metadata.",
     )
     train_ratio: float = Field(default=CSV_IMPORT_DEFAULT_TRAIN_RATIO, gt=0, le=1, description="Fraction of data for training")
     test_ratio: float = Field(default=CSV_IMPORT_DEFAULT_TEST_RATIO, ge=0, le=1, description="Fraction of data for testing")

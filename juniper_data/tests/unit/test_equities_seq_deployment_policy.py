@@ -88,7 +88,11 @@ class TestBindDeploymentDefaults:
         # nonce) and blind to the policy. Kept as the statement of what the binder fixes.
         unbound = EquitiesSeqParams().model_dump()
         assert generate_dataset_id(generator="equities_seq", version=EQUITIES_SEQ_VERSION, params=unbound) == generate_dataset_id(generator="equities_seq", version=EQUITIES_SEQ_VERSION, params=unbound)
-        assert unbound["allow_truncation"] is False
+        # ``None``, not ``False``, since APD-DATA-052 made the field a tri-state: the
+        # unbound dump carries the caller's STANCE ("I said nothing"), and the binder is
+        # what turns a stance into the effective policy. The assertion is unchanged in
+        # substance -- an unbound dump is blind to the deployment either way.
+        assert unbound["allow_truncation"] is None
 
 
 class TestIncompleteDataPolicy:
@@ -110,6 +114,29 @@ class TestIncompleteDataPolicy:
         """So a missed catch lands on 400, never a 500."""
         with pytest.raises(ValueError):
             _generate(["AAPL"], {"AAPL": _ohlcv(seed=66)}, shares=None)
+
+    def test_explicit_false_refuses_against_a_deployment_opt_in(self) -> None:
+        """APD-DATA-052 option 3, on the INCOMPLETE-ROWS gate rather than the symbol cap.
+
+        ``_resolve_incomplete_policy`` reads ``allow_truncation`` at its own site,
+        separately from ``_resolve_bounds``. Porting the tri-state to one and leaving
+        the other an ``or`` would let a caller refuse an over-cap universe while still
+        being served fabricated fundamentals -- the exact data-quality failure the
+        incomplete-data contract exists to prevent. Only this test sees that half.
+        """
+        with patch("juniper_data.api.settings.get_settings", return_value=_settings(allow=True)):
+            with pytest.raises(eq_limits.IncompleteDataError):
+                _generate(["AAPL", "MSFT"], self._no_shares(62), shares=None, allow_truncation=False)
+
+    def test_omitted_gate_still_defers_to_a_deployment_opt_in(self) -> None:
+        """The surviving half: ``None`` is deference, so an operator opt-in still lands.
+
+        Collapsing the tri-state back to a plain ``bool`` would default every silent
+        caller to ``False`` and turn a deployment-wide opt-in into a refusal.
+        """
+        with patch("juniper_data.api.settings.get_settings", return_value=_settings(allow=True)):
+            arrays = _generate(["AAPL", "MSFT"], self._no_shares(63), shares=None)
+        assert arrays is not None
 
     def test_accept_keeps_the_symbols_and_annotates(self) -> None:
         arrays = _generate(["AAPL", "MSFT"], self._no_shares(61), shares=None, allow_truncation=True)

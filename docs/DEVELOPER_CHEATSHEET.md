@@ -146,7 +146,7 @@ Authorised truncation has three silent failure modes on the #326 path (#372):
 
 1. **Newline trim is CSV-only.** `json.dumps` / `JSON.stringify` emit one line. Trimming that prefix to the last newline yields empty text (`No data found in file`). JSON / JSONL keep the byte prefix and decode complete elements.
 2. **Unclosed quotes are not a short row.** A 2-column file whose dangling `"` swallows later lines still populates every field (`DictReader` reports no `None`). `_has_unclosed_quote` drops that last row on the capped path.
-3. **Bind the effective policy before the cache key.** `generate_dataset_id` hashes `params.model_dump()`, which fills Field defaults (128 MiB / `allow_truncation=false`). `CsvImportGenerator.bind_deployment_defaults` copies the resolved cap and opt-in onto params in `POST /v1/datasets` before hashing. Otherwise raising the deployment cap keeps serving the truncated artifact.
+3. **Bind the effective policy before the cache key.** `generate_dataset_id` hashes `params.model_dump()`, which fills Field defaults (128 MiB / `allow_truncation=null`). `CsvImportGenerator.bind_deployment_defaults` copies the resolved cap and opt-in onto params in `POST /v1/datasets` before hashing. Otherwise raising the deployment cap keeps serving the truncated artifact. The tri-state (APD-DATA-052) did not churn cache keys — binding stores the *resolved* opt-in, which is unchanged for every request that does not send an explicit `false`.
 
 > See: [REFERENCE.md -- CSV Import Truncation Edges](REFERENCE.md#csv-import-truncation-edges)
 
@@ -189,7 +189,7 @@ All arrays `float32`. Keys: `X_train`, `y_train`, `X_val`, `y_val`, `X_test`, `y
 
 `equities` / `equities_seq` fan out one Yahoo `download` plus 1–2 SEC `companyconcept` calls **per ticker**. APD-DATA-018's bound is `max_symbols` (default **14**), not bytes.
 
-An oversized universe is **refused with 422** unless `allow_truncation`, `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION`, or the matching `.env` entry is set. A request may only *lower* the cap (`min(requested, JUNIPER_DATA_EQUITIES_MAX_SYMBOLS)`); `max_symbols=None` means "no request-side limit", not unbounded.
+An oversized universe is **refused with 422** unless `allow_truncation`, `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION`, or the matching `.env` entry is set. `allow_truncation` is a **tri-state** since APD-DATA-052: `true` opts in, `false` refuses *even where the deployment opted in*, `null`/omitted defers to the deployment — and it gates the unresolvable-fundamentals policy as well as the symbol cap. A request may only *lower* the cap (`min(requested, JUNIPER_DATA_EQUITIES_MAX_SYMBOLS)`); `max_symbols=None` means "no request-side limit", not unbounded.
 
 Default `EquitiesParams()` is the 503-name snapshot and **refuses**. Authorised cuts write `DatasetMeta.truncation` (`unit=symbols`, `reason=universe_exceeded_symbol_cap`). Prefix is alphabetical (or caller order). Extra: `pip install "juniper-data[equities]"`.
 
