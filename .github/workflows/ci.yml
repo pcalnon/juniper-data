@@ -388,8 +388,8 @@ jobs:
           # filesystem path, so it MUST ship inside the wheel (see [tool.setuptools.package-data]).
           # 0.7.0 omitted it and the equities/equities_seq extras were non-functional from pip.
           python -c "import glob, zipfile; whl = glob.glob('dist/*.whl')[0]; names = zipfile.ZipFile(whl).namelist(); assert any(n.endswith('juniper_data/generators/equities/sp500_constituents.csv') for n in names), 'sp500_constituents.csv missing from the wheel - check [tool.setuptools.package-data]'; print('OK: sp500_constituents.csv present in', whl)"
-          # Regression guard (0.15.0): the suite is a subpackage, so `include = ["juniper_data*"]`
-          # matched it and every wheel through 0.14.0 shipped it (95 of 0.14.0's 199 members).
+          # Regression guard (after 0.15.0): the suite is a subpackage, so `include = ["juniper_data*"]`
+          # matched it and every wheel through 0.15.0 shipped it (97 of 0.15.0's 201 members).
           # Asserted on the built WHEEL, not on pyproject.toml: the config proves nothing until
           # the artifact omits the members. Matched on a path COMPONENT, so a tests/ package
           # anywhere in the tree fails it, not only juniper_data/tests/. The CSV guard above is

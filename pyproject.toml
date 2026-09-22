@@ -149,9 +149,9 @@ all = [
 where = ["."]
 include = ["juniper_data*"]
 # The test suite is a subpackage (juniper_data/tests/__init__.py), so the include glob above
-# matches it too, and every wheel through 0.14.0 shipped it: 95 of the 0.14.0 wheel's 199
-# members. .dockerignore cannot fix this -- it governs Docker build contexts, not wheels. Both
-# patterns are needed: "juniper_data.tests.*" alone leaves the juniper_data.tests package itself.
+# matches it too, and every wheel through 0.15.0 shipped it: 95 of 0.14.0's 199 members, 97 of
+# 0.15.0's 201. .dockerignore cannot fix this -- it governs Docker build contexts, not wheels.
+# Both patterns are needed: "juniper_data.tests.*" alone leaves the juniper_data.tests package itself.
 exclude = ["juniper_data.tests", "juniper_data.tests.*"]
 
 [tool.setuptools.package-data]
