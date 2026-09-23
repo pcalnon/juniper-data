@@ -581,7 +581,7 @@ class TestArcAgiTaskIdsLoadWithoutPickle:
         assert ids.dtype.kind == "U"
         assert ids.shape == (0,)
 
-    def test_a_non_string_task_id_is_stored_as_its_str(self) -> None:
+    def test_a_non_string_task_id_is_stored_as_its_text(self) -> None:
         """Defensive: the configured Hub source has no ``task_id`` column, so its ids are the synthetic
         ``task_{n}`` strings. A source that did carry, say, an int id gets its ``str()``, never a pickled object.
         """
