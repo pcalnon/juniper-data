@@ -63,6 +63,7 @@ Full REST API documentation is in [JUNIPER_DATA_API.md](api/JUNIPER_DATA_API.md)
 | `/v1/datasets/cleanup-expired` | POST | Cleanup expired datasets | Yes* |
 | `/v1/datasets/{id}` | GET | Dataset metadata | Yes* |
 | `/v1/datasets/{id}` | DELETE | Delete dataset | Yes* |
+| `/v1/datasets/{id}/access` | GET | Access counters (APD-DATA-032) | Yes* |
 | `/v1/datasets/{id}/artifact` | GET | Download NPZ | Yes* |
 | `/v1/datasets/{id}/preview` | GET | Preview JSON | Yes* |
 | `/v1/datasets/{id}/tags` | PATCH | Update dataset tags | Yes* |
@@ -1180,16 +1181,16 @@ Relocated verbatim from `AGENTS.md` (P3 of the shared-session-memory plan) so it
 |--------|------|-------------|
 | POST | `/v1/datasets` | Create dataset (returns 201) |
 | GET | `/v1/datasets` | List dataset IDs (paginated) |
-| GET | `/v1/datasets/{dataset_id}` | Get dataset metadata (strong `ETag`; `If-None-Match` → 304) |
+| GET | `/v1/datasets/{dataset_id}` | Get dataset metadata (strong `ETag`; `If-None-Match` → 304, `If-Match` → 412) |
 | GET | `/v1/datasets/{dataset_id}/access` | Access counters (`access_count`, `last_accessed_at`), `no-store` |
 | DELETE | `/v1/datasets/{dataset_id}` | Delete dataset (returns 204) |
-| GET | `/v1/datasets/{dataset_id}/artifact` | Download NPZ artifact (`ETag` = stored checksum; `If-None-Match` → 304) |
+| GET | `/v1/datasets/{dataset_id}/artifact` | Download NPZ artifact (weak `ETag` over the stored checksum; `If-None-Match` → 304, `If-Match` → 412) |
 | GET | `/v1/datasets/{dataset_id}/preview` | Preview first N samples as JSON |
 | GET | `/v1/datasets/filter` | Advanced filtering (generator, tags, dates, sample count) |
 | GET | `/v1/datasets/stats` | Aggregate statistics |
 | GET | `/v1/datasets/versions` | List all versions of a named dataset |
 | GET | `/v1/datasets/latest` | Get latest version of a named dataset (`Content-Location` names the canonical URI) |
-| PATCH | `/v1/datasets/{dataset_id}/tags` | Update tags on a dataset |
+| PATCH | `/v1/datasets/{dataset_id}/tags` | Update tags on a dataset (`If-Match` → optimistic concurrency, 412 when stale) |
 | POST | `/v1/datasets/cleanup-expired` | Delete all expired datasets |
 
 **Batch Endpoints**:
@@ -1255,24 +1256,64 @@ SHA-256, the access counters moved out of the representation so metadata can car
 every read; a `307` from `/latest`. Helpers live in `juniper_data/api/http_cache.py`, whose
 docstring is the long form of this section.
 
-| Route | `ETag` | Also |
-|-------|--------|------|
-| `GET /v1/datasets/{dataset_id}` | SHA-256 of the exact body | a 304 is still recorded as an access |
-| `GET /v1/datasets/latest` | same as the canonical route's | `Content-Location: /v1/datasets/<dataset_id>` |
-| `GET /v1/datasets/{dataset_id}/artifact` | `"<checksum>"`; none if the metadata has no checksum | the 304 is decided before the artifact is opened |
-| `PATCH /v1/datasets/{dataset_id}/tags` | the NEW representation's | `If-None-Match` is not evaluated |
+| Route | `ETag` | Preconditions | Also |
+|-------|--------|---------------|------|
+| `GET /v1/datasets/{dataset_id}` | SHA-256 of the exact body | `If-Match` → 412; `If-None-Match` → 304 | a 304 is recorded as an access; a 412 is not |
+| `GET /v1/datasets/latest` | same as the canonical route's | as above | `Content-Location: /v1/datasets/<dataset_id>`; records no access, 200 or 304 |
+| `GET /v1/datasets/{dataset_id}/artifact` | WEAK, `W/"<checksum>"`; none if the metadata has no checksum | as above, gated on `store.exists()` | the 304 is decided before the artifact is opened |
+| `PATCH /v1/datasets/{dataset_id}/tags` | the NEW representation's | `If-Match` failing, or `If-None-Match` matching → 412, nothing written | evaluated inside `update_tags`' lock; `Content-Location` names `/v1/datasets/<dataset_id>` |
 
-All three reads send `Cache-Control: private, no-cache`: `private` because the key travels in
-`X-API-Key`, which RFC 9111 §3.5 does not oblige a shared cache to treat as authentication;
-`no-cache` because a dataset can be deleted or re-tagged at any time. `If-None-Match` follows RFC
-9110 §13.1.2 — `*`, lists, weak comparison — and an unparseable field serves the full 200.
+All three reads send `Cache-Control: private, no-cache`. `private` because the key travels in
+`X-API-Key`, which RFC 9111 §3.5 does not oblige a shared cache to treat as authentication.
+`no-cache` — revalidate before every use — because none of these URIs is immutable: metadata
+changes with a tag edit, and **the artifact is not content-addressed**. `dataset_id` hashes the
+REQUEST, so a dataset deleted or expired and re-created serves whatever the generator now produces
+at the same URI (`equities` defaults `end_date` to today). The API primer
+(`juniper-ml/notes/JUNIPER_2026-08-13_JUNIPER-ECOSYSTEM_API-DESIGN-AND-IMPLEMENTATION-PRIMER.md`)
+prescribes `immutable` for the artifact on the content-addressed premise; that is rejected here —
+it would serve stale data for as long as it lasted. A 304 is cheap on the wire, not on the server:
+on `/{dataset_id}` and the artifact it is still an access, which on LocalFS rewrites the metadata
+document. The CORS middleware exposes none of these headers, so cross-origin browser JavaScript
+cannot read them; no browser client of this service exists today.
 
-**What the artifact `ETag` is not.** `checksum` is `compute_checksum`'s SHA-256 over a canonical
-serialization of the ARRAYS (uncompressed `np.savez`, keys sorted); every store serves a
-compressed one, so `sha256(served bytes) != checksum`. It still changes whenever the arrays
-change, and a stored artifact is written once, which is what whole-body revalidation needs; no
-byte ranges are served, so no client can splice bytes from two serializations. An exact byte hash
-would need a new per-store field — storage work, not route work.
+**Preconditions follow RFC 9110 §13.2.2.** `If-Match` is evaluated first, with the STRONG
+comparison (a `W/` tag never satisfies it), and a field the server cannot parse FAILS it —
+performing a method under an unreadable precondition is the unsafe direction. `If-None-Match` uses
+the weak comparison; `*` matches any current representation, including an artifact with no
+checksum; a field that is not a well-formed entity-tag list matches nothing (a tag embedded in
+garbage, `foo"<etag>"bar`, is not a list element). A list header sent on several lines is one list
+(§5.3), so the routes take it as `list[str]` and join the lines. `If-Modified-Since` /
+`If-Unmodified-Since` are not evaluated: nothing here carries a `Last-Modified`.
+
+**A precondition is never answered for a target that would 404** (§13.2.1). The metadata routes
+decide only after the metadata is found. The artifact route gates the whole precondition branch on
+the store's own `exists()` — LocalFS checks metadata AND artifact on disk and reads no bytes — so a
+deleted artifact 404s even when `If-None-Match` names it. The in-memory store's `exists()` checks
+metadata only, so there a metadata-without-artifact corruption can still 304; and an orphaned
+artifact with no metadata is served unconditionally. A metadata document that cannot be read no
+longer costs the download: the artifact is served as before validators existed, without an `ETag`.
+
+**`PATCH .../tags` is an optimistic-concurrency write.** `update_tags` takes an optional
+`precondition`, evaluated against the CURRENT metadata inside its `_version_lock` and cross-process
+write lock, before anything is written; the route passes one that recomputes the representation's
+`ETag` exactly as the reads do, and a `False` raises `PreconditionFailedError` → 412. A check made in
+the route, outside that lock, could pass and then lose the race to another writer.
+
+**Why the artifact `ETag` is weak** (owner ruling 2026-09-23, overturning the 2026-09-11 "strong"
+on its premise). The ruling assumed, with the API primer, that `checksum` hashes the served NPZ
+bytes. It does not: it is `compute_checksum`'s SHA-256 over a canonical serialization of the ARRAYS
+(uncompressed `np.savez`, keys sorted), and every store serves a compressed one, so
+`sha256(served bytes) != checksum`. Identical arrays re-serialized — another numpy or zlib, or
+another key order: `InMemoryDatasetStore` sorts keys where LocalFS, Redis and Postgres keep the
+generator's, so a `CachedDatasetStore` over an in-memory cache serves a hit and a miss as two byte
+sequences — keep one checksum. That is exactly "same content, possibly different bytes", the
+definition of a weak validator (RFC 9110 §8.8.1), so the tag is `W/"<checksum>"`. Revalidation is
+unaffected (`If-None-Match` compares weakly); `If-Match`, which compares strongly, can match the
+artifact only through `*`.
+
+**Known gap, recorded for future work: a truly strong artifact validator.** It needs each store to
+record the SHA-256 of the exact bytes it writes — a change to every save path (storage work that
+collides with APD-DATA-019's pushdown), plus a fallback for artifacts written before it.
 
 **What not to do:**
 
@@ -1283,10 +1324,15 @@ would need a new per-store field — storage work, not route work.
   so that changes the wire format and hashes bytes FastAPI would not send.
   `test_bytes_match_fastapi_rendering_of_the_public_model` pins the equality.
 - Do not read `GET /{dataset_id}/access` as an access, or count it as one.
+- Do not evaluate a write precondition in the route. It has to run inside `update_tags`' lock, or
+  it can pass and then lose the race it exists to prevent.
 
-Non-vacuity: `util/ad-hoc/2026-09-22_verify_conditional_request_tests_are_not_vacuous.py` reverts
-each behaviour in turn and requires the tests that describe it to go red while a named control stays
-green.
+`HEAD` answers 405 on all three reads, before and after this work: FastAPI routes declared with
+`@router.get` do not add it. Out of scope here.
+
+Non-vacuity: `util/ad-hoc/2026-09-22_verify_conditional_request_tests_are_not_vacuous.py` applies
+twenty mutations, one behaviour each, and requires the tests that describe it to go red while a named
+control stays green.
 
 ---
 
@@ -1460,7 +1506,7 @@ The LocalFS handle is opened inside the generator and closed by its `with` block
 - **Content-Type:** `application/zip` (`BINARY_MEDIA_TYPE` in `api/constants.py`). Both binary routes derive from that name. Do not spell `application/octet-stream` inline — that is the RFC 9110 §8.3 fallback, not this service's published type. Changing the value is a wire change (`test_binary_media_types.py`).
 - **Content-Disposition:** `attachment; filename={dataset_id}.npz`.
 - Bytes are identical to `get_artifact_bytes`. The change is a memory profile, not a payload change.
-- **`ETag`** is the stored `checksum`, **not** a hash of these bytes, and a matching `If-None-Match` is a 304 decided before the stream opens. See [Conditional Requests and Validators](#conditional-requests-and-validators).
+- **`ETag`** is WEAK, `W/"<checksum>"` — the stored `checksum`, **not** a hash of these bytes. A matching `If-None-Match` is a 304 and a failing `If-Match` a 412, both decided before the stream opens and only for a dataset `store.exists()` confirms. See [Conditional Requests and Validators](#conditional-requests-and-validators).
 
 ### What not to do
 

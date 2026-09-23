@@ -59,7 +59,12 @@ JuniperData is a dataset generation and management service for the Juniper ecosy
 
 2. **URL Versioning**: Major versions are indicated in the URL path (`/v1/`, `/v2/`, etc.)
 
-3. **Backward Compatibility Guarantees**:
+3. **Backward Compatibility Guarantees** — **in force from juniper-data 1.0.** While the package
+   is `0.x`, `/v1` may change incompatibly: every such change is flagged **Breaking** in
+   `CHANGELOG.md`, the way SemVer treats a `0.y` minor. Owner ruling 2026-09-23, taken when the
+   defect-register arc's rulings (the access counters leaving the metadata representation,
+   RFC 9457 errors, 200 on dataset reuse) were found to conflict with the unconditional wording
+   this section had. From 1.0 on:
    - Response fields will NOT be removed within a major version
    - New optional fields MAY be added to responses
    - New optional parameters MAY be added to requests
@@ -70,7 +75,8 @@ JuniperData is a dataset generation and management service for the Juniper ecosy
    - Deprecated endpoints will return a `Deprecation` header
    - Old API versions will be supported for at least 6 months after a new major version
 
-5. **Breaking Changes** (require major version bump):
+5. **Breaking Changes** (from 1.0, require a major version bump; before 1.0, a CHANGELOG
+   **Breaking** entry):
    - Removing an endpoint
    - Removing a response field
    - Changing the type of a response field
@@ -516,12 +522,13 @@ Get metadata for the latest stored version of a logical dataset name.
 **Response:**
 
 Returns the same metadata representation `GET /v1/datasets/{id}` serves for that version, with
-the same `ETag`, `Cache-Control` and `If-None-Match` handling.
+the same `ETag`, `Cache-Control` and precondition handling — except that this route records no
+access, for a 200 or a 304, as it never has.
 
 - **`Content-Location: /v1/datasets/<dataset_id>`** — names the canonical URI of the version
-  returned (APD-DATA-029). Two URIs serve this representation; the header is how a client or
-  cache knows they are one resource. A `307` to the canonical URI was ruled out: it costs every
-  caller a round trip.
+  returned (APD-DATA-029), so a client knows which dataset the body is. It does not merge cache
+  entries: a cache keys by the request URI (RFC 9111), so `/latest` and `/{id}` are still cached
+  separately. A `307` to the canonical URI was ruled out: it costs every caller a round trip.
 
 ```json
 {
@@ -536,6 +543,7 @@ the same `ETag`, `Cache-Control` and `If-None-Match` handling.
 - `200 OK` - Latest version metadata returned
 - `304 Not Modified` - `If-None-Match` matched; `Content-Location` is still sent
 - `404 Not Found` - No versions exist for the requested name
+- `412 Precondition Failed` - `If-Match` did not match
 
 ---
 
@@ -893,22 +901,28 @@ Get metadata for a specific dataset.
 - **`Cache-Control: private, no-cache`** — keep the body, revalidate before each use. `private`
   because the API key travels in `X-API-Key`, which a shared cache is not obliged to treat as
   authentication.
-- **`If-None-Match`** — send a held `ETag` (or a list, or `*`; `W/` prefixes compare weakly) and
-  a match is answered `304 Not Modified` with no body. A 304 still counts as an access.
+- **`If-None-Match`** — send a held `ETag` (or a list, or `*`; `W/` prefixes compare weakly; a
+  list may span several header lines) and a match is answered `304 Not Modified` with no body. A
+  304 still counts as an access.
+- **`If-Match`** — the current representation must carry one of the listed tags, compared
+  STRONGLY (a `W/` tag never matches), or the answer is `412 Precondition Failed`. Evaluated before
+  `If-None-Match` (RFC 9110 §13.2.2); a 412 is not an access.
 
 **Status Codes:**
 
 - `200 OK` - Metadata returned
 - `304 Not Modified` - `If-None-Match` matched the current `ETag`; no body
-- `404 Not Found` - Dataset not found
+- `404 Not Found` - Dataset not found (preconditions are never evaluated for a missing dataset)
+- `412 Precondition Failed` - `If-Match` did not match
 
 ---
 
 ### GET /v1/datasets/{id}/access
 
 The access counters of one dataset — where they live since APD-DATA-032. They are still
-maintained on every metadata read and artifact download; they are just no longer part of the
-metadata representation.
+maintained, exactly where they always were — every `GET /v1/datasets/{id}` (a 304 included) and
+every artifact download (a 304 included); `/latest`, `/filter` and `/versions` never recorded an
+access — and they are no longer part of any metadata representation.
 
 **Response** (`Cache-Control: no-store`):
 
@@ -916,7 +930,7 @@ metadata representation.
 {
   "dataset_id": "spiral-1.0.0-a1b2c3d4e5f6...",
   "access_count": 4,
-  "last_accessed_at": "2026-09-22T20:31:08.114Z"
+  "last_accessed_at": "2026-09-22T20:31:08.114000Z"
 }
 ```
 
@@ -941,20 +955,28 @@ Download the dataset as an NPZ file.
 
 - **Content-Type:** `application/zip` (the published binary media type, `BINARY_MEDIA_TYPE`)
 - **Body:** Binary NPZ file
-- **`ETag`** — strong, `"<checksum>"`: the dataset's stored `checksum`. **It is not the SHA-256
-  of these bytes.** The checksum is taken over a canonical serialization of the *arrays*
-  (uncompressed, keys sorted); stores serve a compressed one. It changes whenever the arrays
-  change and a stored artifact never changes while it exists, which is what revalidation of a
-  whole body needs; no byte ranges are served. A dataset with no stored checksum gets no `ETag`.
-- **`Cache-Control: private, no-cache`**, and `If-None-Match` as for
-  [`GET /v1/datasets/{id}`](#get-v1datasetsid). A 304 is decided from the metadata before the
-  artifact is opened, so a revalidation costs no artifact I/O.
+- **`ETag`** — **weak**, `W/"<checksum>"`: the dataset's stored `checksum`, which is **not the
+  SHA-256 of these bytes**. The checksum is taken over a canonical serialization of the *arrays*
+  (uncompressed, keys sorted); stores serve a compressed one, and identical arrays re-serialized
+  (another numpy or zlib, another key order) can differ in bytes under the same checksum. "Same
+  content, possibly different bytes" is what a weak validator means (owner ruling 2026-09-23).
+  `If-None-Match` compares weakly, so revalidation works; `If-Match` compares strongly, so on this
+  route it can match only `*`. A dataset with no stored checksum gets no `ETag`. A truly strong
+  artifact validator — each store recording the SHA-256 of the bytes it writes — is a known gap.
+- **`Cache-Control: private, no-cache`**, and `If-None-Match` / `If-Match` as for
+  [`GET /v1/datasets/{id}`](#get-v1datasetsid). `If-None-Match: *` answers 304 even for a dataset
+  with no checksum — `*` matches any current representation. Preconditions are evaluated only
+  when the store confirms the dataset exists (on the default store, metadata AND artifact on
+  disk), and before the artifact is opened, so a revalidation costs no artifact I/O and a deleted
+  artifact is a 404, never a 304. If the metadata cannot be read, the artifact is still served,
+  without an `ETag`.
 
 **Status Codes:**
 
 - `200 OK` - Artifact returned
-- `304 Not Modified` - `If-None-Match` matched the stored checksum; no body
+- `304 Not Modified` - `If-None-Match` matched the stored checksum (or was `*`); no body
 - `404 Not Found` - Dataset not found
+- `412 Precondition Failed` - `If-Match` did not match
 
 ---
 
@@ -1016,12 +1038,20 @@ Add/remove tags on a single dataset.
 ```
 
 The response is the updated metadata representation and carries its **new** `ETag`, so a client
-can hold the edited copy without a second read. `If-None-Match` is not evaluated here.
+can hold the edited copy without a second read, and `Content-Location: /v1/datasets/<id>`
+naming the resource that `ETag` describes (the request target, `.../tags`, has no GET of its own).
+
+**Optimistic concurrency.** Send the `ETag` of the copy you edited from as `If-Match`: if the
+dataset has changed since — a concurrent tag edit — the answer is `412 Precondition Failed` and
+nothing is written. The check runs against the current metadata inside the same lock as the write,
+so it cannot pass and then lose the race. `If-None-Match` naming the current representation (`*`
+included) is also a 412 here, not a 304 — the RFC 9110 §13.1.2 rule for a method other than GET.
 
 **Status Codes:**
 
 - `200 OK` - Updated metadata returned
 - `404 Not Found` - Dataset not found
+- `412 Precondition Failed` - A precondition failed; nothing was written
 
 ---
 

@@ -43,6 +43,7 @@
 | `/v1/generators/{name}/schema`                      | GET                       | Yes   |
 | `/v1/datasets`                                      | POST (create), GET (list) | Yes   |
 | `/v1/datasets/{id}`                                 | GET (meta), DELETE        | Yes   |
+| `/v1/datasets/{id}/access`                          | GET (access counters)     | Yes   |
 | `/v1/datasets/{id}/artifact`                        | GET (NPZ download)        | Yes   |
 | `/v1/datasets/{id}/preview`                         | GET (JSON preview)        | Yes   |
 | `/v1/datasets/filter`                               | GET (filter datasets)     | Yes   |
