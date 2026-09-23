@@ -158,12 +158,17 @@ class KaggleDatasetStore(DatasetStore):
         Raises:
             ValueError: If the ratios are invalid (see :func:`carve_three_way`).
         """
-        # Before the download, not after it: a bad request must not cost a Kaggle fetch.
-        validate_carve_ratios(train_ratio, val_ratio, test_ratio)
-        # Plain Python scalars: the ID is a JSON hash, and random.seed() rejects np.int64 on
-        # Python >= 3.11. operator.index rejects a float seed instead of truncating it.
+        # Plain JSON types FIRST, because the dataset ID is a JSON hash of these values.
+        # random.seed() also rejects np.int64 on Python >= 3.11. operator.index rejects a float
+        # seed instead of truncating it.
         seed = None if seed is None else operator.index(seed)
         train_ratio, val_ratio, test_ratio = float(train_ratio), float(val_ratio), float(test_ratio)
+        feature_columns = None if feature_columns is None else [str(c) for c in feature_columns]
+        label_column = str(label_column)
+        file_name = str(file_name)
+        # Then validate, and before the download: a bad request must not cost a Kaggle fetch.
+        # After conversion, not before, so this check and the carve's see the SAME numbers.
+        validate_carve_ratios(train_ratio, val_ratio, test_ratio)
 
         dataset_path = self.download_dataset(dataset_ref)
         file_path = dataset_path / file_name
@@ -216,13 +221,6 @@ class KaggleDatasetStore(DatasetStore):
 
         X = np.array(features, dtype=np.float32)
 
-        if normalize_features:
-            X_min = X.min(axis=0, keepdims=True)
-            X_max = X.max(axis=0, keepdims=True)
-            X_range = X_max - X_min
-            X_range[X_range == 0] = 1
-            X = (X - X_min) / X_range
-
         unique_labels = sorted([str(lbl) for lbl in set(labels)])
         label_to_idx = {label: idx for idx, label in enumerate(unique_labels)}
         n_classes = len(unique_labels)
@@ -239,6 +237,17 @@ class KaggleDatasetStore(DatasetStore):
         # are cut in their current order -- the seeded shuffle above is the only shuffle.
         arrays, counts = carve_three_way(X, y, train_ratio=train_ratio, val_ratio=val_ratio, test_ratio=test_ratio)
         n_emitted = counts["n_total"]
+
+        # Decision 7: min-max statistics are fit on train ONLY and applied unchanged to val and
+        # test, so held-out values may fall outside [0, 1]. They used to be fit on every row
+        # before the cut, which leaked val / test statistics into train's scaling. An empty
+        # train partition has nothing to fit and is left unscaled.
+        if normalize_features and arrays["X_train"].shape[0] > 0:
+            x_min = arrays["X_train"].min(axis=0, keepdims=True)
+            x_range = arrays["X_train"].max(axis=0, keepdims=True) - x_min
+            x_range[x_range == 0] = 1
+            for part in ("train", "val", "test"):
+                arrays[f"X_{part}"] = (arrays[f"X_{part}"] - x_min) / x_range
 
         # Class counts over the rows actually emitted, not rows a sub-1.0 ratio sum left out.
         emitted_indices = label_indices[:n_emitted]

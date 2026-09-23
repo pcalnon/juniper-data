@@ -294,8 +294,28 @@ class TestKaggleDatasetStoreLoadDataset:
         with patch.object(store, "download_dataset") as download:
             with pytest.raises(ValueError, match="must be <= 1.0"):
                 store.load_kaggle_dataset("owner/any", file_name="data.csv", train_ratio=0.9)
+            # float32 0.8 / 0.1 / 0.1 sums to 1.0 only in float32; widened it over-asks. Judged
+            # as the carve sees it, and so still before the fetch.
+            with pytest.raises(ValueError, match="must be <= 1.0"):
+                store.load_kaggle_dataset("owner/any", file_name="data.csv", train_ratio=np.float32(0.8), val_ratio=np.float32(0.1), test_ratio=np.float32(0.1))
 
         download.assert_not_called()
+
+    def test_array_columns_and_path_file_name_hash_as_plain_json(self, mock_kaggle_module, tmp_path) -> None:
+        """An ndarray of column names, or a Path file name, is not JSON-serialisable."""
+        from juniper_data.storage.kaggle_store import KaggleDatasetStore
+
+        store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
+        dataset_dir = tmp_path / "kaggle" / "owner_types"
+        dataset_dir.mkdir(parents=True, exist_ok=True)
+        _write_csv(dataset_dir / "data.csv", [{"a": str(i), "b": str(2 * i), "label": str(i % 2)} for i in range(10)])
+
+        odd_id, meta, _ = store.load_kaggle_dataset("owner/types", file_name=Path("data.csv"), seed=3, feature_columns=np.array(["a", "b"]))
+        plain_id, _, _ = store.load_kaggle_dataset("owner/types", file_name="data.csv", seed=3, feature_columns=["a", "b"])
+
+        assert odd_id == plain_id
+        assert meta.params["feature_columns"] == ["a", "b"]
+        assert meta.params["file_name"] == "data.csv"
 
     def test_load_with_auto_detect_csv(self, mock_kaggle_module, tmp_path) -> None:
         """Auto-detect CSV when specified file not found."""
@@ -391,8 +411,28 @@ class TestKaggleDatasetStoreLoadDataset:
         _write_csv(dataset_dir / "data.csv", rows)
 
         _, _, arrays = store.load_kaggle_dataset("owner/norm", file_name="data.csv", normalize_features=True)
-        assert whole(arrays, "X").max() <= 1.0 + 1e-6
-        assert whole(arrays, "X").min() >= 0.0 - 1e-6
+
+        # Min-max is fit on train ONLY (decision 7; juniper-data#411). This asserted the WHOLE
+        # dataset sat in [0, 1], true only for a fit over every row. Train is rows 0..7 (0..70),
+        # so val (80) and test (90) escape the bound under train's statistics.
+        assert arrays["X_train"].min() == pytest.approx(0.0)
+        assert arrays["X_train"].max() == pytest.approx(1.0)
+        np.testing.assert_allclose(arrays["X_val"][:, 0], [80.0 / 70.0], rtol=1e-6)
+        np.testing.assert_allclose(arrays["X_test"][:, 0], [90.0 / 70.0], rtol=1e-6)
+
+    def test_empty_train_partition_is_left_unscaled(self, mock_kaggle_module, tmp_path) -> None:
+        """Nothing to fit on: the rows pass through raw instead of raising on an empty min()."""
+        from juniper_data.storage.kaggle_store import KaggleDatasetStore
+
+        store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
+        dataset_dir = tmp_path / "kaggle" / "owner_notrain"
+        dataset_dir.mkdir(parents=True, exist_ok=True)
+        _write_csv(dataset_dir / "data.csv", [{"feature": "5", "label": "0"}, {"feature": "7", "label": "1"}])
+
+        _, meta, arrays = store.load_kaggle_dataset("owner/notrain", file_name="data.csv", normalize_features=True, train_ratio=0.2, val_ratio=0.4, test_ratio=0.4)
+
+        assert meta.n_train == 0
+        np.testing.assert_array_equal(whole(arrays, "X")[:, 0], [5.0, 7.0])
 
     def test_load_with_invalid_values(self, mock_kaggle_module, tmp_path) -> None:
         """Non-numeric feature values are treated as 0.0."""

@@ -265,6 +265,45 @@ class TestHuggingFaceDatasetStoreLoadDataset:
 
         mock_hf_module.assert_not_called()
 
+    def test_float32_ratios_are_judged_as_the_carve_sees_them_before_the_download(self, mock_hf_module) -> None:
+        """float32 0.8 + 0.1 + 0.1 is exactly 1.0 in float32 and 1.0000000119 once widened.
+
+        The early check used to validate the raw float32 values, which passed, while the carve
+        validated the widened ones, which failed after the download. Converting first makes both
+        checks see the same numbers, so the rejection comes before any fetch.
+        """
+        from juniper_data.storage.hf_store import HuggingFaceDatasetStore
+
+        store = HuggingFaceDatasetStore()
+        with pytest.raises(ValueError, match="must be <= 1.0"):
+            store.load_hf_dataset("test-dataset", train_ratio=np.float32(0.8), val_ratio=np.float32(0.1), test_ratio=np.float32(0.1))
+
+        mock_hf_module.assert_not_called()
+
+    def test_non_str_split_and_array_columns_hash_as_plain_json(self, mock_hf_module) -> None:
+        """datasets.Split.TRAIN is a NamedSplit, and an ndarray of column names is not a list.
+
+        Neither is JSON-serialisable, so both broke the hashed ID. Both worked when the ID was
+        a plain string.
+        """
+        from juniper_data.storage.hf_store import HuggingFaceDatasetStore
+
+        class _NamedSplitLike:  # stands in for datasets.NamedSplit: str() is the split name
+            def __str__(self) -> str:
+                return "train"
+
+        mock_ds, _ = _make_mock_hf_dataset(n_samples=20, n_classes=2, feature_type="tabular")
+        mock_hf_module.return_value = mock_ds
+
+        store = HuggingFaceDatasetStore()
+        odd_id, meta, _ = store.load_hf_dataset("test-dataset", split=_NamedSplitLike(), seed=7, feature_columns=np.array(["feature1", "feature2"]))
+        plain_id, _, _ = store.load_hf_dataset("test-dataset", split="train", seed=7, feature_columns=["feature1", "feature2"])
+
+        assert odd_id == plain_id
+        assert meta.params["split"] == "train"
+        assert meta.params["feature_columns"] == ["feature1", "feature2"]
+        assert mock_hf_module.call_args.kwargs["split"] == "train"
+
     def test_load_with_config_name(self, mock_hf_module) -> None:
         """Load with config name included in dataset_id."""
         from juniper_data.storage.hf_store import HuggingFaceDatasetStore
@@ -314,7 +353,11 @@ class TestHuggingFaceDatasetStoreLoadDataset:
         assert whole(arrays, "y").shape[1] == 1
 
     def test_load_with_normalization(self, mock_hf_module) -> None:
-        """Load with normalization scales features."""
+        """Tabular scaling is fit on train ONLY and applied unchanged to val and test (decision 7).
+
+        This asserted ``whole(arrays, "X").max() <= 1.0``, which holds only when the scale is fit
+        on EVERY row: the val / test to train leak decision 7 forbids (juniper-data#411).
+        """
         from juniper_data.storage.hf_store import HuggingFaceDatasetStore
 
         mock_ds, _ = _make_mock_hf_dataset(n_samples=10, n_classes=2, feature_type="tabular")
@@ -323,6 +366,24 @@ class TestHuggingFaceDatasetStoreLoadDataset:
         store = HuggingFaceDatasetStore()
         _, _, arrays = store.load_hf_dataset("test-dataset", normalize=True, feature_columns=["feature1", "feature2"])
 
+        # feature2 is 10..19; train is rows 0..7, so the train-fit scale is 17.
+        assert arrays["X_train"].max() == pytest.approx(1.0)
+        np.testing.assert_allclose(arrays["X_val"][:, 1], [18.0 / 17.0], rtol=1e-6)
+        np.testing.assert_allclose(arrays["X_test"][:, 1], [19.0 / 17.0], rtol=1e-6)
+        assert arrays["X_test"].dtype == np.float32
+
+    def test_image_normalisation_is_the_constant_not_a_fit(self, mock_hf_module) -> None:
+        """Pixels are divided by 255 on every row. A train-fit scale would pin train's max at 1.0."""
+        from juniper_data.storage.hf_store import HuggingFaceDatasetStore
+
+        mock_ds, _ = _make_mock_hf_dataset(n_samples=10, n_classes=2, feature_type="image")
+        mock_hf_module.return_value = mock_ds
+
+        store = HuggingFaceDatasetStore()
+        _, _, arrays = store.load_hf_dataset("images", normalize=True, feature_columns=["image"])
+
+        # The mock's pixels are randint(0, 255), i.e. at most 254, so /255 leaves train's max below 1.
+        assert arrays["X_train"].max() < 1.0
         assert whole(arrays, "X").max() <= 1.0
 
     def test_load_saves_to_cache(self, mock_hf_module) -> None:

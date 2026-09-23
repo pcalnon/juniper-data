@@ -108,12 +108,19 @@ class HuggingFaceDatasetStore(DatasetStore):
         """
         # assert hf_load_dataset is not None
 
-        # Before the download, not after it: a bad request must not cost a Hub fetch.
-        validate_carve_ratios(train_ratio, val_ratio, test_ratio)
-        # Plain Python scalars: the ID is a JSON hash, and np.int64 / np.float32 are not
-        # JSON-serialisable. operator.index rejects a float seed instead of truncating it.
+        # Plain JSON types FIRST, because the dataset ID is a JSON hash of these values. np.int64 seeds,
+        # datasets.Split.TRAIN (a NamedSplit) and ndarray column lists are not JSON-serialisable.
+        # operator.index rejects a float seed instead of truncating it. `split` is also passed to
+        # the Hub as a plain string, which it accepts.
         seed = None if seed is None else operator.index(seed)
         train_ratio, val_ratio, test_ratio = float(train_ratio), float(val_ratio), float(test_ratio)
+        split = str(split)
+        feature_columns = None if feature_columns is None else [str(c) for c in feature_columns]
+        label_column = str(label_column)
+        # Then validate, and before the download: a bad request must not cost a Hub fetch. After
+        # conversion, not before, so this check and the carve's see the SAME numbers.
+        # np.float32(0.8) + 0.1 + 0.1 is exactly 1.0 in float32 and 1.0000000119 once widened.
+        validate_carve_ratios(train_ratio, val_ratio, test_ratio)
 
         ds = hf_load_dataset(  # nosec B615
             dataset_name,
@@ -141,6 +148,16 @@ class HuggingFaceDatasetStore(DatasetStore):
         # are cut in their current order -- the seeded shuffle above is the only shuffle.
         arrays, counts = carve_three_way(X, y, train_ratio=train_ratio, val_ratio=val_ratio, test_ratio=test_ratio)
         n_emitted = counts["n_total"]
+
+        # Decision 7: a data-derived scale is fit on train ONLY and applied unchanged to val and
+        # test. It used to be fit on every row before the cut, so val / test statistics leaked
+        # into train's scaling. Images are exempt: their /255 is a constant, not a fit.
+        if normalize and not self._is_image_source(self._resolve_feature_columns(ds, feature_columns, label_column)):
+            x_train = arrays["X_train"]
+            scale = float(x_train.max()) if x_train.size else 0.0
+            if scale > 1.0:
+                for part in ("train", "val", "test"):
+                    arrays[f"X_{part}"] = arrays[f"X_{part}"] / np.float32(scale)
 
         params = {
             "dataset_name": dataset_name,
@@ -197,13 +214,16 @@ class HuggingFaceDatasetStore(DatasetStore):
     ) -> tuple[np.ndarray, np.ndarray, int]:
         """Extract features and labels from HF dataset.
 
+        ``normalize`` applies to IMAGE sources only, whose ``/ 255`` is a constant. Tabular
+        features come back unscaled: their scale is data-derived, so :meth:`load_hf_dataset`
+        fits it on the train partition after the carve (decision 7).
+
         Returns:
             Tuple of (X, y, n_classes).
         """
-        if feature_columns is None:
-            feature_columns = [col for col in ds.column_names if col not in (label_column, "idx", "id")]
+        feature_columns = self._resolve_feature_columns(ds, feature_columns, label_column)
 
-        if len(feature_columns) == 1 and "image" in feature_columns[0].lower():
+        if self._is_image_source(feature_columns):
             X = self._extract_images(ds, feature_columns[0], flatten, normalize)
         else:
             features = []
@@ -214,8 +234,6 @@ class HuggingFaceDatasetStore(DatasetStore):
                 features.append(np.array(col_data))
             X = np.column_stack(features) if len(features) > 1 else features[0]
             X = X.astype(np.float32)
-            if normalize and X.max() > 1.0:
-                X = X / X.max()
 
         labels = np.array(ds[label_column])
         n_classes = int(labels.max()) + 1
@@ -227,6 +245,18 @@ class HuggingFaceDatasetStore(DatasetStore):
             y = labels.astype(np.float32).reshape(-1, 1)
 
         return X, y, n_classes
+
+    @staticmethod
+    def _resolve_feature_columns(ds: Any, feature_columns: list[str] | None, label_column: str) -> list[str]:
+        """The feature columns: as given, or every column but the label and id columns."""
+        if feature_columns is None:
+            return [col for col in ds.column_names if col not in (label_column, "idx", "id")]
+        return feature_columns
+
+    @staticmethod
+    def _is_image_source(feature_columns: list[str]) -> bool:
+        """A single column named like an image is read as pixels (scaled by the constant 255)."""
+        return len(feature_columns) == 1 and "image" in feature_columns[0].lower()
 
     def _extract_images(
         self,

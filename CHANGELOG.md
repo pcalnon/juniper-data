@@ -77,12 +77,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `generate_dataset_id` the generator path uses, with one deliberate difference. A `None` seed
     is hashed as a fixed marker, not given BUG-JD-04's per-call nonce. The stores shuffle only
     when a seed is given, so an unseeded load is repeatable. A nonce would have minted a new ID,
-    and a new copy in the never-evicting default cache store, on every identical call. Seeds and
-    ratios are coerced to plain `int` / `float`, so a numpy seed (`rng.integers()` returns
-    `np.int64`) no longer breaks the JSON-hashed ID, or Kaggle's `random.seed()` on
-    Python >= 3.11.
+    and a new copy in the never-evicting default cache store, on every identical call. Every
+    recorded parameter is converted to a plain JSON type before the download, because the ID is
+    a JSON hash of them:
+    - seeds through `operator.index`, so an `np.int64` seed works and a float seed is rejected;
+    - ratios through `float()`;
+    - `split` through `str()`, so `datasets.Split.TRAIN` works;
+    - column lists into lists of `str`, and Kaggle's `file_name` into `str`.
+
+    Ratios are validated after that conversion, so the check before the download sees the same
+    numbers as the carve. A float32 `0.8 / 0.1 / 0.1` sums to 1 only in float32; once widened it
+    over-asks, and it is now rejected before any fetch rather than after one.
   - `n_samples`, `n_val` and `class_distribution` in the metadata count the emitted rows.
     Rows beyond a ratio sum below 1 are left out rather than folded into a partition.
+  - **Normalisation is fit on train only (decision 7).** HF tabular scaling (`/ max`) and
+    Kaggle min-max were fit on every row before the cut, so val/test statistics leaked into
+    train's scaling. That is the leak juniper-data#314 fixed for `equities`, `equities_seq` and
+    `csv_import`. The statistics now come from `X_train` and are applied unchanged to `val`
+    and `test`, so held-out values may fall outside [0, 1]. HF images keep their constant `/ 255`.
+    The two `test_load_with_normalization` tests asserted that the whole dataset lay in [0, 1].
+    That holds only for the leaky fit, so they now pin the train-only statistics.
 
   `tests/unit/test_hf_store.py` asserted `"X_full" in arrays`, so the fixture encoded the
   defect. It now asserts the six-key contract. **Scope, unchanged from 0.14.0's note:** no
