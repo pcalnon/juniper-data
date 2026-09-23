@@ -77,6 +77,8 @@ PUBLISHED_OPERATION_IDS = frozenset(
         "list_dataset_versions",
         "get_latest_version",
         "get_dataset_metadata",
+        # APD-DATA-032: the access counters left the metadata body and are read here.
+        "get_dataset_access_stats",
         "download_artifact",
         "preview_dataset",
         "delete_dataset",
