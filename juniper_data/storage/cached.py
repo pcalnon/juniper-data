@@ -24,6 +24,12 @@ from .base import DatasetStore
 # keys is cheap relative to a dataset save/load.
 _CACHE_COUNT_PROBE_LIMIT: int = 10_000
 
+# How many distinct dataset ids a store remembers having WARNED about for a failed cache
+# population. The first failure for an id is a WARNING with its traceback; every repeat, and
+# every id past this bound, is DEBUG. Without the bound a legacy artifact that can never be
+# cached would log a full traceback on every read.
+_POPULATION_WARNING_ID_LIMIT: int = 1_024
+
 
 class CachedDatasetStore(DatasetStore):
     """Composable caching wrapper for dataset storage.
@@ -56,6 +62,7 @@ class CachedDatasetStore(DatasetStore):
         self._primary = primary
         self._cache = cache
         self._write_through = write_through
+        self._population_warned: set[str] = set()
 
     def _emit_cached_count(self) -> None:
         """Update the ``juniper_data_datasets_cached`` Prometheus gauge.
@@ -136,7 +143,9 @@ class CachedDatasetStore(DatasetStore):
             # bytes either way. But it must not be SILENT. An arc_agi artifact minted before
             # juniper-data#429 carries a pickled ``task_ids`` that this ``allow_pickle=False`` load
             # refuses, so every read of one missed the cache and nothing said so. ``warm_cache``
-            # below already logs the same failure.
+            # below already logs the same failure. The first failure per id is a WARNING and the
+            # rest are DEBUG (``_POPULATION_WARNING_ID_LIMIT``), because such an artifact fails
+            # the same way on every read.
             try:
                 meta = self._primary.get_meta(dataset_id)
                 if meta is not None:
@@ -147,7 +156,11 @@ class CachedDatasetStore(DatasetStore):
                     self._cache.save(dataset_id, meta, arrays)
                     populated = True
             except Exception:
-                logger.warning("Failed to populate the cache for dataset %s; it was served from the primary store", dataset_id, exc_info=True)
+                if dataset_id not in self._population_warned and len(self._population_warned) < _POPULATION_WARNING_ID_LIMIT:
+                    self._population_warned.add(dataset_id)
+                    logger.warning("Failed to populate the cache for dataset %s; it was served from the primary store", dataset_id, exc_info=True)
+                else:
+                    logger.debug("Failed to populate the cache for dataset %s again; it was served from the primary store", dataset_id, exc_info=True)
             if populated:
                 self._emit_cached_count()
         return artifact

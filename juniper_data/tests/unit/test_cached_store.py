@@ -185,6 +185,25 @@ class TestCachedDatasetStore:
         assert warnings, "the failed cache population was swallowed with nothing logged"
         assert warnings[0].exc_info is not None, "the warning carries no traceback, so the cause is lost"
 
+    def test_a_repeated_population_failure_warns_once(
+        self,
+        primary_store: InMemoryDatasetStore,
+        cache_store: InMemoryDatasetStore,
+        sample_meta: DatasetMeta,
+        sample_arrays: dict[str, np.ndarray],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Such an artifact fails the same way on every read, so only the first read warns; the rest are DEBUG."""
+        primary_store.save("legacy-arc", sample_meta, {**sample_arrays, "task_ids": np.array(["t"] * 100, dtype=object)})
+        cached = CachedDatasetStore(primary_store, cache_store, write_through=False)
+
+        with caplog.at_level("DEBUG", logger="juniper_data.storage.cached"):
+            for _ in range(3):
+                assert cached.get_artifact_bytes("legacy-arc") is not None
+
+        mine = [record for record in caplog.records if "legacy-arc" in record.getMessage()]
+        assert [record.levelname for record in mine] == ["WARNING", "DEBUG", "DEBUG"]
+
     def test_delete_removes_from_both_stores(
         self,
         primary_store: InMemoryDatasetStore,
