@@ -521,7 +521,7 @@ pip install -e ".[api]"
 pip install -e ".[all]"
 
 # Regenerate lockfile for Docker
-uv pip compile pyproject.toml --extra api --extra observability --extra mnist -o requirements.lock
+uv pip compile pyproject.toml --extra api --extra observability --extra mnist --extra equities -o requirements.lock
 ```
 
 ---

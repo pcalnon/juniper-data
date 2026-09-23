@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The container image can generate `equities` and `equities_seq` datasets** (#421). This was
+  an owner decision on 2026-09-22. `requirements.lock` was compiled with
+  `--extra api --extra observability --extra mnist` only. pandas reached the image through the
+  mnist chain, but yfinance never did, so `EQUITIES_DEPS_AVAILABLE` was `False` and every
+  `equities` / `equities_seq` request raised `ImportError(install_hint())`. The image built,
+  started, served `/v1/health` and imported cleanly, so every existing check passed. That hurt
+  in the stack, because juniper-deploy points juniper-recurrence, whose data path is written for
+  `equities_seq`, at this service. The lock now also compiles `--extra equities`. It was
+  regenerated **without** `--upgrade`, so the change is additions only: 12 packages
+  (`yfinance` 1.7.0, `curl-cffi`, `lxml`, `beautifulsoup4`, `soupsieve`, `peewee`, `protobuf`,
+  `multitasking`, `platformdirs`, `pytz`, `cffi`, `pycparser`), and none of the existing 56
+  pins moved. `lockfile-update.yml`, `ci.yml`'s freshness gate and every documented refresh
+  command carry the new extra. Without it, the freshness gate would fail this lock and the
+  automation would strip the extra back out. **Verified on an image built from this tree:**
+  - `GET /v1/generators` answers `available: true` for `equities` and `equities_seq`. The
+    published 0.15.0 image, probed the same way, answers `false`. That negative control is
+    what shows the probe distinguishes the two.
+  - `check_image_cpu_only.py` holds with `torch=absent` and 72 distributions.
+  - `check_image_no_secrets.py` is clean.
+  - `/v1/health` returns 200.
+
+  The image grows by about 22 MB uncompressed on amd64 (179.1 MB to 201.5 MB). Every new compiled
+  dependency ships wheels for x86_64 and aarch64 on CPython 3.14 or abi3, so neither arch builds
+  from source. **Generating equities data makes outbound calls to Yahoo Finance and SEC EDGAR
+  from the container.** Published images pick this up at the next release.
+
 ### Fixed
 
 - **The PyPI wheel no longer carries the test suite** (#420) -- the wheel half of what #405
