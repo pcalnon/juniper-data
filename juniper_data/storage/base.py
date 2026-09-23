@@ -92,6 +92,19 @@ class PreconditionFailedError(Exception):
     """
 
 
+class InvalidDatasetIdError(ValueError):
+    """A ``dataset_id`` the store refuses to address: the CALLER's error, never a storage fault.
+
+    A ``ValueError``, so every existing handler keeps working unchanged -- the app's
+    ``ValueError`` handler answers it with the 400 every route gives a malformed id. It is a
+    class of its own so that a route which degrades on a storage failure can tell the two
+    apart: ``download_artifact`` serves the artifact without a validator when the metadata
+    cannot be read, and a malformed id must not take that path. Its message carries the
+    caller's id, so a handler that logs it is bound by ERR-08; the app's handler logs it at
+    DEBUG only.
+    """
+
+
 class DatasetStore(ABC):
     """Abstract dataset storage interface.
 

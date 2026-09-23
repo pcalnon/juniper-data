@@ -6,6 +6,7 @@ import json
 import logging
 import time
 import uuid
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 
 import numpy as np
@@ -53,7 +54,7 @@ from juniper_data.core.models import (
     UpdateTagsRequest,
 )
 from juniper_data.storage import DatasetStore
-from juniper_data.storage.base import PreconditionFailedError, encode_cursor
+from juniper_data.storage.base import InvalidDatasetIdError, PreconditionFailedError, encode_cursor
 from juniper_data.storage.constants import JSON_INDENT_DEFAULT
 
 from .generators import GENERATOR_REGISTRY
@@ -93,7 +94,7 @@ _H_CACHE_CONTROL = {"description": "private, no-cache", "schema": {"type": "stri
 _H_CONTENT_LOCATION = {"description": "The canonical /v1/datasets/<dataset_id> of the representation returned.", "schema": {"type": "string"}}
 _R_304 = {"description": "Not Modified: `If-None-Match` names the current representation. No body."}
 _R_412_READ = {"description": "Precondition Failed: `If-Match` does not name the current representation."}
-_R_412_WRITE = {"description": "Precondition Failed: `If-Match` does not name, or `If-None-Match` names, the current representation. Nothing was changed."}
+_R_412_WRITE = {"description": "Precondition Failed: `If-Match` does not name, or `If-None-Match` names, the current representation, or either field is malformed. Nothing was changed."}
 
 _CONDITIONAL_READ = {status.HTTP_200_OK: {"headers": {"ETag": _H_STRONG_ETAG, "Cache-Control": _H_CACHE_CONTROL}}, status.HTTP_304_NOT_MODIFIED: _R_304, status.HTTP_412_PRECONDITION_FAILED: _R_412_READ}
 _CONDITIONAL_READ_LATEST = {status.HTTP_200_OK: {"headers": {"ETag": _H_STRONG_ETAG, "Cache-Control": _H_CACHE_CONTROL, "Content-Location": _H_CONTENT_LOCATION}}, status.HTTP_304_NOT_MODIFIED: _R_304, status.HTTP_412_PRECONDITION_FAILED: _R_412_READ}
@@ -119,6 +120,19 @@ def _precondition_failed() -> HTTPException:
 def _canonical_path(dataset_id: str) -> str:
     """The canonical URI of one dataset's metadata, in the form ``artifact_url`` uses."""
     return f"{API_PREFIX}/datasets/{dataset_id}"
+
+
+def _close_artifact_stream(stream: Iterator[bytes]) -> None:
+    """Release an opened artifact stream that will not be sent.
+
+    LocalFS returns a generator that opens its file only once iterated, and closing it
+    before then is a no-op that also stops it from ever opening one; another store's
+    iterator may hold a resource from the start. The base default, a tuple iterator, has
+    nothing to close.
+    """
+    close = getattr(stream, "close", None)
+    if callable(close):
+        close()
 
 
 def _metadata_response(meta: DatasetMeta, if_match: str | None, if_none_match: str | None, *, content_location: str | None = None) -> Response:
@@ -1032,10 +1046,10 @@ async def download_artifact(
     read the artifact whole, so the memory bound is a property of the *store*, not
     of this route (defect-register ``APD-DATA-016``).
 
-    The response carries a strong ``ETag`` -- the stored ``checksum`` -- and a matching
-    ``If-None-Match`` is answered with an empty 304 (APD-DATA-017). What that checksum
-    does and does not cover is set out in ``juniper_data/api/http_cache.py``; read it
-    before treating the ETag as a hash of the transferred bytes, because it is not one.
+    The response carries a WEAK ``ETag``, ``W/"<checksum>"``: the stored ``checksum``, which
+    is NOT a hash of the transferred bytes -- ``juniper_data/api/http_cache.py`` sets out what
+    it does and does not cover. A matching ``If-None-Match`` is answered with an empty 304
+    (APD-DATA-017). ``If-Match`` compares strongly, so on this route only ``*`` satisfies it.
 
     Args:
         dataset_id: Unique dataset identifier.
@@ -1047,7 +1061,7 @@ async def download_artifact(
         Streaming response with NPZ file contents, or an empty 304.
 
     Raises:
-        HTTPException: 404 if dataset not found.
+        HTTPException: 404 if dataset not found; 412 if ``If-Match`` does not hold.
     """
     # APD-DATA-017: the validator comes from the metadata, read BEFORE the artifact is
     # opened, so a matching If-None-Match costs a metadata read and an existence check --
@@ -1055,26 +1069,34 @@ async def download_artifact(
     #
     # Unreadable metadata must not cost the download: before validators existed this
     # route never read the metadata, so a corrupt ``.meta.json`` still served the
-    # artifact. It still does, without a validator. Logged without the dataset id, which
-    # is caller-controlled (ERR-08 keeps caller strings out of log records).
+    # artifact. It still does, without a validator. A malformed ``dataset_id`` is not
+    # unreadable metadata but the caller's error, so it is re-raised to the 400 every other
+    # route gives it (the app's ``ValueError`` handler). The warning names the exception
+    # TYPE only: a message or traceback can carry the caller-controlled id, and ERR-08 keeps
+    # caller strings out of log records.
     try:
         meta = await asyncio.to_thread(store.get_meta, dataset_id)
-    except Exception:  # noqa: BLE001 -- any metadata read failure degrades to "no validator", never to a failed download
-        logger.warning("Artifact download: dataset metadata unreadable; serving without an ETag", exc_info=True)
+    except InvalidDatasetIdError:
+        raise
+    except Exception as exc:  # noqa: BLE001 -- any other metadata read failure degrades to "no validator", never to a failed download
+        logger.warning("Artifact download: dataset metadata unreadable (%s); serving without an ETag", type(exc).__name__)
         meta = None
     etag = weak_etag(meta.checksum) if meta is not None and meta.checksum else None
     headers = {"Cache-Control": CACHE_CONTROL_REVALIDATE}
     if etag is not None:
         headers["ETag"] = etag
-    if if_match or if_none_match:
+    conditional = bool(if_match or if_none_match)
+    evaluated = False
+    if conditional:
         # RFC 9110 §13.2.1: preconditions are evaluated only for a target the request would
         # otherwise have served. ``exists`` is the store's own contract (LocalFS: metadata
         # AND artifact on disk) and reads no artifact bytes. A target it denies falls
-        # through to the unconditional path below, which 404s -- never a 304 for data that
-        # is gone. A store whose ``exists`` checks the metadata alone (the in-memory store
-        # does) can still answer 304 for a metadata-without-artifact corruption, and an
-        # orphaned artifact with no metadata is served unconditionally.
+        # through to the open below, which 404s when there is no artifact -- never a 304 for
+        # data that is gone. A store whose ``exists`` checks the metadata alone (the
+        # in-memory store does) can still answer 304 for a metadata-without-artifact
+        # corruption.
         if await asyncio.to_thread(store.exists, dataset_id):
+            evaluated = True
             outcome = read_precondition_status(combine_field_lines(if_match), combine_field_lines(if_none_match), etag)
             if outcome == status.HTTP_412_PRECONDITION_FAILED:
                 raise _precondition_failed()
@@ -1099,6 +1121,21 @@ async def download_artifact(
     artifact_stream = await asyncio.to_thread(store.open_artifact_stream, dataset_id)
     if artifact_stream is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dataset '{dataset_id}' not found")
+
+    if conditional and not evaluated:
+        # An ORPHANED artifact: ``exists`` denied the target (on LocalFS, the metadata is
+        # gone) yet the artifact opened, so a representation exists and is about to be sent.
+        # RFC 9110 §13.1.1 still binds -- when If-Match is false the method MUST NOT be
+        # performed -- so the preconditions are evaluated here, against no validator: ``*``
+        # matches (a representation exists) and no listed tag can. A stream that will not be
+        # sent is closed, releasing what it holds.
+        outcome = read_precondition_status(combine_field_lines(if_match), combine_field_lines(if_none_match), None)
+        if outcome is not None:
+            _close_artifact_stream(artifact_stream)
+            if outcome == status.HTTP_412_PRECONDITION_FAILED:
+                raise _precondition_failed()
+            asyncio.get_event_loop().call_soon(lambda: store.record_access(dataset_id))
+            return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
 
     # BUG-JD-08: record access asynchronously to avoid blocking I/O on read paths
     asyncio.get_event_loop().call_soon(lambda: store.record_access(dataset_id))
@@ -1189,7 +1226,9 @@ async def update_dataset_tags(
     against the CURRENT representation inside the store's lock, so it cannot pass and then
     lose a race to another writer. ``If-None-Match`` naming the current representation
     (``*`` included) is a 412 here, not a 304 -- RFC 9110 §13.1.2 for a method other than
-    GET.
+    GET -- and so is either field when it is malformed: a write fails closed on a
+    precondition it cannot read. No other write route evaluates preconditions: an
+    ``If-Match`` sent to ``DELETE /{dataset_id}`` or ``PATCH /batch-tags`` is ignored.
 
     Args:
         dataset_id: Unique dataset identifier.

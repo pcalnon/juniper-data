@@ -5,7 +5,7 @@ Project:     Juniper
 Sub-Project: juniper-data
 Application: ad-hoc verification
 Author:      Paul Calnon
-Version:     1.0.0
+Version:     1.1.0
 License:     MIT
 
 WHY THIS EXISTS
@@ -24,6 +24,16 @@ M5 exists because the first draft of the route rendered its body through the wro
 encoder, and only a fixture that separates the two encoders could see it. M11-M17 were
 added when round-1 validation of the PR found If-Match unevaluated, a 304 answered for
 data that was gone, and a corrupt metadata document failing the download.
+
+M20-M31 were added when round-2 validation found the list grammar backtracking
+exponentially (M20 restores it; its test parses in a subprocess with a timeout, so this
+arm costs about 30 s by design), nothing pinning that the PATCH precondition is checked
+INSIDE the store lock (M22, M23 -- each passes every functional test), a PATCH whose
+If-None-Match named the current tag untested (M24), an orphaned artifact ignoring a failing
+If-Match (M30, M31), the metadata fallback logging a traceback that can carry the caller's
+id (M28) and swallowing a malformed id (M29), a malformed If-None-Match letting a write
+through (M25), and the artifact 304's Cache-Control and a 412's access count unasserted
+(M26, M27). M3 now covers reads only: writes no longer share its helper.
 
 Run from the repo root::
 
@@ -78,7 +88,63 @@ class Mutation:
 IFMATCH = "TestIfMatch"
 WRITE = "TestConditionalTagWrite"
 EXIST = "TestPreconditionsRespectExistence"
+LINEAR = "TestEntityTagListRunsInLinearTime"
+ATOMIC = "TestConditionalWriteIsAtomic"
 STORE = REPO / "juniper_data/storage/base.py"
+
+# The artifact route's metadata read and its fallback, as one block (M15 removes it whole).
+FALLBACK_BLOCK = (
+    "    try:\n"
+    "        meta = await asyncio.to_thread(store.get_meta, dataset_id)\n"
+    "    except InvalidDatasetIdError:\n"
+    "        raise\n"
+    '    except Exception as exc:  # noqa: BLE001 -- any other metadata read failure degrades to "no validator", never to a failed download\n'
+    '        logger.warning("Artifact download: dataset metadata unreadable (%s); serving without an ETag", type(exc).__name__)\n'
+    "        meta = None\n"
+)
+FALLBACK_WARNING = '        logger.warning("Artifact download: dataset metadata unreadable (%s); serving without an ETag", type(exc).__name__)\n'
+
+# The list grammar as shipped, and the backtracking form round-2 validation found (M20).
+LINEAR_GRAMMAR = r"""_ENTITY_TAG_LIST = re.compile(r'[ \t]*(?:(?:W/)?"[^"]*"[ \t]*)?(?:,[ \t]*(?:(?:W/)?"[^"]*"[ \t]*)?)*')"""
+BACKTRACKING_GRAMMAR = r"""_ENTITY_TAG_LIST = re.compile(r'[ \t]*(?:(?:W/)?"[^"]*")?[ \t]*(?:,[ \t]*(?:(?:W/)?"[^"]*")?[ \t]*)*')"""
+
+# The write-direction If-None-Match check (M24, M25 each rewrite it).
+WRITE_INM = "    return if_none_match is not None and (not _well_formed(if_none_match) or _list_names(if_none_match, etag, strong=False))\n"
+
+# update_tags' locked read and precondition (M22 hoists the check out of the lock).
+LOCKED_CHECK = (
+    "        with self._version_lock, self._meta_write_lock(dataset_id):\n"
+    "            meta = self.get_meta(dataset_id)\n"
+    "            if meta is None:\n"
+    "                return None\n"
+    "            if precondition is not None and not precondition(meta):\n"
+    "                raise PreconditionFailedError(dataset_id)\n"
+)
+CHECK_BEFORE_LOCK = (
+    "        if precondition is not None:\n"
+    "            early = self.get_meta(dataset_id)\n"
+    "            if early is not None and not precondition(early):\n"
+    "                raise PreconditionFailedError(dataset_id)\n"
+    "        with self._version_lock, self._meta_write_lock(dataset_id):\n"
+    "            meta = self.get_meta(dataset_id)\n"
+    "            if meta is None:\n"
+    "                return None\n"
+)
+
+# The route's hand-off of the precondition to the store (M23 checks in the route instead).
+STORE_CHECKS = "    try:\n        meta = await asyncio.to_thread(store.update_tags, dataset_id, request.add_tags, request.remove_tags, precondition if conditional else None)\n"
+ROUTE_CHECKS = (
+    "    if conditional:\n"
+    "        early = await asyncio.to_thread(store.get_meta, dataset_id)\n"
+    "        if early is not None and not precondition(early):\n"
+    "            raise _precondition_failed()\n"
+    "    try:\n"
+    "        meta = await asyncio.to_thread(store.update_tags, dataset_id, request.add_tags, request.remove_tags, None)\n"
+)
+
+# The artifact route's existence-gated 412/304 (M26, M27 edit it; 16-space indent is unique to it).
+ARTIFACT_304 = "                return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)\n"
+ARTIFACT_412 = "            if outcome == status.HTTP_412_PRECONDITION_FAILED:\n                raise _precondition_failed()\n            if outcome == status.HTTP_304_NOT_MODIFIED:\n                # Revalidating"
 
 MUTATIONS = [
     Mutation(
@@ -114,14 +180,13 @@ MUTATIONS = [
         must_still_pass=[node(META, "test_body_carries_no_access_counter")],
     ),
     Mutation(
-        name="M3: If-None-Match is never honoured",
-        why="validators emitted, conditional reads ignored -- half of APD-DATA-017",
+        name="M3: If-None-Match is never honoured on a read",
+        why="validators emitted, conditional reads ignored -- half of APD-DATA-017 (writes have their own helper: M24, M25)",
         edits=[(CACHE, "    return bool(if_none_match) and _list_names(if_none_match, etag, strong=False)\n", "    return False\n")],
         must_fail=[
             node(META, "test_matching_if_none_match_answers_304_with_no_body"),
             node(ART, "test_matching_if_none_match_answers_304_and_reads_no_artifact"),
             node(LATEST, "test_latest_304_keeps_content_location"),
-            node(WRITE, "test_if_none_match_star_on_an_existing_dataset_is_412"),
         ],
         must_still_pass=[node(META, "test_etag_is_strong_and_is_the_hash_of_the_exact_body"), node(META, "test_stale_if_none_match_gets_the_full_body")],
     ),
@@ -157,7 +222,7 @@ MUTATIONS = [
     Mutation(
         name="M8a: the list-grammar check is skipped",
         why="a tag embedded in garbage would then match",
-        edits=[(CACHE, "    if etag is None or _ENTITY_TAG_LIST.fullmatch(field) is None:\n", "    if etag is None:\n")],
+        edits=[(CACHE, "    return field.strip() == \"*\" or _ENTITY_TAG_LIST.fullmatch(field) is not None\n", "    return True\n")],
         must_fail=[node(PARSE, "test_unparseable_field_serves_the_full_body")],
         must_still_pass=[node(PARSE, "test_list_form_and_weak_comparison")],
     ),
@@ -222,7 +287,7 @@ MUTATIONS = [
     Mutation(
         name="M15: unreadable metadata fails the download",
         why="before validators existed a corrupt .meta.json still served the artifact",
-        edits=[(ROUTES, "    try:\n        meta = await asyncio.to_thread(store.get_meta, dataset_id)\n    except Exception:  # noqa: BLE001 -- any metadata read failure degrades to \"no validator\", never to a failed download\n        logger.warning(\"Artifact download: dataset metadata unreadable; serving without an ETag\", exc_info=True)\n        meta = None\n", "    meta = await asyncio.to_thread(store.get_meta, dataset_id)\n")],
+        edits=[(ROUTES, FALLBACK_BLOCK, "    meta = await asyncio.to_thread(store.get_meta, dataset_id)\n")],
         must_fail=[node(ART, "test_unreadable_metadata_still_serves_the_artifact")],
         must_still_pass=[node(ART, "test_etag_is_the_stored_checksum")],
     ),
@@ -253,6 +318,91 @@ MUTATIONS = [
         edits=[(ROUTES, "    return _metadata_response(meta, None, None, content_location=_canonical_path(dataset_id))", "    return _metadata_response(meta, None, None)")],
         must_fail=[node(WRITE, "test_the_patch_response_names_the_resource_its_etag_describes")],
         must_still_pass=[node(WRITE, "test_current_if_match_applies_the_edit")],
+    ),
+    Mutation(
+        name="M20: the list grammar backtracks again",
+        why="the form round-2 validation found: ', ' * 22 + 'x' took ~1.8 s, doubling per element, on the event loop",
+        edits=[(CACHE, LINEAR_GRAMMAR, BACKTRACKING_GRAMMAR)],
+        must_fail=[node(LINEAR, "test_hostile_fields_are_refused_well_inside_a_generous_bound")],
+        # Same language: every functional parsing test stays green under the slow form.
+        must_still_pass=[node(PARSE, "test_list_form_and_weak_comparison"), node(PARSE, "test_unparseable_field_serves_the_full_body")],
+    ),
+    Mutation(
+        name="M21: the precondition field-length cap is removed",
+        why="defence in depth beside the linear grammar: an over-cap field must be malformed",
+        edits=[(CACHE, "    if len(field) > MAX_PRECONDITION_FIELD_LENGTH:\n        return False\n", "")],
+        must_fail=[node(PARSE, "test_a_field_over_the_length_cap_is_malformed"), node(WRITE, "test_a_malformed_if_none_match_is_412_and_writes_nothing")],
+        must_still_pass=[node(PARSE, "test_a_write_fails_closed_on_an_unreadable_if_none_match")],
+    ),
+    Mutation(
+        name="M22: update_tags evaluates the precondition BEFORE taking its lock",
+        why="check-then-act: a writer can land between the check and the write, and a stale If-Match still gets its 412",
+        edits=[(STORE, LOCKED_CHECK, CHECK_BEFORE_LOCK)],
+        must_fail=[node(ATOMIC, "test_the_store_evaluates_the_precondition_under_its_version_lock")],
+        must_still_pass=[node(WRITE, "test_the_store_evaluates_the_precondition_against_current_metadata_and_writes_nothing_on_false"), node(WRITE, "test_stale_if_match_is_412_and_writes_nothing")],
+    ),
+    Mutation(
+        name="M23: the route evaluates the precondition itself and hands the store None",
+        why="the check leaves the lock: another writer can land after the route decides",
+        edits=[(ROUTES, STORE_CHECKS, ROUTE_CHECKS)],
+        must_fail=[node(ATOMIC, "test_a_write_that_lands_after_the_route_and_before_the_store_is_412")],
+        must_still_pass=[node(WRITE, "test_stale_if_match_is_412_and_writes_nothing"), node(WRITE, "test_current_if_match_applies_the_edit")],
+    ),
+    Mutation(
+        name="M24: a write's If-None-Match honours only '*'",
+        why="RFC 9110 §13.1.2: a tag naming the current representation fails the write too",
+        edits=[(CACHE, WRITE_INM, WRITE_INM.replace("_list_names(if_none_match, etag, strong=False)", 'if_none_match.strip() == "*"'))],
+        must_fail=[node(WRITE, "test_if_none_match_naming_the_current_tag_is_412_and_writes_nothing")],
+        must_still_pass=[node(WRITE, "test_if_none_match_star_on_an_existing_dataset_is_412"), node(WRITE, "test_a_malformed_if_none_match_is_412_and_writes_nothing")],
+    ),
+    Mutation(
+        name="M25: a malformed If-None-Match lets a write proceed",
+        why="a write must fail closed on a condition it cannot read, as If-Match does",
+        edits=[(CACHE, WRITE_INM, "    return if_none_match is not None and _list_names(if_none_match, etag, strong=False)\n")],
+        must_fail=[node(WRITE, "test_a_malformed_if_none_match_is_412_and_writes_nothing"), node(PARSE, "test_a_write_fails_closed_on_an_unreadable_if_none_match")],
+        must_still_pass=[node(WRITE, "test_if_none_match_naming_the_current_tag_is_412_and_writes_nothing"), node(WRITE, "test_a_well_formed_if_none_match_naming_another_tag_applies_the_edit")],
+    ),
+    Mutation(
+        name="M26: the artifact 304 drops Cache-Control",
+        why="RFC 9110 §15.4.5: a 304 carries the Cache-Control the 200 would have",
+        edits=[(ROUTES, ARTIFACT_304, ARTIFACT_304.replace("headers=headers)", 'headers={k: v for k, v in headers.items() if k != "Cache-Control"})'))],
+        must_fail=[node(ART, "test_an_artifact_304_carries_its_caching_fields")],
+        must_still_pass=[node(ART, "test_matching_if_none_match_answers_304_and_reads_no_artifact")],
+    ),
+    Mutation(
+        name="M27: a 412 on the artifact route is recorded as an access",
+        why="nothing was read; the metadata route already pins the same rule",
+        edits=[(ROUTES, ARTIFACT_412, ARTIFACT_412.replace("                raise _precondition_failed()\n", "                store.record_access(dataset_id)\n                raise _precondition_failed()\n"))],
+        must_fail=[node(ART, "test_a_412_on_the_artifact_is_not_an_access")],
+        must_still_pass=[node(ART, "test_a_304_on_the_artifact_is_recorded_as_an_access"), node(ART, "test_stale_if_match_is_412_before_any_artifact_is_served")],
+    ),
+    Mutation(
+        name="M28: the metadata fallback logs its traceback",
+        why="the traceback can carry the caller-controlled id into a WARNING at request rate (ERR-08)",
+        edits=[(ROUTES, FALLBACK_WARNING, FALLBACK_WARNING.replace("type(exc).__name__)", "type(exc).__name__, exc_info=True)"))],
+        must_fail=[node(ART, "test_the_unreadable_metadata_warning_names_the_type_and_carries_no_caller_text")],
+        must_still_pass=[node(ART, "test_unreadable_metadata_still_serves_the_artifact")],
+    ),
+    Mutation(
+        name="M29: a malformed id takes the unreadable-metadata fallback",
+        why="the caller's error would log a WARNING per request instead of taking the normal 400",
+        edits=[(ROUTES, "    except InvalidDatasetIdError:\n        raise\n", "")],
+        must_fail=[node(EXIST, "test_an_invalid_id_on_the_artifact_route_is_the_normal_400_and_logs_no_warning")],
+        must_still_pass=[node(ART, "test_unreadable_metadata_still_serves_the_artifact")],
+    ),
+    Mutation(
+        name="M30: an orphaned artifact ignores its preconditions",
+        why="RFC 9110 §13.1.1: a false If-Match means the method MUST NOT be performed",
+        edits=[(ROUTES, "    if conditional and not evaluated:\n", "    if False:\n")],
+        must_fail=[node(EXIST, "test_an_orphaned_artifact_is_412_on_a_failing_if_match_and_the_stream_is_closed"), node(EXIST, "test_an_orphaned_artifact_answers_if_none_match_star_with_a_304")],
+        must_still_pass=[node(EXIST, "test_a_dataset_that_is_really_absent_is_404_under_every_precondition"), node(EXIST, "test_a_deleted_artifact_is_404_even_when_if_none_match_matches")],
+    ),
+    Mutation(
+        name="M31: an orphan's unsent stream is left open",
+        why="a stream opened and then refused must release what it holds",
+        edits=[(ROUTES, "            _close_artifact_stream(artifact_stream)\n", "")],
+        must_fail=[node(EXIST, "test_an_orphaned_artifact_is_412_on_a_failing_if_match_and_the_stream_is_closed"), node(EXIST, "test_an_orphaned_artifact_answers_if_none_match_star_with_a_304")],
+        must_still_pass=[node(EXIST, "test_an_orphaned_artifact_still_satisfies_if_match_star")],
     ),
 ]
 
