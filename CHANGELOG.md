@@ -16,8 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now waits about two minutes for the consumer to start a run titled `juniper-data-published`
   (a dispatch run's default title is its event type), so the consumer's workflow must set no
   `run-name:`. It fails if no run appears, and fails with a different error if the consumer's
-  runs could not be listed at all, because then whether a run started is unknown. A failed or
-  unparseable listing is retried within the window, and every request has a time limit.
+  runs could not be listed at all, because then whether a run started is unknown. A failed
+  listing, or a body that is not a run listing (not JSON, empty, or no `workflow_runs`), is
+  retried within the window, and if some listings failed the "no run" error says how many and
+  quotes the last, so an outage after the first listing is not read as a missing listener. Every
+  request has a time limit.
 
 ## [0.16.0] - 2026-09-23
 

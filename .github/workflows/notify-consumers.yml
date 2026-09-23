@@ -120,11 +120,12 @@ jobs:
       # juniper-data-published run counts; this holds while the consumer's workflow sets no
       # `run-name:`. A second juniper-data-published dispatch within the window would satisfy the
       # check too; juniper-data is the only sender into juniper-recurrence today. A failed GET, or
-      # a body that is not JSON, is retried rather than ending the step, because a transient error
-      # here would turn a delivered release red. If NO listing succeeds in the window, the step
-      # says so with its own error and the last response, rather than blaming the consumer's
-      # workflow, about which nothing was learned. Listing runs of a PUBLIC repo needs no token
-      # permission; a private consumer would need Actions: Read on this token.
+      # a body that is not a run listing (not JSON, empty, or no `workflow_runs`), is retried
+      # rather than ending the step, because a transient error here would turn a delivered release
+      # red. If NO listing succeeds in the window, the step says so with its own error and the last
+      # response, rather than blaming the consumer's workflow, about which nothing was learned; if
+      # SOME failed, the "no run" error says how many and quotes the last. Listing runs of a PUBLIC
+      # repo needs no token permission; a private consumer would need Actions: Read on this token.
       - name: Confirm the consumer started a run
         env:
           TOKEN: ${{ secrets.CROSS_REPO_DISPATCH_TOKEN }}
@@ -135,6 +136,7 @@ jobs:
           set -euo pipefail
           attempts=12
           listed=0
+          failed=0
           detail=""
           for attempt in $(seq 1 "${attempts}"); do
             if runs="$(curl --fail-with-body --silent --show-error --max-time 20 --get \
@@ -145,7 +147,10 @@ jobs:
                   --data-urlencode "created=>=${SINCE}" \
                   --data-urlencode "per_page=20" \
                   "https://api.github.com/repos/pcalnon/${REPO}/actions/runs")"; then
-              if url="$(jq -r --arg title "${EVENT_TYPE}" '[.workflow_runs[]? | select(.display_title == $title)][0].html_url // empty' <<<"${runs}")"; then
+              # A listing counts only if it is a JSON object with a `workflow_runs` key. An empty
+              # body, `{}` or an error object is a FAILED listing, like a non-2xx response: jq -e
+              # exits 4 on empty input, and error() exits 5.
+              if url="$(jq -er --arg title "${EVENT_TYPE}" 'if type == "object" and has("workflow_runs") then ([.workflow_runs[]? | select(.display_title == $title)][0].html_url // "") else error("no workflow_runs key") end' <<<"${runs}")"; then
                 listed=1
                 if [[ -n "${url}" ]]; then
                   echo "pcalnon/${REPO} started a ${EVENT_TYPE} run (attempt ${attempt}): ${url}"
@@ -153,14 +158,19 @@ jobs:
                   exit 0
                 fi
               else
-                detail="a body that is not JSON: ${runs//$'\n'/ }"
+                failed=$((failed + 1))
+                body_text="${runs//[$'\r\n']/ }"
+                detail="a body that is not a run listing: ${body_text:-(empty)}"
                 detail="${detail:0:300}"
                 echo "::warning::listing pcalnon/${REPO}'s runs returned ${detail} (attempt ${attempt} of ${attempts})"
               fi
             else
-              detail="${runs//$'\n'/ }"
+              rc=$?
+              failed=$((failed + 1))
+              body_text="${runs//[$'\r\n']/ }"
+              detail="curl exit ${rc}: ${body_text:-(no body)}"
               detail="${detail:0:300}"
-              echo "::warning::listing pcalnon/${REPO}'s runs failed on attempt ${attempt} of ${attempts}: ${detail:-no response body}"
+              echo "::warning::listing pcalnon/${REPO}'s runs failed on attempt ${attempt} of ${attempts}: ${detail}"
             fi
             if (( attempt < attempts )); then
               sleep 10
@@ -170,5 +180,12 @@ jobs:
             echo "::error::GitHub accepted the dispatch, but pcalnon/${REPO}'s runs could not be listed in any of ${attempts} attempts, so whether it started a ${EVENT_TYPE} run is unknown. Last response: ${detail:-none}. Check the repo name, and that CROSS_REPO_DISPATCH_TOKEN has Actions: Read on it if it is private."
             exit 1
           fi
-          echo "::error::GitHub accepted the dispatch, but pcalnon/${REPO} started no ${EVENT_TYPE} run in about two minutes (runs created at or after ${SINCE}, 30 s before the dispatch). Check that one of its workflows declares 'repository_dispatch: types: [${EVENT_TYPE}]', sets no run-name, and is enabled."
+          # Some listing succeeded, so "no run appeared" is evidence about the consumer -- but only as
+          # good as the listings after it. Say how many failed, so an outage that began after the
+          # first listing is not read as a missing listener.
+          partial=""
+          if (( failed > 0 )); then
+            partial=" ${failed} of ${attempts} listings failed, so the window was only partly observed; the last failure: ${detail}."
+          fi
+          echo "::error::GitHub accepted the dispatch, but pcalnon/${REPO} started no ${EVENT_TYPE} run in about two minutes (runs created at or after ${SINCE}, 30 s before the dispatch).${partial} Check that one of its workflows declares 'repository_dispatch: types: [${EVENT_TYPE}]', sets no run-name, and is enabled."
           exit 1
