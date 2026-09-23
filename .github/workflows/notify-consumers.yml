@@ -22,15 +22,17 @@
 #      * workflow_dispatch -- re-send for a version ALREADY on PyPI: to prove the path end to end
 #        without cutting a release, or to re-run a consumer check that was lost.
 #
-#    The dispatch FAILS LOUDLY (`curl --fail-with-body`). juniper-data-client's senders used a
-#    bare `curl -X POST` until juniper-data-client#212, and it reports a 403/404 from an
-#    under-scoped token as success -- the same silence #178 is about. CROSS_REPO_DISPATCH_TOKEN is
+#    The dispatch FAILS LOUDLY (`curl --fail-with-body`). A bare `curl -X POST`, which is what
+#    juniper-data-client#211 found in that repo's senders, reports a 403/404 from an under-scoped
+#    token as success -- the same silence #178 is about. CROSS_REPO_DISPATCH_TOKEN is
 #    a PAT; GITHUB_TOKEN cannot dispatch into another repository. Payload values reach the shell
 #    only through `env:`.
 #
 #    A 204 is not the finish line. GitHub returns it whether or not any workflow in the target
 #    listens for the event type, so the job then waits about two minutes for the consumer to start
 #    a `juniper-data-published` run, and fails if none appears (the second residual gap on #178).
+#    It fails with a different error if the consumer's runs could not be listed at all, because
+#    then nothing is known about whether a run started.
 #
 #    To add a consumer: append its repo to the matrix, and give its workflow a
 #    `repository_dispatch: types: [juniper-data-published]` trigger that tests the payload version,
@@ -66,6 +68,9 @@ jobs:
   dispatch:
     name: Dispatch juniper-data-published (${{ matrix.repo }})
     runs-on: ubuntu-latest
+    # The confirmation window is about two minutes when requests return promptly. Each request
+    # has its own --max-time; this bounds the job if anything else hangs.
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -96,7 +101,7 @@ jobs:
           # GitHub. The next step looks for a consumer run created at or after it.
           since="$(date -u -d '30 seconds ago' +%Y-%m-%dT%H:%M:%SZ)"
           echo "since=${since}" >> "${GITHUB_OUTPUT}"
-          curl --fail-with-body --silent --show-error -X POST \
+          curl --fail-with-body --silent --show-error --max-time 30 -X POST \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${TOKEN}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
@@ -114,10 +119,12 @@ jobs:
       # expose client_payload. A dispatch run's default title is its event type, so only a
       # juniper-data-published run counts; this holds while the consumer's workflow sets no
       # `run-name:`. A second juniper-data-published dispatch within the window would satisfy the
-      # check too; juniper-data is the only sender into juniper-recurrence today. A failed GET is
-      # retried rather than ending the step, because a transient error here would turn a
-      # delivered release red. Listing runs of a PUBLIC repo needs no token permission; a private
-      # consumer would need Actions: Read on this token.
+      # check too; juniper-data is the only sender into juniper-recurrence today. A failed GET, or
+      # a body that is not JSON, is retried rather than ending the step, because a transient error
+      # here would turn a delivered release red. If NO listing succeeds in the window, the step
+      # says so with its own error and the last response, rather than blaming the consumer's
+      # workflow, about which nothing was learned. Listing runs of a PUBLIC repo needs no token
+      # permission; a private consumer would need Actions: Read on this token.
       - name: Confirm the consumer started a run
         env:
           TOKEN: ${{ secrets.CROSS_REPO_DISPATCH_TOKEN }}
@@ -127,8 +134,10 @@ jobs:
         run: |
           set -euo pipefail
           attempts=12
+          listed=0
+          detail=""
           for attempt in $(seq 1 "${attempts}"); do
-            if runs="$(curl --fail-with-body --silent --show-error --get \
+            if runs="$(curl --fail-with-body --silent --show-error --max-time 20 --get \
                   -H "Accept: application/vnd.github+json" \
                   -H "Authorization: Bearer ${TOKEN}" \
                   -H "X-GitHub-Api-Version: 2022-11-28" \
@@ -136,18 +145,30 @@ jobs:
                   --data-urlencode "created=>=${SINCE}" \
                   --data-urlencode "per_page=20" \
                   "https://api.github.com/repos/pcalnon/${REPO}/actions/runs")"; then
-              url="$(jq -r --arg title "${EVENT_TYPE}" '[.workflow_runs[]? | select(.display_title == $title)][0].html_url // empty' <<<"${runs}")"
-              if [[ -n "${url}" ]]; then
-                echo "pcalnon/${REPO} started a ${EVENT_TYPE} run (attempt ${attempt}): ${url}"
-                echo "- \`pcalnon/${REPO}\` started ${url}" >> "${GITHUB_STEP_SUMMARY}"
-                exit 0
+              if url="$(jq -r --arg title "${EVENT_TYPE}" '[.workflow_runs[]? | select(.display_title == $title)][0].html_url // empty' <<<"${runs}")"; then
+                listed=1
+                if [[ -n "${url}" ]]; then
+                  echo "pcalnon/${REPO} started a ${EVENT_TYPE} run (attempt ${attempt}): ${url}"
+                  echo "- \`pcalnon/${REPO}\` started ${url}" >> "${GITHUB_STEP_SUMMARY}"
+                  exit 0
+                fi
+              else
+                detail="a body that is not JSON: ${runs//$'\n'/ }"
+                detail="${detail:0:300}"
+                echo "::warning::listing pcalnon/${REPO}'s runs returned ${detail} (attempt ${attempt} of ${attempts})"
               fi
             else
-              echo "::warning::listing pcalnon/${REPO}'s runs failed on attempt ${attempt} of ${attempts}"
+              detail="${runs//$'\n'/ }"
+              detail="${detail:0:300}"
+              echo "::warning::listing pcalnon/${REPO}'s runs failed on attempt ${attempt} of ${attempts}: ${detail:-no response body}"
             fi
             if (( attempt < attempts )); then
               sleep 10
             fi
           done
+          if (( listed == 0 )); then
+            echo "::error::GitHub accepted the dispatch, but pcalnon/${REPO}'s runs could not be listed in any of ${attempts} attempts, so whether it started a ${EVENT_TYPE} run is unknown. Last response: ${detail:-none}. Check the repo name, and that CROSS_REPO_DISPATCH_TOKEN has Actions: Read on it if it is private."
+            exit 1
+          fi
           echo "::error::GitHub accepted the dispatch, but pcalnon/${REPO} started no ${EVENT_TYPE} run in about two minutes (runs created at or after ${SINCE}, 30 s before the dispatch). Check that one of its workflows declares 'repository_dispatch: types: [${EVENT_TYPE}]', sets no run-name, and is enabled."
           exit 1
