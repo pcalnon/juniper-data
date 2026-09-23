@@ -105,6 +105,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Every consumer can load an `arc_agi` artifact** (#429, and #427). `task_ids` has been an
+  object array since the generator was added, and `np.savez` pickles an object array.
+  juniper-data-client's `download_artifact_npz` loads every key under numpy's default
+  `allow_pickle=False`, so downloading any arc_agi artifact raised
+  `ValueError: Object arrays cannot be loaded when allow_pickle=False`. `task_ids` is now a
+  fixed-width unicode array (`<U`), like `ticker_vocab`, with the same values and the same
+  alignment to the concatenated `train | val | test` rows. A non-string id is stored as its text.
+  Three things change with it:
+  - **arc_agi's generator `VERSION` is `4.0.0`, so every arc_agi `dataset_id` changes.** Without
+    a bump, a cached artifact still carrying the pickled `task_ids` would keep answering new
+    requests under the old id. The same bump closes #427. #402 replaced `task_type`
+    `classification` with `structured`, and stopped fabricating `n_classes` and
+    `class_distribution`, without a bump, so a store holding a pre-0.15.0 arc_agi artifact kept
+    serving that metadata. The bump is MAJOR, as for the equities `5.0.0` correction, and it
+    leaves the MINOR bump the partition-provenance spec reserves for the first block-emitting
+    release free. `TestEveryGeneratorBumpedForDecision11` records why arc_agi is past `3.0.0`.
+    Artifacts already stored at `3.0.0` are not rewritten, and they still need pickle to load.
+  - **A fleet guard, `tests/unit/test_artifacts_load_without_pickle.py` (new).** Every generator
+    in `GENERATOR_REGISTRY` is built offline, its reserved channels are popped as the create route
+    pops them, it is written with `np.savez_compressed` as the stores write it, and every key must
+    load back with `allow_pickle=False`. The test enumerates the registry, so a new generator is
+    covered the day it lands. Generator tests had asserted on the returned dict only, which is
+    why nothing saw the pickle requirement.
+  - **The cached store logs a failed cache population instead of swallowing it.**
+    `CachedDatasetStore.get_artifact_bytes` re-loads the primary's bytes with
+    `allow_pickle=False` to fill the cache, and did it inside `contextlib.suppress(Exception)`.
+    For an arc_agi artifact that load raised, so every read missed the cache and nothing was
+    logged. The read still succeeds from the primary; the miss is now a `WARNING` with its
+    traceback, as `warm_cache` already logged it.
+
 - **The PyPI wheel no longer carries the test suite** (#420) -- the wheel half of what #405
   fixed for the image. `juniper_data/tests/` is a subpackage, so
   `[tool.setuptools.packages.find] include = ["juniper_data*"]` matched it, and **every wheel

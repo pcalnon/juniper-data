@@ -132,7 +132,12 @@ class CachedDatasetStore(DatasetStore):
 
         if artifact is not None:
             populated = False
-            with contextlib.suppress(Exception):
+            # A failed population must not fail the read, because the caller gets the primary's
+            # bytes either way. But it must not be SILENT. An arc_agi artifact minted before
+            # juniper-data#429 carries a pickled ``task_ids`` that this ``allow_pickle=False`` load
+            # refuses, so every read of one missed the cache and nothing said so. ``warm_cache``
+            # below already logs the same failure.
+            try:
                 meta = self._primary.get_meta(dataset_id)
                 if meta is not None:
                     import io
@@ -141,6 +146,8 @@ class CachedDatasetStore(DatasetStore):
                         arrays = {k: npz[k] for k in npz.files}
                     self._cache.save(dataset_id, meta, arrays)
                     populated = True
+            except Exception:
+                logger.warning("Failed to populate the cache for dataset %s; it was served from the primary store", dataset_id, exc_info=True)
             if populated:
                 self._emit_cached_count()
         return artifact
