@@ -1,0 +1,125 @@
+---
+#####################################################################################################
+# Project:       Juniper
+# Application:   juniper-data
+# File Name:     notify-consumers.yml
+# Author:        Paul Calnon
+# Version:       0.1.0
+#
+# Date Created:  2026-09-22
+# Last Modified: 2026-09-22
+#
+# License:       MIT License
+# Copyright:     Copyright (c) 2024-2026 Paul Calnon
+#
+# Description:
+#    Tells downstream CI that a juniper-data release is on PyPI, so lanes that
+#    exercise juniper-data from ANOTHER repo run against it (juniper-recurrence#178).
+#    A path-scoped lane cannot see a break that arrives through a dependency.
+#    juniper-recurrence's bench lane runs only when bench/ changes. When decision 11
+#    retired X_full here, every bench dataset raised KeyError for 15 days while every
+#    bench run skipped its matrix and reported success (juniper-recurrence#177).
+#
+#    Fires after "Publish to PyPI" completes SUCCESSFULLY for a release: after the
+#    owner-approved PyPI job, never on a declined gate or a failed publish. It sends
+#    repository_dispatch `juniper-data-released` with the version read from the
+#    released commit's pyproject.toml. juniper-recurrence's ci-recurrence-bench.yml
+#    listens for that event, installs exactly that version and runs the bench suite.
+#    A release outside the bench extra's range fails that run and names the ceiling.
+#
+#    Deliberately a separate workflow rather than a job in publish.yml. A dispatch
+#    failure must not turn a successful PyPI publish red, and the release ceremony
+#    reads the publish run's result.
+#
+#    `workflow_dispatch` re-announces a version that is already on PyPI: to verify
+#    the wiring, or to re-run the consumers after a fix.
+#
+# Security Notes:
+#    - workflow_run runs from the DEFAULT branch with this repo's secrets. It checks
+#      out the released commit only to READ pyproject.toml; nothing from that
+#      checkout is executed, and credentials are not persisted.
+#    - CROSS_REPO_DISPATCH_TOKEN (the PAT juniper-data-client's notify-downstream
+#      already uses) is referenced in the dispatch step only. The payload carries the
+#      version, the source repo and a commit SHA -- no secrets.
+#    - The version is validated against a release-version pattern before use and
+#      reaches the payload through jq, never by string interpolation into JSON.
+#
+#####################################################################################################
+
+name: Notify consumers of a release
+
+on:
+  workflow_run:
+    workflows: ["Publish to PyPI"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "juniper-data version to announce -- it must already be on PyPI (e.g. 0.15.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_sha || inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    name: Dispatch juniper-data-released
+    runs-on: ubuntu-latest
+    # workflow_run fires on EVERY completion of the publish workflow, including a PyPI gate
+    # the owner declined. Announce only a publish that succeeded, for a release.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'release')
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        if: github.event_name == 'workflow_run'
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - name: Resolve the released version
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            version="${INPUT_VERSION}"
+          else
+            version="$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+          fi
+          if [[ ! "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.+-]?[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::'${version}' is not a release version"
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Announcing juniper-data ${version}."
+
+      - name: Dispatch to juniper-recurrence
+        env:
+          DISPATCH_TOKEN: ${{ secrets.CROSS_REPO_DISPATCH_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${DISPATCH_TOKEN}" ]]; then
+            echo "::error::CROSS_REPO_DISPATCH_TOKEN is not set -- juniper-recurrence will not hear about ${VERSION}"
+            exit 1
+          fi
+          payload="$(jq -nc --arg v "${VERSION}" --arg sha "${SOURCE_SHA}" '{event_type: "juniper-data-released", client_payload: {version: $v, source: "juniper-data", sha: $sha}}')"
+          # --fail: an HTTP error FAILS the step. A bare `curl -X POST` exits 0 on a 401 / 403 / 404,
+          # which would report a dispatch that never happened as a success -- the silent class
+          # this workflow exists to close.
+          curl --fail --silent --show-error -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${DISPATCH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/pcalnon/juniper-recurrence/dispatches \
+            -d "${payload}"
+          echo "Dispatched juniper-data-released ${VERSION} (${SOURCE_SHA}) to pcalnon/juniper-recurrence."
