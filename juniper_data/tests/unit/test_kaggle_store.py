@@ -310,7 +310,8 @@ class TestKaggleDatasetStoreLoadDataset:
         dataset_dir.mkdir(parents=True, exist_ok=True)
         _write_csv(dataset_dir / "data.csv", [{"a": str(i), "b": str(2 * i), "label": str(i % 2)} for i in range(10)])
 
-        odd_id, meta, _ = store.load_kaggle_dataset("owner/types", file_name=Path("data.csv"), seed=3, feature_columns=np.array(["a", "b"]))
+        # Deliberately off-signature: this pins the runtime conversion of a caller's Path file name.
+        odd_id, meta, _ = store.load_kaggle_dataset("owner/types", file_name=Path("data.csv"), seed=3, feature_columns=np.array(["a", "b"]))  # type: ignore[arg-type]
         plain_id, _, _ = store.load_kaggle_dataset("owner/types", file_name="data.csv", seed=3, feature_columns=["a", "b"])
 
         assert odd_id == plain_id

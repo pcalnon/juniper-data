@@ -296,7 +296,8 @@ class TestHuggingFaceDatasetStoreLoadDataset:
         mock_hf_module.return_value = mock_ds
 
         store = HuggingFaceDatasetStore()
-        odd_id, meta, _ = store.load_hf_dataset("test-dataset", split=_NamedSplitLike(), seed=7, feature_columns=np.array(["feature1", "feature2"]))
+        # Deliberately off-signature: this pins the runtime conversion of a caller's non-str split.
+        odd_id, meta, _ = store.load_hf_dataset("test-dataset", split=_NamedSplitLike(), seed=7, feature_columns=np.array(["feature1", "feature2"]))  # type: ignore[arg-type]
         plain_id, _, _ = store.load_hf_dataset("test-dataset", split="train", seed=7, feature_columns=["feature1", "feature2"])
 
         assert odd_id == plain_id
