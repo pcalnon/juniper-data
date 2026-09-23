@@ -122,7 +122,7 @@ def _require(module: str) -> Any:
     A silent skip there would drop the generators that need it from a fleet check and still
     report green.
     """
-    if os.environ.get("CI"):
+    if os.environ.get("CI", "").strip().lower() in {"1", "true", "yes"}:
         return importlib.import_module(module)
     return pytest.importorskip(module)
 

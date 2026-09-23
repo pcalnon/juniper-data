@@ -15,17 +15,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     swallowed cache population into a `WARNING` with its traceback, and a stored arc_agi
     artifact that can never be cached then logged one on **every** read (100 reads gave 100
     records). The first failure for a dataset id is now the `WARNING`, and repeats are
-    `DEBUG`. The store remembers up to 1,024 warned ids, and past that bound a new id logs at
-    `DEBUG` too.
+    `DEBUG`. The store remembers up to 1,024 warned ids. The first new id past that bound logs
+    one more `WARNING`, which says the bound was reached, and later new ids log at `DEBUG`, so a
+    cache outage cannot grow the set without limit or go quiet unannounced.
   - **A null arc_agi `task_id` is `"unknown"`**, as a missing one already was. `str(None)`
     would have stored `"None"`, which collides with a real task of that name. The configured
     Hub source carries no ids, so this is defensive.
   - **The pickle-free fleet test fails instead of skipping in CI.** It skipped the two equities
     generators when their extra was missing, which in CI (`.[all]`) could only hide a broken
     install. Locally it still skips.
-  - **Operators may delete stored `arc_agi-3.0.0-*` artifacts.** No request made against 0.16.0
-    or later resolves to one; only an explicit fetch by its old id does, and they still need
-    pickle to load.
+  - **Operators may delete stored `arc_agi-3.0.0-*` artifacts.** A generate request against
+    0.16.0 or later mints a `4.0.0` id, so it never reuses one. They are still reachable by
+    their old ids, through a name lookup (`GET /v1/datasets/latest?name=` and `/versions`) when
+    one is a name's newest version, and in listings, and loading one still needs pickle.
 
 ## [0.16.0] - 2026-09-23
 

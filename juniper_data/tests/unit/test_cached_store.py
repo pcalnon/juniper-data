@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 import juniper_data.api.observability as obs
+import juniper_data.storage.cached as cached_module
 from juniper_data.core.models import DatasetMeta
 from juniper_data.storage import CachedDatasetStore, InMemoryDatasetStore
 
@@ -203,6 +204,38 @@ class TestCachedDatasetStore:
 
         mine = [record for record in caplog.records if "legacy-arc" in record.getMessage()]
         assert [record.levelname for record in mine] == ["WARNING", "DEBUG", "DEBUG"]
+
+    def test_the_warned_ids_are_bounded_and_reaching_the_bound_is_announced(
+        self,
+        primary_store: InMemoryDatasetStore,
+        cache_store: InMemoryDatasetStore,
+        sample_meta: DatasetMeta,
+        sample_arrays: dict[str, np.ndarray],
+        caplog: pytest.LogCaptureFixture,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The set of warned ids stops growing at the bound, and the first id past it says so.
+
+        A cache outage fails every population, so without the bound the set would grow for the
+        life of the process. Without the announcement, the outage would go quiet once the bound
+        filled. "again" belongs only to an id that was actually warned about.
+        """
+        assert cached_module._POPULATION_WARNING_ID_LIMIT == 1_024, "CHANGELOG.md documents this bound"
+        monkeypatch.setattr(cached_module, "_POPULATION_WARNING_ID_LIMIT", 2)
+        for dataset_id in ("id-a", "id-b", "id-c", "id-d"):
+            primary_store.save(dataset_id, sample_meta, {**sample_arrays, "task_ids": np.array(["t"] * 100, dtype=object)})
+        cached = CachedDatasetStore(primary_store, cache_store, write_through=False)
+
+        with caplog.at_level("DEBUG", logger="juniper_data.storage.cached"):
+            for dataset_id in ("id-a", "id-b", "id-c", "id-d", "id-a", "id-d"):
+                assert cached.get_artifact_bytes(dataset_id) is not None
+
+        logged = [(record.levelname, record.getMessage()) for record in caplog.records if record.name == "juniper_data.storage.cached"]
+        assert [level for level, _ in logged] == ["WARNING", "WARNING", "WARNING", "DEBUG", "DEBUG", "DEBUG"]
+        assert "More than 2 datasets" in logged[2][1] and "id-c" in logged[2][1]
+        assert "again" in logged[4][1] and "id-a" in logged[4][1]
+        assert "again" not in logged[3][1] and "again" not in logged[5][1], "id-d was never warned about, so it has not failed 'again'"
+        assert cached._population_warned == {"id-a", "id-b"}
 
     def test_delete_removes_from_both_stores(
         self,
