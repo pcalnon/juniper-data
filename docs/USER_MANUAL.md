@@ -252,6 +252,7 @@ The HTTP JSON body is still limited to 10 MB (`RequestBodyLimitMiddleware`). Tha
 | `/v1/datasets/cleanup-expired` | POST | Delete expired datasets |
 | `/v1/datasets/{id}` | GET | Get dataset metadata |
 | `/v1/datasets/{id}` | DELETE | Delete dataset |
+| `/v1/datasets/{id}/access` | GET | Access counters (`access_count`, `last_accessed_at`) |
 | `/v1/datasets/{id}/artifact` | GET | Download NPZ artifact |
 | `/v1/datasets/{id}/preview` | GET | Preview samples as JSON |
 | `/v1/datasets/{id}/tags` | PATCH | Add/remove tags on one dataset |

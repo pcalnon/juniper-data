@@ -16,8 +16,22 @@ from juniper_data.core.constants import (
 )
 
 
-class DatasetMeta(BaseModel):
-    """Dataset metadata (always small, JSON-safe)."""
+class PublicDatasetMeta(BaseModel):
+    """Dataset metadata as it is REPRESENTED over HTTP (always small, JSON-safe).
+
+    Every field of :class:`DatasetMeta` except the two access counters. The split
+    exists for APD-DATA-032: ``access_count`` / ``last_accessed_at`` change on every
+    read, so a body carrying them is a different byte sequence on every request and
+    can never carry a strong ``ETag``. They are stored exactly as before and served by
+    ``GET /v1/datasets/{dataset_id}/access`` instead.
+
+    Every response model that embeds dataset metadata is typed with THIS class, and
+    stores hand those models :class:`DatasetMeta` instances. That works without a
+    conversion anywhere because Pydantic v2 serializes a subclass instance by the
+    ANNOTATED type's schema -- the subclass-only fields are dropped. Do not annotate
+    a response field with ``SerializeAsAny`` or ``DatasetMeta``: either one puts the
+    counters back into the representation and breaks the metadata ETag.
+    """
 
     # Identity
     dataset_id: str
@@ -113,8 +127,28 @@ class DatasetMeta(BaseModel):
     tags: list[str] = Field(default_factory=list)
     ttl_seconds: int | None = None
     expires_at: datetime | None = None
+
+
+class DatasetMeta(PublicDatasetMeta):
+    """Dataset metadata as it is STORED: the representation plus the access counters.
+
+    This is the model every store reads, writes and returns. The counters stay here --
+    ``record_access`` still maintains them where it always did, on ``GET /{dataset_id}``
+    and on artifact downloads -- but they are not part of the representation
+    (APD-DATA-032; see :class:`PublicDatasetMeta`). Declared last so the stored field order
+    is unchanged.
+    """
+
     last_accessed_at: datetime | None = None
     access_count: int = 0
+
+
+class DatasetAccessStats(BaseModel):
+    """The access counters of one dataset, served apart from its metadata (APD-DATA-032)."""
+
+    dataset_id: str
+    access_count: int
+    last_accessed_at: datetime | None = None
 
 
 class CreateDatasetRequest(BaseModel):
@@ -136,7 +170,7 @@ class CreateDatasetResponse(BaseModel):
 
     dataset_id: str
     generator: str
-    meta: DatasetMeta
+    meta: PublicDatasetMeta
     artifact_url: str
 
 
@@ -173,7 +207,7 @@ class PreviewData(BaseModel):
 class DatasetListResponse(BaseModel):
     """Response model for filtered dataset listing."""
 
-    datasets: list[DatasetMeta]
+    datasets: list[PublicDatasetMeta]
     total: int
     limit: int
     offset: int
@@ -189,7 +223,7 @@ class DatasetVersionListResponse(BaseModel):
     """Response for version listing endpoint."""
 
     dataset_name: str
-    versions: list[DatasetMeta]
+    versions: list[PublicDatasetMeta]
     total: int
     latest_version: int | None = None
 
