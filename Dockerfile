@@ -18,10 +18,17 @@ RUN pip install --no-cache-dir --upgrade pip wheel setuptools
 
 # Install pinned dependencies from lockfile (best layer caching).
 # The lockfile is compiled with --extra api --extra observability --extra mnist
-# (see .github/workflows/lockfile-update.yml), so the image ships the Hugging
-# Face `datasets` chain and the MNIST / Fashion-MNIST generator works in the
-# service container out of the box. The mnist chain (pyarrow, pandas, pillow,
+# --extra equities (see .github/workflows/lockfile-update.yml), so the image ships
+# the Hugging Face `datasets` chain and the MNIST / Fashion-MNIST generator works in
+# the service container out of the box. The mnist chain (pyarrow, pandas, pillow,
 # huggingface-hub, aiohttp) is the dominant image-size contributor.
+#
+# `equities` was added 2026-09-22 by owner decision. Until then the image shipped
+# pandas (through mnist) but not yfinance, so every `equities` / `equities_seq`
+# request raised ImportError(install_hint()). The stack's juniper-recurrence, whose
+# data path is written for `equities_seq`, fetches from this service. Generating
+# equities data makes OUTBOUND calls to Yahoo Finance and SEC EDGAR from this
+# container.
 COPY requirements.lock ./
 RUN pip install --no-cache-dir -r requirements.lock
 
