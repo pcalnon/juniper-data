@@ -144,10 +144,166 @@ class TestHuggingFaceDatasetStoreLoadDataset:
 
         assert "hf-test-dataset" in dataset_id
         assert meta.generator == "huggingface"
-        assert "X_train" in arrays
-        assert "y_train" in arrays
-        assert "X_full" in arrays
+        # juniper-data#411: this line asserted `"X_full" in arrays` -- the fixture encoded
+        # the defect. The store now emits exactly the decision-11 contract.
+        assert set(arrays) == {"X_train", "y_train", "X_val", "y_val", "X_test", "y_test"}
         assert whole(arrays, "X").dtype == np.float32
+
+    def test_load_emits_three_partitions_at_the_decision_11_version(self, mock_hf_module) -> None:
+        """0.8 / 0.1 / 0.1 carve over 20 rows, stamped 3.0.0, meta counts match arrays."""
+        from juniper_data.storage.hf_store import HuggingFaceDatasetStore
+
+        mock_ds, _ = _make_mock_hf_dataset(n_samples=20, n_classes=2, feature_type="tabular")
+        mock_hf_module.return_value = mock_ds
+
+        store = HuggingFaceDatasetStore()
+        dataset_id, meta, arrays = store.load_hf_dataset("test-dataset", seed=7, normalize=False, feature_columns=["feature1", "feature2"])
+
+        assert meta.generator_version == "3.0.0"
+        assert "-huggingface-3.0.0-" in dataset_id
+        assert (meta.n_train, meta.n_val, meta.n_test) == (16, 2, 2)
+        assert [arrays[f"X_{p}"].shape[0] for p in ("train", "val", "test")] == [16, 2, 2]
+        assert meta.n_samples == 20
+        assert sum(meta.class_distribution.values()) == 20
+        # Contiguous and disjoint: the three blocks reassemble the loaded rows in order.
+        np.testing.assert_array_equal(whole(arrays, "X")[:, 0], np.arange(20, dtype=np.float32))
+
+    def test_ratios_are_honoured_and_unused_rows_are_left_out(self, mock_hf_module) -> None:
+        """A ratio sum below 1 leaves the tail out of every partition and out of the meta."""
+        from juniper_data.storage.hf_store import HuggingFaceDatasetStore
+
+        mock_ds, _ = _make_mock_hf_dataset(n_samples=20, n_classes=2, feature_type="tabular")
+        mock_hf_module.return_value = mock_ds
+
+        store = HuggingFaceDatasetStore()
+        _, meta, arrays = store.load_hf_dataset("test-dataset", seed=7, feature_columns=["feature1", "feature2"], train_ratio=0.5, val_ratio=0.2, test_ratio=0.1)
+
+        assert (meta.n_train, meta.n_val, meta.n_test) == (10, 4, 2)
+        assert meta.n_samples == 16
+        assert sum(meta.class_distribution.values()) == 16
+        assert whole(arrays, "X").shape[0] == 16
+
+    @pytest.mark.parametrize(
+        ("ratios", "message"),
+        [
+            ({"train_ratio": 0.9}, "must be <= 1.0"),
+            ({"train_ratio": 0.0}, "train_ratio must be greater than 0"),
+            ({"val_ratio": -0.1}, "val_ratio must be between 0 and 1"),
+        ],
+        ids=["oversubscribed", "no-train", "negative-val"],
+    )
+    def test_invalid_ratios_raise(self, mock_hf_module, ratios, message) -> None:
+        """Invalid ratios fail loudly instead of silently trimming a partition away."""
+        from juniper_data.storage.hf_store import HuggingFaceDatasetStore
+
+        mock_ds, _ = _make_mock_hf_dataset(n_samples=20, n_classes=2, feature_type="tabular")
+        mock_hf_module.return_value = mock_ds
+
+        store = HuggingFaceDatasetStore()
+        with pytest.raises(ValueError, match=message):
+            store.load_hf_dataset("test-dataset", seed=7, feature_columns=["feature1", "feature2"], **ratios)
+
+    def test_dataset_id_carries_version_and_params(self, mock_hf_module) -> None:
+        """Same request -> same ID; a different partitioning -> a different ID.
+
+        The old ID was `hf-<name>-<rows>`, so two partitionings of one dataset collided
+        and a cached two-way artifact answered a three-way request under the same ID.
+        """
+        from juniper_data.storage.hf_store import HuggingFaceDatasetStore
+
+        mock_ds, _ = _make_mock_hf_dataset(n_samples=20, n_classes=2, feature_type="tabular")
+        mock_hf_module.return_value = mock_ds
+
+        store = HuggingFaceDatasetStore()
+        first, _, _ = store.load_hf_dataset("test-dataset", seed=7, feature_columns=["feature1", "feature2"])
+        again, _, _ = store.load_hf_dataset("test-dataset", seed=7, feature_columns=["feature1", "feature2"])
+        other, _, _ = store.load_hf_dataset("test-dataset", seed=7, feature_columns=["feature1", "feature2"], train_ratio=0.7, val_ratio=0.2)
+
+        assert first == again
+        assert first != other
+
+    def test_unseeded_loads_reuse_one_id_and_one_cache_entry(self, mock_hf_module) -> None:
+        """No seed means no shuffle here, so the load is repeatable and must not mint a new ID.
+
+        generate_dataset_id's BUG-JD-04 nonce assumes 'no seed = fresh random draw', true for
+        a generator and false for these stores. Without the marker every identical call
+        added a full copy to the never-evicting default cache store.
+        """
+        from juniper_data.storage.hf_store import HuggingFaceDatasetStore
+
+        mock_ds, _ = _make_mock_hf_dataset(n_samples=20, n_classes=2, feature_type="tabular")
+        mock_hf_module.return_value = mock_ds
+
+        store = HuggingFaceDatasetStore()
+        ids = {store.load_hf_dataset("test-dataset", feature_columns=["feature1", "feature2"])[0] for _ in range(3)}
+
+        assert len(ids) == 1
+        assert store._cache_store.list_datasets() == list(ids)
+        _, meta, _ = store.load_hf_dataset("test-dataset", feature_columns=["feature1", "feature2"])
+        assert meta.params["seed"] is None, "the recorded params keep the real None; only the hash uses the marker"
+
+    def test_numpy_seed_is_accepted_and_hashes_like_an_int(self, mock_hf_module) -> None:
+        """rng.integers() returns np.int64, which json.dumps cannot serialise."""
+        from juniper_data.storage.hf_store import HuggingFaceDatasetStore
+
+        mock_ds, _ = _make_mock_hf_dataset(n_samples=20, n_classes=2, feature_type="tabular")
+        mock_hf_module.return_value = mock_ds
+
+        store = HuggingFaceDatasetStore()
+        as_numpy, _, _ = store.load_hf_dataset("test-dataset", seed=np.int64(7), feature_columns=["feature1", "feature2"])
+        as_int, _, _ = store.load_hf_dataset("test-dataset", seed=7, feature_columns=["feature1", "feature2"])
+
+        assert as_numpy == as_int
+
+    def test_invalid_ratios_fail_before_the_download(self, mock_hf_module) -> None:
+        """A bad request must not cost a Hub fetch."""
+        from juniper_data.storage.hf_store import HuggingFaceDatasetStore
+
+        store = HuggingFaceDatasetStore()
+        with pytest.raises(ValueError, match="must be <= 1.0"):
+            store.load_hf_dataset("test-dataset", train_ratio=0.9)
+
+        mock_hf_module.assert_not_called()
+
+    def test_float32_ratios_are_judged_as_the_carve_sees_them_before_the_download(self, mock_hf_module) -> None:
+        """float32 0.8 + 0.1 + 0.1 is exactly 1.0 in float32 and 1.0000000119 once widened.
+
+        The early check used to validate the raw float32 values, which passed, while the carve
+        validated the widened ones, which failed after the download. Converting first makes both
+        checks see the same numbers, so the rejection comes before any fetch.
+        """
+        from juniper_data.storage.hf_store import HuggingFaceDatasetStore
+
+        store = HuggingFaceDatasetStore()
+        with pytest.raises(ValueError, match="must be <= 1.0"):
+            store.load_hf_dataset("test-dataset", train_ratio=np.float32(0.8), val_ratio=np.float32(0.1), test_ratio=np.float32(0.1))
+
+        mock_hf_module.assert_not_called()
+
+    def test_non_str_split_and_array_columns_hash_as_plain_json(self, mock_hf_module) -> None:
+        """datasets.Split.TRAIN is a NamedSplit, and an ndarray of column names is not a list.
+
+        Neither is JSON-serialisable, so both broke the hashed ID. Both worked when the ID was
+        a plain string.
+        """
+        from juniper_data.storage.hf_store import HuggingFaceDatasetStore
+
+        class _NamedSplitLike:  # stands in for datasets.NamedSplit: str() is the split name
+            def __str__(self) -> str:
+                return "train"
+
+        mock_ds, _ = _make_mock_hf_dataset(n_samples=20, n_classes=2, feature_type="tabular")
+        mock_hf_module.return_value = mock_ds
+
+        store = HuggingFaceDatasetStore()
+        # Deliberately off-signature: this pins the runtime conversion of a caller's non-str split.
+        odd_id, meta, _ = store.load_hf_dataset("test-dataset", split=_NamedSplitLike(), seed=7, feature_columns=np.array(["feature1", "feature2"]))  # type: ignore[arg-type]
+        plain_id, _, _ = store.load_hf_dataset("test-dataset", split="train", seed=7, feature_columns=["feature1", "feature2"])
+
+        assert odd_id == plain_id
+        assert meta.params["split"] == "train"
+        assert meta.params["feature_columns"] == ["feature1", "feature2"]
+        assert mock_hf_module.call_args.kwargs["split"] == "train"
 
     def test_load_with_config_name(self, mock_hf_module) -> None:
         """Load with config name included in dataset_id."""
@@ -198,7 +354,11 @@ class TestHuggingFaceDatasetStoreLoadDataset:
         assert whole(arrays, "y").shape[1] == 1
 
     def test_load_with_normalization(self, mock_hf_module) -> None:
-        """Load with normalization scales features."""
+        """Tabular scaling is fit on train ONLY and applied unchanged to val and test (decision 7).
+
+        This asserted ``whole(arrays, "X").max() <= 1.0``, which holds only when the scale is fit
+        on EVERY row: the val / test to train leak decision 7 forbids (juniper-data#411).
+        """
         from juniper_data.storage.hf_store import HuggingFaceDatasetStore
 
         mock_ds, _ = _make_mock_hf_dataset(n_samples=10, n_classes=2, feature_type="tabular")
@@ -207,6 +367,24 @@ class TestHuggingFaceDatasetStoreLoadDataset:
         store = HuggingFaceDatasetStore()
         _, _, arrays = store.load_hf_dataset("test-dataset", normalize=True, feature_columns=["feature1", "feature2"])
 
+        # feature2 is 10..19; train is rows 0..7, so the train-fit scale is 17.
+        assert arrays["X_train"].max() == pytest.approx(1.0)
+        np.testing.assert_allclose(arrays["X_val"][:, 1], [18.0 / 17.0], rtol=1e-6)
+        np.testing.assert_allclose(arrays["X_test"][:, 1], [19.0 / 17.0], rtol=1e-6)
+        assert arrays["X_test"].dtype == np.float32
+
+    def test_image_normalisation_is_the_constant_not_a_fit(self, mock_hf_module) -> None:
+        """Pixels are divided by 255 on every row. A train-fit scale would pin train's max at 1.0."""
+        from juniper_data.storage.hf_store import HuggingFaceDatasetStore
+
+        mock_ds, _ = _make_mock_hf_dataset(n_samples=10, n_classes=2, feature_type="image")
+        mock_hf_module.return_value = mock_ds
+
+        store = HuggingFaceDatasetStore()
+        _, _, arrays = store.load_hf_dataset("images", normalize=True, feature_columns=["image"])
+
+        # The mock's pixels are randint(0, 255), i.e. at most 254, so /255 leaves train's max below 1.
+        assert arrays["X_train"].max() < 1.0
         assert whole(arrays, "X").max() <= 1.0
 
     def test_load_saves_to_cache(self, mock_hf_module) -> None:
