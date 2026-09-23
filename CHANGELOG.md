@@ -49,6 +49,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from source. **Generating equities data makes outbound calls to Yahoo Finance and SEC EDGAR
   from the container.** Published images pick this up at the next release.
 
+- **Strong `ETag`s and conditional GETs on the three single-dataset reads** (APD-DATA-017,
+  owner ruling 2026-09-11). `GET /v1/datasets/{dataset_id}` and `GET /v1/datasets/latest` carry the
+  SHA-256 of the exact response body; `GET /v1/datasets/{dataset_id}/artifact` carries the stored
+  `checksum`. A matching `If-None-Match` (a list, `*`, or a `W/` tag compared weakly) is answered
+  `304 Not Modified` with no body, and for the artifact the 304 is decided from the metadata
+  before the artifact is opened, so a revalidation costs no artifact I/O. All three send
+  `Cache-Control: private, no-cache`: `private` because the API key travels in `X-API-Key`,
+  which a shared cache is not obliged to treat as authentication. `PATCH .../tags` returns the
+  new representation's `ETag`. **The artifact `ETag` is not a hash of the transferred bytes**:
+  `checksum` covers a canonical serialization of the arrays, while stores serve a compressed one
+  (`sha256(served) != checksum` for every store). It changes whenever the arrays do, which is
+  what whole-body revalidation needs; `juniper_data/api/http_cache.py` sets out the rest.
+- **`Content-Location` on `GET /v1/datasets/latest`** (APD-DATA-029), naming the canonical
+  `/v1/datasets/<dataset_id>` of the version returned, with the same `ETag` that URI serves. A
+  `307` was ruled out: it costs every caller a round trip.
+- **`GET /v1/datasets/{dataset_id}/access`** serves `access_count` and `last_accessed_at` with
+  `Cache-Control: no-store`. Reading it is not itself recorded as an access.
+
+### Changed
+
+- **The access counters are no longer part of any metadata representation** (APD-DATA-032).
+  `access_count` / `last_accessed_at` changed on every read, so a body carrying them was new bytes
+  on every request and no strong `ETag` could describe it. They are still stored and still
+  maintained on every metadata read and artifact download; they are read from
+  `GET /v1/datasets/{dataset_id}/access`. Every response that embeds metadata -- `GET
+  /{dataset_id}`, `/latest`, `/filter`, `/versions`, `POST /v1/datasets`'s `meta`, `PATCH
+  .../tags` -- is now typed `PublicDatasetMeta`, which the stored `DatasetMeta` subclasses.
+  **Breaking for any consumer reading the counters from metadata**; a census of all nine Juniper
+  repositories found none. The wire format is otherwise byte-identical: the metadata routes
+  render their own bodies (so the `ETag` hashes the exact bytes sent) through the same
+  pydantic-core path FastAPI's `response_model` uses, pinned by
+  `test_bytes_match_fastapi_rendering_of_the_public_model` against a real `response_model` route.
+  `util/ad-hoc/2026-09-22_verify_conditional_request_tests_are_not_vacuous.py` applies twelve
+  mutations across ten behaviours, one at a time, and requires the tests that describe each to go
+  red while a named control stays green.
+- **`[0.15.0]` below carried two `### Changed` headings.** #419 folded #418's entry in under a
+  new heading instead of the existing one -- the duplicate-category shape that files later
+  bullets under the wrong heading. Merged into one; no entry was moved or reworded. The GitHub
+  Release notes for v0.15.0 were rendered from the section as it stood and are not re-cut.
+
 ### Fixed
 
 - **The PyPI wheel no longer carries the test suite** (#420) -- the wheel half of what #405
@@ -128,9 +168,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `util/ad-hoc/2026-09-22_verify_tristate_tests_are_not_vacuous.py` proves those six tests are not
   vacuous: reverting the sites to the OR reddens exactly the three opt-out tests, and reverting
   the schemas to a plain `bool` reddens exactly the three deference tests.
-
-
-### Changed
 
 - **The published container image no longer carries the test suite** (#405). `COPY
   juniper_data/ ./juniper_data/` is a DIRECTORY allowlist, not a file-grained one, and
