@@ -185,6 +185,138 @@ class TestKaggleDatasetStoreLoadDataset:
         assert meta.n_features == 2
         assert meta.n_classes == 3
         assert whole(arrays, "X").shape == (5, 2)
+        # juniper-data#411: exactly the decision-11 contract -- three partitions, no *_full.
+        assert set(arrays) == {"X_train", "y_train", "X_val", "y_val", "X_test", "y_test"}
+        assert meta.generator_version == "3.0.0"
+        assert "-kaggle-3.0.0-" in dataset_id
+
+    def test_load_carves_three_partitions(self, mock_kaggle_module, tmp_path) -> None:
+        """0.8 / 0.1 / 0.1 over 20 rows; meta counts match the arrays; order is kept."""
+        from juniper_data.storage.kaggle_store import KaggleDatasetStore
+
+        store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
+        dataset_dir = tmp_path / "kaggle" / "owner_three"
+        dataset_dir.mkdir(parents=True, exist_ok=True)
+        rows = [{"feature": str(i), "label": str(i % 2)} for i in range(20)]
+        _write_csv(dataset_dir / "data.csv", rows)
+
+        _, meta, arrays = store.load_kaggle_dataset("owner/three", file_name="data.csv")
+
+        assert (meta.n_train, meta.n_val, meta.n_test) == (16, 2, 2)
+        assert [arrays[f"X_{p}"].shape[0] for p in ("train", "val", "test")] == [16, 2, 2]
+        assert meta.n_samples == 20
+        assert sum(meta.class_distribution.values()) == 20
+        np.testing.assert_array_equal(whole(arrays, "X")[:, 0], np.arange(20, dtype=np.float32))
+
+    def test_ratios_are_honoured_and_unused_rows_are_left_out(self, mock_kaggle_module, tmp_path) -> None:
+        """A ratio sum below 1 leaves the tail out of every partition and out of the meta."""
+        from juniper_data.storage.kaggle_store import KaggleDatasetStore
+
+        store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
+        dataset_dir = tmp_path / "kaggle" / "owner_part"
+        dataset_dir.mkdir(parents=True, exist_ok=True)
+        rows = [{"feature": str(i), "label": str(i % 2)} for i in range(20)]
+        _write_csv(dataset_dir / "data.csv", rows)
+
+        _, meta, arrays = store.load_kaggle_dataset("owner/part", file_name="data.csv", train_ratio=0.5, val_ratio=0.2, test_ratio=0.1)
+
+        assert (meta.n_train, meta.n_val, meta.n_test) == (10, 4, 2)
+        assert meta.n_samples == 16
+        assert sum(meta.class_distribution.values()) == 16
+        assert whole(arrays, "X").shape[0] == 16
+
+    def test_oversubscribed_ratios_raise(self, mock_kaggle_module, tmp_path) -> None:
+        """train_ratio=0.9 on its own now over-asks (0.9 + 0.1 + 0.1) and fails loudly."""
+        from juniper_data.storage.kaggle_store import KaggleDatasetStore
+
+        store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
+        dataset_dir = tmp_path / "kaggle" / "owner_over"
+        dataset_dir.mkdir(parents=True, exist_ok=True)
+        rows = [{"feature": str(i), "label": str(i % 2)} for i in range(10)]
+        _write_csv(dataset_dir / "data.csv", rows)
+
+        with pytest.raises(ValueError, match="must be <= 1.0"):
+            store.load_kaggle_dataset("owner/over", file_name="data.csv", train_ratio=0.9)
+
+    def test_dataset_id_carries_version_and_params(self, mock_kaggle_module, tmp_path) -> None:
+        """Same request -> same ID; a different partitioning -> a different ID."""
+        from juniper_data.storage.kaggle_store import KaggleDatasetStore
+
+        store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
+        dataset_dir = tmp_path / "kaggle" / "owner_ids"
+        dataset_dir.mkdir(parents=True, exist_ok=True)
+        rows = [{"feature": str(i), "label": str(i % 2)} for i in range(10)]
+        _write_csv(dataset_dir / "data.csv", rows)
+
+        first, _, _ = store.load_kaggle_dataset("owner/ids", file_name="data.csv", seed=3)
+        again, _, _ = store.load_kaggle_dataset("owner/ids", file_name="data.csv", seed=3)
+        other, _, _ = store.load_kaggle_dataset("owner/ids", file_name="data.csv", seed=3, train_ratio=0.7, val_ratio=0.2)
+
+        assert first == again
+        assert first != other
+
+    def test_unseeded_loads_reuse_one_id_and_one_cache_entry(self, mock_kaggle_module, tmp_path) -> None:
+        """No seed means no shuffle here, so the load is repeatable and must not mint a new ID."""
+        from juniper_data.storage.kaggle_store import KaggleDatasetStore
+
+        store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
+        dataset_dir = tmp_path / "kaggle" / "owner_unseeded"
+        dataset_dir.mkdir(parents=True, exist_ok=True)
+        rows = [{"feature": str(i), "label": str(i % 2)} for i in range(10)]
+        _write_csv(dataset_dir / "data.csv", rows)
+
+        ids = {store.load_kaggle_dataset("owner/unseeded", file_name="data.csv")[0] for _ in range(3)}
+
+        assert len(ids) == 1
+        assert store._cache_store.list_datasets() == list(ids)
+
+    def test_numpy_seed_is_accepted_and_hashes_like_an_int(self, mock_kaggle_module, tmp_path) -> None:
+        """np.int64 broke both the JSON-hashed ID and random.seed() (Python >= 3.11)."""
+        from juniper_data.storage.kaggle_store import KaggleDatasetStore
+
+        store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
+        dataset_dir = tmp_path / "kaggle" / "owner_npseed"
+        dataset_dir.mkdir(parents=True, exist_ok=True)
+        rows = [{"feature": str(i), "label": str(i % 2)} for i in range(10)]
+        _write_csv(dataset_dir / "data.csv", rows)
+
+        as_numpy, _, arrays_numpy = store.load_kaggle_dataset("owner/npseed", file_name="data.csv", seed=np.int64(3))
+        as_int, _, arrays_int = store.load_kaggle_dataset("owner/npseed", file_name="data.csv", seed=3)
+
+        assert as_numpy == as_int
+        np.testing.assert_array_equal(whole(arrays_numpy, "X"), whole(arrays_int, "X"))
+
+    def test_invalid_ratios_fail_before_the_download(self, mock_kaggle_module, tmp_path) -> None:
+        """A bad request must not cost a Kaggle fetch."""
+        from juniper_data.storage.kaggle_store import KaggleDatasetStore
+
+        store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
+        with patch.object(store, "download_dataset") as download:
+            with pytest.raises(ValueError, match="must be <= 1.0"):
+                store.load_kaggle_dataset("owner/any", file_name="data.csv", train_ratio=0.9)
+            # float32 0.8 / 0.1 / 0.1 sums to 1.0 only in float32; widened it over-asks. Judged
+            # as the carve sees it, and so still before the fetch.
+            with pytest.raises(ValueError, match="must be <= 1.0"):
+                store.load_kaggle_dataset("owner/any", file_name="data.csv", train_ratio=np.float32(0.8), val_ratio=np.float32(0.1), test_ratio=np.float32(0.1))
+
+        download.assert_not_called()
+
+    def test_array_columns_and_path_file_name_hash_as_plain_json(self, mock_kaggle_module, tmp_path) -> None:
+        """An ndarray of column names, or a Path file name, is not JSON-serialisable."""
+        from juniper_data.storage.kaggle_store import KaggleDatasetStore
+
+        store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
+        dataset_dir = tmp_path / "kaggle" / "owner_types"
+        dataset_dir.mkdir(parents=True, exist_ok=True)
+        _write_csv(dataset_dir / "data.csv", [{"a": str(i), "b": str(2 * i), "label": str(i % 2)} for i in range(10)])
+
+        # Deliberately off-signature: this pins the runtime conversion of a caller's Path file name.
+        odd_id, meta, _ = store.load_kaggle_dataset("owner/types", file_name=Path("data.csv"), seed=3, feature_columns=np.array(["a", "b"]))  # type: ignore[arg-type]
+        plain_id, _, _ = store.load_kaggle_dataset("owner/types", file_name="data.csv", seed=3, feature_columns=["a", "b"])
+
+        assert odd_id == plain_id
+        assert meta.params["feature_columns"] == ["a", "b"]
+        assert meta.params["file_name"] == "data.csv"
 
     def test_load_with_auto_detect_csv(self, mock_kaggle_module, tmp_path) -> None:
         """Auto-detect CSV when specified file not found."""
@@ -280,8 +412,28 @@ class TestKaggleDatasetStoreLoadDataset:
         _write_csv(dataset_dir / "data.csv", rows)
 
         _, _, arrays = store.load_kaggle_dataset("owner/norm", file_name="data.csv", normalize_features=True)
-        assert whole(arrays, "X").max() <= 1.0 + 1e-6
-        assert whole(arrays, "X").min() >= 0.0 - 1e-6
+
+        # Min-max is fit on train ONLY (decision 7; juniper-data#411). This asserted the WHOLE
+        # dataset sat in [0, 1], true only for a fit over every row. Train is rows 0..7 (0..70),
+        # so val (80) and test (90) escape the bound under train's statistics.
+        assert arrays["X_train"].min() == pytest.approx(0.0)
+        assert arrays["X_train"].max() == pytest.approx(1.0)
+        np.testing.assert_allclose(arrays["X_val"][:, 0], [80.0 / 70.0], rtol=1e-6)
+        np.testing.assert_allclose(arrays["X_test"][:, 0], [90.0 / 70.0], rtol=1e-6)
+
+    def test_empty_train_partition_is_left_unscaled(self, mock_kaggle_module, tmp_path) -> None:
+        """Nothing to fit on: the rows pass through raw instead of raising on an empty min()."""
+        from juniper_data.storage.kaggle_store import KaggleDatasetStore
+
+        store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
+        dataset_dir = tmp_path / "kaggle" / "owner_notrain"
+        dataset_dir.mkdir(parents=True, exist_ok=True)
+        _write_csv(dataset_dir / "data.csv", [{"feature": "5", "label": "0"}, {"feature": "7", "label": "1"}])
+
+        _, meta, arrays = store.load_kaggle_dataset("owner/notrain", file_name="data.csv", normalize_features=True, train_ratio=0.2, val_ratio=0.4, test_ratio=0.4)
+
+        assert meta.n_train == 0
+        np.testing.assert_array_equal(whole(arrays, "X")[:, 0], [5.0, 7.0])
 
     def test_load_with_invalid_values(self, mock_kaggle_module, tmp_path) -> None:
         """Non-numeric feature values are treated as 0.0."""

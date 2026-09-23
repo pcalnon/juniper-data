@@ -1,5 +1,6 @@
 """Hugging Face datasets integration for loading external datasets."""
 
+import operator
 from datetime import UTC, datetime
 from typing import Any
 
@@ -8,7 +9,20 @@ import numpy as np
 from juniper_data.core.models import DatasetMeta
 
 from .base import DatasetStore
+from .external_partition import (
+    EXTERNAL_STORE_DEFAULT_TEST_RATIO,
+    EXTERNAL_STORE_DEFAULT_TRAIN_RATIO,
+    EXTERNAL_STORE_DEFAULT_VAL_RATIO,
+    EXTERNAL_STORE_VERSION,
+    carve_three_way,
+    external_dataset_id,
+    validate_carve_ratios,
+)
 from .memory import InMemoryDatasetStore
+
+#: Contract version of the emitted arrays (juniper-data#411). Module-level, like a
+#: generator's ``VERSION``, so the decision-11 floor guard can enumerate it.
+VERSION: str = EXTERNAL_STORE_VERSION
 
 try:
     from datasets import load_dataset as hf_load_dataset
@@ -62,7 +76,9 @@ class HuggingFaceDatasetStore(DatasetStore):
         flatten: bool = True,
         normalize: bool = True,
         one_hot_labels: bool = True,
-        train_ratio: float = 0.8,
+        train_ratio: float = EXTERNAL_STORE_DEFAULT_TRAIN_RATIO,
+        val_ratio: float = EXTERNAL_STORE_DEFAULT_VAL_RATIO,
+        test_ratio: float = EXTERNAL_STORE_DEFAULT_TEST_RATIO,
     ) -> tuple[str, DatasetMeta, dict[str, np.ndarray]]:
         """Load a dataset from Hugging Face and convert to JuniperData format.
 
@@ -77,12 +93,34 @@ class HuggingFaceDatasetStore(DatasetStore):
             flatten: Flatten image data to 1D.
             normalize: Normalize features to [0, 1].
             one_hot_labels: One-hot encode labels.
-            train_ratio: Ratio for train/test split.
+            train_ratio: Train's share of the loaded rows.
+            val_ratio: Val's share of the loaded rows.
+            test_ratio: Test's share of the loaded rows. The three may not sum to more
+                than 1; rows beyond their sum are left out.
 
         Returns:
-            Tuple of (dataset_id, metadata, arrays).
+            Tuple of (dataset_id, metadata, arrays). ``arrays`` holds exactly the
+            decision-11 contract: ``X_train``, ``y_train``, ``X_val``, ``y_val``,
+            ``X_test``, ``y_test`` -- no ``*_full`` (juniper-data#411).
+
+        Raises:
+            ValueError: If the ratios are invalid (see :func:`carve_three_way`).
         """
         # assert hf_load_dataset is not None
+
+        # Plain JSON types FIRST, because the dataset ID is a JSON hash of these values. np.int64 seeds,
+        # datasets.Split.TRAIN (a NamedSplit) and ndarray column lists are not JSON-serialisable.
+        # operator.index rejects a float seed instead of truncating it. `split` is also passed to
+        # the Hub as a plain string, which it accepts.
+        seed = None if seed is None else operator.index(seed)
+        train_ratio, val_ratio, test_ratio = float(train_ratio), float(val_ratio), float(test_ratio)
+        split = str(split)
+        feature_columns = None if feature_columns is None else [str(c) for c in feature_columns]
+        label_column = str(label_column)
+        # Then validate, and before the download: a bad request must not cost a Hub fetch. After
+        # conversion, not before, so this check and the carve's see the SAME numbers.
+        # np.float32(0.8) + 0.1 + 0.1 is exactly 1.0 in float32 and 1.0000000119 once widened.
+        validate_carve_ratios(train_ratio, val_ratio, test_ratio)
 
         ds = hf_load_dataset(  # nosec B615
             dataset_name,
@@ -106,47 +144,57 @@ class HuggingFaceDatasetStore(DatasetStore):
             one_hot_labels=one_hot_labels,
         )
 
-        n_train = int(len(X) * train_ratio)
-        X_train, X_test = X[:n_train], X[n_train:]
-        y_train, y_test = y[:n_train], y[n_train:]
+        # Three partitions, carved, and no *_full (decision 11; juniper-data#411). The rows
+        # are cut in their current order -- the seeded shuffle above is the only shuffle.
+        arrays, counts = carve_three_way(X, y, train_ratio=train_ratio, val_ratio=val_ratio, test_ratio=test_ratio)
+        n_emitted = counts["n_total"]
 
+        # Decision 7: a data-derived scale is fit on train ONLY and applied unchanged to val and
+        # test. It used to be fit on every row before the cut, so val / test statistics leaked
+        # into train's scaling. Images are exempt: their /255 is a constant, not a fit.
+        if normalize and not self._is_image_source(self._resolve_feature_columns(ds, feature_columns, label_column)):
+            x_train = arrays["X_train"]
+            scale = float(x_train.max()) if x_train.size else 0.0
+            if scale > 1.0:
+                for part in ("train", "val", "test"):
+                    arrays[f"X_{part}"] = arrays[f"X_{part}"] / np.float32(scale)
+
+        params = {
+            "dataset_name": dataset_name,
+            "config_name": config_name,
+            "split": split,
+            "n_samples": len(X),
+            "seed": seed,
+            "flatten": flatten,
+            "normalize": normalize,
+            "one_hot_labels": one_hot_labels,
+            "feature_columns": feature_columns,
+            "label_column": label_column,
+            "train_ratio": train_ratio,
+            "val_ratio": val_ratio,
+            "test_ratio": test_ratio,
+        }
         config_suffix = f"-{config_name}" if config_name else ""
-        dataset_id = f"hf-{dataset_name}{config_suffix}-{len(X)}"
+        dataset_id = external_dataset_id(f"hf-{dataset_name}{config_suffix}", "huggingface", params)
 
-        class_indices = y.argmax(axis=1) if one_hot_labels else y.flatten().astype(int)
+        # Class counts over the rows actually emitted, not rows a sub-1.0 ratio sum left out.
+        class_indices = (y.argmax(axis=1) if one_hot_labels else y.flatten().astype(int))[:n_emitted]
         class_distribution = {str(i): int((class_indices == i).sum()) for i in range(n_classes)}
         meta = DatasetMeta(
             dataset_id=dataset_id,
             generator="huggingface",
-            generator_version="1.0.0",
-            params={
-                "dataset_name": dataset_name,
-                "config_name": config_name,
-                "split": split,
-                "n_samples": len(X),
-                "seed": seed,
-                "flatten": flatten,
-                "normalize": normalize,
-                "one_hot_labels": one_hot_labels,
-            },
-            n_samples=len(X),
+            generator_version=VERSION,
+            params=params,
+            n_samples=n_emitted,
             n_features=X.shape[1] if len(X.shape) > 1 else 1,
             n_classes=n_classes,
-            n_train=n_train,
-            n_test=len(X) - n_train,
+            n_train=counts["n_train"],
+            n_val=counts["n_val"],
+            n_test=counts["n_test"],
             class_distribution=class_distribution,
             created_at=datetime.now(UTC),
             tags=["huggingface", dataset_name],
         )
-
-        arrays = {
-            "X_train": X_train,
-            "y_train": y_train,
-            "X_test": X_test,
-            "y_test": y_test,
-            "X_full": X,
-            "y_full": y,
-        }
 
         self._cache_store.save(dataset_id, meta, arrays)
         # Bypasses this store's own ``save``, so invalidate here too -- a lazy
@@ -166,13 +214,16 @@ class HuggingFaceDatasetStore(DatasetStore):
     ) -> tuple[np.ndarray, np.ndarray, int]:
         """Extract features and labels from HF dataset.
 
+        ``normalize`` applies to IMAGE sources only, whose ``/ 255`` is a constant. Tabular
+        features come back unscaled: their scale is data-derived, so :meth:`load_hf_dataset`
+        fits it on the train partition after the carve (decision 7).
+
         Returns:
             Tuple of (X, y, n_classes).
         """
-        if feature_columns is None:
-            feature_columns = [col for col in ds.column_names if col not in (label_column, "idx", "id")]
+        feature_columns = self._resolve_feature_columns(ds, feature_columns, label_column)
 
-        if len(feature_columns) == 1 and "image" in feature_columns[0].lower():
+        if self._is_image_source(feature_columns):
             X = self._extract_images(ds, feature_columns[0], flatten, normalize)
         else:
             features = []
@@ -183,8 +234,6 @@ class HuggingFaceDatasetStore(DatasetStore):
                 features.append(np.array(col_data))
             X = np.column_stack(features) if len(features) > 1 else features[0]
             X = X.astype(np.float32)
-            if normalize and X.max() > 1.0:
-                X = X / X.max()
 
         labels = np.array(ds[label_column])
         n_classes = int(labels.max()) + 1
@@ -196,6 +245,18 @@ class HuggingFaceDatasetStore(DatasetStore):
             y = labels.astype(np.float32).reshape(-1, 1)
 
         return X, y, n_classes
+
+    @staticmethod
+    def _resolve_feature_columns(ds: Any, feature_columns: list[str] | None, label_column: str) -> list[str]:
+        """The feature columns: as given, or every column but the label and id columns."""
+        if feature_columns is None:
+            return [col for col in ds.column_names if col not in (label_column, "idx", "id")]
+        return feature_columns
+
+    @staticmethod
+    def _is_image_source(feature_columns: list[str]) -> bool:
+        """A single column named like an image is read as pixels (scaled by the constant 255)."""
+        return len(feature_columns) == 1 and "image" in feature_columns[0].lower()
 
     def _extract_images(
         self,

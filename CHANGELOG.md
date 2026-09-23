@@ -49,6 +49,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from source. **Generating equities data makes outbound calls to Yahoo Finance and SEC EDGAR
   from the container.** Published images pick this up at the next release.
 
+### Removed
+
+- **BREAKING (public API): `HuggingFaceDatasetStore` and `KaggleDatasetStore` no longer emit
+  `X_full` / `y_full`, and now carve three partitions** (#411). The `[0.14.0]` `### Removed`
+  entry deliberately left these two adapters out of decision 11. They cut **two** ways with no
+  `X_val`, wrote the retired pair and stamped `generator_version="1.0.0"`, below the 3.0.0
+  floor. The generator floor guard could not see them, because it enumerates
+  `juniper_data.generators` only. The owner ruled on 2026-09-22 to conform them. What changed:
+  - `load_hf_dataset` / `load_kaggle_dataset` return exactly `X_train`, `y_train`, `X_val`,
+    `y_val`, `X_test`, `y_test`. They carve like the other real-data sources (`mnist`,
+    `csv_import`, `arc_agi`), through `resolve_partition_counts` + `split_three_way`, with
+    new `val_ratio` / `test_ratio` parameters. The default is `0.8 / 0.1 / 0.1`, so train
+    keeps its 80 % and the old 20 % test becomes 10 % val + 10 % test. Ratios that sum
+    above 1 now raise `ValueError`, **before** any download. In particular,
+    `train_ratio=0.9` passed alone now fails (0.9 + 0.1 + 0.1) where it used to give a
+    90/10 split. Pass `val_ratio` / `test_ratio` explicitly. Rounding follows the same carve
+    rule as `csv_import`, so a very small dataset can leave a partition empty (two rows
+    carve to 2 / 0 / 0). The old two-way cut left `test` non-empty for any N >= 2.
+  - `generator_version` is `3.0.0`, held as a module-level `VERSION` in each store.
+    `TestExternalStoresAtTheDecision11Floor` (`tests/unit/test_val_emission_guards.py`)
+    pins it at or above the floor.
+  - **The dataset ID changes format**, from `hf-<name>-<rows>` to
+    `hf-<name>-huggingface-3.0.0-<hash>` (Kaggle likewise). The old ID held neither the version
+    nor the partitioning, so a cached two-way artifact could answer a three-way request under
+    the same ID, and two partitionings of one dataset collided. It now goes through the same
+    `generate_dataset_id` the generator path uses, with one deliberate difference. A `None` seed
+    is hashed as a fixed marker, not given BUG-JD-04's per-call nonce. The stores shuffle only
+    when a seed is given, so an unseeded load is repeatable. A nonce would have minted a new ID,
+    and a new copy in the never-evicting default cache store, on every identical call. Every
+    recorded parameter is converted to a plain JSON type before the download, because the ID is
+    a JSON hash of them:
+    - seeds through `operator.index`, so an `np.int64` seed works and a float seed is rejected;
+    - ratios through `float()`;
+    - `split` through `str()`, so `datasets.Split.TRAIN` works;
+    - column lists into lists of `str`, and Kaggle's `file_name` into `str`.
+
+    Ratios are validated after that conversion, so the check before the download sees the same
+    numbers as the carve. A float32 `0.8 / 0.1 / 0.1` sums to 1 only in float32; once widened it
+    over-asks, and it is now rejected before any fetch rather than after one.
+  - `n_samples`, `n_val` and `class_distribution` in the metadata count the emitted rows.
+    Rows beyond a ratio sum below 1 are left out rather than folded into a partition.
+  - **Normalisation is fit on train only (decision 7).** HF tabular scaling (`/ max`) and
+    Kaggle min-max were fit on every row before the cut, so val/test statistics leaked into
+    train's scaling. That is the leak juniper-data#314 fixed for `equities`, `equities_seq` and
+    `csv_import`. The statistics now come from `X_train` and are applied unchanged to `val`
+    and `test`, so held-out values may fall outside [0, 1]. HF images keep their constant `/ 255`.
+    The two `test_load_with_normalization` tests asserted that the whole dataset lay in [0, 1].
+    That holds only for the leaky fit, so they now pin the train-only statistics.
+
+  `tests/unit/test_hf_store.py` asserted `"X_full" in arrays`, so the fixture encoded the
+  defect. It now asserts the six-key contract. **Scope, unchanged from 0.14.0's note:** no
+  route and no service path calls either store. This was a public API surface only, and no
+  artifact the service has ever served carried either shape.
+
 ### Fixed
 
 - **The PyPI wheel no longer carries the test suite** (#420) -- the wheel half of what #405

@@ -1,5 +1,6 @@
 """Kaggle datasets integration for downloading and caching datasets."""
 
+import operator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -10,7 +11,20 @@ from juniper_data.core.constants import CHARSET_UTF8
 from juniper_data.core.models import DatasetMeta
 
 from .base import DatasetStore
+from .external_partition import (
+    EXTERNAL_STORE_DEFAULT_TEST_RATIO,
+    EXTERNAL_STORE_DEFAULT_TRAIN_RATIO,
+    EXTERNAL_STORE_DEFAULT_VAL_RATIO,
+    EXTERNAL_STORE_VERSION,
+    carve_three_way,
+    external_dataset_id,
+    validate_carve_ratios,
+)
 from .memory import InMemoryDatasetStore
+
+#: Contract version of the emitted arrays (juniper-data#411). Module-level, like a
+#: generator's ``VERSION``, so the decision-11 floor guard can enumerate it.
+VERSION: str = EXTERNAL_STORE_VERSION
 
 try:
     from kaggle.api.kaggle_api_extended import KaggleApi
@@ -115,7 +129,9 @@ class KaggleDatasetStore(DatasetStore):
         seed: int | None = None,
         one_hot_labels: bool = True,
         normalize_features: bool = False,
-        train_ratio: float = 0.8,
+        train_ratio: float = EXTERNAL_STORE_DEFAULT_TRAIN_RATIO,
+        val_ratio: float = EXTERNAL_STORE_DEFAULT_VAL_RATIO,
+        test_ratio: float = EXTERNAL_STORE_DEFAULT_TEST_RATIO,
     ) -> tuple[str, DatasetMeta, dict[str, np.ndarray]]:
         """Download and load a CSV dataset from Kaggle.
 
@@ -129,11 +145,31 @@ class KaggleDatasetStore(DatasetStore):
             seed: Random seed for shuffling.
             one_hot_labels: One-hot encode labels.
             normalize_features: Normalize features to [0, 1].
-            train_ratio: Ratio for train/test split.
+            train_ratio: Train's share of the loaded rows.
+            val_ratio: Val's share of the loaded rows.
+            test_ratio: Test's share of the loaded rows. The three may not sum to more
+                than 1; rows beyond their sum are left out.
 
         Returns:
-            Tuple of (dataset_id, metadata, arrays).
+            Tuple of (dataset_id, metadata, arrays). ``arrays`` holds exactly the
+            decision-11 contract: ``X_train``, ``y_train``, ``X_val``, ``y_val``,
+            ``X_test``, ``y_test`` -- no ``*_full`` (juniper-data#411).
+
+        Raises:
+            ValueError: If the ratios are invalid (see :func:`carve_three_way`).
         """
+        # Plain JSON types FIRST, because the dataset ID is a JSON hash of these values.
+        # random.seed() also rejects np.int64 on Python >= 3.11. operator.index rejects a float
+        # seed instead of truncating it.
+        seed = None if seed is None else operator.index(seed)
+        train_ratio, val_ratio, test_ratio = float(train_ratio), float(val_ratio), float(test_ratio)
+        feature_columns = None if feature_columns is None else [str(c) for c in feature_columns]
+        label_column = str(label_column)
+        file_name = str(file_name)
+        # Then validate, and before the download: a bad request must not cost a Kaggle fetch.
+        # After conversion, not before, so this check and the carve's see the SAME numbers.
+        validate_carve_ratios(train_ratio, val_ratio, test_ratio)
+
         dataset_path = self.download_dataset(dataset_ref)
         file_path = dataset_path / file_name
 
@@ -185,13 +221,6 @@ class KaggleDatasetStore(DatasetStore):
 
         X = np.array(features, dtype=np.float32)
 
-        if normalize_features:
-            X_min = X.min(axis=0, keepdims=True)
-            X_max = X.max(axis=0, keepdims=True)
-            X_range = X_max - X_min
-            X_range[X_range == 0] = 1
-            X = (X - X_min) / X_range
-
         unique_labels = sorted([str(lbl) for lbl in set(labels)])
         label_to_idx = {label: idx for idx, label in enumerate(unique_labels)}
         n_classes = len(unique_labels)
@@ -204,46 +233,57 @@ class KaggleDatasetStore(DatasetStore):
         else:
             y = label_indices.astype(np.float32).reshape(-1, 1)
 
-        class_distribution = {}
-        for i in range(n_classes):
-            class_distribution[str(i)] = int((label_indices == i).sum())
+        # Three partitions, carved, and no *_full (decision 11; juniper-data#411). The rows
+        # are cut in their current order -- the seeded shuffle above is the only shuffle.
+        arrays, counts = carve_three_way(X, y, train_ratio=train_ratio, val_ratio=val_ratio, test_ratio=test_ratio)
+        n_emitted = counts["n_total"]
 
-        n_train = int(len(X) * train_ratio)
-        X_train, X_test = X[:n_train], X[n_train:]
-        y_train, y_test = y[:n_train], y[n_train:]
+        # Decision 7: min-max statistics are fit on train ONLY and applied unchanged to val and
+        # test, so held-out values may fall outside [0, 1]. They used to be fit on every row
+        # before the cut, which leaked val / test statistics into train's scaling. An empty
+        # train partition has nothing to fit and is left unscaled.
+        if normalize_features and arrays["X_train"].shape[0] > 0:
+            x_min = arrays["X_train"].min(axis=0, keepdims=True)
+            x_range = arrays["X_train"].max(axis=0, keepdims=True) - x_min
+            x_range[x_range == 0] = 1
+            for part in ("train", "val", "test"):
+                arrays[f"X_{part}"] = (arrays[f"X_{part}"] - x_min) / x_range
 
-        dataset_id = f"kaggle-{dataset_ref.replace('/', '-')}-{len(X)}"
+        # Class counts over the rows actually emitted, not rows a sub-1.0 ratio sum left out.
+        emitted_indices = label_indices[:n_emitted]
+        class_distribution = {str(i): int((emitted_indices == i).sum()) for i in range(n_classes)}
+
+        params = {
+            "dataset_ref": dataset_ref,
+            "file_name": file_name,
+            "n_samples": len(X),
+            "seed": seed,
+            "normalize_features": normalize_features,
+            "one_hot_labels": one_hot_labels,
+            "feature_columns": feature_columns,
+            "label_column": label_column,
+            "delimiter": delimiter,
+            "train_ratio": train_ratio,
+            "val_ratio": val_ratio,
+            "test_ratio": test_ratio,
+        }
+        dataset_id = external_dataset_id(f"kaggle-{dataset_ref.replace('/', '-')}", "kaggle", params)
 
         meta = DatasetMeta(
             dataset_id=dataset_id,
             generator="kaggle",
-            generator_version="1.0.0",
-            params={
-                "dataset_ref": dataset_ref,
-                "file_name": file_name,
-                "n_samples": len(X),
-                "seed": seed,
-                "normalize_features": normalize_features,
-                "one_hot_labels": one_hot_labels,
-            },
-            n_samples=len(X),
+            generator_version=VERSION,
+            params=params,
+            n_samples=n_emitted,
             n_features=X.shape[1],
             n_classes=n_classes,
-            n_train=n_train,
-            n_test=len(X) - n_train,
+            n_train=counts["n_train"],
+            n_val=counts["n_val"],
+            n_test=counts["n_test"],
             class_distribution=class_distribution,
             created_at=datetime.now(UTC),
             tags=["kaggle", dataset_ref.split("/")[0]],
         )
-
-        arrays = {
-            "X_train": X_train,
-            "y_train": y_train,
-            "X_test": X_test,
-            "y_test": y_test,
-            "X_full": X,
-            "y_full": y,
-        }
 
         self._cache_store.save(dataset_id, meta, arrays)
         # Bypasses this store's own ``save``, so invalidate here too.
