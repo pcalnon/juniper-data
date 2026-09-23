@@ -12,6 +12,7 @@ split, ``access_count`` / ``last_accessed_at`` sat in the body and changed on ev
 so any honest hash of the body changed with them -- a strong validator was impossible.
 """
 
+import contextlib
 import json
 import logging
 import subprocess
@@ -247,10 +248,11 @@ class TestEntityTagListRunsInLinearTime:
         # Each field must REACH the grammar. One the length cap refused first would pass
         # against the backtracking form too, and pin nothing.
         assert all(len(field) <= MAX_PRECONDITION_FIELD_LENGTH for field in self.HOSTILE)
-        try:
+        # At the bound, subprocess.run kills the child and raises; ``child`` then stays None.
+        child: subprocess.CompletedProcess[str] | None = None
+        with contextlib.suppress(subprocess.TimeoutExpired):
             child = subprocess.run([sys.executable, "-c", _PARSE_HOSTILE_FIELDS, http_cache.__file__, json.dumps(self.HOSTILE)], capture_output=True, text=True, timeout=self.BOUND_SECONDS)
-        except subprocess.TimeoutExpired:
-            pytest.fail(f"parsing {len(self.HOSTILE)} hostile precondition fields did not finish in {self.BOUND_SECONDS} s: the entity-tag list grammar backtracks")
+        assert child is not None, f"parsing {len(self.HOSTILE)} hostile precondition fields did not finish in {self.BOUND_SECONDS} s: the entity-tag list grammar backtracks"
         assert child.returncode == 0, child.stderr
         # All malformed: a read names nothing, If-Match fails, and a write fails closed.
         assert json.loads(child.stdout) == [[False, True, False]] * len(self.HOSTILE)
