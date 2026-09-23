@@ -222,6 +222,49 @@ class TestHuggingFaceDatasetStoreLoadDataset:
         assert first == again
         assert first != other
 
+    def test_unseeded_loads_reuse_one_id_and_one_cache_entry(self, mock_hf_module) -> None:
+        """No seed means no shuffle here, so the load is repeatable and must not mint a new ID.
+
+        generate_dataset_id's BUG-JD-04 nonce assumes 'no seed = fresh random draw', true for
+        a generator and false for these stores. Without the marker every identical call
+        added a full copy to the never-evicting default cache store.
+        """
+        from juniper_data.storage.hf_store import HuggingFaceDatasetStore
+
+        mock_ds, _ = _make_mock_hf_dataset(n_samples=20, n_classes=2, feature_type="tabular")
+        mock_hf_module.return_value = mock_ds
+
+        store = HuggingFaceDatasetStore()
+        ids = {store.load_hf_dataset("test-dataset", feature_columns=["feature1", "feature2"])[0] for _ in range(3)}
+
+        assert len(ids) == 1
+        assert store._cache_store.list_datasets() == list(ids)
+        _, meta, _ = store.load_hf_dataset("test-dataset", feature_columns=["feature1", "feature2"])
+        assert meta.params["seed"] is None, "the recorded params keep the real None; only the hash uses the marker"
+
+    def test_numpy_seed_is_accepted_and_hashes_like_an_int(self, mock_hf_module) -> None:
+        """rng.integers() returns np.int64, which json.dumps cannot serialise."""
+        from juniper_data.storage.hf_store import HuggingFaceDatasetStore
+
+        mock_ds, _ = _make_mock_hf_dataset(n_samples=20, n_classes=2, feature_type="tabular")
+        mock_hf_module.return_value = mock_ds
+
+        store = HuggingFaceDatasetStore()
+        as_numpy, _, _ = store.load_hf_dataset("test-dataset", seed=np.int64(7), feature_columns=["feature1", "feature2"])
+        as_int, _, _ = store.load_hf_dataset("test-dataset", seed=7, feature_columns=["feature1", "feature2"])
+
+        assert as_numpy == as_int
+
+    def test_invalid_ratios_fail_before_the_download(self, mock_hf_module) -> None:
+        """A bad request must not cost a Hub fetch."""
+        from juniper_data.storage.hf_store import HuggingFaceDatasetStore
+
+        store = HuggingFaceDatasetStore()
+        with pytest.raises(ValueError, match="must be <= 1.0"):
+            store.load_hf_dataset("test-dataset", train_ratio=0.9)
+
+        mock_hf_module.assert_not_called()
+
     def test_load_with_config_name(self, mock_hf_module) -> None:
         """Load with config name included in dataset_id."""
         from juniper_data.storage.hf_store import HuggingFaceDatasetStore

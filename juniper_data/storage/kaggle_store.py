@@ -1,5 +1,6 @@
 """Kaggle datasets integration for downloading and caching datasets."""
 
+import operator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ from .external_partition import (
     EXTERNAL_STORE_VERSION,
     carve_three_way,
     external_dataset_id,
+    validate_carve_ratios,
 )
 from .memory import InMemoryDatasetStore
 
@@ -156,6 +158,13 @@ class KaggleDatasetStore(DatasetStore):
         Raises:
             ValueError: If the ratios are invalid (see :func:`carve_three_way`).
         """
+        # Before the download, not after it: a bad request must not cost a Kaggle fetch.
+        validate_carve_ratios(train_ratio, val_ratio, test_ratio)
+        # Plain Python scalars: the ID is a JSON hash, and random.seed() rejects np.int64 on
+        # Python >= 3.11. operator.index rejects a float seed instead of truncating it.
+        seed = None if seed is None else operator.index(seed)
+        train_ratio, val_ratio, test_ratio = float(train_ratio), float(val_ratio), float(test_ratio)
+
         dataset_path = self.download_dataset(dataset_ref)
         file_path = dataset_path / file_name
 

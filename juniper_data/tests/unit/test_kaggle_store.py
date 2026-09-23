@@ -255,6 +255,48 @@ class TestKaggleDatasetStoreLoadDataset:
         assert first == again
         assert first != other
 
+    def test_unseeded_loads_reuse_one_id_and_one_cache_entry(self, mock_kaggle_module, tmp_path) -> None:
+        """No seed means no shuffle here, so the load is repeatable and must not mint a new ID."""
+        from juniper_data.storage.kaggle_store import KaggleDatasetStore
+
+        store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
+        dataset_dir = tmp_path / "kaggle" / "owner_unseeded"
+        dataset_dir.mkdir(parents=True, exist_ok=True)
+        rows = [{"feature": str(i), "label": str(i % 2)} for i in range(10)]
+        _write_csv(dataset_dir / "data.csv", rows)
+
+        ids = {store.load_kaggle_dataset("owner/unseeded", file_name="data.csv")[0] for _ in range(3)}
+
+        assert len(ids) == 1
+        assert store._cache_store.list_datasets() == list(ids)
+
+    def test_numpy_seed_is_accepted_and_hashes_like_an_int(self, mock_kaggle_module, tmp_path) -> None:
+        """np.int64 broke both the JSON-hashed ID and random.seed() (Python >= 3.11)."""
+        from juniper_data.storage.kaggle_store import KaggleDatasetStore
+
+        store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
+        dataset_dir = tmp_path / "kaggle" / "owner_npseed"
+        dataset_dir.mkdir(parents=True, exist_ok=True)
+        rows = [{"feature": str(i), "label": str(i % 2)} for i in range(10)]
+        _write_csv(dataset_dir / "data.csv", rows)
+
+        as_numpy, _, arrays_numpy = store.load_kaggle_dataset("owner/npseed", file_name="data.csv", seed=np.int64(3))
+        as_int, _, arrays_int = store.load_kaggle_dataset("owner/npseed", file_name="data.csv", seed=3)
+
+        assert as_numpy == as_int
+        np.testing.assert_array_equal(whole(arrays_numpy, "X"), whole(arrays_int, "X"))
+
+    def test_invalid_ratios_fail_before_the_download(self, mock_kaggle_module, tmp_path) -> None:
+        """A bad request must not cost a Kaggle fetch."""
+        from juniper_data.storage.kaggle_store import KaggleDatasetStore
+
+        store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
+        with patch.object(store, "download_dataset") as download:
+            with pytest.raises(ValueError, match="must be <= 1.0"):
+                store.load_kaggle_dataset("owner/any", file_name="data.csv", train_ratio=0.9)
+
+        download.assert_not_called()
+
     def test_load_with_auto_detect_csv(self, mock_kaggle_module, tmp_path) -> None:
         """Auto-detect CSV when specified file not found."""
         _, mock_api_instance = mock_kaggle_module

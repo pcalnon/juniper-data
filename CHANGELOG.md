@@ -48,9 +48,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `csv_import`, `arc_agi`), through `resolve_partition_counts` + `split_three_way`, with
     new `val_ratio` / `test_ratio` parameters. The default is `0.8 / 0.1 / 0.1`, so train
     keeps its 80 % and the old 20 % test becomes 10 % val + 10 % test. Ratios that sum
-    above 1 now raise `ValueError`. In particular, `train_ratio=0.9` passed alone now fails
-    (0.9 + 0.1 + 0.1) where it used to give a 90/10 split. Pass `val_ratio` / `test_ratio`
-    explicitly.
+    above 1 now raise `ValueError`, **before** any download. In particular,
+    `train_ratio=0.9` passed alone now fails (0.9 + 0.1 + 0.1) where it used to give a
+    90/10 split. Pass `val_ratio` / `test_ratio` explicitly. Rounding follows the same carve
+    rule as `csv_import`, so a very small dataset can leave a partition empty (two rows
+    carve to 2 / 0 / 0). The old two-way cut left `test` non-empty for any N >= 2.
   - `generator_version` is `3.0.0`, held as a module-level `VERSION` in each store.
     `TestExternalStoresAtTheDecision11Floor` (`tests/unit/test_val_emission_guards.py`)
     pins it at or above the floor.
@@ -58,8 +60,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `hf-<name>-huggingface-3.0.0-<hash>` (Kaggle likewise). The old ID held neither the version
     nor the partitioning, so a cached two-way artifact could answer a three-way request under
     the same ID, and two partitionings of one dataset collided. It now goes through the same
-    `generate_dataset_id` the generator path uses. A `None` seed therefore adds a per-call nonce,
-    exactly as it does for a generator (BUG-JD-04).
+    `generate_dataset_id` the generator path uses, with one deliberate difference. A `None` seed
+    is hashed as a fixed marker, not given BUG-JD-04's per-call nonce. The stores shuffle only
+    when a seed is given, so an unseeded load is repeatable. A nonce would have minted a new ID,
+    and a new copy in the never-evicting default cache store, on every identical call. Seeds and
+    ratios are coerced to plain `int` / `float`, so a numpy seed (`rng.integers()` returns
+    `np.int64`) no longer breaks the JSON-hashed ID, or Kaggle's `random.seed()` on
+    Python >= 3.11.
   - `n_samples`, `n_val` and `class_distribution` in the metadata count the emitted rows.
     Rows beyond a ratio sum below 1 are left out rather than folded into a partition.
 

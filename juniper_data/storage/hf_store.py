@@ -1,5 +1,6 @@
 """Hugging Face datasets integration for loading external datasets."""
 
+import operator
 from datetime import UTC, datetime
 from typing import Any
 
@@ -15,6 +16,7 @@ from .external_partition import (
     EXTERNAL_STORE_VERSION,
     carve_three_way,
     external_dataset_id,
+    validate_carve_ratios,
 )
 from .memory import InMemoryDatasetStore
 
@@ -105,6 +107,13 @@ class HuggingFaceDatasetStore(DatasetStore):
             ValueError: If the ratios are invalid (see :func:`carve_three_way`).
         """
         # assert hf_load_dataset is not None
+
+        # Before the download, not after it: a bad request must not cost a Hub fetch.
+        validate_carve_ratios(train_ratio, val_ratio, test_ratio)
+        # Plain Python scalars: the ID is a JSON hash, and np.int64 / np.float32 are not
+        # JSON-serialisable. operator.index rejects a float seed instead of truncating it.
+        seed = None if seed is None else operator.index(seed)
+        train_ratio, val_ratio, test_ratio = float(train_ratio), float(val_ratio), float(test_ratio)
 
         ds = hf_load_dataset(  # nosec B615
             dataset_name,

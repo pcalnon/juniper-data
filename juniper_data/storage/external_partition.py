@@ -42,6 +42,27 @@ EXTERNAL_STORE_DEFAULT_TEST_RATIO: float = 0.1
 _RATIO_SUM_TOLERANCE: float = 1e-9
 
 
+def validate_carve_ratios(train_ratio: float, val_ratio: float, test_ratio: float) -> None:
+    """Reject ratios a carve cannot honour -- callable BEFORE any data is fetched.
+
+    The stores call this first, so a bad request fails before a Hub download or a
+    Kaggle fetch rather than after it. :func:`carve_three_way` calls it again, so the
+    carve never trusts its caller to have done so.
+
+    Raises:
+        ValueError: If a ratio is outside ``[0, 1]`` (NaN included), ``train_ratio`` is
+            0, or the three together ask for more rows than exist.
+    """
+    for name, ratio in (("train_ratio", train_ratio), ("val_ratio", val_ratio), ("test_ratio", test_ratio)):
+        if not 0.0 <= ratio <= 1.0:
+            raise ValueError(f"{name} must be between 0 and 1. Got {ratio}")
+    if train_ratio <= 0.0:
+        raise ValueError(f"train_ratio must be greater than 0. Got {train_ratio}")
+    total = train_ratio + val_ratio + test_ratio
+    if total > 1.0 + _RATIO_SUM_TOLERANCE:
+        raise ValueError(f"train_ratio ({train_ratio}) + val_ratio ({val_ratio}) + test_ratio ({test_ratio}) must be <= 1.0, got {total}")
+
+
 def carve_three_way(
     X: np.ndarray,
     y: np.ndarray,
@@ -54,6 +75,10 @@ def carve_three_way(
 
     Rows are cut in their current order. A store that shuffles does so before calling
     this, so the partitions are index-disjoint by construction whatever the order.
+
+    Rounding is :func:`resolve_partition_counts`' carve rule, the same one ``mnist``,
+    ``csv_import`` and ``arc_agi`` use, so a very small dataset can leave a partition
+    empty (at 0.8 / 0.1 / 0.1, two rows carve to 2 / 0 / 0 and five to 4 / 0 / 1).
 
     Args:
         X: Feature array of shape ``(n_samples, ...)``.
@@ -69,17 +94,9 @@ def carve_three_way(
         rows beyond ``counts["n_total"]`` are left out rather than folded in.
 
     Raises:
-        ValueError: If a ratio is outside ``[0, 1]``, ``train_ratio`` is 0, or the
-            three together ask for more rows than exist.
+        ValueError: See :func:`validate_carve_ratios`.
     """
-    for name, ratio in (("train_ratio", train_ratio), ("val_ratio", val_ratio), ("test_ratio", test_ratio)):
-        if not 0.0 <= ratio <= 1.0:
-            raise ValueError(f"{name} must be between 0 and 1. Got {ratio}")
-    if train_ratio <= 0.0:
-        raise ValueError(f"train_ratio must be greater than 0. Got {train_ratio}")
-    total = train_ratio + val_ratio + test_ratio
-    if total > 1.0 + _RATIO_SUM_TOLERANCE:
-        raise ValueError(f"train_ratio ({train_ratio}) + val_ratio ({val_ratio}) + test_ratio ({test_ratio}) must be <= 1.0, got {total}")
+    validate_carve_ratios(train_ratio, val_ratio, test_ratio)
 
     counts = resolve_partition_counts(
         sizing_mode=SIZING_MODE_CARVE,
@@ -92,16 +109,32 @@ def carve_three_way(
     return arrays, counts
 
 
+#: Hashed in place of a ``None`` seed. See :func:`external_dataset_id`.
+_UNSHUFFLED_SEED_MARKER: str = "unshuffled"
+
+
 def external_dataset_id(prefix: str, generator: str, params: dict[str, Any]) -> str:
     """Build a store's dataset ID: a readable prefix plus the canonical hashed ID.
+
+    ``generate_dataset_id`` adds a per-call nonce when ``params["seed"]`` is ``None``
+    (BUG-JD-04), because for a GENERATOR no seed means a fresh random draw, and two
+    such draws must not share an ID. That premise does not hold here. Both stores
+    shuffle ONLY when a seed is given, so an unseeded load reads the source in its
+    own order and is as repeatable as a seeded one. A nonce would mint a new ID,
+    and a new full copy in the cache store, on every identical call, and a prior
+    load could never be found again. So a ``None`` seed is hashed as a fixed marker.
+    The recorded ``DatasetMeta.params`` keep the real ``None``.
 
     Args:
         prefix: Human-readable stem, e.g. ``"hf-mnist"`` or ``"kaggle-owner-iris"``.
         generator: The ``DatasetMeta.generator`` value, e.g. ``"huggingface"``.
-        params: The parameters recorded in ``DatasetMeta.params``. A ``None`` seed
-            adds a per-call nonce, exactly as it does for a generator (BUG-JD-04).
+        params: The parameters recorded in ``DatasetMeta.params``. Must be JSON
+            serialisable -- callers pass plain ``int`` / ``float``, not numpy scalars.
 
     Returns:
         ``"<prefix>-<generator>-<version>-<hash>"``.
     """
-    return f"{prefix}-{generate_dataset_id(generator, EXTERNAL_STORE_VERSION, params)}"
+    hashed = dict(params)
+    if hashed.get("seed") is None:
+        hashed["seed"] = _UNSHUFFLED_SEED_MARKER
+    return f"{prefix}-{generate_dataset_id(generator, EXTERNAL_STORE_VERSION, hashed)}"
