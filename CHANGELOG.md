@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   would report a 403/404 from an under-scoped token as success. `workflow_dispatch` re-sends for
   a version already on PyPI. **A failed dispatch turns the publish run red after PyPI has
   already accepted the release**, so the `pypi` job, not the run, is the publish verdict.
+  **A `204` is not taken as delivery.** GitHub returns it whether or not any workflow in the
+  target listens for the event type, so a renamed or missing listener would pass silently. The
+  job then waits up to two minutes for the consumer to start a `repository_dispatch` run, and
+  fails if none appears (the second residual gap recorded on juniper-recurrence#178).
 
 - **The container image can generate `equities` and `equities_seq` datasets** (#421). This was
   an owner decision on 2026-09-22. `requirements.lock` was compiled with
