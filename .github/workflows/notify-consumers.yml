@@ -1,0 +1,92 @@
+#####################################################################################################################################################################################################
+# Project:       Juniper
+# Sub-Project:   JuniperData
+# File Name:     notify-consumers.yml
+# Author:        Paul Calnon
+# License:       MIT License
+# Copyright:     Copyright (c) 2024-2026 Paul Calnon
+#
+# Description:   Tell the repos that install the juniper-data PACKAGE from PyPI that a release has
+#                landed, so their CI runs against it (juniper-recurrence#178, owner ruling: option 3).
+#
+#    Why: a consumer lane that is path-scoped to its own directory cannot see a break that arrives
+#    through a dependency. Decision 11 (#369) broke all seven juniper-recurrence bench datasets and
+#    that lane reported success for 15 days, because the change that broke it touched no path it
+#    watches. This fires a `repository_dispatch` of type `juniper-data-published` into each consumer
+#    with client_payload {source, version, sha}; the receiver waits until the version is
+#    installable and tests exactly that version.
+#
+#    Two entry points, one implementation:
+#      * workflow_call -- from publish.yml, AFTER the PyPI job succeeds (a dispatch before PyPI
+#        serves the version would test the previous release).
+#      * workflow_dispatch -- re-send for a version ALREADY on PyPI: to prove the path end to end
+#        without cutting a release, or to re-run a consumer check that was lost.
+#
+#    The dispatch FAILS LOUDLY (`curl --fail-with-body`). The data-client senders use a bare
+#    `curl -X POST`, which reports a 403/404 from an under-scoped token as success -- the same
+#    silence #178 is about. CROSS_REPO_DISPATCH_TOKEN is a PAT; GITHUB_TOKEN cannot dispatch into
+#    another repository. Payload values reach the shell only through `env:`.
+#
+#    To add a consumer: append its repo to the matrix, and give its workflow a
+#    `repository_dispatch: types: [juniper-data-published]` trigger that tests the payload version.
+#
+#####################################################################################################################################################################################################
+
+name: Notify consumers of a release
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "The juniper-data version just published to PyPI (a leading 'v' is stripped)"
+        required: true
+        type: string
+    secrets:
+      CROSS_REPO_DISPATCH_TOKEN:
+        required: true
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "A juniper-data version ALREADY on PyPI, e.g. 0.15.0 -- re-sends its dispatch"
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  dispatch:
+    name: Dispatch juniper-data-published (${{ matrix.repo }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Repos whose CI installs the juniper-data package from PyPI and must hear about a release.
+        repo: [juniper-recurrence]
+    steps:
+      - name: Dispatch
+        env:
+          TOKEN: ${{ secrets.CROSS_REPO_DISPATCH_TOKEN }}
+          RAW_VERSION: ${{ inputs.version }}
+          REPO: ${{ matrix.repo }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          version="${RAW_VERSION#v}"
+          if [[ ! "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::version must be X.Y.Z (optionally v-prefixed), got '${RAW_VERSION}'"
+            exit 1
+          fi
+          if [[ -z "${TOKEN}" ]]; then
+            echo "::error::CROSS_REPO_DISPATCH_TOKEN is not available to this run"
+            exit 1
+          fi
+          payload="$(jq -nc --arg v "${version}" --arg s "${SOURCE_SHA}" \
+            '{event_type: "juniper-data-published", client_payload: {source: "juniper-data", version: $v, sha: $s}}')"
+          curl --fail-with-body --silent --show-error -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/pcalnon/${REPO}/dispatches" \
+            -d "${payload}"
+          echo "dispatched juniper-data-published ${version} to pcalnon/${REPO}"
+          echo "- dispatched \`juniper-data-published\` **${version}** to \`pcalnon/${REPO}\`" >> "${GITHUB_STEP_SUMMARY}"

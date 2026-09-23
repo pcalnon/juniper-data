@@ -70,3 +70,16 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # v1.14.2
+
+  # After PyPI serves the release, tell the repos that install juniper-data from PyPI, so their
+  # CI runs against it instead of waiting for someone to touch their paths (juniper-recurrence#178).
+  # A separate job: the pypi job's status is the publish verdict, and a failed dispatch shows here.
+  notify-consumers:
+    name: Notify consumer repos
+    needs: pypi
+    permissions: {}
+    uses: ./.github/workflows/notify-consumers.yml
+    with:
+      version: ${{ github.event.release.tag_name }}
+    secrets:
+      CROSS_REPO_DISPATCH_TOKEN: ${{ secrets.CROSS_REPO_DISPATCH_TOKEN }}
