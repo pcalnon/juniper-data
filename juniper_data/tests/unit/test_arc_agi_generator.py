@@ -556,6 +556,88 @@ class TestArcAgiGeneratorConvertTasks:
 
 @pytest.mark.unit
 @pytest.mark.generators
+class TestArcAgiTaskIdsLoadWithoutPickle:
+    """juniper-data#429: ``task_ids`` was an object array, so no consumer could load an arc_agi artifact.
+
+    ``np.savez`` pickles an object array, and juniper-data-client's ``download_artifact_npz``
+    materialises every key under numpy's default ``allow_pickle=False``. The whole download
+    raised ``ValueError: Object arrays cannot be loaded when allow_pickle=False``.
+    """
+
+    def test_non_empty_ids_are_fixed_width_unicode(self) -> None:
+        from juniper_data.generators.arc_agi.generator import ArcAgiGenerator
+
+        tasks = [{"task_id": name, "train": [{"input": [[1]], "output": [[2]]}], "test": []} for name in ("a", "bbbb")]
+        _, _, ids = ArcAgiGenerator._convert_tasks_to_arrays(tasks, ArcAgiParams(pad_to=5, include_test=False))
+
+        assert ids.dtype.kind == "U"
+        assert ids.tolist() == ["a", "bbbb"]
+
+    def test_empty_ids_are_fixed_width_unicode(self) -> None:
+        from juniper_data.generators.arc_agi.generator import ArcAgiGenerator
+
+        _, _, ids = ArcAgiGenerator._convert_tasks_to_arrays([], ArcAgiParams(pad_to=5, include_test=False))
+
+        assert ids.dtype.kind == "U"
+        assert ids.shape == (0,)
+
+    def test_a_non_string_task_id_is_stored_as_its_text(self) -> None:
+        """A Hub row may carry a non-string ``task_id``; it is stored as text, not as a pickled object."""
+        from juniper_data.generators.arc_agi.generator import ArcAgiGenerator
+
+        tasks = [{"task_id": 7, "train": [{"input": [[1]], "output": [[2]]}], "test": []}]
+        _, _, ids = ArcAgiGenerator._convert_tasks_to_arrays(tasks, ArcAgiParams(pad_to=5, include_test=False))
+
+        assert ids.dtype.kind == "U"
+        assert ids.tolist() == ["7"]
+
+    def test_the_served_artifact_loads_with_allow_pickle_false(self, tmp_path) -> None:
+        """End to end, as a consumer sees it: ``POST /v1/datasets``, then download the stored bytes.
+
+        Each task's grids carry a distinct fill value, so the loaded ``task_ids`` can be checked
+        row by row against the concatenated ``train | val | test`` partitions it describes.
+        """
+        import io
+
+        from fastapi.testclient import TestClient
+
+        from juniper_data.api.app import create_app
+        from juniper_data.api.routes import datasets
+        from juniper_data.api.settings import Settings
+        from juniper_data.storage.memory import InMemoryDatasetStore
+
+        training = tmp_path / "arc" / "training"
+        training.mkdir(parents=True)
+        for name, fill in (("task_a", 1), ("task_b", 2), ("task_c", 3)):
+            task = {"train": [{"input": [[fill]], "output": [[fill]]}] * 3, "test": [{"input": [[fill]], "output": [[fill]]}]}
+            (training / f"{name}.json").write_text(json.dumps(task))
+        storage = tmp_path / "storage"
+        storage.mkdir()
+
+        app = create_app(settings=Settings(storage_path=str(storage)))
+        datasets.set_store(InMemoryDatasetStore())
+        client = TestClient(app)
+
+        params = {"source": "local", "local_path": str(tmp_path / "arc"), "subset": "training", "pad_to": 3, "flatten_pairs": False, "seed": 7}
+        created = client.post("/v1/datasets", json={"generator": "arc_agi", "params": params, "persist": True})
+        assert created.status_code == 201, created.text
+        body = created.json()
+        assert body["dataset_id"].startswith("arc_agi-4.0.0-")
+
+        artifact = client.get(f"/v1/datasets/{body['dataset_id']}/artifact")
+        assert artifact.status_code == 200
+        with np.load(io.BytesIO(artifact.content), allow_pickle=False) as npz:
+            loaded = {key: npz[key] for key in npz.files}
+
+        assert loaded["task_ids"].dtype.kind == "U"
+        rows = np.concatenate([loaded["X_train"], loaded["X_val"], loaded["X_test"]])
+        assert rows.shape[0] == loaded["task_ids"].shape[0] == 12
+        for row, task_id in zip(rows, loaded["task_ids"], strict=True):
+            assert task_id == {1: "task_a", 2: "task_b", 3: "task_c"}[int(row[0, 0])]
+
+
+@pytest.mark.unit
+@pytest.mark.generators
 class TestArcAgiGetSchema:
     """Tests for get_schema function."""
 

@@ -1,5 +1,6 @@
 """Unit tests for CachedDatasetStore."""
 
+import io
 from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
@@ -151,6 +152,38 @@ class TestCachedDatasetStore:
         assert artifact is not None
 
         assert cache_store.exists("test-1")
+
+    def test_a_failed_population_is_logged_and_the_primary_bytes_are_still_served(
+        self,
+        primary_store: InMemoryDatasetStore,
+        cache_store: InMemoryDatasetStore,
+        sample_meta: DatasetMeta,
+        sample_arrays: dict[str, np.ndarray],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """juniper-data#429: a pre-fix arc_agi artifact's pickled ``task_ids`` made population fail SILENTLY.
+
+        The re-load for the cache uses ``allow_pickle=False``, so an artifact carrying an object
+        array cannot be cached. The read must still succeed from the primary, and the miss must
+        be logged rather than swallowed.
+        """
+        legacy = {**sample_arrays, "task_ids": np.array(["t"] * 100, dtype=object)}
+        primary_store.save("legacy-arc", sample_meta, legacy)
+        cached = CachedDatasetStore(primary_store, cache_store, write_through=False)
+
+        with caplog.at_level("WARNING", logger="juniper_data.storage.cached"):
+            artifact = cached.get_artifact_bytes("legacy-arc")
+
+        # Compared by content: ``np.savez`` stamps each zip entry with the current time, so two
+        # serialisations of one dataset are not guaranteed to be byte-identical.
+        assert artifact is not None
+        with np.load(io.BytesIO(artifact), allow_pickle=True) as npz:
+            assert sorted(npz.files) == sorted(legacy)
+            np.testing.assert_array_equal(npz["X_train"], legacy["X_train"])
+        assert not cache_store.exists("legacy-arc")
+        warnings = [record for record in caplog.records if record.levelname == "WARNING" and "legacy-arc" in record.getMessage()]
+        assert warnings, "the failed cache population was swallowed with nothing logged"
+        assert warnings[0].exc_info is not None, "the warning carries no traceback, so the cause is lost"
 
     def test_delete_removes_from_both_stores(
         self,
