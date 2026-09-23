@@ -144,10 +144,83 @@ class TestHuggingFaceDatasetStoreLoadDataset:
 
         assert "hf-test-dataset" in dataset_id
         assert meta.generator == "huggingface"
-        assert "X_train" in arrays
-        assert "y_train" in arrays
-        assert "X_full" in arrays
+        # juniper-data#411: this line asserted `"X_full" in arrays` -- the fixture encoded
+        # the defect. The store now emits exactly the decision-11 contract.
+        assert set(arrays) == {"X_train", "y_train", "X_val", "y_val", "X_test", "y_test"}
         assert whole(arrays, "X").dtype == np.float32
+
+    def test_load_emits_three_partitions_at_the_decision_11_version(self, mock_hf_module) -> None:
+        """0.8 / 0.1 / 0.1 carve over 20 rows, stamped 3.0.0, meta counts match arrays."""
+        from juniper_data.storage.hf_store import HuggingFaceDatasetStore
+
+        mock_ds, _ = _make_mock_hf_dataset(n_samples=20, n_classes=2, feature_type="tabular")
+        mock_hf_module.return_value = mock_ds
+
+        store = HuggingFaceDatasetStore()
+        dataset_id, meta, arrays = store.load_hf_dataset("test-dataset", seed=7, normalize=False, feature_columns=["feature1", "feature2"])
+
+        assert meta.generator_version == "3.0.0"
+        assert "-huggingface-3.0.0-" in dataset_id
+        assert (meta.n_train, meta.n_val, meta.n_test) == (16, 2, 2)
+        assert [arrays[f"X_{p}"].shape[0] for p in ("train", "val", "test")] == [16, 2, 2]
+        assert meta.n_samples == 20
+        assert sum(meta.class_distribution.values()) == 20
+        # Contiguous and disjoint: the three blocks reassemble the loaded rows in order.
+        np.testing.assert_array_equal(whole(arrays, "X")[:, 0], np.arange(20, dtype=np.float32))
+
+    def test_ratios_are_honoured_and_unused_rows_are_left_out(self, mock_hf_module) -> None:
+        """A ratio sum below 1 leaves the tail out of every partition and out of the meta."""
+        from juniper_data.storage.hf_store import HuggingFaceDatasetStore
+
+        mock_ds, _ = _make_mock_hf_dataset(n_samples=20, n_classes=2, feature_type="tabular")
+        mock_hf_module.return_value = mock_ds
+
+        store = HuggingFaceDatasetStore()
+        _, meta, arrays = store.load_hf_dataset("test-dataset", seed=7, feature_columns=["feature1", "feature2"], train_ratio=0.5, val_ratio=0.2, test_ratio=0.1)
+
+        assert (meta.n_train, meta.n_val, meta.n_test) == (10, 4, 2)
+        assert meta.n_samples == 16
+        assert sum(meta.class_distribution.values()) == 16
+        assert whole(arrays, "X").shape[0] == 16
+
+    @pytest.mark.parametrize(
+        ("ratios", "message"),
+        [
+            ({"train_ratio": 0.9}, "must be <= 1.0"),
+            ({"train_ratio": 0.0}, "train_ratio must be greater than 0"),
+            ({"val_ratio": -0.1}, "val_ratio must be between 0 and 1"),
+        ],
+        ids=["oversubscribed", "no-train", "negative-val"],
+    )
+    def test_invalid_ratios_raise(self, mock_hf_module, ratios, message) -> None:
+        """Invalid ratios fail loudly instead of silently trimming a partition away."""
+        from juniper_data.storage.hf_store import HuggingFaceDatasetStore
+
+        mock_ds, _ = _make_mock_hf_dataset(n_samples=20, n_classes=2, feature_type="tabular")
+        mock_hf_module.return_value = mock_ds
+
+        store = HuggingFaceDatasetStore()
+        with pytest.raises(ValueError, match=message):
+            store.load_hf_dataset("test-dataset", seed=7, feature_columns=["feature1", "feature2"], **ratios)
+
+    def test_dataset_id_carries_version_and_params(self, mock_hf_module) -> None:
+        """Same request -> same ID; a different partitioning -> a different ID.
+
+        The old ID was `hf-<name>-<rows>`, so two partitionings of one dataset collided
+        and a cached two-way artifact answered a three-way request under the same ID.
+        """
+        from juniper_data.storage.hf_store import HuggingFaceDatasetStore
+
+        mock_ds, _ = _make_mock_hf_dataset(n_samples=20, n_classes=2, feature_type="tabular")
+        mock_hf_module.return_value = mock_ds
+
+        store = HuggingFaceDatasetStore()
+        first, _, _ = store.load_hf_dataset("test-dataset", seed=7, feature_columns=["feature1", "feature2"])
+        again, _, _ = store.load_hf_dataset("test-dataset", seed=7, feature_columns=["feature1", "feature2"])
+        other, _, _ = store.load_hf_dataset("test-dataset", seed=7, feature_columns=["feature1", "feature2"], train_ratio=0.7, val_ratio=0.2)
+
+        assert first == again
+        assert first != other
 
     def test_load_with_config_name(self, mock_hf_module) -> None:
         """Load with config name included in dataset_id."""

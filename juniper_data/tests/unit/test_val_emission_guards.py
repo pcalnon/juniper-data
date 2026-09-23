@@ -291,3 +291,22 @@ class TestEveryGeneratorBumpedForDecision11:
         assert ahead == {"equities": "5.0.0", "equities_seq": "5.0.0"}, (
             f"only the equities pair is deliberately past 3.0.0 (owner rulings 2026-09-09; 5.0.0 since the 2026-09-15 head-typo regression fix); found {ahead}. A generator that moves on its own needs its reason recorded here, or the next reader cannot tell a decision from a drift."
         )
+
+
+class TestExternalStoresAtTheDecision11Floor:
+    """The HF and Kaggle store adapters mint artifacts too, and live outside the sweep above.
+
+    `_generator_versions` enumerates `juniper_data.generators` only. The two stores under
+    `juniper_data.storage` stamped `generator_version="1.0.0"` and emitted `*_full` for the
+    whole of decision 11's rollout without tripping it (juniper-data#411). Their version is
+    now a module-level `VERSION`, like a generator's, and hashed into their dataset ID.
+    """
+
+    @pytest.mark.parametrize("module_name", ["hf_store", "kaggle_store"])
+    def test_store_version_is_at_or_above_the_floor(self, module_name: str) -> None:
+        import importlib
+
+        mod = importlib.import_module(f"juniper_data.storage.{module_name}")
+        version = getattr(mod, "VERSION", None)
+        assert version is not None, f"juniper_data.storage.{module_name} has no module-level VERSION"
+        assert int(version.split(".")[0]) >= 3, f"juniper_data.storage.{module_name} is at {version}, below decision 11's 3.0.0 floor"

@@ -185,6 +185,75 @@ class TestKaggleDatasetStoreLoadDataset:
         assert meta.n_features == 2
         assert meta.n_classes == 3
         assert whole(arrays, "X").shape == (5, 2)
+        # juniper-data#411: exactly the decision-11 contract -- three partitions, no *_full.
+        assert set(arrays) == {"X_train", "y_train", "X_val", "y_val", "X_test", "y_test"}
+        assert meta.generator_version == "3.0.0"
+        assert "-kaggle-3.0.0-" in dataset_id
+
+    def test_load_carves_three_partitions(self, mock_kaggle_module, tmp_path) -> None:
+        """0.8 / 0.1 / 0.1 over 20 rows; meta counts match the arrays; order is kept."""
+        from juniper_data.storage.kaggle_store import KaggleDatasetStore
+
+        store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
+        dataset_dir = tmp_path / "kaggle" / "owner_three"
+        dataset_dir.mkdir(parents=True, exist_ok=True)
+        rows = [{"feature": str(i), "label": str(i % 2)} for i in range(20)]
+        _write_csv(dataset_dir / "data.csv", rows)
+
+        _, meta, arrays = store.load_kaggle_dataset("owner/three", file_name="data.csv")
+
+        assert (meta.n_train, meta.n_val, meta.n_test) == (16, 2, 2)
+        assert [arrays[f"X_{p}"].shape[0] for p in ("train", "val", "test")] == [16, 2, 2]
+        assert meta.n_samples == 20
+        assert sum(meta.class_distribution.values()) == 20
+        np.testing.assert_array_equal(whole(arrays, "X")[:, 0], np.arange(20, dtype=np.float32))
+
+    def test_ratios_are_honoured_and_unused_rows_are_left_out(self, mock_kaggle_module, tmp_path) -> None:
+        """A ratio sum below 1 leaves the tail out of every partition and out of the meta."""
+        from juniper_data.storage.kaggle_store import KaggleDatasetStore
+
+        store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
+        dataset_dir = tmp_path / "kaggle" / "owner_part"
+        dataset_dir.mkdir(parents=True, exist_ok=True)
+        rows = [{"feature": str(i), "label": str(i % 2)} for i in range(20)]
+        _write_csv(dataset_dir / "data.csv", rows)
+
+        _, meta, arrays = store.load_kaggle_dataset("owner/part", file_name="data.csv", train_ratio=0.5, val_ratio=0.2, test_ratio=0.1)
+
+        assert (meta.n_train, meta.n_val, meta.n_test) == (10, 4, 2)
+        assert meta.n_samples == 16
+        assert sum(meta.class_distribution.values()) == 16
+        assert whole(arrays, "X").shape[0] == 16
+
+    def test_oversubscribed_ratios_raise(self, mock_kaggle_module, tmp_path) -> None:
+        """train_ratio=0.9 on its own now over-asks (0.9 + 0.1 + 0.1) and fails loudly."""
+        from juniper_data.storage.kaggle_store import KaggleDatasetStore
+
+        store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
+        dataset_dir = tmp_path / "kaggle" / "owner_over"
+        dataset_dir.mkdir(parents=True, exist_ok=True)
+        rows = [{"feature": str(i), "label": str(i % 2)} for i in range(10)]
+        _write_csv(dataset_dir / "data.csv", rows)
+
+        with pytest.raises(ValueError, match="must be <= 1.0"):
+            store.load_kaggle_dataset("owner/over", file_name="data.csv", train_ratio=0.9)
+
+    def test_dataset_id_carries_version_and_params(self, mock_kaggle_module, tmp_path) -> None:
+        """Same request -> same ID; a different partitioning -> a different ID."""
+        from juniper_data.storage.kaggle_store import KaggleDatasetStore
+
+        store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
+        dataset_dir = tmp_path / "kaggle" / "owner_ids"
+        dataset_dir.mkdir(parents=True, exist_ok=True)
+        rows = [{"feature": str(i), "label": str(i % 2)} for i in range(10)]
+        _write_csv(dataset_dir / "data.csv", rows)
+
+        first, _, _ = store.load_kaggle_dataset("owner/ids", file_name="data.csv", seed=3)
+        again, _, _ = store.load_kaggle_dataset("owner/ids", file_name="data.csv", seed=3)
+        other, _, _ = store.load_kaggle_dataset("owner/ids", file_name="data.csv", seed=3, train_ratio=0.7, val_ratio=0.2)
+
+        assert first == again
+        assert first != other
 
     def test_load_with_auto_detect_csv(self, mock_kaggle_module, tmp_path) -> None:
         """Auto-detect CSV when specified file not found."""
