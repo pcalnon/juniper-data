@@ -1180,14 +1180,15 @@ Relocated verbatim from `AGENTS.md` (P3 of the shared-session-memory plan) so it
 |--------|------|-------------|
 | POST | `/v1/datasets` | Create dataset (returns 201) |
 | GET | `/v1/datasets` | List dataset IDs (paginated) |
-| GET | `/v1/datasets/{dataset_id}` | Get dataset metadata |
+| GET | `/v1/datasets/{dataset_id}` | Get dataset metadata (strong `ETag`; `If-None-Match` → 304) |
+| GET | `/v1/datasets/{dataset_id}/access` | Access counters (`access_count`, `last_accessed_at`), `no-store` |
 | DELETE | `/v1/datasets/{dataset_id}` | Delete dataset (returns 204) |
-| GET | `/v1/datasets/{dataset_id}/artifact` | Download NPZ artifact |
+| GET | `/v1/datasets/{dataset_id}/artifact` | Download NPZ artifact (`ETag` = stored checksum; `If-None-Match` → 304) |
 | GET | `/v1/datasets/{dataset_id}/preview` | Preview first N samples as JSON |
 | GET | `/v1/datasets/filter` | Advanced filtering (generator, tags, dates, sample count) |
 | GET | `/v1/datasets/stats` | Aggregate statistics |
 | GET | `/v1/datasets/versions` | List all versions of a named dataset |
-| GET | `/v1/datasets/latest` | Get latest version of a named dataset |
+| GET | `/v1/datasets/latest` | Get latest version of a named dataset (`Content-Location` names the canonical URI) |
 | PATCH | `/v1/datasets/{dataset_id}/tags` | Update tags on a dataset |
 | POST | `/v1/datasets/cleanup-expired` | Delete all expired datasets |
 
@@ -1232,12 +1233,60 @@ still authenticates. Pinned by `TestCorsPreflight` in
 Responses use typed Pydantic models (defined in `core/models.py` and `api/models/`):
 
 - `CreateDatasetResponse` -- dataset_id, generator, meta, artifact_url
-- `DatasetListResponse` -- datasets (list of DatasetMeta), total, limit, offset
+- `DatasetListResponse` -- datasets (list of `PublicDatasetMeta`), total, limit, offset
 - `DatasetVersionListResponse` -- dataset_name, versions, total, latest_version
 - `BatchCreateResponse` -- results, total_created, total_failed
 - `BatchDeleteResponse` -- deleted, not_found, total_deleted
 - `DatasetStats` -- total_datasets, total_samples, by_generator, by_tag
 - `ReadinessResponse` -- status, version, service, timestamp, dependencies
+- `DatasetAccessStats` -- dataset_id, access_count, last_accessed_at
+
+Every model that embeds dataset metadata is typed `PublicDatasetMeta`, never `DatasetMeta`. The
+stored `DatasetMeta` is a subclass that adds the two access counters, and Pydantic v2 serializes
+a subclass instance by the ANNOTATED type's schema, so stores can keep handing responses a
+`DatasetMeta` and the counters drop out with no conversion anywhere. See
+[Conditional Requests and Validators](#conditional-requests-and-validators).
+
+### Conditional Requests and Validators
+
+APD-DATA-017 / -029 / -032, owner-ruled 2026-09-11: a strong `ETag` derived from the stored
+SHA-256, the access counters moved out of the representation so metadata can carry one too, and
+`Content-Location` on `/latest`. Rejected: ETags on artifacts only; a weak validator that churns on
+every read; a `307` from `/latest`. Helpers live in `juniper_data/api/http_cache.py`, whose
+docstring is the long form of this section.
+
+| Route | `ETag` | Also |
+|-------|--------|------|
+| `GET /v1/datasets/{dataset_id}` | SHA-256 of the exact body | a 304 is still recorded as an access |
+| `GET /v1/datasets/latest` | same as the canonical route's | `Content-Location: /v1/datasets/<dataset_id>` |
+| `GET /v1/datasets/{dataset_id}/artifact` | `"<checksum>"`; none if the metadata has no checksum | the 304 is decided before the artifact is opened |
+| `PATCH /v1/datasets/{dataset_id}/tags` | the NEW representation's | `If-None-Match` is not evaluated |
+
+All three reads send `Cache-Control: private, no-cache`: `private` because the key travels in
+`X-API-Key`, which RFC 9111 §3.5 does not oblige a shared cache to treat as authentication;
+`no-cache` because a dataset can be deleted or re-tagged at any time. `If-None-Match` follows RFC
+9110 §13.1.2 — `*`, lists, weak comparison — and an unparseable field serves the full 200.
+
+**What the artifact `ETag` is not.** `checksum` is `compute_checksum`'s SHA-256 over a canonical
+serialization of the ARRAYS (uncompressed `np.savez`, keys sorted); every store serves a
+compressed one, so `sha256(served bytes) != checksum`. It still changes whenever the arrays
+change, and a stored artifact is written once, which is what whole-body revalidation needs; no
+byte ranges are served, so no client can splice bytes from two serializations. An exact byte hash
+would need a new per-store field — storage work, not route work.
+
+**What not to do:**
+
+- Do not annotate a response field `DatasetMeta` or `SerializeAsAny[...]`: the counters return to
+  the representation and the metadata `ETag` churns on every read again.
+- Do not render the metadata body with `JSONResponse(content=model.dump_python(mode="json"))`.
+  `json.dumps` writes `1e-07` where FastAPI's `response_model` path (pydantic-core) writes `1e-7`,
+  so that changes the wire format and hashes bytes FastAPI would not send.
+  `test_bytes_match_fastapi_rendering_of_the_public_model` pins the equality.
+- Do not read `GET /{dataset_id}/access` as an access, or count it as one.
+
+Non-vacuity: `util/ad-hoc/2026-09-22_verify_conditional_request_tests_are_not_vacuous.py` reverts
+each behaviour in turn and requires the tests that describe it to go red while a named control stays
+green.
 
 ---
 
@@ -1411,7 +1460,7 @@ The LocalFS handle is opened inside the generator and closed by its `with` block
 - **Content-Type:** `application/zip` (`BINARY_MEDIA_TYPE` in `api/constants.py`). Both binary routes derive from that name. Do not spell `application/octet-stream` inline — that is the RFC 9110 §8.3 fallback, not this service's published type. Changing the value is a wire change (`test_binary_media_types.py`).
 - **Content-Disposition:** `attachment; filename={dataset_id}.npz`.
 - Bytes are identical to `get_artifact_bytes`. The change is a memory profile, not a payload change.
-- ETag / conditional GET is APD-DATA-017 and is not implemented here.
+- **`ETag`** is the stored `checksum`, **not** a hash of these bytes, and a matching `If-None-Match` is a 304 decided before the stream opens. See [Conditional Requests and Validators](#conditional-requests-and-validators).
 
 ### What not to do
 

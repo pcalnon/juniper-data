@@ -369,13 +369,15 @@ Ratios always denote absolute dataset rows regardless of which mode produced the
     "created_by": "ml-platform",
     "tags": ["baseline", "can-def-005"],
     "ttl_seconds": 86400,
-    "expires_at": "2026-02-06T12:00:00.000000",
-    "last_accessed_at": null,
-    "access_count": 0
+    "expires_at": "2026-02-06T12:00:00.000000"
   },
   "artifact_url": "/v1/datasets/spiral-1.0.0-a1b2c3d4e5f6.../artifact"
 }
 ```
+
+`meta` carries no `access_count` / `last_accessed_at`: the access counters are not part of any
+metadata representation (APD-DATA-032) and are read from
+[`GET /v1/datasets/{id}/access`](#get-v1datasetsidaccess).
 
 **Status Codes:**
 
@@ -513,7 +515,13 @@ Get metadata for the latest stored version of a logical dataset name.
 
 **Response:**
 
-Returns a full `DatasetMeta` object (same schema as `GET /v1/datasets/{id}`).
+Returns the same metadata representation `GET /v1/datasets/{id}` serves for that version, with
+the same `ETag`, `Cache-Control` and `If-None-Match` handling.
+
+- **`Content-Location: /v1/datasets/<dataset_id>`** — names the canonical URI of the version
+  returned (APD-DATA-029). Two URIs serve this representation; the header is how a client or
+  cache knows they are one resource. A `307` to the canonical URI was ruled out: it costs every
+  caller a round trip.
 
 ```json
 {
@@ -526,6 +534,7 @@ Returns a full `DatasetMeta` object (same schema as `GET /v1/datasets/{id}`).
 **Status Codes:**
 
 - `200 OK` - Latest version metadata returned
+- `304 Not Modified` - `If-None-Match` matched; `Content-Location` is still sent
 - `404 Not Found` - No versions exist for the requested name
 
 ---
@@ -616,7 +625,8 @@ List all versions for a logical dataset name.
 
 ### GET /v1/datasets/latest
 
-Get the latest stored version for a logical dataset name.
+Get the latest stored version for a logical dataset name. Carries `ETag`, `Cache-Control` and
+`Content-Location` as described in the first `GET /v1/datasets/latest` section above.
 
 **Query Parameters:**
 
@@ -625,6 +635,7 @@ Get the latest stored version for a logical dataset name.
 **Status Codes:**
 
 - `200 OK` - Latest version metadata returned
+- `304 Not Modified` - `If-None-Match` matched
 - `404 Not Found` - No versions found for the provided name
 
 ---
@@ -873,9 +884,47 @@ Get metadata for a specific dataset.
 
 `meta.truncation` is omitted from the spiral example because it is `null` on a complete dataset. After an authorised `csv_import` prefix it is a dict (`truncated`, `reason`, `bytes_read`, `bytes_total`, `cap_bytes`, `records_imported`) persisted with the artifact. See [CSV Import Byte Cap](../REFERENCE.md#csv-import-byte-cap).
 
+**Validators and caching (APD-DATA-017 / -032):**
+
+- **`ETag`** — strong: the SHA-256 of the exact response body, quoted. It changes when, and only
+  when, a byte of the representation changes — a tag edit moves it, a read does not. That is
+  why the access counters are **not** in this body: they changed on every read, so no strong
+  validator could describe it. They are served by [`GET /v1/datasets/{id}/access`](#get-v1datasetsidaccess).
+- **`Cache-Control: private, no-cache`** — keep the body, revalidate before each use. `private`
+  because the API key travels in `X-API-Key`, which a shared cache is not obliged to treat as
+  authentication.
+- **`If-None-Match`** — send a held `ETag` (or a list, or `*`; `W/` prefixes compare weakly) and
+  a match is answered `304 Not Modified` with no body. A 304 still counts as an access.
+
 **Status Codes:**
 
 - `200 OK` - Metadata returned
+- `304 Not Modified` - `If-None-Match` matched the current `ETag`; no body
+- `404 Not Found` - Dataset not found
+
+---
+
+### GET /v1/datasets/{id}/access
+
+The access counters of one dataset — where they live since APD-DATA-032. They are still
+maintained on every metadata read and artifact download; they are just no longer part of the
+metadata representation.
+
+**Response** (`Cache-Control: no-store`):
+
+```json
+{
+  "dataset_id": "spiral-1.0.0-a1b2c3d4e5f6...",
+  "access_count": 4,
+  "last_accessed_at": "2026-09-22T20:31:08.114Z"
+}
+```
+
+Reading this endpoint is **not** itself recorded as an access.
+
+**Status Codes:**
+
+- `200 OK` - Counters returned
 - `404 Not Found` - Dataset not found
 
 ---
@@ -890,12 +939,21 @@ Download the dataset as an NPZ file.
 
 **Response:**
 
-- **Content-Type:** `application/octet-stream`
+- **Content-Type:** `application/zip` (the published binary media type, `BINARY_MEDIA_TYPE`)
 - **Body:** Binary NPZ file
+- **`ETag`** — strong, `"<checksum>"`: the dataset's stored `checksum`. **It is not the SHA-256
+  of these bytes.** The checksum is taken over a canonical serialization of the *arrays*
+  (uncompressed, keys sorted); stores serve a compressed one. It changes whenever the arrays
+  change and a stored artifact never changes while it exists, which is what revalidation of a
+  whole body needs; no byte ranges are served. A dataset with no stored checksum gets no `ETag`.
+- **`Cache-Control: private, no-cache`**, and `If-None-Match` as for
+  [`GET /v1/datasets/{id}`](#get-v1datasetsid). A 304 is decided from the metadata before the
+  artifact is opened, so a revalidation costs no artifact I/O.
 
 **Status Codes:**
 
 - `200 OK` - Artifact returned
+- `304 Not Modified` - `If-None-Match` matched the stored checksum; no body
 - `404 Not Found` - Dataset not found
 
 ---
@@ -956,6 +1014,9 @@ Add/remove tags on a single dataset.
   "remove_tags": ["stale"]
 }
 ```
+
+The response is the updated metadata representation and carries its **new** `ETag`, so a client
+can hold the edited copy without a second read. `If-None-Match` is not evaluated here.
 
 **Status Codes:**
 
