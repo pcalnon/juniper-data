@@ -19,7 +19,7 @@ import numpy as np
 
 from juniper_data.core.constants import CHARSET_UTF8
 from juniper_data.core.models import DatasetMeta
-from juniper_data.storage.base import DatasetStore
+from juniper_data.storage.base import DatasetStore, InvalidDatasetIdError
 from juniper_data.storage.constants import (
     ARTIFACT_STREAM_CHUNK_SIZE,
     DEFAULT_LIST_LIMIT,
@@ -44,16 +44,17 @@ def _validate_dataset_id(dataset_id: str) -> None:
     """Validate ``dataset_id`` against path traversal attacks.
 
     Raises:
-        ValueError: If ``dataset_id`` is not a well-formed identifier. The
-            caller is expected to translate this into an HTTP 400 at the
-            request boundary.
+        InvalidDatasetIdError: If ``dataset_id`` is not a well-formed identifier.
+            A ``ValueError``; the caller is expected to translate it into an
+            HTTP 400 at the request boundary, which the app's ``ValueError``
+            handler does.
     """
     if not isinstance(dataset_id, str) or not dataset_id:
-        raise ValueError("dataset_id must be a non-empty string")
+        raise InvalidDatasetIdError("dataset_id must be a non-empty string")
     if ".." in dataset_id:
-        raise ValueError(f"Invalid dataset_id: {dataset_id!r}")
+        raise InvalidDatasetIdError(f"Invalid dataset_id: {dataset_id!r}")
     if not _VALID_DATASET_ID.fullmatch(dataset_id):
-        raise ValueError(f"Invalid dataset_id: {dataset_id!r}")
+        raise InvalidDatasetIdError(f"Invalid dataset_id: {dataset_id!r}")
 
 
 def _json_serializer(obj: Any) -> str:
@@ -107,7 +108,7 @@ class LocalFSDatasetStore(DatasetStore):
         candidate = self._base_path / f"{dataset_id}{suffix}"
         resolved = candidate.resolve() if candidate.exists() else (self._resolved_base / candidate.name).resolve()
         if not resolved.is_relative_to(self._resolved_base):
-            raise ValueError(f"Path traversal detected for dataset_id: {dataset_id!r}")
+            raise InvalidDatasetIdError(f"Path traversal detected for dataset_id: {dataset_id!r}")
         return candidate
 
     def _meta_path(self, dataset_id: str) -> Path:

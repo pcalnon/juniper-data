@@ -26,6 +26,88 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`ETag`s and conditional requests on the three single-dataset reads** (APD-DATA-017, owner
+  rulings 2026-09-11 and 2026-09-23). `GET /v1/datasets/{dataset_id}` and `GET /v1/datasets/latest`
+  carry a STRONG tag, the SHA-256 of the exact response body; `GET /v1/datasets/{dataset_id}/artifact`
+  carries a WEAK one, `W/"<checksum>"` -- the 2026-09-11 ruling asked for strong on the premise that
+  the stored checksum hashes the served bytes, and it does not (see below), so the owner re-ruled. Preconditions follow RFC 9110 §13.2.2: `If-Match` first, compared strongly, a failure
+  answering `412 Precondition Failed`; then `If-None-Match` (a list, possibly over several header
+  lines; `*`; `W/` tags compared weakly), a match answering `304 Not Modified` with no body. A field
+  that is not a well-formed entity-tag list, or is longer than 8192 characters, is malformed: on a
+  read a malformed `If-None-Match` names nothing, and a malformed `If-Match` fails. A precondition
+  is never answered for a target that would 404: the artifact route gates it on `store.exists()`
+  and decides before the artifact is opened, so a revalidation costs no artifact I/O and a deleted
+  artifact is still a 404. An orphaned artifact -- its metadata gone, its file still there -- is
+  still served, so its preconditions are judged too, against no validator: only `*` matches it.
+  When the metadata cannot be read, the artifact is served without a validator; a malformed
+  dataset ID is still the `400` every route gives it.
+  All three send `Cache-Control: private, no-cache`: `private` because the API key travels in
+  `X-API-Key`, which a shared cache is not obliged to treat as authentication; `no-cache` because
+  none of these URIs is immutable -- `dataset_id` hashes the request, not the content, so a
+  re-created dataset (and `equities`, whose default `end_date` is today) can serve new data at the
+  same URI. The API primer's `immutable` prescription for the artifact is rejected for that reason.
+  **Why the artifact tag is weak**: `checksum` covers a canonical serialization of the arrays, while
+  stores serve a compressed one (`sha256(served) != checksum` for every store), and identical arrays
+  re-serialized -- another numpy or zlib, or the in-memory store's sorted key order -- change the
+  bytes but not the checksum. Revalidation is unaffected; `If-Match` can name the artifact only as
+  `*`. **Known gap, for future work**: a truly strong artifact validator needs every store to record
+  the SHA-256 of the bytes it writes. `juniper_data/api/http_cache.py` sets out the rest.
+- **`PATCH /v1/datasets/{dataset_id}/tags` is an optimistic-concurrency write.** It returns the new
+  representation's `ETag`, with `Content-Location: /v1/datasets/<dataset_id>` naming the resource
+  that tag describes (the request target has no GET of its own); sent back as `If-Match`, a stale
+  copy gets `412` and nothing is written.
+  The precondition is evaluated against the current metadata inside `update_tags`' lock -- the
+  method gains an optional `precondition` callable and raises `PreconditionFailedError` -- so it
+  cannot pass and then lose the race. `If-None-Match` naming the current representation is a 412
+  here, not a 304 (RFC 9110 §13.1.2), and so is either header when the server cannot read it: a
+  write fails closed. The atomicity is per host: LocalFS orders processes with an advisory `flock`,
+  and the Redis and Postgres stores inherit a no-op cross-process lock, so for them it holds within
+  one process. This is the only write that evaluates preconditions; an `If-Match` on
+  `DELETE /v1/datasets/{dataset_id}` is not evaluated.
+- **`Content-Location` on `GET /v1/datasets/latest`** (APD-DATA-029), naming the canonical
+  `/v1/datasets/<dataset_id>` of the version returned, with the same `ETag` that URI serves. A
+  `307` was ruled out: it costs every caller a round trip.
+- **`GET /v1/datasets/{dataset_id}/access`** serves `access_count` and `last_accessed_at` with
+  `Cache-Control: no-store`. Reading it is not itself recorded as an access.
+
+### Changed
+
+- **The access counters are no longer part of any metadata representation** (APD-DATA-032).
+  `access_count` / `last_accessed_at` changed on every read, so a body carrying them was new bytes
+  on every request and no strong `ETag` could describe it. They are still stored and maintained
+  where they always were -- every `GET /{dataset_id}` and every artifact download, 304s included
+  (`/latest`, `/filter` and `/versions` never recorded an access) -- and are read from
+  `GET /v1/datasets/{dataset_id}/access`. Every response that embeds metadata -- `GET
+  /{dataset_id}`, `/latest`, `/filter`, `/versions`, `POST /v1/datasets`'s `meta`, `PATCH
+  .../tags` -- is now typed `PublicDatasetMeta`, which the stored `DatasetMeta` subclasses.
+  **Breaking** for any consumer reading the counters from metadata; a census of all nine Juniper
+  repositories found none. The wire format is otherwise byte-identical: the metadata routes
+  render their own bodies (so the `ETag` hashes the exact bytes sent) through the same
+  pydantic-core path FastAPI's `response_model` uses, pinned by
+  `test_bytes_match_fastapi_rendering_of_the_public_model` against a real `response_model` route.
+  `util/ad-hoc/2026-09-22_verify_conditional_request_tests_are_not_vacuous.py` applies thirty-four
+  mutations, one behaviour each, in a scratch copy of the repo, and requires the tests that describe
+  each to go red while a named control stays green.
+- **The published OpenAPI changes shape.** The metadata component is `PublicDatasetMeta` (it was
+  `DatasetMeta`), `DatasetAccessStats` is new, and the validated routes now declare their `ETag`,
+  `Cache-Control` and `Content-Location` response headers and their 304 / 412 responses. No
+  generated client exists in the ecosystem; one generated from the old schema would see its model
+  renamed.
+- **The API versioning policy is amended for 0.x** (owner ruling 2026-09-23;
+  `docs/api/JUNIPER_DATA_API.md` § API Versioning Strategy). It promised never to remove a response
+  field within a major version, which this release does, as the defect-register rulings for this
+  arc do knowingly. While juniper-data is `0.x`, `/v1` may change incompatibly, and every such
+  change is flagged **Breaking** here; the unconditional guarantees, the deprecation policy's
+  advance notice among them, take effect at 1.0.
+- **`[0.15.0]` below carried two `### Changed` headings.** #419 folded #418's entry in under a
+  new heading instead of the existing one -- the duplicate-category shape that files later
+  bullets under the wrong heading. Merged into one; no entry was moved or reworded. The GitHub
+  Release notes for v0.15.0 were rendered from the section as it stood and are not re-cut.
+
+## [0.16.0] - 2026-09-23
+
+### Added
+
 - **A release now notifies the repos that install juniper-data from PyPI**
   (`.github/workflows/notify-consumers.yml`, new; `publish.yml` gains a `notify-consumers` job
   after `pypi`). This is juniper-recurrence#178, and the owner picked cross-repo dispatch. A
@@ -229,9 +311,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `util/ad-hoc/2026-09-22_verify_tristate_tests_are_not_vacuous.py` proves those six tests are not
   vacuous: reverting the sites to the OR reddens exactly the three opt-out tests, and reverting
   the schemas to a plain `bool` reddens exactly the three deference tests.
-
-
-### Changed
 
 - **The published container image no longer carries the test suite** (#405). `COPY
   juniper_data/ ./juniper_data/` is a DIRECTORY allowlist, not a file-grained one, and
