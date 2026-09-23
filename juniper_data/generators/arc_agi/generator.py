@@ -15,7 +15,14 @@ from juniper_data.core.split import partition_and_assemble, resolve_counts_for_p
 
 from .params import ArcAgiParams
 
-VERSION = "3.0.0"
+# 4.0.0 (juniper-data#429, #427): two changes that must not be served under the id that carried
+# the old shape. ``task_ids`` became a ``<U`` array; as an object array it was pickled into every
+# artifact, and no consumer loading with ``allow_pickle=False`` could open one. And #402 had already
+# replaced ``task_type`` ``classification`` with ``structured`` without a bump, so a cached
+# pre-0.15.0 artifact kept its fabricated ``n_classes``. MAJOR, as for the equities ``5.0.0``
+# correction. It also stays clear of the MINOR bump the partition-provenance spec reserves for the
+# release that starts emitting the block, so every arc_agi ``4.1.0`` artifact can carry one.
+VERSION = "4.0.0"
 
 logger = logging.getLogger(__name__)
 
@@ -74,11 +81,10 @@ class ArcAgiGenerator:
 
         Returns:
             Dictionary containing:
-                - X_train: Training input grids
-                - y_train: Training output grids
-                - X_test: Test input grids
-                - y_test: Test output grids
-                - task_ids: Task identifiers for each sample
+                - X_train, X_val, X_test: input grids for each partition
+                - y_train, y_val, y_test: output grids for each partition
+                - task_ids: the task that produced each row of the concatenated
+                  ``train | val | test`` partitions, as a ``<U`` array
 
         Raises:
             ImportError: If datasets package is not installed (HF source).
@@ -256,10 +262,14 @@ class ArcAgiGenerator:
                     outputs.append(output_grid)
                     task_ids.append(task_id)
 
+        # ``task_ids`` is a fixed-width unicode array, never ``dtype=object``. ``np.savez`` pickles an
+        # object array, and every consumer loads with ``allow_pickle=False`` -- juniper-data-client's
+        # ``download_artifact_npz`` reads every key -- so one object array made the whole artifact
+        # unloadable (juniper-data#429). ``ticker_vocab`` reaches consumers as ``np.str_`` the same way.
         if not inputs:
             X_arr = np.zeros((0, params.pad_to * params.pad_to), dtype=np.float32)
             y_arr = np.zeros((0, params.pad_to * params.pad_to), dtype=np.float32)
-            ids = np.array([], dtype=object)
+            ids = np.array([], dtype=np.str_)
             return X_arr, y_arr, ids
 
         X_stacked = np.stack(inputs)
@@ -272,7 +282,7 @@ class ArcAgiGenerator:
             X_arr = X_stacked.astype(np.float32)
             y_arr = y_stacked.astype(np.float32)
 
-        return X_arr, y_arr, np.array(task_ids, dtype=object)
+        return X_arr, y_arr, np.array([str(task_id) for task_id in task_ids], dtype=np.str_)
 
     @staticmethod
     def _pad_grid(grid: list[list[int]], pad_to: int, pad_value: int) -> np.ndarray:
