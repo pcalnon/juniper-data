@@ -6,10 +6,10 @@ loads with numpy's default ``allow_pickle=False``: juniper-data-client's
 when it populates its cache. One object array therefore makes the WHOLE artifact unloadable,
 not just the one key.
 
-arc_agi's ``task_ids`` was exactly that. The extras mechanism re-added the key after decision 11
-as ``np.array(task_ids, dtype=object)``, and no consumer could download an arc_agi artifact
-from then on. Nothing caught it, because every generator test asserts on the returned dict and
-none of them round-trips it through a loader.
+arc_agi's ``task_ids`` was exactly that: ``np.array(task_ids, dtype=object)`` from the day the
+generator was added, so no consumer could ever download an arc_agi artifact that carried the key.
+Nothing caught it, because every generator test asserts on the returned dict and none of them
+round-trips it through a loader.
 
 This is a FLEET check, like ``TestEveryGeneratorBumpedForDecision11``. It enumerates
 ``GENERATOR_REGISTRY`` rather than naming generators, so a generator added later is covered the
@@ -21,8 +21,10 @@ in ``_SOURCED_BUILDERS``; every other one is built from its default params, the 
 from __future__ import annotations
 
 import csv
+import importlib
 import io
 import json
+import os
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -114,11 +116,22 @@ def _build_mnist(_tmp_path: Path) -> dict[str, Any]:
         return MnistGenerator.generate(MnistParams(n_samples=n_samples, seed=7))
 
 
+def _require(module: str) -> Any:
+    """Import an optional extra. Skip locally without it, but FAIL in CI, which installs ``.[all]``.
+
+    A silent skip there would drop the generators that need it from a fleet check and still
+    report green.
+    """
+    if os.environ.get("CI", "").strip().lower() in {"1", "true", "yes"}:
+        return importlib.import_module(module)
+    return pytest.importorskip(module)
+
+
 @contextmanager
 def _equities_sources(start: str, periods: int, filed: tuple[str, str]) -> Iterator[None]:
     """Serve synthetic OHLCV and SEC share history in place of yfinance and EDGAR."""
-    pd = pytest.importorskip("pandas")
-    pytest.importorskip("yfinance")
+    pd = _require("pandas")
+    _require("yfinance")
     from juniper_data.generators.equities import generator as eq_gen
 
     def ohlcv(seed: int):

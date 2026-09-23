@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Review follow-ups to 0.16.0's arc_agi fix** (#434, for #429; #430's entry is under
+  `[0.16.0]`):
+  - **The cached store's population-failure log is bounded.** 0.16.0 turned a silently
+    swallowed cache population into a `WARNING` with its traceback, and a stored arc_agi
+    artifact that can never be cached then logged one on **every** read (100 reads gave 100
+    records). The first failure for a dataset id is now the `WARNING`, and repeats are
+    `DEBUG`. The store remembers up to 1,024 warned ids. The first new id past that bound logs
+    one more `WARNING`, which says the bound was reached, and later new ids log at `DEBUG`, so a
+    cache outage cannot grow the set without limit or go quiet unannounced.
+  - **A null arc_agi `task_id` is `"unknown"`**, as a missing one already was. `str(None)`
+    would have stored `"None"`, which collides with a real task of that name. The configured
+    Hub source carries no ids, so this is defensive.
+  - **The pickle-free fleet test fails instead of skipping in CI.** It skipped the two equities
+    generators when their extra was missing, which in CI (`.[all]`) could only hide a broken
+    install. Locally it still skips.
+  - **Operators may delete stored `arc_agi-3.0.0-*` artifacts.** A generate request against
+    0.16.0 or later mints a `4.0.0` id, so it never reuses one. They are still reachable by
+    their old ids, through a name lookup (`GET /v1/datasets/latest?name=` and `/versions`) when
+    one is a name's newest version, and in listings, and loading one still needs pickle.
 - **A release's consumer notification no longer passes when no consumer listens** (#431, the
   second residual gap on juniper-recurrence#178). 0.16.0's `notify-consumers.yml` took the
   dispatch API's `204` as delivery, but GitHub returns it whether or not any workflow in the

@@ -582,7 +582,9 @@ class TestArcAgiTaskIdsLoadWithoutPickle:
         assert ids.shape == (0,)
 
     def test_a_non_string_task_id_is_stored_as_its_text(self) -> None:
-        """A Hub row may carry a non-string ``task_id``; it is stored as text, not as a pickled object."""
+        """Defensive: the configured Hub source has no ``task_id`` column, so its ids are the synthetic
+        ``task_{n}`` strings. A source that did carry, say, an int id gets its ``str()``, never a pickled object.
+        """
         from juniper_data.generators.arc_agi.generator import ArcAgiGenerator
 
         tasks = [{"task_id": 7, "train": [{"input": [[1]], "output": [[2]]}], "test": []}]
@@ -590,6 +592,15 @@ class TestArcAgiTaskIdsLoadWithoutPickle:
 
         assert ids.dtype.kind == "U"
         assert ids.tolist() == ["7"]
+
+    def test_a_null_task_id_is_unknown_not_the_string_none(self) -> None:
+        """``str(None)`` would be ``"None"``, which collides with a real task of that name."""
+        from juniper_data.generators.arc_agi.generator import ArcAgiGenerator
+
+        tasks = [{"task_id": None, "train": [{"input": [[1]], "output": [[2]]}], "test": []}]
+        _, _, ids = ArcAgiGenerator._convert_tasks_to_arrays(tasks, ArcAgiParams(pad_to=5, include_test=False))
+
+        assert ids.tolist() == ["unknown"]
 
     def test_the_served_artifact_loads_with_allow_pickle_false(self, tmp_path) -> None:
         """End to end, as a consumer sees it: ``POST /v1/datasets``, then download the stored bytes.

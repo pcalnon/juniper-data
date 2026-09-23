@@ -241,7 +241,9 @@ class ArcAgiGenerator:
         task_ids = []
 
         for task in tasks:
-            task_id = task.get("task_id", "unknown")
+            # A missing or null id is "unknown"; any other id is stored as its str() in the <U array.
+            raw_id = task.get("task_id")
+            task_id = "unknown" if raw_id is None else str(raw_id)
 
             for pair in task.get("train", []):
                 input_grid = ArcAgiGenerator._pad_grid(pair["input"], params.pad_to, params.pad_value)
@@ -282,7 +284,7 @@ class ArcAgiGenerator:
             X_arr = X_stacked.astype(np.float32)
             y_arr = y_stacked.astype(np.float32)
 
-        return X_arr, y_arr, np.array([str(task_id) for task_id in task_ids], dtype=np.str_)
+        return X_arr, y_arr, np.array(task_ids, dtype=np.str_)
 
     @staticmethod
     def _pad_grid(grid: list[list[int]], pad_to: int, pad_value: int) -> np.ndarray:
