@@ -8,6 +8,7 @@ from juniper_data.core.models import (
     DatasetMeta,
     GeneratorInfo,
     PreviewData,
+    PublicDatasetMeta,
 )
 from juniper_data.core.split import shuffle_and_split, shuffle_data, split_data
 
@@ -24,6 +25,7 @@ __all__ = [
     "DatasetMeta",
     "GeneratorInfo",
     "PreviewData",
+    "PublicDatasetMeta",
     # Artifacts
     "arrays_to_bytes",
     "compute_checksum",

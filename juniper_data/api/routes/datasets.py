@@ -6,11 +6,13 @@ import json
 import logging
 import time
 import uuid
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 
 import numpy as np
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
+from pydantic import TypeAdapter
 from starlette import status
 
 logger = logging.getLogger(__name__)
@@ -24,6 +26,7 @@ from juniper_data.api.constants import (
     POST_CACHE_HIT,
     POST_CACHE_MISS,
 )
+from juniper_data.api.http_cache import CACHE_CONTROL_NO_STORE, CACHE_CONTROL_REVALIDATE, PrerenderedJSONResponse, body_etag, combine_field_lines, read_precondition_status, weak_etag, write_preconditions_hold
 from juniper_data.api.observability import record_dataset_generation, record_dataset_post
 from juniper_data.core.artifacts import compute_checksum
 from juniper_data.core.constants import TAGS_MATCH_DEFAULT, TAGS_MATCH_PATTERN
@@ -41,15 +44,17 @@ from juniper_data.core.models import (
     BatchUpdateTagsResponse,
     CreateDatasetRequest,
     CreateDatasetResponse,
+    DatasetAccessStats,
     DatasetListResponse,
     DatasetMeta,
     DatasetStats,
     DatasetVersionListResponse,
     PreviewData,
+    PublicDatasetMeta,
     UpdateTagsRequest,
 )
 from juniper_data.storage import DatasetStore
-from juniper_data.storage.base import encode_cursor
+from juniper_data.storage.base import InvalidDatasetIdError, PreconditionFailedError, encode_cursor
 from juniper_data.storage.constants import JSON_INDENT_DEFAULT
 
 from .generators import GENERATOR_REGISTRY
@@ -73,6 +78,93 @@ def set_store(store: DatasetStore) -> None:
     """Set the dataset store (called during app startup)."""
     global _store
     _store = store
+
+
+# The one serializer for a single dataset's metadata representation. Typed with the
+# PUBLIC model, so a stored ``DatasetMeta`` handed to it loses its access counters
+# (APD-DATA-032; see ``PublicDatasetMeta``).
+_PUBLIC_META = TypeAdapter(PublicDatasetMeta)
+_ACCESS_STATS = TypeAdapter(DatasetAccessStats)
+
+# The validator and caching headers each route sends, declared so the published OpenAPI
+# says what the wire carries (juniper_data/api/http_cache.py has the semantics).
+_H_STRONG_ETAG = {"description": "Strong entity-tag: the SHA-256 of the exact response body.", "schema": {"type": "string"}}
+_H_WEAK_ETAG = {"description": 'Weak entity-tag, W/"<checksum>": same arrays, not necessarily the same bytes. Absent when the dataset has no stored checksum.', "schema": {"type": "string"}}
+_H_CACHE_CONTROL = {"description": "private, no-cache", "schema": {"type": "string"}}
+_H_CONTENT_LOCATION = {"description": "The canonical /v1/datasets/<dataset_id> of the representation returned.", "schema": {"type": "string"}}
+_R_304 = {"description": "Not Modified: `If-None-Match` names the current representation. No body."}
+_R_412_READ = {"description": "Precondition Failed: `If-Match` does not name the current representation."}
+_R_412_WRITE = {"description": "Precondition Failed: `If-Match` does not name, or `If-None-Match` names, the current representation, or either field is malformed. Nothing was changed."}
+
+_CONDITIONAL_READ = {status.HTTP_200_OK: {"headers": {"ETag": _H_STRONG_ETAG, "Cache-Control": _H_CACHE_CONTROL}}, status.HTTP_304_NOT_MODIFIED: _R_304, status.HTTP_412_PRECONDITION_FAILED: _R_412_READ}
+_CONDITIONAL_READ_LATEST = {status.HTTP_200_OK: {"headers": {"ETag": _H_STRONG_ETAG, "Cache-Control": _H_CACHE_CONTROL, "Content-Location": _H_CONTENT_LOCATION}}, status.HTTP_304_NOT_MODIFIED: _R_304, status.HTTP_412_PRECONDITION_FAILED: _R_412_READ}
+_CONDITIONAL_READ_ARTIFACT = {status.HTTP_200_OK: {"headers": {"ETag": _H_WEAK_ETAG, "Cache-Control": _H_CACHE_CONTROL}}, status.HTTP_304_NOT_MODIFIED: _R_304, status.HTTP_412_PRECONDITION_FAILED: _R_412_READ}
+_CONDITIONAL_WRITE = {status.HTTP_200_OK: {"headers": {"ETag": _H_STRONG_ETAG, "Cache-Control": _H_CACHE_CONTROL, "Content-Location": _H_CONTENT_LOCATION}}, status.HTTP_412_PRECONDITION_FAILED: _R_412_WRITE}
+
+# ``list[str]``: a list-valued header may arrive on several lines, and RFC 9110 §5.3 makes
+# those one list. Typed ``str`` FastAPI would keep only the first line.
+_IF_NONE_MATCH = Header(
+    default=None,
+    description="Entity-tag(s) of a representation the client already holds. On a read, a match answers 304 with no body (APD-DATA-017).",
+)
+_IF_MATCH = Header(
+    default=None,
+    description="Entity-tag(s) the current representation must carry (strong comparison); otherwise 412 (APD-DATA-017).",
+)
+
+
+def _precondition_failed() -> HTTPException:
+    return HTTPException(status_code=status.HTTP_412_PRECONDITION_FAILED, detail="Precondition Failed: the representation does not satisfy the request's If-Match / If-None-Match")
+
+
+def _canonical_path(dataset_id: str) -> str:
+    """The canonical URI of one dataset's metadata, in the form ``artifact_url`` uses."""
+    return f"{API_PREFIX}/datasets/{dataset_id}"
+
+
+def _close_artifact_stream(stream: Iterator[bytes]) -> None:
+    """Release an opened artifact stream that will not be sent.
+
+    LocalFS returns a generator that opens its file only once iterated, and closing it
+    before then is a no-op that also stops it from ever opening one; another store's
+    iterator may hold a resource from the start. The base default, a tuple iterator, has
+    nothing to close.
+    """
+    close = getattr(stream, "close", None)
+    if callable(close):
+        close()
+
+
+def _metadata_response(meta: DatasetMeta, if_match: str | None, if_none_match: str | None, *, content_location: str | None = None) -> Response:
+    """Render one dataset's metadata with its strong ``ETag``: a 200, a 304, or a 412.
+
+    Preconditions follow RFC 9110 §13.2.2 (``read_precondition_status``); callers have
+    already established that the dataset exists, so a precondition is never evaluated
+    against a target that would have been a 404 (§13.2.1).
+
+    The body is rendered HERE rather than left to ``response_model``, so the ETag is
+    the hash of the exact bytes sent (APD-DATA-017) -- correct by construction, whatever
+    those bytes are. They are rendered the way FastAPI renders a ``response_model``
+    with the default response class: its ``dump_json`` fast path, the annotated type's
+    JSON bytes straight from pydantic-core, ``by_alias``. That is what keeps the wire
+    format unchanged. The obvious alternative, ``JSONResponse`` over a JSON-mode dump,
+    is NOT byte-identical -- ``json.dumps`` writes ``1e-07`` where pydantic-core writes
+    ``1e-7`` -- and FastAPI's choice between the two has moved across versions, so
+    ``test_bytes_match_fastapi_rendering_of_the_public_model`` pins the equality
+    against a real ``response_model`` route instead of trusting this paragraph.
+    """
+    body = _PUBLIC_META.dump_json(meta, by_alias=True)
+    headers = {"ETag": body_etag(body), "Cache-Control": CACHE_CONTROL_REVALIDATE}
+    if content_location is not None:
+        headers["Content-Location"] = content_location
+    outcome = read_precondition_status(if_match, if_none_match, headers["ETag"])
+    if outcome == status.HTTP_412_PRECONDITION_FAILED:
+        raise _precondition_failed()
+    if outcome == status.HTTP_304_NOT_MODIFIED:
+        # RFC 9110 §15.4.5: a 304 carries the validator and caching fields the 200 would
+        # have, and no body.
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
+    return PrerenderedJSONResponse(content=body, headers=headers)
 
 
 @router.post("", operation_id="create_dataset", response_model=CreateDatasetResponse, status_code=status.HTTP_201_CREATED)
@@ -837,19 +929,31 @@ async def list_dataset_versions(
     )
 
 
-@router.get("/latest", operation_id="get_latest_version", response_model=DatasetMeta)
+@router.get("/latest", operation_id="get_latest_version", response_model=PublicDatasetMeta, responses=_CONDITIONAL_READ_LATEST)
 async def get_latest_version(
     name: str = Query(description="Dataset name to get latest version of"),
     store: DatasetStore = Depends(get_store),
-) -> DatasetMeta:
+    if_match: list[str] | None = _IF_MATCH,
+    if_none_match: list[str] | None = _IF_NONE_MATCH,
+) -> Response:
     """Get the latest version of a named dataset.
+
+    The body is the same representation ``GET /{dataset_id}`` serves for that version,
+    with the same ``ETag``, and ``Content-Location`` names that canonical URI
+    (APD-DATA-029): two URIs return this representation, and without the header a
+    cache or client cannot tell they are one resource. A 307 to the canonical URI was
+    ruled out -- it costs every caller a round trip.
 
     Args:
         name: Logical dataset name to get the latest version of.
         store: Dataset storage backend.
+        if_match: Entity-tag(s) the representation must carry; otherwise 412.
+        if_none_match: Entity-tag(s) the client already holds; a match answers 304.
 
     Returns:
-        Dataset metadata for the latest version.
+        Dataset metadata for the latest version, or an empty 304. Unlike
+        ``GET /{dataset_id}``, this route has never recorded an access, and a 304 here
+        does not either.
 
     Raises:
         HTTPException: 404 if no versions found for the given name.
@@ -857,22 +961,30 @@ async def get_latest_version(
     meta = await asyncio.to_thread(store.get_latest_version, name)
     if meta is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No versions found for dataset '{name}'")
-    return meta
+    return _metadata_response(meta, combine_field_lines(if_match), combine_field_lines(if_none_match), content_location=_canonical_path(meta.dataset_id))
 
 
-@router.get("/{dataset_id}", operation_id="get_dataset_metadata", response_model=DatasetMeta)
+@router.get("/{dataset_id}", operation_id="get_dataset_metadata", response_model=PublicDatasetMeta, responses=_CONDITIONAL_READ)
 async def get_dataset_metadata(
     dataset_id: str,
     store: DatasetStore = Depends(get_store),
-) -> DatasetMeta:
+    if_match: list[str] | None = _IF_MATCH,
+    if_none_match: list[str] | None = _IF_NONE_MATCH,
+) -> Response:
     """Get metadata for a specific dataset.
+
+    Carries a strong ``ETag`` -- the SHA-256 of the exact body -- and answers a
+    matching ``If-None-Match`` with an empty 304 (APD-DATA-017). The access counters
+    are not in the body (APD-DATA-032): see ``GET /{dataset_id}/access``.
 
     Args:
         dataset_id: Unique dataset identifier.
         store: Dataset storage backend.
+        if_match: Entity-tag(s) the representation must carry; otherwise 412.
+        if_none_match: Entity-tag(s) the client already holds; a match answers 304.
 
     Returns:
-        Dataset metadata.
+        Dataset metadata, or an empty 304.
 
     Raises:
         HTTPException: 404 if dataset not found.
@@ -880,16 +992,51 @@ async def get_dataset_metadata(
     meta = await asyncio.to_thread(store.get_meta, dataset_id)
     if meta is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dataset '{dataset_id}' not found")
-    # BUG-JD-08: record access asynchronously to avoid blocking I/O on read paths
+    response = _metadata_response(meta, combine_field_lines(if_match), combine_field_lines(if_none_match))
+    # BUG-JD-08: record access asynchronously to avoid blocking I/O on read paths. A 304
+    # is recorded too: revalidating a held copy is a read of the dataset. A 412 raised
+    # above is not -- nothing was read.
     asyncio.get_event_loop().call_soon(lambda: store.record_access(dataset_id))
-    return meta
+    return response
 
 
-@router.get("/{dataset_id}/artifact", operation_id="download_artifact")
+@router.get("/{dataset_id}/access", operation_id="get_dataset_access_stats", response_model=DatasetAccessStats)
+async def get_dataset_access_stats(
+    dataset_id: str,
+    store: DatasetStore = Depends(get_store),
+) -> Response:
+    """Get the access counters of a dataset -- where they live since APD-DATA-032.
+
+    ``access_count`` and ``last_accessed_at`` change on every ``GET /{dataset_id}`` and
+    every artifact download, which is exactly why they could not stay in the metadata body:
+    no strong ``ETag`` can describe a representation that differs on every read. They
+    are still maintained as before; this is where they are read. Reading them is NOT
+    itself recorded as an access -- the count would then describe its own observation.
+
+    Args:
+        dataset_id: Unique dataset identifier.
+        store: Dataset storage backend.
+
+    Returns:
+        The dataset's access counters, marked ``no-store``.
+
+    Raises:
+        HTTPException: 404 if dataset not found.
+    """
+    meta = await asyncio.to_thread(store.get_meta, dataset_id)
+    if meta is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dataset '{dataset_id}' not found")
+    stats = DatasetAccessStats(dataset_id=meta.dataset_id, access_count=meta.access_count, last_accessed_at=meta.last_accessed_at)
+    return PrerenderedJSONResponse(content=_ACCESS_STATS.dump_json(stats, by_alias=True), headers={"Cache-Control": CACHE_CONTROL_NO_STORE})
+
+
+@router.get("/{dataset_id}/artifact", operation_id="download_artifact", responses=_CONDITIONAL_READ_ARTIFACT)
 async def download_artifact(
     dataset_id: str,
     store: DatasetStore = Depends(get_store),
-) -> StreamingResponse:
+    if_match: list[str] | None = _IF_MATCH,
+    if_none_match: list[str] | None = _IF_NONE_MATCH,
+) -> Response:
     """Download dataset artifact as NPZ file.
 
     The body is produced incrementally via
@@ -899,16 +1046,65 @@ async def download_artifact(
     read the artifact whole, so the memory bound is a property of the *store*, not
     of this route (defect-register ``APD-DATA-016``).
 
+    The response carries a WEAK ``ETag``, ``W/"<checksum>"``: the stored ``checksum``, which
+    is NOT a hash of the transferred bytes -- ``juniper_data/api/http_cache.py`` sets out what
+    it does and does not cover. A matching ``If-None-Match`` is answered with an empty 304
+    (APD-DATA-017). ``If-Match`` compares strongly, so on this route only ``*`` satisfies it.
+
     Args:
         dataset_id: Unique dataset identifier.
         store: Dataset storage backend.
+        if_match: Entity-tag(s) the representation must carry; otherwise 412.
+        if_none_match: Entity-tag(s) the client already holds; a match answers 304.
 
     Returns:
-        Streaming response with NPZ file contents.
+        Streaming response with NPZ file contents, or an empty 304.
 
     Raises:
-        HTTPException: 404 if dataset not found.
+        HTTPException: 404 if dataset not found; 412 if ``If-Match`` does not hold.
     """
+    # APD-DATA-017: the validator comes from the metadata, read BEFORE the artifact is
+    # opened, so a matching If-None-Match costs a metadata read and an existence check --
+    # no artifact I/O. A dataset whose metadata carries no checksum gets no ETag.
+    #
+    # Unreadable metadata must not cost the download: before validators existed this
+    # route never read the metadata, so a corrupt ``.meta.json`` still served the
+    # artifact. It still does, without a validator. A malformed ``dataset_id`` is not
+    # unreadable metadata but the caller's error, so it is re-raised to the 400 every other
+    # route gives it (the app's ``ValueError`` handler). The warning names the exception
+    # TYPE only: a message or traceback can carry the caller-controlled id, and ERR-08 keeps
+    # caller strings out of log records.
+    try:
+        meta = await asyncio.to_thread(store.get_meta, dataset_id)
+    except InvalidDatasetIdError:
+        raise
+    except Exception as exc:  # noqa: BLE001 -- any other metadata read failure degrades to "no validator", never to a failed download
+        logger.warning("Artifact download: dataset metadata unreadable (%s); serving without an ETag", type(exc).__name__)
+        meta = None
+    etag = weak_etag(meta.checksum) if meta is not None and meta.checksum else None
+    headers = {"Cache-Control": CACHE_CONTROL_REVALIDATE}
+    if etag is not None:
+        headers["ETag"] = etag
+    conditional = bool(if_match or if_none_match)
+    evaluated = False
+    if conditional:
+        # RFC 9110 §13.2.1: preconditions are evaluated only for a target the request would
+        # otherwise have served. ``exists`` is the store's own contract (LocalFS: metadata
+        # AND artifact on disk) and reads no artifact bytes. A target it denies falls
+        # through to the open below, which 404s when there is no artifact -- never a 304 for
+        # data that is gone. A store whose ``exists`` checks the metadata alone (the
+        # in-memory store does) can still answer 304 for a metadata-without-artifact
+        # corruption.
+        if await asyncio.to_thread(store.exists, dataset_id):
+            evaluated = True
+            outcome = read_precondition_status(combine_field_lines(if_match), combine_field_lines(if_none_match), etag)
+            if outcome == status.HTTP_412_PRECONDITION_FAILED:
+                raise _precondition_failed()
+            if outcome == status.HTTP_304_NOT_MODIFIED:
+                # Revalidating a held copy is a read of the dataset, as on the metadata route.
+                asyncio.get_event_loop().call_soon(lambda: store.record_access(dataset_id))
+                return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
+
     # APD-DATA-016: stream the artifact rather than materialise it. The previous
     # form read the whole NPZ into memory and wrapped it in ``io.BytesIO``, which
     # bounds the SOCKET BUFFER but not process memory -- peak RSS was the full
@@ -926,13 +1122,28 @@ async def download_artifact(
     if artifact_stream is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dataset '{dataset_id}' not found")
 
+    if conditional and not evaluated:
+        # An ORPHANED artifact: ``exists`` denied the target (on LocalFS, the metadata is
+        # gone) yet the artifact opened, so a representation exists and is about to be sent.
+        # RFC 9110 §13.1.1 still binds -- when If-Match is false the method MUST NOT be
+        # performed -- so the preconditions are evaluated here, against no validator: ``*``
+        # matches (a representation exists) and no listed tag can. A stream that will not be
+        # sent is closed, releasing what it holds.
+        outcome = read_precondition_status(combine_field_lines(if_match), combine_field_lines(if_none_match), None)
+        if outcome is not None:
+            _close_artifact_stream(artifact_stream)
+            if outcome == status.HTTP_412_PRECONDITION_FAILED:
+                raise _precondition_failed()
+            asyncio.get_event_loop().call_soon(lambda: store.record_access(dataset_id))
+            return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
+
     # BUG-JD-08: record access asynchronously to avoid blocking I/O on read paths
     asyncio.get_event_loop().call_soon(lambda: store.record_access(dataset_id))
 
     return StreamingResponse(
         artifact_stream,
         media_type=BINARY_MEDIA_TYPE,
-        headers={"Content-Disposition": f"attachment; filename={dataset_id}.npz"},
+        headers={**headers, "Content-Disposition": f"attachment; filename={dataset_id}.npz"},
     )
 
 
@@ -999,24 +1210,38 @@ async def delete_dataset(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dataset '{dataset_id}' not found")
 
 
-@router.patch("/{dataset_id}/tags", operation_id="update_dataset_tags", response_model=DatasetMeta)
+@router.patch("/{dataset_id}/tags", operation_id="update_dataset_tags", response_model=PublicDatasetMeta, responses=_CONDITIONAL_WRITE)
 async def update_dataset_tags(
     dataset_id: str,
     request: UpdateTagsRequest,
     store: DatasetStore = Depends(get_store),
-) -> DatasetMeta:
+    if_match: list[str] | None = _IF_MATCH,
+    if_none_match: list[str] | None = _IF_NONE_MATCH,
+) -> Response:
     """Add or remove tags from a dataset.
+
+    The body is the updated metadata representation and carries its new ``ETag``
+    (APD-DATA-017), so a client can hold the edited copy without a second read. With
+    ``If-Match`` it is an optimistic-concurrency write: the precondition is evaluated
+    against the CURRENT representation inside the store's lock, so it cannot pass and then
+    lose a race to another writer. ``If-None-Match`` naming the current representation
+    (``*`` included) is a 412 here, not a 304 -- RFC 9110 §13.1.2 for a method other than
+    GET -- and so is either field when it is malformed: a write fails closed on a
+    precondition it cannot read. No other write route evaluates preconditions: an
+    ``If-Match`` sent to ``DELETE /{dataset_id}`` or ``PATCH /batch-tags`` is ignored.
 
     Args:
         dataset_id: Unique dataset identifier.
         request: Tags to add and/or remove.
         store: Dataset storage backend.
+        if_match: Entity-tag(s) the current representation must carry; otherwise 412.
+        if_none_match: Entity-tag(s) the current representation must NOT carry; otherwise 412.
 
     Returns:
         Updated dataset metadata.
 
     Raises:
-        HTTPException: 404 if dataset not found.
+        HTTPException: 404 if dataset not found; 412 if a precondition fails (nothing written).
     """
     # APD-DATA-006: the read-modify-write must happen inside ONE hop, under the
     # store's ``_version_lock``. Doing it here across two ``asyncio.to_thread``
@@ -1024,7 +1249,20 @@ async def update_dataset_tags(
     # metadata read and every artifact download, and which rewrites the whole
     # metadata document under that lock -- could write back a pre-edit snapshot
     # and silently discard the tag change.
-    meta = await asyncio.to_thread(store.update_tags, dataset_id, request.add_tags, request.remove_tags)
+    if_match_field, if_none_match_field = combine_field_lines(if_match), combine_field_lines(if_none_match)
+
+    def precondition(current: DatasetMeta) -> bool:
+        # The ETag the current representation would carry, computed exactly as the read
+        # routes compute it -- and evaluated inside the store's lock, by update_tags.
+        return write_preconditions_hold(if_match_field, if_none_match_field, body_etag(_PUBLIC_META.dump_json(current, by_alias=True)))
+
+    conditional = if_match_field is not None or if_none_match_field is not None
+    try:
+        meta = await asyncio.to_thread(store.update_tags, dataset_id, request.add_tags, request.remove_tags, precondition if conditional else None)
+    except PreconditionFailedError:
+        raise _precondition_failed() from None
     if meta is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dataset '{dataset_id}' not found")
-    return meta
+    # The request target (``.../tags``) has no GET of its own, so Content-Location names the
+    # resource this body and its ETag describe (RFC 9110 §8.7; RFC 5789 §2.1 pairs them).
+    return _metadata_response(meta, None, None, content_location=_canonical_path(dataset_id))

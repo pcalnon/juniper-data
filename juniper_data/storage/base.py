@@ -5,7 +5,7 @@ import contextlib
 import threading
 import time
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 # from collections.abc import Callable
 from datetime import UTC, datetime
@@ -81,6 +81,28 @@ def _strictly_after(meta: DatasetMeta, cursor_created_at: datetime, cursor_datas
     if meta.created_at != cursor_created_at:
         return meta.created_at < cursor_created_at
     return meta.dataset_id > cursor_dataset_id
+
+
+class PreconditionFailedError(Exception):
+    """A conditional write's precondition evaluated false against the CURRENT metadata.
+
+    Raised by :meth:`DatasetStore.update_tags` from inside its lock, so the check and the
+    write cannot be interleaved by another writer; the route turns it into a 412
+    (RFC 9110 §13.1, APD-DATA-017).
+    """
+
+
+class InvalidDatasetIdError(ValueError):
+    """A ``dataset_id`` the store refuses to address: the CALLER's error, never a storage fault.
+
+    A ``ValueError``, so every existing handler keeps working unchanged -- the app's
+    ``ValueError`` handler answers it with the 400 every route gives a malformed id. It is a
+    class of its own so that a route which degrades on a storage failure can tell the two
+    apart: ``download_artifact`` serves the artifact without a validator when the metadata
+    cannot be read, and a malformed id must not take that path. Its message carries the
+    caller's id, so a handler that logs it is bound by ERR-08; the app's handler logs it at
+    DEBUG only.
+    """
 
 
 class DatasetStore(ABC):
@@ -310,16 +332,30 @@ class DatasetStore(ABC):
                 meta.access_count += 1
                 self.update_meta(dataset_id, meta)
 
-    def update_tags(self, dataset_id: str, add_tags: list[str], remove_tags: list[str]) -> DatasetMeta | None:
+    def update_tags(
+        self,
+        dataset_id: str,
+        add_tags: list[str],
+        remove_tags: list[str],
+        precondition: Callable[[DatasetMeta], bool] | None = None,
+    ) -> DatasetMeta | None:
         """Atomically add and/or remove tags on a dataset's metadata.
 
         Args:
             dataset_id: Unique identifier for the dataset.
             add_tags: Tags to add.
             remove_tags: Tags to remove. Applied after ``add_tags``.
+            precondition: Evaluated against the CURRENT metadata inside the lock, before any
+                change; when it returns False nothing is written and
+                :class:`PreconditionFailedError` is raised. This is what makes ``If-Match``
+                on ``PATCH .../tags`` a real optimistic-concurrency check (APD-DATA-017): a
+                check made in the route, outside this lock, could pass and then lose the race.
 
         Returns:
             The updated metadata, or ``None`` if the dataset does not exist.
+
+        Raises:
+            PreconditionFailedError: ``precondition`` returned False.
 
         APD-DATA-006: this exists so the tag read-modify-write happens under
         the same ``_version_lock`` that :meth:`record_access` holds. Both
@@ -340,6 +376,8 @@ class DatasetStore(ABC):
             meta = self.get_meta(dataset_id)
             if meta is None:
                 return None
+            if precondition is not None and not precondition(meta):
+                raise PreconditionFailedError(dataset_id)
             tags = set(meta.tags)
             tags.update(add_tags)
             tags -= set(remove_tags)
