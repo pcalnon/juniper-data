@@ -20,7 +20,7 @@ from fastapi.testclient import TestClient
 from pydantic import TypeAdapter
 
 from juniper_data.api.app import create_app
-from juniper_data.api.http_cache import body_etag, if_none_match_hits, strong_etag
+from juniper_data.api.http_cache import body_etag, combine_field_lines, if_match_fails, if_none_match_hits, strong_etag, weak_etag
 from juniper_data.api.routes import datasets
 from juniper_data.api.settings import Settings
 from juniper_data.core.models import DatasetMeta, PublicDatasetMeta
@@ -107,6 +107,25 @@ class TestIfNoneMatchParsing:
 
     def test_unparseable_field_serves_the_full_body(self) -> None:
         assert not if_none_match_hits("abc", self.ETAG)
+        # A tag embedded in garbage is not a list element; scanning without the grammar
+        # check would find it.
+        assert not if_none_match_hits('foo"abc"bar', self.ETAG)
+        assert not if_none_match_hits('x, "abc"', self.ETAG)
+
+    def test_empty_list_elements_are_allowed(self) -> None:
+        assert if_none_match_hits('"zzz", , "abc"', self.ETAG)
+
+    def test_if_match_uses_the_strong_comparison(self) -> None:
+        assert not if_match_fails('"abc"', self.ETAG)
+        assert not if_match_fails("*", self.ETAG)
+        assert if_match_fails('W/"abc"', self.ETAG)
+        assert if_match_fails('"abd"', self.ETAG)
+        assert if_match_fails("garbage", self.ETAG), "a precondition the server cannot read must not pass"
+        assert not if_match_fails(None, self.ETAG), "no header, no precondition"
+
+    def test_list_valued_header_lines_are_combined(self) -> None:
+        assert combine_field_lines(['"zzz"', '"abc"']) == '"zzz", "abc"'
+        assert combine_field_lines(None) is None
 
 
 @pytest.mark.unit
@@ -153,6 +172,14 @@ class TestMetadataValidator:
         response = client.get(f"/v1/datasets/{dataset_id}", headers={"If-None-Match": '"not-this-one"'})
         assert response.status_code == 200
         assert response.json()["dataset_id"] == dataset_id
+
+    def test_if_none_match_on_two_header_lines_is_one_list(self, client: TestClient) -> None:
+        # RFC 9110 §5.3: the two lines are the same list. Typed ``str``, FastAPI would read
+        # only the first line and serve a 200 the client did not need.
+        dataset_id = _create(client)
+        etag = client.get(f"/v1/datasets/{dataset_id}").headers["etag"]
+        response = client.get(f"/v1/datasets/{dataset_id}", headers=[("If-None-Match", '"zzz"'), ("If-None-Match", etag)])
+        assert response.status_code == 304
 
     def test_a_tag_edit_moves_the_etag_and_the_patch_carries_the_new_one(self, client: TestClient) -> None:
         dataset_id = _create(client)
@@ -209,7 +236,8 @@ class TestArtifactValidator:
         assert response.status_code == 200
         checksum = store.get_meta(dataset_id).checksum
         assert checksum
-        assert response.headers["etag"] == strong_etag(checksum)
+        # WEAK (owner ruling 2026-09-23): the checksum covers the arrays, not the served bytes.
+        assert response.headers["etag"] == weak_etag(checksum)
         assert response.headers["cache-control"] == "private, no-cache"
         assert response.headers["content-disposition"] == f"attachment; filename={dataset_id}.npz"
 
@@ -217,13 +245,20 @@ class TestArtifactValidator:
         dataset_id = _create(client)
         full = client.get(f"/v1/datasets/{dataset_id}/artifact")
         opened: list[str] = []
-        real_open = store.open_artifact_stream
+        real_open, real_bytes = store.open_artifact_stream, store.get_artifact_bytes
 
         def counting_open(*args, **kwargs):
             opened.append("open")
             return real_open(*args, **kwargs)
 
+        def counting_bytes(*args, **kwargs):
+            opened.append("bytes")
+            return real_bytes(*args, **kwargs)
+
+        # Both artifact readers: a 304 that read the whole artifact through get_artifact_bytes
+        # would be as wrong as one that opened the stream.
         monkeypatch.setattr(store, "open_artifact_stream", counting_open)
+        monkeypatch.setattr(store, "get_artifact_bytes", counting_bytes)
         response = client.get(f"/v1/datasets/{dataset_id}/artifact", headers={"If-None-Match": full.headers["etag"]})
         assert response.status_code == 304
         assert response.content == b""
@@ -237,12 +272,146 @@ class TestArtifactValidator:
         assert again.status_code == 200
         assert again.content == full.content
 
-    def test_a_dataset_without_a_checksum_is_served_in_full_with_no_etag(self, client: TestClient, store: InMemoryDatasetStore) -> None:
+    def test_a_dataset_without_a_checksum_has_no_etag_but_star_still_matches(self, client: TestClient, store: InMemoryDatasetStore) -> None:
+        # No checksum, no validator: a tagged If-None-Match can name nothing and the full body
+        # is served. ``*`` is different -- RFC 9110 §13.1.2 makes it match any CURRENT
+        # representation, validator or not, so it answers 304.
         store.save("no-checksum", _stored_meta("no-checksum", checksum=None), _arrays())
-        response = client.get("/v1/datasets/no-checksum/artifact", headers={"If-None-Match": "*"})
+        tagged = client.get("/v1/datasets/no-checksum/artifact", headers={"If-None-Match": '"anything"'})
+        assert tagged.status_code == 200
+        assert "etag" not in tagged.headers
+        assert tagged.content
+        assert client.get("/v1/datasets/no-checksum/artifact", headers={"If-None-Match": "*"}).status_code == 304
+
+    def test_a_304_on_the_artifact_is_recorded_as_an_access(self, client: TestClient) -> None:
+        dataset_id = _create(client)
+        etag = client.get(f"/v1/datasets/{dataset_id}/artifact").headers["etag"]
+        count_before = client.get(f"/v1/datasets/{dataset_id}/access").json()["access_count"]
+        assert client.get(f"/v1/datasets/{dataset_id}/artifact", headers={"If-None-Match": etag}).status_code == 304
+        assert client.get(f"/v1/datasets/{dataset_id}/access").json()["access_count"] == count_before + 1
+
+    def test_stale_if_match_is_412_before_any_artifact_is_served(self, client: TestClient) -> None:
+        dataset_id = _create(client)
+        response = client.get(f"/v1/datasets/{dataset_id}/artifact", headers={"If-Match": '"stale"'})
+        assert response.status_code == 412
+
+    def test_if_match_cannot_name_a_weak_artifact_tag_but_star_matches(self, client: TestClient) -> None:
+        # If-Match compares STRONGLY, so the artifact's weak tag never satisfies it -- not even
+        # its own current value. That is the cost the weak ruling accepted; ``*`` still works.
+        dataset_id = _create(client)
+        etag = client.get(f"/v1/datasets/{dataset_id}/artifact").headers["etag"]
+        assert etag.startswith("W/")
+        assert client.get(f"/v1/datasets/{dataset_id}/artifact", headers={"If-Match": etag}).status_code == 412
+        assert client.get(f"/v1/datasets/{dataset_id}/artifact", headers={"If-Match": "*"}).status_code == 200
+
+    def test_unreadable_metadata_still_serves_the_artifact(self, client: TestClient, store: InMemoryDatasetStore, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Before validators existed this route never read the metadata, so a corrupt
+        # metadata document still served the artifact. It must still, just without an ETag.
+        dataset_id = _create(client)
+
+        def broken_get_meta(_dataset_id: str) -> DatasetMeta:
+            raise ValueError("truncated metadata document")
+
+        monkeypatch.setattr(store, "get_meta", broken_get_meta)
+        response = client.get(f"/v1/datasets/{dataset_id}/artifact")
         assert response.status_code == 200
-        assert "etag" not in response.headers
         assert response.content
+        assert "etag" not in response.headers
+
+
+@pytest.mark.unit
+class TestPreconditionsRespectExistence:
+    """RFC 9110 §13.2.1: a precondition is never answered for a target that would 404."""
+
+    def test_a_deleted_artifact_is_404_even_when_if_none_match_matches(self, tmp_path) -> None:
+        from juniper_data.storage.local_fs import LocalFSDatasetStore
+
+        storage = tmp_path / "juniper_data_storage"
+        storage.mkdir()
+        store = LocalFSDatasetStore(storage)
+        app = create_app(settings=Settings(storage_path=str(storage)))
+        datasets.set_store(store)
+        client = TestClient(app)
+        dataset_id = _create(client)
+        etag = client.get(f"/v1/datasets/{dataset_id}/artifact").headers["etag"]
+        store._npz_path(dataset_id).unlink()  # metadata left behind, artifact gone
+        assert client.get(f"/v1/datasets/{dataset_id}/artifact").status_code == 404
+        assert client.get(f"/v1/datasets/{dataset_id}/artifact", headers={"If-None-Match": etag}).status_code == 404
+        assert client.get(f"/v1/datasets/{dataset_id}/artifact", headers={"If-None-Match": "*"}).status_code == 404
+
+
+@pytest.mark.unit
+class TestIfMatch:
+    """If-Match: strong comparison, evaluated before If-None-Match (RFC 9110 §13.1.1, §13.2.2)."""
+
+    def test_reads_honour_if_match(self, client: TestClient) -> None:
+        dataset_id = _create(client)
+        etag = client.get(f"/v1/datasets/{dataset_id}").headers["etag"]
+        assert client.get(f"/v1/datasets/{dataset_id}", headers={"If-Match": etag}).status_code == 200
+        assert client.get(f"/v1/datasets/{dataset_id}", headers={"If-Match": "*"}).status_code == 200
+        assert client.get(f"/v1/datasets/{dataset_id}", headers={"If-Match": '"stale"'}).status_code == 412
+        # Strong comparison: a weak tag never satisfies If-Match, even with the same opaque value.
+        assert client.get(f"/v1/datasets/{dataset_id}", headers={"If-Match": f"W/{etag}"}).status_code == 412
+
+    def test_failed_if_match_wins_over_a_matching_if_none_match(self, client: TestClient) -> None:
+        dataset_id = _create(client)
+        etag = client.get(f"/v1/datasets/{dataset_id}").headers["etag"]
+        response = client.get(f"/v1/datasets/{dataset_id}", headers={"If-Match": '"stale"', "If-None-Match": etag})
+        assert response.status_code == 412
+
+    def test_a_412_on_a_read_is_not_an_access(self, client: TestClient) -> None:
+        dataset_id = _create(client)
+        count_before = client.get(f"/v1/datasets/{dataset_id}/access").json()["access_count"]
+        assert client.get(f"/v1/datasets/{dataset_id}", headers={"If-Match": '"stale"'}).status_code == 412
+        assert client.get(f"/v1/datasets/{dataset_id}/access").json()["access_count"] == count_before
+
+
+@pytest.mark.unit
+class TestConditionalTagWrite:
+    """PATCH .../tags as an optimistic-concurrency write (If-Match / If-None-Match -> 412)."""
+
+    def test_the_patch_response_names_the_resource_its_etag_describes(self, client: TestClient) -> None:
+        # The request target, .../tags, has no GET; Content-Location names the representation.
+        dataset_id = _create(client)
+        response = client.patch(f"/v1/datasets/{dataset_id}/tags", json={"add_tags": ["loc"]})
+        assert response.headers["content-location"] == f"/v1/datasets/{dataset_id}"
+        assert response.headers["etag"] == client.get(f"/v1/datasets/{dataset_id}").headers["etag"]
+
+    def test_current_if_match_applies_the_edit(self, client: TestClient) -> None:
+        dataset_id = _create(client)
+        etag = client.get(f"/v1/datasets/{dataset_id}").headers["etag"]
+        response = client.patch(f"/v1/datasets/{dataset_id}/tags", json={"add_tags": ["cas"]}, headers={"If-Match": etag})
+        assert response.status_code == 200
+        assert "cas" in response.json()["tags"]
+
+    def test_stale_if_match_is_412_and_writes_nothing(self, client: TestClient, store: InMemoryDatasetStore) -> None:
+        dataset_id = _create(client)
+        stale = client.get(f"/v1/datasets/{dataset_id}").headers["etag"]
+        assert client.patch(f"/v1/datasets/{dataset_id}/tags", json={"add_tags": ["first"]}).status_code == 200
+        response = client.patch(f"/v1/datasets/{dataset_id}/tags", json={"add_tags": ["lost-update"]}, headers={"If-Match": stale})
+        assert response.status_code == 412
+        assert "lost-update" not in store.get_meta(dataset_id).tags
+
+    def test_if_none_match_star_on_an_existing_dataset_is_412(self, client: TestClient, store: InMemoryDatasetStore) -> None:
+        dataset_id = _create(client)
+        response = client.patch(f"/v1/datasets/{dataset_id}/tags", json={"add_tags": ["x"]}, headers={"If-None-Match": "*"})
+        assert response.status_code == 412
+        assert "x" not in store.get_meta(dataset_id).tags
+
+    def test_the_store_evaluates_the_precondition_against_current_metadata_and_writes_nothing_on_false(self, store: InMemoryDatasetStore) -> None:
+        from juniper_data.storage.base import PreconditionFailedError
+
+        store.save("guarded", _stored_meta("guarded", tags=["a"]), _arrays())
+        seen: list[list[str]] = []
+
+        def refuse(current: DatasetMeta) -> bool:
+            seen.append(list(current.tags))
+            return False
+
+        with pytest.raises(PreconditionFailedError):
+            store.update_tags("guarded", ["b"], [], refuse)
+        assert seen == [["a"]], "the precondition must see the CURRENT metadata"
+        assert store.get_meta("guarded").tags == ["a"], "a failed precondition must write nothing"
 
 
 @pytest.mark.unit
@@ -298,6 +467,7 @@ class TestAccessCountersMoved:
         assert created.status_code == 201
         listed = client.get("/v1/datasets/filter").json()["datasets"]
         versions = client.get("/v1/datasets/versions", params={"name": "embed"}).json()["versions"]
+        assert listed and versions, "an empty listing would make this loop pass vacuously"
         for representation in [created.json()["meta"], *listed, *versions]:
             for counter in COUNTERS:
                 assert counter not in representation

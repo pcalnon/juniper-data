@@ -133,9 +133,10 @@ class DatasetMeta(PublicDatasetMeta):
     """Dataset metadata as it is STORED: the representation plus the access counters.
 
     This is the model every store reads, writes and returns. The counters stay here --
-    ``record_access`` still maintains them on every metadata read and artifact
-    download -- but they are not part of the representation (APD-DATA-032; see
-    :class:`PublicDatasetMeta`). Declared last so the stored field order is unchanged.
+    ``record_access`` still maintains them where it always did, on ``GET /{dataset_id}``
+    and on artifact downloads -- but they are not part of the representation
+    (APD-DATA-032; see :class:`PublicDatasetMeta`). Declared last so the stored field order
+    is unchanged.
     """
 
     last_accessed_at: datetime | None = None
