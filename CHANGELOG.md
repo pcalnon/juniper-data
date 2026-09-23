@@ -18,14 +18,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `juniper-data-published` (`client_payload: {source, version, sha}`) into each consumer. Today
   that's juniper-recurrence, whose bench lane waits until the version is installable and then
   tests exactly that version, past its own `[bench]` cap if necessary. The dispatch **fails
-  loudly** (`curl --fail-with-body`). The data-client senders use a bare `curl -X POST`, which
-  would report a 403/404 from an under-scoped token as success. `workflow_dispatch` re-sends for
-  a version already on PyPI. **A failed dispatch turns the publish run red after PyPI has
-  already accepted the release**, so the `pypi` job, not the run, is the publish verdict.
-  **A `204` is not taken as delivery.** GitHub returns it whether or not any workflow in the
-  target listens for the event type, so a renamed or missing listener would pass silently. The
-  job then waits up to two minutes for the consumer to start a `repository_dispatch` run, and
-  fails if none appears (the second residual gap recorded on juniper-recurrence#178).
+  loudly** (`curl --fail-with-body`). juniper-data-client's senders used a bare `curl -X POST`
+  until juniper-data-client#212, and it reports a 403/404 from an under-scoped token as success.
+  `workflow_dispatch` re-sends for a version already on PyPI. **A failed dispatch turns the
+  publish run red after PyPI has already accepted the release**, so the `pypi` job, not the
+  run, is the publish verdict. **A `204` is not taken as delivery.** GitHub returns it whether
+  or not any workflow in the target listens for the event type, so a renamed or missing
+  listener would pass silently. The job then waits about two minutes for the consumer to start
+  a run titled `juniper-data-published` (a dispatch run's default title is its event type), and
+  fails if none appears. That is the second residual gap recorded on juniper-recurrence#178. A
+  failed listing is retried rather than failing the step, since the release has already been
+  delivered by then. The consumer's workflow must set no `run-name:`.
 
 - **The container image can generate `equities` and `equities_seq` datasets** (#421). This was
   an owner decision on 2026-09-22. `requirements.lock` was compiled with

@@ -22,17 +22,22 @@
 #      * workflow_dispatch -- re-send for a version ALREADY on PyPI: to prove the path end to end
 #        without cutting a release, or to re-run a consumer check that was lost.
 #
-#    The dispatch FAILS LOUDLY (`curl --fail-with-body`). The data-client senders use a bare
-#    `curl -X POST`, which reports a 403/404 from an under-scoped token as success -- the same
-#    silence #178 is about. CROSS_REPO_DISPATCH_TOKEN is a PAT; GITHUB_TOKEN cannot dispatch into
-#    another repository. Payload values reach the shell only through `env:`.
+#    The dispatch FAILS LOUDLY (`curl --fail-with-body`). juniper-data-client's senders used a
+#    bare `curl -X POST` until juniper-data-client#212, and it reports a 403/404 from an
+#    under-scoped token as success -- the same silence #178 is about. CROSS_REPO_DISPATCH_TOKEN is
+#    a PAT; GITHUB_TOKEN cannot dispatch into another repository. Payload values reach the shell
+#    only through `env:`.
 #
 #    A 204 is not the finish line. GitHub returns it whether or not any workflow in the target
-#    listens for the event type, so the job then waits up to two minutes for the consumer to start
-#    a `repository_dispatch` run, and fails if none appears (the second residual gap on #178).
+#    listens for the event type, so the job then waits about two minutes for the consumer to start
+#    a `juniper-data-published` run, and fails if none appears (the second residual gap on #178).
 #
 #    To add a consumer: append its repo to the matrix, and give its workflow a
-#    `repository_dispatch: types: [juniper-data-published]` trigger that tests the payload version.
+#    `repository_dispatch: types: [juniper-data-published]` trigger that tests the payload version,
+#    and NO `run-name:` -- the confirmation step matches the run by its default title, which for a
+#    dispatch run is the event type. The token needs Contents: Read and write on the consumer to
+#    dispatch. Listing a PUBLIC consumer's runs needs no permission, but grant Actions: Read too,
+#    so the confirmation does not rest on that.
 #
 #####################################################################################################################################################################################################
 
@@ -105,35 +110,44 @@ jobs:
       # missing listener passes the step above and the consumer never runs. That is the second
       # residual gap recorded on juniper-recurrence#178. So wait for a run to appear.
       #
-      # The match is by event and creation time, not by payload: the runs API does not expose
-      # client_payload. A second dispatch into the same repo within the window would satisfy it
-      # too, and juniper-data is the only sender into juniper-recurrence today.
-      # Listing runs of a PUBLIC repo needs no token permission. A private consumer would need
-      # Actions: Read on this token.
+      # The match is by event, creation time and TITLE, not by payload: the runs API does not
+      # expose client_payload. A dispatch run's default title is its event type, so only a
+      # juniper-data-published run counts; this holds while the consumer's workflow sets no
+      # `run-name:`. A second juniper-data-published dispatch within the window would satisfy the
+      # check too; juniper-data is the only sender into juniper-recurrence today. A failed GET is
+      # retried rather than ending the step, because a transient error here would turn a
+      # delivered release red. Listing runs of a PUBLIC repo needs no token permission; a private
+      # consumer would need Actions: Read on this token.
       - name: Confirm the consumer started a run
         env:
           TOKEN: ${{ secrets.CROSS_REPO_DISPATCH_TOKEN }}
           REPO: ${{ matrix.repo }}
           SINCE: ${{ steps.dispatch.outputs.since }}
+          EVENT_TYPE: juniper-data-published
         run: |
           set -euo pipefail
-          for attempt in $(seq 1 12); do
-            runs="$(curl --fail-with-body --silent --show-error --get \
-              -H "Accept: application/vnd.github+json" \
-              -H "Authorization: Bearer ${TOKEN}" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              --data-urlencode "event=repository_dispatch" \
-              --data-urlencode "created=>=${SINCE}" \
-              --data-urlencode "per_page=5" \
-              "https://api.github.com/repos/pcalnon/${REPO}/actions/runs")"
-            count="$(jq '.total_count' <<<"${runs}")"
-            if [[ "${count}" -gt 0 ]]; then
-              url="$(jq -r '.workflow_runs[0].html_url' <<<"${runs}")"
-              echo "pcalnon/${REPO} started a repository_dispatch run (attempt ${attempt}): ${url}"
-              echo "- \`pcalnon/${REPO}\` started ${url}" >> "${GITHUB_STEP_SUMMARY}"
-              exit 0
+          attempts=12
+          for attempt in $(seq 1 "${attempts}"); do
+            if runs="$(curl --fail-with-body --silent --show-error --get \
+                  -H "Accept: application/vnd.github+json" \
+                  -H "Authorization: Bearer ${TOKEN}" \
+                  -H "X-GitHub-Api-Version: 2022-11-28" \
+                  --data-urlencode "event=repository_dispatch" \
+                  --data-urlencode "created=>=${SINCE}" \
+                  --data-urlencode "per_page=20" \
+                  "https://api.github.com/repos/pcalnon/${REPO}/actions/runs")"; then
+              url="$(jq -r --arg title "${EVENT_TYPE}" '[.workflow_runs[]? | select(.display_title == $title)][0].html_url // empty' <<<"${runs}")"
+              if [[ -n "${url}" ]]; then
+                echo "pcalnon/${REPO} started a ${EVENT_TYPE} run (attempt ${attempt}): ${url}"
+                echo "- \`pcalnon/${REPO}\` started ${url}" >> "${GITHUB_STEP_SUMMARY}"
+                exit 0
+              fi
+            else
+              echo "::warning::listing pcalnon/${REPO}'s runs failed on attempt ${attempt} of ${attempts}"
             fi
-            sleep 10
+            if (( attempt < attempts )); then
+              sleep 10
+            fi
           done
-          echo "::error::GitHub accepted the dispatch, but pcalnon/${REPO} started no repository_dispatch run within 2 minutes of ${SINCE}. Check that one of its workflows declares 'repository_dispatch: types: [juniper-data-published]' and is enabled."
+          echo "::error::GitHub accepted the dispatch, but pcalnon/${REPO} started no ${EVENT_TYPE} run in about two minutes (runs created at or after ${SINCE}, 30 s before the dispatch). Check that one of its workflows declares 'repository_dispatch: types: [${EVENT_TYPE}]', sets no run-name, and is enabled."
           exit 1
