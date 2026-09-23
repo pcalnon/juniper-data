@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A release now notifies the repos that install juniper-data from PyPI**
+  (`.github/workflows/notify-consumers.yml`, new; `publish.yml` gains a `notify-consumers` job
+  after `pypi`). This is juniper-recurrence#178, and the owner picked cross-repo dispatch. A
+  consumer lane scoped to its own paths can't see a break that arrives through this package:
+  decision 11 (#369) broke all seven juniper-recurrence bench datasets, and that lane reported
+  success for 15 days. Once the PyPI job succeeds, the new job fires `repository_dispatch`
+  `juniper-data-published` (`client_payload: {source, version, sha}`) into each consumer. Today
+  that's juniper-recurrence, whose bench lane waits until the version is installable and then
+  tests exactly that version, past its own `[bench]` cap if necessary. The dispatch **fails
+  loudly** (`curl --fail-with-body`). The data-client senders use a bare `curl -X POST`, which
+  would report a 403/404 from an under-scoped token as success. `workflow_dispatch` re-sends for
+  a version already on PyPI. **A failed dispatch turns the publish run red after PyPI has
+  already accepted the release**, so the `pypi` job, not the run, is the publish verdict.
+
 - **The container image can generate `equities` and `equities_seq` datasets** (#421). This was
   an owner decision on 2026-09-22. `requirements.lock` was compiled with
   `--extra api --extra observability --extra mnist` only. pandas reached the image through the
