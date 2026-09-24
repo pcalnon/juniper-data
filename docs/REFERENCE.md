@@ -1263,7 +1263,7 @@ long form of this section.
 | `GET /v1/datasets/{dataset_id}` | SHA-256 of the exact body | `If-Match` → 412; `If-None-Match` → 304 | a 304 is recorded as an access; a 412 is not |
 | `GET /v1/datasets/latest` | same as the canonical route's | as above | `Content-Location: /v1/datasets/<dataset_id>`; records no access, 200 or 304 |
 | `GET /v1/datasets/{dataset_id}/artifact` | WEAK, `W/"<checksum>"`; none if the metadata has no checksum | as above, for a target `store.exists()` confirms; an orphaned artifact is judged against no validator | a confirmed target's 304 is decided before the artifact is opened; a 412 is not an access |
-| `PATCH /v1/datasets/{dataset_id}/tags` | the NEW representation's | `If-Match` failing, `If-None-Match` matching, or either malformed → 412, nothing written | evaluated inside `update_tags`' lock; `Content-Location` names `/v1/datasets/<dataset_id>` |
+| `PATCH /v1/datasets/{dataset_id}/tags` | the NEW representation's | `If-Match` failing, `If-None-Match` matching, or either malformed → 412, nothing written | evaluated inside `update_tags`' locks, which every route that edits or deletes a dataset takes; `Content-Location` names `/v1/datasets/<dataset_id>` |
 
 All three reads send `Cache-Control: private, no-cache`. `private` because the key travels in
 `X-API-Key`, which RFC 9111 §3.5 does not oblige a shared cache to treat as authentication.
@@ -1288,35 +1288,57 @@ lines is one list (§5.3), so the routes take it as `list[str]` and join the lin
 **A field the server cannot read is resolved in each direction's safe way.** A field is malformed
 when it is not `*` or a well-formed entity-tag list (a tag embedded in garbage, `foo"<etag>"bar`, is
 not a list element), or when it is longer than 8192 characters (`MAX_PRECONDITION_FIELD_LENGTH`,
-counted over the joined lines). On a read, a malformed `If-None-Match` names nothing and the full
-body is served: a wrong 304 would leave a client on data it should not use. A malformed `If-Match`
+counted over the joined lines). Only spaces and tabs -- RFC 9110 OWS -- may surround either, so a
+`*` wrapped in NBSP or NEL is malformed: those are obs-text a server passes through, and
+`str.strip()`, which removes them, read such a field as `*`. On a read, a malformed
+`If-None-Match` names nothing and the full body is served: a wrong 304 would leave a client on data
+it should not use. A malformed `If-Match`
 fails, read or write, and so does a malformed `If-None-Match` on `PATCH .../tags`: a 412, nothing
 written, because performing a method under a condition the server could not read is the unsafe
 direction. The grammar is matched in linear time: it runs on the event loop for a GET and under
 `_version_lock` for a PATCH. The length cap is defence in depth, not what makes it linear.
 
-**A precondition is never answered for a target that would 404** (§13.2.1), **and never ignored for
-one that would be served** (§13.1.1). The metadata routes decide only after the metadata is found.
-The artifact route gates the precondition branch on the store's own `exists()` — LocalFS checks
-metadata AND artifact on disk and reads no bytes — so a deleted artifact 404s even when
-`If-None-Match` names it. The in-memory store's `exists()` checks metadata only, so there a
-metadata-without-artifact corruption can still 304. An **orphaned** artifact — `exists()` denies it,
-yet the artifact opens (on LocalFS, its metadata is gone) — is judged after the open, against no
-validator: `If-Match: *` holds and `If-None-Match: *` answers 304, because a representation exists;
-no listed tag can name it, so any other `If-Match` is a 412. A stream opened and then not sent is
-closed. A dataset with neither metadata nor artifact is a 404 under every precondition. A metadata
-document that cannot be read does not cost the download: the artifact is served without an `ETag`,
-as it was before validators existed. That warning names only the exception type, because a message
-or traceback can carry the caller-controlled id (ERR-08). A malformed `dataset_id` is not unreadable
-metadata: `InvalidDatasetIdError`, a `ValueError`, takes the same 400 every other route gives it.
+**On LocalFS a precondition is never answered for a target that would 404** (§13.2.1), **and never
+ignored for one that would be served** (§13.1.1). The metadata routes decide only after the metadata
+is found. The artifact route gates the precondition branch on the store's own `exists()` — LocalFS
+checks metadata AND artifact on disk and reads no bytes — so a deleted artifact 404s even when
+`If-None-Match` names it. The in-memory, Redis and Postgres stores' `exists()` checks metadata only,
+so on them a metadata-without-artifact corruption can still 304. An **orphaned** artifact —
+`exists()` denies it, yet the artifact opens (on LocalFS, its metadata is gone) — is judged after
+the open, against no validator: `If-Match: *` holds and `If-None-Match: *` answers 304, because a
+representation exists; no listed tag can name it, so any other `If-Match` is a 412. A stream opened
+and then not sent is closed. A dataset with neither metadata nor artifact is a 404 under every
+precondition. A metadata document that cannot be read does not cost the download: the artifact is
+served without an `ETag`, as it was before validators existed, and a conditional request skips the
+`exists()` gate -- which consults the same metadata -- and is judged after the open, as for an
+orphan. That covers a corrupt document and a metadata file that leads out of the storage root:
+LocalFS refuses to follow it and raises `StorageContainmentError`, a storage fault. The fallback's
+warning names only the exception type, because a message or traceback can carry the
+caller-controlled id (ERR-08). A malformed `dataset_id` is not unreadable metadata:
+`InvalidDatasetIdError`, a `ValueError`, takes the same 400 every other route gives it.
+`StorageContainmentError` is a `ValueError` too, as the plain `ValueError` that check raised
+through 0.15.0 was, so batch delete still reports such an id as not found and the routes that do
+not degrade still answer 400; it is simply not the caller's error.
 
 **`PATCH .../tags` is an optimistic-concurrency write.** `update_tags` takes an optional
 `precondition`, evaluated against the CURRENT metadata inside its `_version_lock` and cross-process
 write lock, before anything is written; the route passes one that recomputes the representation's
 `ETag` exactly as the reads do, and a `False` raises `PreconditionFailedError` → 412. A check made in
-the route, outside that lock, could pass and then lose the race to another writer.
-`TestConditionalWriteIsAtomic` pins both halves: the lock is held while the precondition runs, and a
-writer that lands after the route has decided still gets the 412.
+the route, outside those locks, could pass and then lose the race to another writer. So could a
+check inside them, if the other writer took neither: `PATCH /batch-tags` read and wrote in two
+unlocked hops and `DELETE` took no lock, so each could land between the check and the write, and
+the PATCH answered 200 over a lost edit or for a deleted dataset. Every route that edits or deletes
+a dataset now takes the same two locks in the same order: batch-tags through `update_tags`, and
+`DELETE`, batch delete and expired-dataset cleanup through `DatasetStore.delete_under_lock`, which
+wraps the store's own `delete`. The locks are taken there and never inside a `delete` override:
+`_version_lock` is one non-reentrant lock shared by every store, and `CachedDatasetStore.delete`
+calls two other stores' `delete`. A dataset removed by something outside the locks between the read
+and the write makes `update_meta` return `False`, and `update_tags` then returns `None` -- a 404, not
+a 200 with an `ETag`. `TestConditionalWriteIsAtomic` pins each part: the precondition runs under
+`_version_lock` and under the cross-process lock; a writer that lands after the route has decided
+still gets the 412; batch-tags and `DELETE`, sent while a PATCH is held between its check and its
+write, wait for its lock; every route that deletes holds both locks; and a dataset gone by the
+write is a 404.
 
 **It is the only write that honours preconditions today.** A `DELETE /v1/datasets/{dataset_id}`
 does not evaluate its `If-Match`, although that target now carries a strong `ETag` a client could
@@ -1357,6 +1379,12 @@ collides with APD-DATA-019's pushdown), plus a fallback for artifacts written be
 - Do not read `GET /{dataset_id}/access` as an access, or count it as one.
 - Do not evaluate a write precondition in the route. It has to run inside `update_tags`' lock, or
   it can pass and then lose the race it exists to prevent.
+- Do not add a route that edits or deletes a dataset without the store's two locks: go through
+  `update_tags` or `delete_under_lock`, or a conditional PATCH can lose the race to it. And do not
+  take `_version_lock` inside a store's own `delete` or `update_meta` -- it is not reentrant, and
+  the cached store calls those methods on the stores it wraps.
+- Do not `strip()` a precondition field to find `*`: `str.strip()` removes NBSP and NEL, which are
+  not OWS. Strip spaces and tabs only (`_OWS`).
 - Do not let `_ENTITY_TAG_LIST` match an element's whitespace two ways, as in
   `[ \t]*(?:tag)?[ \t]*`. An element with no tag can then split its whitespace between the two
   runs, and a failing match tries every split of every element: exponential time on the event
@@ -1368,9 +1396,12 @@ collides with APD-DATA-019's pushdown), plus a fallback for artifacts written be
 `@router.get` do not add it. Out of scope here.
 
 Non-vacuity: `util/ad-hoc/2026-09-22_verify_conditional_request_tests_are_not_vacuous.py` applies
-thirty-four mutations, one behaviour each, and requires the tests that describe it to go red while a
-named control stays green. `util/ad-hoc/2026-09-23_verify_entity_tag_list_regex_equivalence.py`
-checks that the linear grammar accepts exactly the language the backtracking one did.
+fifty-three mutations, one behaviour each, and requires the tests named for each to go red while a
+named control stays green. Every test in `test_conditional_requests.py` is named by an arm, 58 of
+its 69 as a test that must go red; its docstring lists the 11 named only as controls.
+`util/ad-hoc/2026-09-23_verify_entity_tag_list_regex_equivalence.py` checks that the linear grammar
+accepts exactly the language the backtracking one did, over an exhaustive sweep, a random one and a
+structured sweep of lists of up to twelve elements.
 
 ---
 

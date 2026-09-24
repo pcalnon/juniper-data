@@ -23,6 +23,103 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   repos carry. `juniper_data/tests/unit/test_check_image_serves.py` (new, 22 tests) needs no Docker.
   This is item 5 of the juniper-ml container-registry rollout handoff.
 
+### Changed
+
+- **`equities_seq` is declared `regression`, not `classification`, and its `generator_version`
+  is 6.0.0** (X8, owner ruling 2026-09-24). The generator emits two targets: a one-hot next-day
+  direction (`y_*`) and a next-day close (`y_reg_*`). `task_type` has no word for "both".
+  - The one model that trains on it, juniper-recurrence's LMU, reads `y_reg_*` by key, and
+    juniper-canopy already labelled it `regression`. So the two vocabularies disagreed, and the
+    owner ruled that juniper-data changes its label.
+  - **What changes:** `POST /v1/datasets` dispatches meta on the registry's `task_type`, so an
+    `equities_seq` artifact's `n_classes` and `class_distribution` are now `null`. The arrays,
+    the checksum and every other meta field are unchanged.
+  - **Why 6.0.0:** the dataset ID hashes the generator version but not the meta, and a cache hit
+    serves the stored meta as-is. Without the bump, a cached 5.0.0 artifact would keep serving
+    classification meta under the id a fresh request resolves to. That is how `arc_agi`'s #402
+    relabel went stale until #427.
+  - **The equities pair now differs for the first time.** Flat `equities` keeps
+    `classification` at 5.0.0, because the ruling named `equities_seq` only.
+  - **Consumer census** (all nine repos, plus juniper-slacker): nothing breaks.
+    - juniper-recurrence never reads juniper-data's `task_type`: its model, crossval and bench
+      use the model's own label, and pick `y_reg_*` by key.
+    - `GeneratorInfo` does not carry `task_type`, so the `/v1/generators` listing is unchanged.
+    - The only visible effect is juniper-ml's experiment `stats_summary`, which now prints
+      "task: regression" and drops its class-distribution line for these artifacts.
+  - `juniper_data/tests/unit/test_equities_seq_task_type.py` (new). `test_val_emission_guards.py`
+    records the reason for the 6.0.0 bump.
+  - *Moved here from `[0.16.0]`: #437 merged at 09:14Z on 2026-09-24, after `v0.16.0` was tagged at `39d1cab2`, so 0.16.0 does not carry it.*
+
+### Fixed
+
+- **A conditional `PATCH /v1/datasets/{dataset_id}/tags` can no longer pass its check and then
+  lose the race.** 0.16.0 promised that it could not (#428). On one host it could.
+  `PATCH /v1/datasets/batch-tags` read and wrote the metadata in two unlocked hops, and
+  `DELETE /v1/datasets/{dataset_id}` took no lock, so either could land between a conditional
+  PATCH's passed check and its write. The PATCH then erased the batch's acknowledged edit, or
+  answered `200` with a new `ETag` for a dataset the delete had just removed, because
+  `update_tags` ignored `update_meta` reporting it gone.
+  - **Every route that edits or deletes a dataset now takes the same two locks, in
+    `update_tags`' order.** batch-tags applies each dataset's edit through `update_tags`, still
+    without evaluating preconditions and with the same response. `DELETE`, batch delete and
+    expired-dataset cleanup delete through the new `DatasetStore.delete_under_lock`.
+  - **Why the lock is taken outside each store's `delete`.** `delete_under_lock` wraps each
+    store's own `delete` and is never called from inside one: `_version_lock` is one
+    non-reentrant lock shared by every store, and `CachedDatasetStore.delete` calls two other
+    stores' `delete`.
+  - **A dataset gone by the write is a `404`.** One removed between the read and the write, by
+    something outside the locks, no longer gets a `200` with an `ETag`.
+  - **Scope.** The guarantee holds across processes on one host with LocalFS, and within one
+    process with the Redis, Postgres and cached stores.
+  - **Lock files for absent ids.** `DELETE`, batch delete and batch-tags now also leave the
+    lock file for an id that does not exist, as `PATCH .../tags` already did.
+  - **Tests.** Interleaving tests hold a conditional PATCH inside its window and send
+    batch-tags or `DELETE`. A stand-in for `_version_lock` announces any thread that has to wait
+    for it, so both outcomes are observed events, not timeouts.
+- **A `*` wrapped in NBSP (0xA0) or NEL (0x85) is malformed.** 0.16.0 read it as `*`, because
+  `http_cache` matched `*` after `str.strip()`, which strips those obs-text bytes too. So a read
+  answered `304` where the full body was owed, and a `PATCH` that should have failed closed
+  wrote. Both sites now strip RFC 9110 OWS, spaces and tabs, only. The tests send raw bytes
+  through `httpx.ASGITransport`, because Starlette's TestClient re-encodes `0xA0` as UTF-8.
+- **A metadata file that leads out of the storage root is a storage fault, not the caller's
+  error.** LocalFS's containment check raised `InvalidDatasetIdError`, so for such a dataset
+  0.16.0's artifact route answered with the caller's `400`, where 0.15.0 served the artifact.
+  - The check now raises `StorageContainmentError`, still a `ValueError` but not an
+    `InvalidDatasetIdError`.
+  - The artifact is served without a validator.
+  - A conditional request skips the `exists()` gate, which consults the same metadata, and is
+    judged after the open, as for an orphan.
+  - The other routes keep the `400` they gave through 0.15.0.
+- **0.16.0's entries for conditional requests misstated four things.** The section below is left
+  as released; `docs/api/JUNIPER_DATA_API.md` and `docs/REFERENCE.md` state them correctly.
+  - **Malformed.** A malformed field is one that is not `*` or a well-formed entity-tag list. The
+    entry left out `*`.
+  - **404 targets.** "A precondition is never answered for a target that would 404" holds on
+    LocalFS. The in-memory, Redis and Postgres stores' `exists()` checks the metadata alone, so on
+    them a dataset whose artifact is gone can still answer `304`.
+  - **Accesses.** A `412` reads nothing and records no access. The entry said every
+    `GET /{dataset_id}` records one.
+  - **The breaking flag.** The access-counter removal was flagged in bold mid-bullet, a form
+    juniper-ml's release renderer does not read. The v0.16.0 notes still marked the release as
+    breaking, because the same release removes `X_full` from the HF and Kaggle stores. The
+    versioning policy in `docs/api/JUNIPER_DATA_API.md` now says the flag is the word in capitals,
+    the form the renderer reads.
+- **The conditional-request tests pin what they did not.** Nothing tested either of these:
+  - that the PATCH precondition runs under the cross-process lock. A check inside
+    `_version_lock` but outside the `flock` passed all 1840 unit tests;
+  - that an empty `If-Match` is a `412`.
+
+  Three verification scripts changed:
+  - **The non-vacuity harness.**
+    `util/ad-hoc/2026-09-22_verify_conditional_request_tests_are_not_vacuous.py` now applies
+    fifty-three mutations. Every test in `test_conditional_requests.py` is named by one, 58 of
+    its 69 as a test that must go red.
+  - **The equivalence script.** `util/ad-hoc/2026-09-23_verify_entity_tag_list_regex_equivalence.py`
+    adds a structured sweep over lists of up to twelve elements, with 0 mismatches in 3,495,076
+    inputs.
+  - **Two new scripts beside them** re-derive the harness's coverage counts and show that the
+    sweeps catch long-list mutants.
+
 ## [0.16.0] - 2026-09-23
 
 ### Added
@@ -113,29 +210,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **`equities_seq` is declared `regression`, not `classification`, and its `generator_version`
-  is 6.0.0** (X8, owner ruling 2026-09-24). The generator emits two targets: a one-hot next-day
-  direction (`y_*`) and a next-day close (`y_reg_*`). `task_type` has no word for "both".
-  - The one model that trains on it, juniper-recurrence's LMU, reads `y_reg_*` by key, and
-    juniper-canopy already labelled it `regression`. So the two vocabularies disagreed, and the
-    owner ruled that juniper-data changes its label.
-  - **What changes:** `POST /v1/datasets` dispatches meta on the registry's `task_type`, so an
-    `equities_seq` artifact's `n_classes` and `class_distribution` are now `null`. The arrays,
-    the checksum and every other meta field are unchanged.
-  - **Why 6.0.0:** the dataset ID hashes the generator version but not the meta, and a cache hit
-    serves the stored meta as-is. Without the bump, a cached 5.0.0 artifact would keep serving
-    classification meta under the id a fresh request resolves to. That is how `arc_agi`'s #402
-    relabel went stale until #427.
-  - **The equities pair now differs for the first time.** Flat `equities` keeps
-    `classification` at 5.0.0, because the ruling named `equities_seq` only.
-  - **Consumer census** (all nine repos, plus juniper-slacker): nothing breaks.
-    - juniper-recurrence never reads juniper-data's `task_type`: its model, crossval and bench
-      use the model's own label, and pick `y_reg_*` by key.
-    - `GeneratorInfo` does not carry `task_type`, so the `/v1/generators` listing is unchanged.
-    - The only visible effect is juniper-ml's experiment `stats_summary`, which now prints
-      "task: regression" and drops its class-distribution line for these artifacts.
-  - `juniper_data/tests/unit/test_equities_seq_task_type.py` (new). `test_val_emission_guards.py`
-    records the reason for the 6.0.0 bump.
 - **The access counters are no longer part of any metadata representation** (APD-DATA-032).
   `access_count` / `last_accessed_at` changed on every read, so a body carrying them was new bytes
   on every request and no strong `ETag` could describe it. They are still stored and maintained
