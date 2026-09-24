@@ -7,43 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- **Review follow-ups to 0.16.0's arc_agi fix** (#434, for #429; #430's entry is under
-  `[0.16.0]`):
-  - **The cached store's population-failure log is bounded.** 0.16.0 turned a silently
-    swallowed cache population into a `WARNING` with its traceback, and a stored arc_agi
-    artifact that can never be cached then logged one on **every** read (100 reads gave 100
-    records). The first failure for a dataset id is now the `WARNING`, and repeats are
-    `DEBUG`. The store remembers up to 1,024 warned ids. The first new id past that bound logs
-    one more `WARNING`, which says the bound was reached, and later new ids log at `DEBUG`, so a
-    cache outage cannot grow the set without limit or go quiet unannounced.
-  - **A null arc_agi `task_id` is `"unknown"`**, as a missing one already was. `str(None)`
-    would have stored `"None"`, which collides with a real task of that name. The configured
-    Hub source carries no ids, so this is defensive.
-  - **The pickle-free fleet test fails instead of skipping in CI.** It skipped the two equities
-    generators when their extra was missing, which in CI (`.[all]`) could only hide a broken
-    install. Locally it still skips.
-  - **Operators may delete stored `arc_agi-3.0.0-*` artifacts.** A generate request against
-    0.16.0 or later mints a `4.0.0` id, so it never reuses one. They are still reachable by
-    their old ids, through a name lookup (`GET /v1/datasets/latest?name=` and `/versions`) when
-    one is a name's newest version, and in listings, and loading one still needs pickle.
-- **A release's consumer notification no longer passes when no consumer listens** (#431, the
-  second residual gap on juniper-recurrence#178). 0.16.0's `notify-consumers.yml` took the
-  dispatch API's `204` as delivery, but GitHub returns it whether or not any workflow in the
-  target listens for the event type, so a renamed or missing listener passed silently. The job
-  now waits about two minutes for the consumer to start a run titled `juniper-data-published`
-  (a dispatch run's default title is its event type), so the consumer's workflow must set no
-  `run-name:`. It fails if no run appears, and fails with a different error if the consumer's
-  runs could not be listed at all, because then whether a run started is unknown. A failed
-  listing, or a body that is not a run listing (not JSON, empty, or no `workflow_runs`), is
-  retried within the window, and if some listings failed the "no run" error says how many and
-  quotes the last, so an outage after the first listing is not read as a missing listener. Every
-  request has a time limit.
-
 ## [0.16.0] - 2026-09-23
 
 ### Added
+
+- **A release now notifies the repos that install juniper-data from PyPI**
+  (`.github/workflows/notify-consumers.yml`, new; `publish.yml` gains a `notify-consumers` job
+  after `pypi`). This is juniper-recurrence#178, and the owner picked cross-repo dispatch. A
+  consumer lane scoped to its own paths can't see a break that arrives through this package:
+  decision 11 (#369) broke all seven juniper-recurrence bench datasets, and that lane reported
+  success for 15 days. Once the PyPI job succeeds, the new job fires `repository_dispatch`
+  `juniper-data-published` (`client_payload: {source, version, sha}`) into each consumer. Today
+  that's juniper-recurrence, whose bench lane waits until the version is installable and then
+  tests exactly that version, past its own `[bench]` cap if necessary. The dispatch **fails
+  loudly** (`curl --fail-with-body`). The data-client senders use a bare `curl -X POST`, which
+  would report a 403/404 from an under-scoped token as success. `workflow_dispatch` re-sends for
+  a version already on PyPI. **A failed dispatch turns the publish run red after PyPI has
+  already accepted the release**, so the `pypi` job, not the run, is the publish verdict.
+
+- **The container image can generate `equities` and `equities_seq` datasets** (#421). This was
+  an owner decision on 2026-09-22. `requirements.lock` was compiled with
+  `--extra api --extra observability --extra mnist` only. pandas reached the image through the
+  mnist chain, but yfinance never did, so `EQUITIES_DEPS_AVAILABLE` was `False` and every
+  `equities` / `equities_seq` request raised `ImportError(install_hint())`. The image built,
+  started, served `/v1/health` and imported cleanly, so every existing check passed. That hurt
+  in the stack, because juniper-deploy points juniper-recurrence, whose data path is written for
+  `equities_seq`, at this service. The lock now also compiles `--extra equities`. It was
+  regenerated **without** `--upgrade`, so the change is additions only: 12 packages
+  (`yfinance` 1.7.0, `curl-cffi`, `lxml`, `beautifulsoup4`, `soupsieve`, `peewee`, `protobuf`,
+  `multitasking`, `platformdirs`, `pytz`, `cffi`, `pycparser`), and none of the existing 56
+  pins moved. `lockfile-update.yml`, `ci.yml`'s freshness gate and every documented refresh
+  command carry the new extra. Without it, the freshness gate would fail this lock and the
+  automation would strip the extra back out. **Verified on an image built from this tree:**
+  - `GET /v1/generators` answers `available: true` for `equities` and `equities_seq`. The
+    published 0.15.0 image, probed the same way, answers `false`. That negative control is
+    what shows the probe distinguishes the two.
+  - `check_image_cpu_only.py` holds with `torch=absent` and 72 distributions.
+  - `check_image_no_secrets.py` is clean.
+  - `/v1/health` returns 200.
+
+  The image grows by about 22 MB uncompressed on amd64 (179.1 MB to 201.5 MB). Every new compiled
+  dependency ships wheels for x86_64 and aarch64 on CPython 3.14 or abi3, so neither arch builds
+  from source. **Generating equities data makes outbound calls to Yahoo Finance and SEC EDGAR
+  from the container.** Published images pick this up at the next release.
 
 - **`ETag`s and conditional requests on the three single-dataset reads** (APD-DATA-017, owner
   rulings 2026-09-11 and 2026-09-23). `GET /v1/datasets/{dataset_id}` and `GET /v1/datasets/latest`
@@ -122,50 +128,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   new heading instead of the existing one -- the duplicate-category shape that files later
   bullets under the wrong heading. Merged into one; no entry was moved or reworded. The GitHub
   Release notes for v0.15.0 were rendered from the section as it stood and are not re-cut.
-
-## [0.16.0] - 2026-09-23
-
-### Added
-
-- **A release now notifies the repos that install juniper-data from PyPI**
-  (`.github/workflows/notify-consumers.yml`, new; `publish.yml` gains a `notify-consumers` job
-  after `pypi`). This is juniper-recurrence#178, and the owner picked cross-repo dispatch. A
-  consumer lane scoped to its own paths can't see a break that arrives through this package:
-  decision 11 (#369) broke all seven juniper-recurrence bench datasets, and that lane reported
-  success for 15 days. Once the PyPI job succeeds, the new job fires `repository_dispatch`
-  `juniper-data-published` (`client_payload: {source, version, sha}`) into each consumer. Today
-  that's juniper-recurrence, whose bench lane waits until the version is installable and then
-  tests exactly that version, past its own `[bench]` cap if necessary. The dispatch **fails
-  loudly** (`curl --fail-with-body`). The data-client senders use a bare `curl -X POST`, which
-  would report a 403/404 from an under-scoped token as success. `workflow_dispatch` re-sends for
-  a version already on PyPI. **A failed dispatch turns the publish run red after PyPI has
-  already accepted the release**, so the `pypi` job, not the run, is the publish verdict.
-
-- **The container image can generate `equities` and `equities_seq` datasets** (#421). This was
-  an owner decision on 2026-09-22. `requirements.lock` was compiled with
-  `--extra api --extra observability --extra mnist` only. pandas reached the image through the
-  mnist chain, but yfinance never did, so `EQUITIES_DEPS_AVAILABLE` was `False` and every
-  `equities` / `equities_seq` request raised `ImportError(install_hint())`. The image built,
-  started, served `/v1/health` and imported cleanly, so every existing check passed. That hurt
-  in the stack, because juniper-deploy points juniper-recurrence, whose data path is written for
-  `equities_seq`, at this service. The lock now also compiles `--extra equities`. It was
-  regenerated **without** `--upgrade`, so the change is additions only: 12 packages
-  (`yfinance` 1.7.0, `curl-cffi`, `lxml`, `beautifulsoup4`, `soupsieve`, `peewee`, `protobuf`,
-  `multitasking`, `platformdirs`, `pytz`, `cffi`, `pycparser`), and none of the existing 56
-  pins moved. `lockfile-update.yml`, `ci.yml`'s freshness gate and every documented refresh
-  command carry the new extra. Without it, the freshness gate would fail this lock and the
-  automation would strip the extra back out. **Verified on an image built from this tree:**
-  - `GET /v1/generators` answers `available: true` for `equities` and `equities_seq`. The
-    published 0.15.0 image, probed the same way, answers `false`. That negative control is
-    what shows the probe distinguishes the two.
-  - `check_image_cpu_only.py` holds with `torch=absent` and 72 distributions.
-  - `check_image_no_secrets.py` is clean.
-  - `/v1/health` returns 200.
-
-  The image grows by about 22 MB uncompressed on amd64 (179.1 MB to 201.5 MB). Every new compiled
-  dependency ships wheels for x86_64 and aarch64 on CPython 3.14 or abi3, so neither arch builds
-  from source. **Generating equities data makes outbound calls to Yahoo Finance and SEC EDGAR
-  from the container.** Published images pick this up at the next release.
 
 ### Removed
 
@@ -274,6 +236,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   there: CI runs the suite from a checkout, and the TestPyPI verify step reads installed metadata
   only. `ci.yml`'s *Verify build artifacts* step now also asserts that the built wheel holds no
   `tests/` member, alongside the existing `sp500_constituents.csv` check.
+
+- **Review follow-ups to the arc_agi fix above** (#434, for #429; #430 is that entry):
+  - **The cached store's population-failure log is bounded.** #430 turned a silently
+    swallowed cache population into a `WARNING` with its traceback, and as first merged a
+    stored arc_agi artifact that can never be cached then logged one on **every** read (100
+    reads gave 100 records). The first failure for a dataset id is now the `WARNING`, and repeats are
+    `DEBUG`. The store remembers up to 1,024 warned ids. The first new id past that bound logs
+    one more `WARNING`, which says the bound was reached, and later new ids log at `DEBUG`, so a
+    cache outage cannot grow the set without limit or go quiet unannounced.
+  - **A null arc_agi `task_id` is `"unknown"`**, as a missing one already was. `str(None)`
+    would have stored `"None"`, which collides with a real task of that name. The configured
+    Hub source carries no ids, so this is defensive.
+  - **The pickle-free fleet test fails instead of skipping in CI.** It skipped the two equities
+    generators when their extra was missing, which in CI (`.[all]`) could only hide a broken
+    install. Locally it still skips.
+  - **Operators may delete stored `arc_agi-3.0.0-*` artifacts.** A generate request against
+    0.16.0 or later mints a `4.0.0` id, so it never reuses one. They are still reachable by
+    their old ids, through a name lookup (`GET /v1/datasets/latest?name=` and `/versions`) when
+    one is a name's newest version, and in listings, and loading one still needs pickle.
+- **A release's consumer notification no longer passes when no consumer listens** (#431, the
+  second residual gap on juniper-recurrence#178). `notify-consumers.yml` as #426 first merged
+  it took the dispatch API's `204` as delivery, but GitHub returns it whether or not any workflow in the
+  target listens for the event type, so a renamed or missing listener passed silently. The job
+  now waits about two minutes for the consumer to start a run titled `juniper-data-published`
+  (a dispatch run's default title is its event type), so the consumer's workflow must set no
+  `run-name:`. It fails if no run appears, and fails with a different error if the consumer's
+  runs could not be listed at all, because then whether a run started is unknown. A failed
+  listing, or a body that is not a run listing (not JSON, empty, or no `workflow_runs`), is
+  retried within the window, and if some listings failed the "no run" error says how many and
+  quotes the last, so an outage after the first listing is not read as a missing listener. Every
+  request has a time limit.
 
 ## [0.15.0] - 2026-09-22
 
