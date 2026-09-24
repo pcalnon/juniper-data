@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The publish path asserts that the image serves, and that it is the version it is tagged**
+  (`util/check_image_serves.py`, new; `publish-image.yml`). The existing checks cover what the image
+  contains and that `juniper_data` imports. Neither can see a stale version. The worker's 0.5.0 and
+  0.6.0 images imported fine while their package reported `0.4.0`, and cascor's 0.11.0 stamps
+  `meta.version: "0.6.0"` on every enveloped response. The script starts the image as deployed, with
+  its own `CMD`, and requires liveness on :8100, plus one version across the installed metadata,
+  `juniper_data.__version__` and the `/v1/health` body. On a release, that version is the one in
+  the **tag**. An absent `__version__` fails: the ecosystem's class-2 sweep once scored that shape as
+  a pass. The check runs on the PR arm against the image just built, and on the publish path against
+  each pushed digest before the digest is exported. It passes the published `juniper-data:0.15.0`,
+  and fails that image when told to expect `0.16.0`. The script is the same one the four other image
+  repos carry. `juniper_data/tests/unit/test_check_image_serves.py` (new, 22 tests) needs no Docker.
+  This is item 5 of the juniper-ml container-registry rollout handoff.
+
 ## [0.16.0] - 2026-09-23
 
 ### Added
