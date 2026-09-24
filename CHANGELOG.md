@@ -23,6 +23,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   repos carry. `juniper_data/tests/unit/test_check_image_serves.py` (new, 22 tests) needs no Docker.
   This is item 5 of the juniper-ml container-registry rollout handoff.
 
+### Changed
+
+- **`equities_seq` is declared `regression`, not `classification`, and its `generator_version`
+  is 6.0.0** (X8, owner ruling 2026-09-24). The generator emits two targets: a one-hot next-day
+  direction (`y_*`) and a next-day close (`y_reg_*`). `task_type` has no word for "both".
+  - The one model that trains on it, juniper-recurrence's LMU, reads `y_reg_*` by key, and
+    juniper-canopy already labelled it `regression`. So the two vocabularies disagreed, and the
+    owner ruled that juniper-data changes its label.
+  - **What changes:** `POST /v1/datasets` dispatches meta on the registry's `task_type`, so an
+    `equities_seq` artifact's `n_classes` and `class_distribution` are now `null`. The arrays,
+    the checksum and every other meta field are unchanged.
+  - **Why 6.0.0:** the dataset ID hashes the generator version but not the meta, and a cache hit
+    serves the stored meta as-is. Without the bump, a cached 5.0.0 artifact would keep serving
+    classification meta under the id a fresh request resolves to. That is how `arc_agi`'s #402
+    relabel went stale until #427.
+  - **The equities pair now differs for the first time.** Flat `equities` keeps
+    `classification` at 5.0.0, because the ruling named `equities_seq` only.
+  - **Consumer census** (all nine repos, plus juniper-slacker): nothing breaks.
+    - juniper-recurrence never reads juniper-data's `task_type`: its model, crossval and bench
+      use the model's own label, and pick `y_reg_*` by key.
+    - `GeneratorInfo` does not carry `task_type`, so the `/v1/generators` listing is unchanged.
+    - The only visible effect is juniper-ml's experiment `stats_summary`, which now prints
+      "task: regression" and drops its class-distribution line for these artifacts.
+  - `juniper_data/tests/unit/test_equities_seq_task_type.py` (new). `test_val_emission_guards.py`
+    records the reason for the 6.0.0 bump.
+
 ## [0.16.0] - 2026-09-23
 
 ### Added
@@ -113,29 +139,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **`equities_seq` is declared `regression`, not `classification`, and its `generator_version`
-  is 6.0.0** (X8, owner ruling 2026-09-24). The generator emits two targets: a one-hot next-day
-  direction (`y_*`) and a next-day close (`y_reg_*`). `task_type` has no word for "both".
-  - The one model that trains on it, juniper-recurrence's LMU, reads `y_reg_*` by key, and
-    juniper-canopy already labelled it `regression`. So the two vocabularies disagreed, and the
-    owner ruled that juniper-data changes its label.
-  - **What changes:** `POST /v1/datasets` dispatches meta on the registry's `task_type`, so an
-    `equities_seq` artifact's `n_classes` and `class_distribution` are now `null`. The arrays,
-    the checksum and every other meta field are unchanged.
-  - **Why 6.0.0:** the dataset ID hashes the generator version but not the meta, and a cache hit
-    serves the stored meta as-is. Without the bump, a cached 5.0.0 artifact would keep serving
-    classification meta under the id a fresh request resolves to. That is how `arc_agi`'s #402
-    relabel went stale until #427.
-  - **The equities pair now differs for the first time.** Flat `equities` keeps
-    `classification` at 5.0.0, because the ruling named `equities_seq` only.
-  - **Consumer census** (all nine repos, plus juniper-slacker): nothing breaks.
-    - juniper-recurrence never reads juniper-data's `task_type`: its model, crossval and bench
-      use the model's own label, and pick `y_reg_*` by key.
-    - `GeneratorInfo` does not carry `task_type`, so the `/v1/generators` listing is unchanged.
-    - The only visible effect is juniper-ml's experiment `stats_summary`, which now prints
-      "task: regression" and drops its class-distribution line for these artifacts.
-  - `juniper_data/tests/unit/test_equities_seq_task_type.py` (new). `test_val_emission_guards.py`
-    records the reason for the 6.0.0 bump.
 - **The access counters are no longer part of any metadata representation** (APD-DATA-032).
   `access_count` / `last_accessed_at` changed on every read, so a body carrying them was new bytes
   on every request and no strong `ETag` could describe it. They are still stored and maintained
