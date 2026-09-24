@@ -49,7 +49,11 @@ from juniper_data.generators.equities.generator import EQUITIES_DEPS_AVAILABLE, 
 
 from .params import EquitiesSeqParams
 
-VERSION = "5.0.0"
+# 6.0.0 (X8, owner ruling 2026-09-24): the registry's ``task_type`` became ``regression``,
+# so the emitted meta changed (``n_classes`` / ``class_distribution`` are now null). The
+# arrays did not. The dataset ID hashes this version but not the meta, so without the
+# bump a cached 5.0.0 artifact would keep serving classification meta under the same id.
+VERSION = "6.0.0"
 
 _logger = logging.getLogger(__name__)
 

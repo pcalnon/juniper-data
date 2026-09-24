@@ -115,7 +115,13 @@ GENERATOR_REGISTRY: dict[str, dict[str, Any]] = {
         "generator": EquitiesSeqGenerator,
         "params_class": EquitiesSeqParams,
         "version": EQUITIES_SEQ_VERSION,
-        "task_type": "classification",
+        # X8 (owner ruling 2026-09-24): ``regression``, not ``classification``. The generator
+        # emits both a one-hot next-day direction (``y_*``) and a next-day close (``y_reg_*``),
+        # and the vocabulary has no word for "both". The one model that trains on it, the LMU,
+        # reads ``y_reg_*``, and juniper-canopy already labelled it ``regression``. A relabel
+        # changes the emitted meta (``n_classes`` / ``class_distribution`` become null), so it
+        # came with the VERSION bump to 6.0.0 -- a cached 5.0.0 artifact keeps its old meta.
+        "task_type": "regression",
         "time_unit": "calendar_days",
         "description": "Windowed (3-D sequence) S&P 500 equities variant. Slides a per-ticker lookback window over the daily OHLCV rows to produce (W, L, F) sequences with a per-step calendar-day dt (weekend/holiday gaps are the irregular Δt), an irregular forecast horizon target_dt, an all-ones observed_mask, and the next-day direction (one-hot y_*) + next-day close (y_reg_*) targets.",
     },
