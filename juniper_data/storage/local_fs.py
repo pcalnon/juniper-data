@@ -19,7 +19,7 @@ import numpy as np
 
 from juniper_data.core.constants import CHARSET_UTF8
 from juniper_data.core.models import DatasetMeta
-from juniper_data.storage.base import DatasetStore, InvalidDatasetIdError
+from juniper_data.storage.base import DatasetStore, InvalidDatasetIdError, StorageContainmentError
 from juniper_data.storage.constants import (
     ARTIFACT_STREAM_CHUNK_SIZE,
     DEFAULT_LIST_LIMIT,
@@ -103,12 +103,17 @@ class LocalFSDatasetStore(DatasetStore):
         2. The constructed path is resolved and required to remain within
            ``self._resolved_base``, catching any traversal that slips past
            the regex via filesystem-level tricks (symlink abuse, etc.).
+
+        Layer 1 refuses the CALLER's id (``InvalidDatasetIdError``). Layer 2 can only fire for
+        an id layer 1 accepted -- no separator, no ``..`` -- so what it catches is the storage
+        directory's own state, a symlink that leads out of it, and it raises
+        ``StorageContainmentError``: a storage fault, not a malformed request.
         """
         _validate_dataset_id(dataset_id)
         candidate = self._base_path / f"{dataset_id}{suffix}"
         resolved = candidate.resolve() if candidate.exists() else (self._resolved_base / candidate.name).resolve()
         if not resolved.is_relative_to(self._resolved_base):
-            raise InvalidDatasetIdError(f"Path traversal detected for dataset_id: {dataset_id!r}")
+            raise StorageContainmentError(f"Path traversal detected for dataset_id: {dataset_id!r}")
         return candidate
 
     def _meta_path(self, dataset_id: str) -> Path:

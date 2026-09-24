@@ -95,6 +95,10 @@ class PreconditionFailedError(Exception):
 class InvalidDatasetIdError(ValueError):
     """A ``dataset_id`` the store refuses to address: the CALLER's error, never a storage fault.
 
+    Raised for the id itself -- LocalFS's ``_validate_dataset_id`` refuses it before any path
+    is built -- and for nothing else. A well-formed id whose stored file resolves outside the
+    storage root is the store's fault, and raises :class:`StorageContainmentError` instead.
+
     A ``ValueError``, so every existing handler keeps working unchanged -- the app's
     ``ValueError`` handler answers it with the 400 every route gives a malformed id. It is a
     class of its own so that a route which degrades on a storage failure can tell the two
@@ -102,6 +106,23 @@ class InvalidDatasetIdError(ValueError):
     cannot be read, and a malformed id must not take that path. Its message carries the
     caller's id, so a handler that logs it is bound by ERR-08; the app's handler logs it at
     DEBUG only.
+    """
+
+
+class StorageContainmentError(ValueError):
+    """A stored file of a well-formed ``dataset_id`` resolves outside the storage root.
+
+    LocalFS's second traversal layer (JD-SEC-01): the id passed validation, but the path built
+    from it resolves -- through a symlink in the storage directory -- to somewhere outside it,
+    and the store refuses to follow. That is a fault in the STORAGE, not the caller's error,
+    so it is not an :class:`InvalidDatasetIdError`: ``download_artifact`` treats it as
+    metadata it cannot read and serves the artifact without a validator, as that route did
+    before validators existed.
+
+    It is still a ``ValueError``, as this check's error was before ``InvalidDatasetIdError``
+    existed, so ``batch_delete`` keeps classifying such an id as not found without failing the
+    batch, and a route that does not degrade on a storage failure keeps the ``400`` the app's
+    ``ValueError`` handler gives it; that handler is unchanged.
     """
 
 
@@ -352,7 +373,12 @@ class DatasetStore(ABC):
                 check made in the route, outside this lock, could pass and then lose the race.
 
         Returns:
-            The updated metadata, or ``None`` if the dataset does not exist.
+            The updated metadata, or ``None`` if the dataset does not exist -- including when
+            ``update_meta`` reports it gone by the time of the write. The edits and deletes this
+            class performs all take the same two locks, so on LocalFS only something outside them
+            can do that (a file removed by hand, another host); on a store whose cross-process lock
+            is the no-op, another process can. Answering the edit as applied would hand the client
+            a new ``ETag`` for a dataset that no longer exists.
 
         Raises:
             PreconditionFailedError: ``precondition`` returned False.
@@ -382,8 +408,35 @@ class DatasetStore(ABC):
             tags.update(add_tags)
             tags -= set(remove_tags)
             meta.tags = sorted(tags)
-            self.update_meta(dataset_id, meta)
+            if not self.update_meta(dataset_id, meta):
+                return None
             return meta
+
+    def delete_under_lock(self, dataset_id: str) -> bool:
+        """Delete a dataset under the two locks every metadata read-modify-write holds.
+
+        Returns:
+            True if the dataset was deleted, False if it did not exist -- :meth:`delete`'s
+            contract, unchanged.
+
+        :meth:`update_tags` evaluates a ``PATCH .../tags`` precondition and writes under
+        ``_version_lock`` and :meth:`_meta_write_lock`, which is what lets ``If-Match`` promise
+        that the check cannot pass and then lose the race. A delete that took neither landed
+        inside that window: the PATCH's write found the dataset gone, and the PATCH still
+        answered ``200`` with an ``ETag``. Every route that deletes -- ``DELETE /{dataset_id}``,
+        batch delete and expired-dataset cleanup -- comes through here, taking the locks in
+        ``update_tags``' order, so a delete is ordered before or after a tag edit, never inside
+        it.
+
+        The locks are taken HERE, around the store's own :meth:`delete`, never inside it:
+        ``_version_lock`` is one non-reentrant lock shared by every store instance, and
+        ``CachedDatasetStore.delete`` calls its primary's and its cache's ``delete``, so a store
+        whose ``delete`` took it would deadlock under the cached one. The per-process caveat of
+        :meth:`record_access` applies: only a store that overrides :meth:`_meta_write_lock`
+        (LocalFS) orders processes.
+        """
+        with self._version_lock, self._meta_write_lock(dataset_id):
+            return self.delete(dataset_id)
 
     @contextlib.contextmanager
     def _meta_write_lock(self, dataset_id: str) -> Iterator[None]:
@@ -398,7 +451,8 @@ class DatasetStore(ABC):
 
         The default is a no-op, which is correct for any store whose state does not
         outlive the process (``InMemoryDatasetStore``); a store backed by shared
-        durable state overrides it. Both call sites take ``_version_lock`` first and
+        durable state overrides it. Every call site -- :meth:`record_access`,
+        :meth:`update_tags` and :meth:`delete_under_lock` -- takes ``_version_lock`` first and
         this second, so the acquisition order is uniform and cannot deadlock.
 
         This closes lost updates between processes on ONE host. It is not a
@@ -427,7 +481,7 @@ class DatasetStore(ABC):
             List of dataset IDs that were deleted.
         """
         deleted: list[str] = []
-        deleted.extend(meta.dataset_id for meta in self._list_all_metadata_cached() if self.is_expired(meta) and self.delete(meta.dataset_id))
+        deleted.extend(meta.dataset_id for meta in self._list_all_metadata_cached() if self.is_expired(meta) and self.delete_under_lock(meta.dataset_id))
         return deleted
 
     def list_versions(self, dataset_name: str) -> list[DatasetMeta]:
@@ -600,7 +654,7 @@ class DatasetStore(ABC):
         not_found = []
         for dataset_id in dataset_ids:
             try:
-                ok = self.delete(dataset_id)
+                ok = self.delete_under_lock(dataset_id)
             except ValueError:
                 # JD-SEC-01: reject traversal attempts without failing the
                 # entire batch — classify as not_found so the response still

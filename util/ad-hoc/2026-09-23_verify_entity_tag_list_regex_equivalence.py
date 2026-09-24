@@ -5,7 +5,7 @@ Project:     Juniper
 Sub-Project: juniper-data
 Application: ad-hoc verification
 Author:      Paul Calnon
-Version:     1.0.0
+Version:     1.1.0
 License:     MIT
 
 WHY THIS EXISTS
@@ -19,8 +19,19 @@ for a GET and under the store's ``_version_lock`` for a PATCH.
 The fix moves the trailing whitespace INSIDE the optional tag group, so an element is
 ``OWS`` or ``OWS TAG OWS`` -- the same two shapes as before, with one way to match each.
 That is an argument, and this script is the check behind it: the old and new patterns
-must agree on every input of an exhaustive small-alphabet sweep and on a token-built
-random sweep that reaches long well-formed lists, which random characters rarely form.
+must agree on every input of an exhaustive small-alphabet sweep, a token-built random sweep,
+and a STRUCTURED sweep over list-element counts from 0 to 12.
+
+The structured sweep was added when round-3 validation (lane A2, F4) showed the other two
+barely reach long lists: a mutant that differed only from the eighth list element on produced
+one mismatch in 300,000 random inputs, and seven characters is too short for eight elements.
+For every count it takes every sequence of elements over three shapes -- empty, a strong tag,
+and a weak tag wrapped in OWS -- then puts a malformed element at every position of an
+all-tag and an all-empty list, and joins tag lists with every separator spelling. Long
+well-formed lists and long lists broken at any one position are therefore reached by
+construction, not by chance. Its negative control,
+``util/ad-hoc/2026-09-24_verify_equivalence_sweeps_catch_long_list_mutants.py``, feeds these
+sweeps language-changing mutants, the long-list ones among them.
 
 The new pattern is imported from the module, not copied, so the check covers what
 ships; the old one is the literal from the PR head it replaced (3ecb106).
@@ -60,9 +71,32 @@ TOKENS = ['"a"', '"a,b"', 'W/"a"', 'W/""', '""', ",", ", ", " ,", "\t", " ", "W/
 RANDOM_CASES = 300_000
 RANDOM_MAX_TOKENS = 10
 
+# The structured sweep (F4). Elements, not characters: every sequence of STRUCTURED_MAX_ELEMENTS
+# or fewer over ELEMENT_SHAPES, then one BROKEN_ELEMENTS entry at each position, then each
+# SEPARATORS spelling between tags.
+STRUCTURED_MAX_ELEMENTS = 12
+ELEMENT_SHAPES = ["", '"a"', ' W/"a,b"\t']
+BROKEN_ELEMENTS = ["x", '"', "W/", 'W/ "a"', '"a""b"', '"a" x', "*"]
+SEPARATORS = [",", ", ", " ,", " , ", ",\t", "\t,\t"]
+
 
 def _agree(text: str) -> bool:
     return (OLD.fullmatch(text) is None) == (NEW.fullmatch(text) is None)
+
+
+def _structured_inputs() -> list[str]:
+    """Every input of the structured sweep, one list-element count at a time."""
+    inputs: list[str] = []
+    for count in range(STRUCTURED_MAX_ELEMENTS + 1):
+        inputs.extend(",".join(shapes) for shapes in itertools.product(ELEMENT_SHAPES, repeat=count))
+        for fill in ('"a"', ""):
+            for position in range(count):
+                for broken in BROKEN_ELEMENTS:
+                    elements = [fill] * count
+                    elements[position] = broken
+                    inputs.append(",".join(elements))
+        inputs.extend(separator.join(['"a"'] * count) for separator in SEPARATORS)
+    return inputs
 
 
 def main() -> int:
@@ -88,8 +122,19 @@ def main() -> int:
         if not _agree(text):
             mismatches += 1
             examples.append(text)
+    structured = structured_accepted = 0
+    for text in _structured_inputs():
+        checked += 1
+        structured += 1
+        hit = NEW.fullmatch(text) is not None
+        accepted += hit
+        structured_accepted += hit
+        if not _agree(text):
+            mismatches += 1
+            examples.append(text)
     print(f"exhaustive: every string over {len(ALPHABET)} symbols up to length {EXHAUSTIVE_MAX_LEN} ({exhaustive:,} inputs)")
     print(f"random:     {RANDOM_CASES:,} token-built inputs of up to {RANDOM_MAX_TOKENS} tokens")
+    print(f"structured: {structured:,} lists of 0 to {STRUCTURED_MAX_ELEMENTS} elements ({structured_accepted:,} accepted, {structured - structured_accepted:,} refused)")
     print(f"checked={checked:,} accepted-by-both={accepted:,} mismatches={mismatches}")
     for text in examples[:5]:
         print(f"  MISMATCH {text!r}")

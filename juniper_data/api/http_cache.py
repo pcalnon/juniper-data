@@ -46,15 +46,16 @@ client which resource the body represents; it does not merge cache entries, whic
 9111 keys by the request target. The CORS middleware exposes none of these headers
 (no ``expose_headers``), so browser JavaScript on another origin cannot read them.
 
-A precondition field that is not ``*`` or a well-formed entity-tag list, or is longer than
-``MAX_PRECONDITION_FIELD_LENGTH`` (8192 characters, every line joined), is MALFORMED, and each
-use resolves it in its own safe direction. On a read, ``If-None-Match`` names nothing and the
-full body is served: a wrong 304 would leave a client on data it should not use. ``If-Match``
-fails, read or write, and so does ``If-None-Match`` on a write -- a 412, nothing written:
-performing a method under a condition the server could not read is the unsafe direction. The
-grammar is matched in linear time because it runs on the event loop for a GET and under the
-store's ``_version_lock`` for a PATCH; the length cap is defence in depth, not what makes it
-linear (see ``_ENTITY_TAG_LIST``).
+A precondition field that is not ``*`` or a well-formed entity-tag list -- the whitespace
+around either may be spaces and tabs only (RFC 9110 OWS), so a ``*`` wrapped in NBSP or NEL is
+not ``*`` -- or is longer than ``MAX_PRECONDITION_FIELD_LENGTH`` (8192 characters, every line
+joined), is MALFORMED, and each use resolves it in its own safe direction. On a read,
+``If-None-Match`` names nothing and the full body is served: a wrong 304 would leave a client on
+data it should not use. ``If-Match`` fails, read or write, and so does ``If-None-Match`` on a
+write -- a 412, nothing written: performing a method under a condition the server could not read
+is the unsafe direction. The grammar is matched in linear time because it runs on the event loop
+for a GET and under the store's ``_version_lock`` for a PATCH; the length cap is defence in
+depth, not what makes it linear (see ``_ENTITY_TAG_LIST``).
 """
 
 from __future__ import annotations
@@ -93,6 +94,13 @@ MAX_PRECONDITION_FIELD_LENGTH = 8192
 # return of the backtracking form fails in seconds instead of hanging the suite.
 _ENTITY_TAG = re.compile(r'(W/)?"([^"]*)"')
 _ENTITY_TAG_LIST = re.compile(r'[ \t]*(?:(?:W/)?"[^"]*"[ \t]*)?(?:,[ \t]*(?:(?:W/)?"[^"]*"[ \t]*)?)*')
+
+# RFC 9110 §5.6.3 OWS: the only whitespace a field may carry around ``*``, as around a list
+# element in the grammar above. A bare ``str.strip()`` removes every Unicode whitespace
+# character, and two of them -- NBSP (0xA0) and NEL (0x85) -- are obs-text a server passes
+# through, so ``*`` wrapped in either read as ``*``: a 304 on a read, and a write that should
+# have failed closed went ahead.
+_OWS = " \t"
 
 
 class PrerenderedJSONResponse(JSONResponse):
@@ -135,7 +143,7 @@ def _well_formed(field: str) -> bool:
     """Whether ``field`` can be read at all: ``*`` or an entity-tag list, within the length cap."""
     if len(field) > MAX_PRECONDITION_FIELD_LENGTH:
         return False
-    return field.strip() == "*" or _ENTITY_TAG_LIST.fullmatch(field) is not None
+    return field.strip(_OWS) == "*" or _ENTITY_TAG_LIST.fullmatch(field) is not None
 
 
 def _list_names(field: str, etag: str | None, *, strong: bool) -> bool:
@@ -151,7 +159,7 @@ def _list_names(field: str, etag: str | None, *, strong: bool) -> bool:
     """
     if not _well_formed(field):
         return False
-    if field.strip() == "*":
+    if field.strip(_OWS) == "*":
         return True
     if etag is None:
         return False

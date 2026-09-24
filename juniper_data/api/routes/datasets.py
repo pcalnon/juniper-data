@@ -718,6 +718,11 @@ async def batch_update_tags(
 ) -> BatchUpdateTagsResponse:
     """Add or remove tags from multiple datasets.
 
+    Each dataset's edit is applied through the store's ``update_tags``, under the same locks as
+    ``PATCH /{dataset_id}/tags``, so a batch edit is ordered before or after a conditional tag
+    edit of the same dataset, never inside it. ``If-Match`` / ``If-None-Match`` are not
+    evaluated here.
+
     Args:
         request: Batch tag update request with dataset IDs and tag changes.
         store: Dataset storage backend.
@@ -728,22 +733,16 @@ async def batch_update_tags(
     updated: list[str] = []
     not_found: list[str] = []
 
-    # BUG-JD-10 (2026-05-05 audit): ``store.get_meta`` and
-    # ``store.update_meta`` are synchronous filesystem I/O. Offload
-    # each call to a thread so the FastAPI event loop stays
-    # responsive during large batches — same pattern as
-    # ``generator_class.generate`` above.
+    # One locked read-modify-write per dataset. Reading with ``get_meta`` and writing with
+    # ``update_meta`` in two unlocked hops, as this did, let the edit land between a
+    # conditional PATCH's passed check and its write, which then erased it. BUG-JD-10
+    # (2026-05-05 audit): the store call is synchronous I/O, so it runs off the event loop --
+    # same pattern as ``generator_class.generate`` above.
     for dataset_id in request.dataset_ids:
-        meta = await asyncio.to_thread(store.get_meta, dataset_id)
+        meta = await asyncio.to_thread(store.update_tags, dataset_id, request.add_tags, request.remove_tags)
         if meta is None:
             not_found.append(dataset_id)
             continue
-
-        current_tags = set(meta.tags)
-        current_tags.update(request.add_tags)
-        current_tags -= set(request.remove_tags)
-        meta.tags = sorted(current_tags)
-        await asyncio.to_thread(store.update_meta, dataset_id, meta)
         updated.append(dataset_id)
 
     return BatchUpdateTagsResponse(
@@ -1008,7 +1007,8 @@ async def get_dataset_access_stats(
     """Get the access counters of a dataset -- where they live since APD-DATA-032.
 
     ``access_count`` and ``last_accessed_at`` change on every ``GET /{dataset_id}`` and
-    every artifact download, which is exactly why they could not stay in the metadata body:
+    every artifact download that answers 200 or 304 (a 412 reads nothing and records
+    nothing), which is exactly why they could not stay in the metadata body:
     no strong ``ETag`` can describe a representation that differs on every read. They
     are still maintained as before; this is where they are read. Reading them is NOT
     itself recorded as an access -- the count would then describe its own observation.
@@ -1069,11 +1069,13 @@ async def download_artifact(
     #
     # Unreadable metadata must not cost the download: before validators existed this
     # route never read the metadata, so a corrupt ``.meta.json`` still served the
-    # artifact. It still does, without a validator. A malformed ``dataset_id`` is not
-    # unreadable metadata but the caller's error, so it is re-raised to the 400 every other
-    # route gives it (the app's ``ValueError`` handler). The warning names the exception
-    # TYPE only: a message or traceback can carry the caller-controlled id, and ERR-08 keeps
-    # caller strings out of log records.
+    # artifact. It still does, without a validator -- and so does a metadata file the store
+    # refuses to follow out of its root (``StorageContainmentError``), a storage fault. A
+    # malformed ``dataset_id`` is not unreadable metadata but the caller's error, so it is
+    # re-raised to the 400 every other route gives it (the app's ``ValueError`` handler). The
+    # warning names the exception TYPE only: a message or traceback can carry the
+    # caller-controlled id, and ERR-08 keeps caller strings out of log records.
+    metadata_readable = True
     try:
         meta = await asyncio.to_thread(store.get_meta, dataset_id)
     except InvalidDatasetIdError:
@@ -1081,13 +1083,18 @@ async def download_artifact(
     except Exception as exc:  # noqa: BLE001 -- any other metadata read failure degrades to "no validator", never to a failed download
         logger.warning("Artifact download: dataset metadata unreadable (%s); serving without an ETag", type(exc).__name__)
         meta = None
+        metadata_readable = False
     etag = weak_etag(meta.checksum) if meta is not None and meta.checksum else None
     headers = {"Cache-Control": CACHE_CONTROL_REVALIDATE}
     if etag is not None:
         headers["ETag"] = etag
     conditional = bool(if_match or if_none_match)
     evaluated = False
-    if conditional:
+    # Unreadable metadata skips the existence gate: ``exists`` consults the same metadata (on
+    # LocalFS it raises for a metadata file the store refuses to follow), so the artifact alone
+    # decides whether a representation exists, and the preconditions are judged after the open
+    # below, as for an orphan -- against no validator.
+    if conditional and metadata_readable:
         # RFC 9110 §13.2.1: preconditions are evaluated only for a target the request would
         # otherwise have served. ``exists`` is the store's own contract (LocalFS: metadata
         # AND artifact on disk) and reads no artifact bytes. A target it denies falls
@@ -1124,7 +1131,8 @@ async def download_artifact(
 
     if conditional and not evaluated:
         # An ORPHANED artifact: ``exists`` denied the target (on LocalFS, the metadata is
-        # gone) yet the artifact opened, so a representation exists and is about to be sent.
+        # gone), or the metadata could not be read and the gate was skipped, yet the artifact
+        # opened, so a representation exists and is about to be sent.
         # RFC 9110 §13.1.1 still binds -- when If-Match is false the method MUST NOT be
         # performed -- so the preconditions are evaluated here, against no validator: ``*``
         # matches (a representation exists) and no listed tag can. A stream that will not be
@@ -1198,6 +1206,10 @@ async def delete_dataset(
 ) -> None:
     """Delete a dataset.
 
+    The delete takes the same locks as ``PATCH /{dataset_id}/tags``, so it is ordered before or
+    after a conditional tag edit of the same dataset, never between its check and its write.
+    ``If-Match`` is not evaluated here.
+
     Args:
         dataset_id: Unique dataset identifier.
         store: Dataset storage backend.
@@ -1205,7 +1217,7 @@ async def delete_dataset(
     Raises:
         HTTPException: 404 if dataset not found.
     """
-    deleted = await asyncio.to_thread(store.delete, dataset_id)
+    deleted = await asyncio.to_thread(store.delete_under_lock, dataset_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dataset '{dataset_id}' not found")
 
@@ -1223,12 +1235,16 @@ async def update_dataset_tags(
     The body is the updated metadata representation and carries its new ``ETag``
     (APD-DATA-017), so a client can hold the edited copy without a second read. With
     ``If-Match`` it is an optimistic-concurrency write: the precondition is evaluated
-    against the CURRENT representation inside the store's lock, so it cannot pass and then
-    lose a race to another writer. ``If-None-Match`` naming the current representation
-    (``*`` included) is a 412 here, not a 304 -- RFC 9110 §13.1.2 for a method other than
-    GET -- and so is either field when it is malformed: a write fails closed on a
-    precondition it cannot read. No other write route evaluates preconditions: an
-    ``If-Match`` sent to ``DELETE /{dataset_id}`` or ``PATCH /batch-tags`` is ignored.
+    against the CURRENT representation inside the store's locks, and every route that edits
+    or deletes a dataset takes the same locks, so the check cannot pass and then lose a race
+    to another writer. That holds across processes on one host with the default (LocalFS)
+    store; the Redis and Postgres stores and ``CachedDatasetStore`` lock within one process
+    only. A dataset that is gone by the time of the write is a 404, never a 200 with an
+    ``ETag``. ``If-None-Match`` naming the current representation (``*`` included) is a 412
+    here, not a 304 -- RFC 9110 §13.1.2 for a method other than GET -- and so is either
+    field when it is malformed: a write fails closed on a precondition it cannot read. No
+    other write route evaluates preconditions: an ``If-Match`` sent to
+    ``DELETE /{dataset_id}`` or ``PATCH /batch-tags`` is ignored.
 
     Args:
         dataset_id: Unique dataset identifier.
