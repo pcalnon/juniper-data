@@ -291,9 +291,13 @@ class TestEveryGeneratorBumpedForDecision11:
         # Each generator past 3.0.0, and why:
         # - equities / equities_seq: 4.0.0 for the owner rulings of 2026-09-09, 5.0.0 for the
         #   2026-09-15 head-typo regression fix (#404).
+        # - equities_seq alone: 6.0.0 for X8 (owner ruling 2026-09-24), which relabelled its
+        #   ``task_type`` to ``regression``. That changed the emitted meta and not the arrays,
+        #   and the meta is stored with the cached artifact, so the id had to move. This is the
+        #   first time the pair's versions differ: flat ``equities`` keeps ``classification``.
         # - arc_agi: 4.0.0 for #429 (``task_ids`` stopped being a pickled object array) and #427
         #   (#402 had replaced ``task_type`` without a bump).
-        assert ahead == {"arc_agi": "4.0.0", "equities": "5.0.0", "equities_seq": "5.0.0"}, (
+        assert ahead == {"arc_agi": "4.0.0", "equities": "5.0.0", "equities_seq": "6.0.0"}, (
             f"only the equities pair and arc_agi are deliberately past 3.0.0 (the reasons are recorded above this assertion); found {ahead}. A generator that moves on its own needs its reason recorded here, or the next reader cannot tell a decision from a drift."
         )
 
