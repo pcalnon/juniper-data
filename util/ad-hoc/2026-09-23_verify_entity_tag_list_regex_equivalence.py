@@ -5,7 +5,7 @@ Project:     Juniper
 Sub-Project: juniper-data
 Application: ad-hoc verification
 Author:      Paul Calnon
-Version:     1.1.0
+Version:     1.2.0
 License:     MIT
 
 WHY THIS EXISTS
@@ -29,7 +29,13 @@ For every count it takes every sequence of elements over three shapes -- empty, 
 and a weak tag wrapped in OWS -- then puts a malformed element at every position of an
 all-tag and an all-empty list, and joins tag lists with every separator spelling. Long
 well-formed lists and long lists broken at any one position are therefore reached by
-construction, not by chance. Its negative control,
+construction, not by chance.
+
+Round-1 validation of juniper-data#438 (lane A, F4) found what none of the three reached: a
+WHITESPACE-ONLY element in a long list. A mutant refusing one from the ninth element on
+scored 0 in every sweep, although ``',,,,,,,, '`` separates it from both patterns. So the
+structured sweep now also puts a whitespace-only element -- a space, a tab, and both -- at
+every position of an all-tag and an all-empty list, and builds lists of nothing else. Its negative control,
 ``util/ad-hoc/2026-09-24_verify_equivalence_sweeps_catch_long_list_mutants.py``, feeds these
 sweeps language-changing mutants, the long-list ones among them.
 
@@ -78,6 +84,8 @@ STRUCTURED_MAX_ELEMENTS = 12
 ELEMENT_SHAPES = ["", '"a"', ' W/"a,b"\t']
 BROKEN_ELEMENTS = ["x", '"', "W/", 'W/ "a"', '"a""b"', '"a" x', "*"]
 SEPARATORS = [",", ", ", " ,", " , ", ",\t", "\t,\t"]
+# An element of OWS alone: well-formed, and reached by no other family (round-1 of #438, F4).
+WHITESPACE_ELEMENTS = [" ", "\t", " \t "]
 
 
 def _agree(text: str) -> bool:
@@ -96,6 +104,13 @@ def _structured_inputs() -> list[str]:
                     elements[position] = broken
                     inputs.append(",".join(elements))
         inputs.extend(separator.join(['"a"'] * count) for separator in SEPARATORS)
+        for fill in ('"a"', ""):
+            for position in range(count):
+                for blank in WHITESPACE_ELEMENTS:
+                    elements = [fill] * count
+                    elements[position] = blank
+                    inputs.append(",".join(elements))
+        inputs.extend(",".join([blank] * count) for blank in WHITESPACE_ELEMENTS)
     return inputs
 
 

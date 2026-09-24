@@ -14,10 +14,11 @@ Three GET routes carry an ``ETag`` and honour ``If-Match`` / ``If-None-Match``:
   ``sha256(served bytes) != checksum`` for every store. It changes whenever the arrays
   change, which is what whole-body revalidation needs, but identical arrays
   re-serialized (another numpy or zlib, another key order -- the in-memory store sorts
-  keys, the others do not) can change the served bytes and keep the hash. "Same
-  content, possibly different bytes" is the definition of a weak validator (RFC 9110
-  §8.8.1), and the owner ruled 2026-09-23 to say so rather than claim a strong one the
-  hash cannot back. ``If-None-Match`` compares weakly, so revalidation is unaffected;
+  keys, the others do not) can change the served bytes and keep the hash. That is weak
+  by RFC 9110 §8.8.1: "a validator is weak if it is shared by two or more representations
+  of a given resource at the same time, unless those representations have identical
+  representation data". The owner ruled 2026-09-23 to say so rather than claim a strong one
+  the hash cannot back. ``If-None-Match`` compares weakly, so revalidation is unaffected;
   ``If-Match``, which compares strongly, can match an artifact only through ``*``.
   **Known gap, recorded for future work**: a truly strong artifact validator needs each
   store to record the SHA-256 of the exact bytes it writes -- a per-store change to every
@@ -30,8 +31,8 @@ requests carrying ``Authorization``, so without ``private`` a proxy could store 
 caller's authorised response and replay it to another. ``no-cache`` -- revalidate before
 every use -- because none of these URIs is immutable. Metadata changes with a tag edit.
 The artifact is NOT content-addressed, whatever its id suggests: ``dataset_id`` hashes the
-REQUEST (generator, version, params), so a dataset deleted or expired and re-created
-serves whatever the generator now produces at the same URI -- ``equities`` with its
+REQUEST (generator, version, params), so a dataset deleted (or expired and cleaned up) and
+then re-created serves whatever the generator now produces at the same URI -- ``equities`` with its
 default ``end_date=None`` means "today", so the same params yield different data on
 different days. ``immutable`` or a long ``max-age``, which the API primer
 (``juniper-ml/notes/JUNIPER_2026-08-13_JUNIPER-ECOSYSTEM_API-DESIGN-AND-IMPLEMENTATION-PRIMER.md``)
@@ -47,8 +48,9 @@ client which resource the body represents; it does not merge cache entries, whic
 (no ``expose_headers``), so browser JavaScript on another origin cannot read them.
 
 A precondition field that is not ``*`` or a well-formed entity-tag list -- the whitespace
-around either may be spaces and tabs only (RFC 9110 OWS), so a ``*`` wrapped in NBSP or NEL is
-not ``*`` -- or is longer than ``MAX_PRECONDITION_FIELD_LENGTH`` (8192 characters, every line
+around either may be spaces and tabs only (RFC 9110 OWS), so a ``*`` wrapped in anything else
+(NBSP, NEL, a control character) is not ``*`` -- or is longer than
+``MAX_PRECONDITION_FIELD_LENGTH`` (8192 characters, every line
 joined), is MALFORMED, and each use resolves it in its own safe direction. On a read,
 ``If-None-Match`` names nothing and the full body is served: a wrong 304 would leave a client on
 data it should not use. ``If-Match`` fails, read or write, and so does ``If-None-Match`` on a
@@ -97,9 +99,9 @@ _ENTITY_TAG_LIST = re.compile(r'[ \t]*(?:(?:W/)?"[^"]*"[ \t]*)?(?:,[ \t]*(?:(?:W
 
 # RFC 9110 §5.6.3 OWS: the only whitespace a field may carry around ``*``, as around a list
 # element in the grammar above. A bare ``str.strip()`` removes every Unicode whitespace
-# character, and two of them -- NBSP (0xA0) and NEL (0x85) -- are obs-text a server passes
-# through, so ``*`` wrapped in either read as ``*``: a 304 on a read, and a write that should
-# have failed closed went ahead.
+# character, and some reach the app: NBSP (0xA0) and NEL (0x85) are obs-text any server passes
+# through, and h11 also passes the separators 0x1C-0x1F. ``*`` wrapped in any of them read as
+# ``*``: a 304 on a read, and a write that should have failed closed went ahead.
 _OWS = " \t"
 
 

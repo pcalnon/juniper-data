@@ -33,10 +33,20 @@ META_FILE_SUFFIX: str = ".meta.json"
 NPZ_FILE_SUFFIX: str = ".npz"
 TMP_FILE_SUFFIX: str = ".tmp"
 # APD-DATA-007: advisory cross-process lock guarding a dataset's metadata
-# read-modify-write. Appended AFTER ``META_FILE_SUFFIX`` so the resulting name does
-# not end in ``.meta.json`` and is therefore invisible to the ``*.meta.json`` globs
-# that enumerate datasets.
+# read-modify-write. A lock file's name never ends in ``.meta.json``, so it is
+# invisible to the ``*.meta.json`` globs that enumerate datasets.
 LOCK_FILE_SUFFIX: str = ".lock"
+# The lock files are a FIXED set of stripes in this subdirectory of the storage root,
+# created when the store is: a dataset locks stripe ``sha256(id)`` mod
+# ``LOCK_STRIPE_COUNT``. A lock file per dataset id was created on first use and never
+# removed, so every request naming an absent id left one behind, and a delete needed a
+# free inode before it could free anything.
+LOCK_DIR_NAME: str = "locks"
+# 16: in-process writers are already serialised by ``DatasetStore._version_lock``, so a
+# stripe is contended only between worker processes, and the service runs one. Each
+# storage directory costs 17 inodes (the directory and 16 files); a test suite builds
+# hundreds of stores, which at 256 stripes would cost a hundred thousand.
+LOCK_STRIPE_COUNT: int = 16
 
 # ─── JSON Serialization ──────────────────────────────────────────────────────
 

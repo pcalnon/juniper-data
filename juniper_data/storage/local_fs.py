@@ -2,6 +2,7 @@
 
 import contextlib
 import fcntl
+import hashlib
 import io
 import json
 import logging
@@ -25,7 +26,9 @@ from juniper_data.storage.constants import (
     DEFAULT_LIST_LIMIT,
     DEFAULT_LIST_OFFSET,
     JSON_INDENT_DEFAULT,
+    LOCK_DIR_NAME,
     LOCK_FILE_SUFFIX,
+    LOCK_STRIPE_COUNT,
     META_FILE_SUFFIX,
     NPZ_FILE_SUFFIX,
     TMP_FILE_SUFFIX,
@@ -72,6 +75,7 @@ class LocalFSDatasetStore(DatasetStore):
     Storage layout:
         {base_path}/{dataset_id}.meta.json
         {base_path}/{dataset_id}.npz
+        {base_path}/locks/{0..f}.lock   -- the cross-process lock stripes, created with the store
     """
 
     def __init__(self, base_path: Path) -> None:
@@ -91,6 +95,35 @@ class LocalFSDatasetStore(DatasetStore):
         # The cached value is used as the reference point for the
         # defense-in-depth containment check in ``_build_path`` (JD-SEC-01).
         self._resolved_base = self._base_path.resolve()
+        self._lock_dir = self._base_path / LOCK_DIR_NAME
+        self._create_lock_stripes()
+
+    def _ensure_lock_dir(self) -> None:
+        """Create the lock directory if needed, and refuse one that leads out of the storage root."""
+        self._lock_dir.mkdir(mode=0o700, exist_ok=True)
+        if self._lock_dir.is_symlink() or not self._lock_dir.resolve().is_relative_to(self._resolved_base):
+            raise StorageContainmentError("The lock directory resolves outside the storage root")
+
+    def _create_lock_stripes(self) -> None:
+        """Create every lock stripe now, so that taking a lock never needs a new inode.
+
+        With a lock file per dataset id, created on first use and never removed, each
+        request naming an absent id left a file behind, and ``DELETE`` had to create one
+        before it could unlink anything -- so on a volume out of inodes the operations that
+        free space were the ones that failed. The stripes are a fixed set, created here and
+        then only ever opened.
+
+        Best effort: a storage directory this process cannot write to -- read-only, or out of
+        inodes on the first start -- still opens, as it did before the stripes existed, and a
+        stripe is then created when first locked. A lock directory that leads out of the
+        storage root is refused (``StorageContainmentError`` is not an ``OSError``).
+        """
+        try:
+            self._ensure_lock_dir()
+            for stripe in range(LOCK_STRIPE_COUNT):
+                os.close(os.open(self._lock_dir / f"{stripe:x}{LOCK_FILE_SUFFIX}", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600))
+        except OSError as exc:
+            logging.getLogger(__name__).warning("Could not create the lock stripes in %s (%s); each is created when first locked", self._lock_dir, type(exc).__name__)
 
     def _build_path(self, dataset_id: str, suffix: str) -> Path:
         """Construct a storage path for ``dataset_id`` with traversal defense.
@@ -121,9 +154,33 @@ class LocalFSDatasetStore(DatasetStore):
         return self._build_path(dataset_id, META_FILE_SUFFIX)
 
     def _lock_path(self, dataset_id: str) -> Path:
-        """Path of the advisory lock file guarding one dataset's metadata."""
-        meta_path = self._meta_path(dataset_id)
-        return meta_path.with_suffix(meta_path.suffix + LOCK_FILE_SUFFIX)
+        """Path of the lock stripe guarding one dataset's metadata: ``sha256(id)`` mod the stripe count.
+
+        The id is validated first, so a hostile id is refused before any file is touched, as
+        by every other path this store builds.
+        """
+        _validate_dataset_id(dataset_id)
+        stripe = int(hashlib.sha256(dataset_id.encode(CHARSET_UTF8)).hexdigest(), 16) % LOCK_STRIPE_COUNT
+        return self._lock_dir / f"{stripe:x}{LOCK_FILE_SUFFIX}"
+
+    def _open_lock_stripe(self, lock_path: Path) -> int:
+        """Open an existing lock stripe; recreate it only if something removed it.
+
+        ``O_NOFOLLOW``: a symlink planted at a stripe is refused, never followed out of the
+        storage root. ``O_CLOEXEC``: the descriptor does not leak into a child process. The
+        stripe is opened without ``O_CREAT`` first, so the normal path creates nothing and
+        needs no free inode.
+        """
+        flags = os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC
+        try:
+            return os.open(lock_path, flags)
+        except FileNotFoundError:
+            self._ensure_lock_dir()
+            # 0o600: the lock file carries no data -- it exists only as an flock target --
+            # so nothing needs to read it and a world-readable mode is pure exposure
+            # (CodeQL py/overly-permissive-file). Every process locking it runs as the
+            # service user; cross-user locking would be a deliberate change, not a default.
+            return os.open(lock_path, flags | os.O_CREAT, 0o600)
 
     @contextlib.contextmanager
     def _meta_write_lock(self, dataset_id: str) -> Iterator[None]:
@@ -137,22 +194,18 @@ class LocalFSDatasetStore(DatasetStore):
 
         A separate lock file is used rather than locking the metadata file itself: the
         write path replaces that file by ``rename``, so a lock held on the old inode
-        would guard nothing once the first writer swapped it out. The lock file is only
-        ever created and locked, never renamed or removed -- unlinking it would let a
-        second process create and lock a *different* inode by the same name and
-        immediately enter the critical section.
+        would guard nothing once the first writer swapped it out. The lock files are a
+        fixed set of stripes (``_create_lock_stripes``), never renamed or removed --
+        unlinking one would let a second process create and lock a *different* inode by
+        the same name and immediately enter the critical section. Two datasets on one
+        stripe share its lock; within a process that costs nothing, because
+        ``_version_lock`` already serialises every metadata write.
 
         ``flock`` is advisory and per-host. It orders writers on one machine, including
         separate uvicorn workers, but is not a distributed lock and gives no guarantee
         over NFS.
         """
-        lock_path = self._lock_path(dataset_id)
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        # 0o600: the lock file carries no data -- it exists only as an flock target --
-        # so nothing needs to read it and a world-readable mode is pure exposure
-        # (CodeQL py/overly-permissive-file). Every process locking it runs as the
-        # service user; cross-user locking would be a deliberate change, not a default.
-        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+        fd = self._open_lock_stripe(self._lock_path(dataset_id))
         try:
             fcntl.flock(fd, fcntl.LOCK_EX)
             try:

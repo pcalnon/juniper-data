@@ -17,6 +17,7 @@ from starlette import status
 
 from juniper_data import __version__, provenance
 from juniper_data.storage import LocalFSDatasetStore
+from juniper_data.storage.base import StorageContainmentError
 
 from .constants import API_PREFIX
 from .middleware import RequestBodyLimitMiddleware, SecurityHeadersMiddleware, SecurityMiddleware
@@ -225,6 +226,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # fault here was reported as a client error.
         if isinstance(exc, PydanticSerializationError):
             logging.getLogger("juniper_data").exception("Response serialization failed")
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"detail": "Internal server error"},
+            )
+        # The same misattribution, from the store: a stored file of a well-formed id resolves
+        # outside the storage root, and the store refused to follow it. The request was fine;
+        # the storage directory is not. Logged by TYPE only -- the message names the
+        # caller-supplied id, and ERR-08 keeps caller strings out of log records.
+        if isinstance(exc, StorageContainmentError):
+            logging.getLogger("juniper_data").error("Storage fault: %s -- a stored file resolves outside the storage root", type(exc).__name__)
             return JSONResponse(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 content={"detail": "Internal server error"},

@@ -121,8 +121,9 @@ class StorageContainmentError(ValueError):
 
     It is still a ``ValueError``, as this check's error was before ``InvalidDatasetIdError``
     existed, so ``batch_delete`` keeps classifying such an id as not found without failing the
-    batch, and a route that does not degrade on a storage failure keeps the ``400`` the app's
-    ``ValueError`` handler gives it; that handler is unchanged.
+    batch. Everywhere else the app's ``ValueError`` handler answers it as the server fault it
+    is: a generic ``500``, logged by type only. ``/filter``, ``/stats`` and expired-dataset
+    cleanup read every dataset's metadata, so one such file fails them for the whole store.
     """
 
 
@@ -374,11 +375,14 @@ class DatasetStore(ABC):
 
         Returns:
             The updated metadata, or ``None`` if the dataset does not exist -- including when
-            ``update_meta`` reports it gone by the time of the write. The edits and deletes this
-            class performs all take the same two locks, so on LocalFS only something outside them
-            can do that (a file removed by hand, another host); on a store whose cross-process lock
-            is the no-op, another process can. Answering the edit as applied would hand the client
-            a new ``ETag`` for a dataset that no longer exists.
+            ``update_meta`` reports it gone by the time of the write. The creates, edits and
+            deletes this class performs all take the same two locks, so on LocalFS only
+            something outside them can do that (a file removed by hand, another host); on a
+            store whose cross-process lock is the no-op, another process can. Answering the
+            edit as applied would hand the client a new ``ETag`` for a dataset that no longer
+            exists. Not every such removal is seen: LocalFS's ``update_meta`` checks existence
+            and then renames, so one landing between those two steps is still answered as
+            applied, and leaves metadata without an artifact.
 
         Raises:
             PreconditionFailedError: ``precondition`` returned False.
@@ -434,6 +438,11 @@ class DatasetStore(ABC):
         whose ``delete`` took it would deadlock under the cached one. The per-process caveat of
         :meth:`record_access` applies: only a store that overrides :meth:`_meta_write_lock`
         (LocalFS) orders processes.
+
+        The cost: the process-global ``_version_lock`` is held for the store's whole
+        ``delete``, as for every metadata write. :meth:`record_access`, which a read schedules
+        on the event loop, waits for it -- on LocalFS a few unlinks; on a store whose
+        ``delete`` does more (``CachedDatasetStore`` lists its cache to update a gauge), longer.
         """
         with self._version_lock, self._meta_write_lock(dataset_id):
             return self.delete(dataset_id)
@@ -452,8 +461,9 @@ class DatasetStore(ABC):
         The default is a no-op, which is correct for any store whose state does not
         outlive the process (``InMemoryDatasetStore``); a store backed by shared
         durable state overrides it. Every call site -- :meth:`record_access`,
-        :meth:`update_tags` and :meth:`delete_under_lock` -- takes ``_version_lock`` first and
-        this second, so the acquisition order is uniform and cannot deadlock.
+        :meth:`update_tags`, :meth:`delete_under_lock` and :meth:`save_versioned` -- takes
+        ``_version_lock`` first and this second, so the acquisition order is uniform and cannot
+        deadlock; ``test_every_lock_taker_enters_the_version_lock_before_the_file_lock`` pins it.
 
         This closes lost updates between processes on ONE host. It is not a
         distributed lock: separate hosts sharing network storage still need
@@ -479,6 +489,13 @@ class DatasetStore(ABC):
 
         Returns:
             List of dataset IDs that were deleted.
+
+        Known issue, predating the locks: expiry is decided outside them, on the metadata
+        snapshot ``_list_all_metadata_cached`` returns, which can be up to
+        ``_METADATA_CACHE_TTL_SECONDS`` old -- and another process's writes never refresh it.
+        A dataset deleted and re-created without a TTL after that snapshot was taken is still
+        deleted. Closing it means re-reading the metadata and re-deciding expiry under the
+        locks.
         """
         deleted: list[str] = []
         deleted.extend(meta.dataset_id for meta in self._list_all_metadata_cached() if self.is_expired(meta) and self.delete_under_lock(meta.dataset_id))
@@ -532,24 +549,40 @@ class DatasetStore(ABC):
         dataset_id: str,
         meta: DatasetMeta,
         arrays: dict[str, np.ndarray],
-    ) -> None:
-        """Atomically allocate a version number and save.
+    ) -> DatasetMeta:
+        """Create a dataset unless it already exists, allocating its version number atomically.
 
         If ``meta.dataset_name`` is set and ``meta.dataset_version`` is None,
-        the next version number is computed and assigned under a lock so that
-        concurrent callers cannot receive the same version.
+        the next version number is computed and assigned under the same locks so
+        that concurrent callers in one process cannot receive the same version.
 
         Args:
             dataset_id: Unique identifier for the dataset.
             meta: Dataset metadata. ``dataset_version`` is set in-place.
             arrays: Dictionary of numpy arrays.
+
+        Returns:
+            The metadata now stored under ``dataset_id``: ``meta`` when this call saved
+            it, or the existing dataset's when it already existed -- nothing is written then.
+
+        The existence check and the save happen under ``_version_lock`` and
+        :meth:`_meta_write_lock`, the locks every metadata write takes. The create route
+        checks existence before it generates, which can take seconds, and so did two
+        creates of one id: both passed the check, and the later save overwrote the earlier
+        one -- or overwrote a conditional ``PATCH .../tags`` that had passed its check in
+        between, which then wrote its stale copy back over the create. Checking again under
+        the locks makes create-if-absent atomic: the second create returns the dataset that
+        is there. The cost is that a create holds the process-global ``_version_lock`` for
+        its whole save, as a named create already did.
         """
-        if meta.dataset_name is not None and meta.dataset_version is None:
-            with self._version_lock:
+        with self._version_lock, self._meta_write_lock(dataset_id):
+            existing = self.get_meta(dataset_id)
+            if existing is not None:
+                return existing
+            if meta.dataset_name is not None and meta.dataset_version is None:
                 meta.dataset_version = self.next_version_number(meta.dataset_name)
-                self.save(dataset_id, meta, arrays)
-        else:
             self.save(dataset_id, meta, arrays)
+            return meta
 
     def filter_datasets(
         self,

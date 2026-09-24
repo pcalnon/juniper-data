@@ -5,7 +5,7 @@ Project:     Juniper
 Sub-Project: juniper-data
 Application: ad-hoc verification
 Author:      Paul Calnon
-Version:     1.0.0
+Version:     1.1.0
 License:     MIT
 Created:     2026-09-24
 Status:      ad-hoc -- one-off verification
@@ -26,8 +26,13 @@ up to 12. This requires:
 
 * the shipped pattern: 0 mismatches in every sweep;
 * every mutant: caught by at least one sweep;
-* the two long-list mutants (at most 7 and at most 10 elements after the first): caught by the
+* the four long-list mutants -- at most 7 and at most 10 elements after the first, and a
+  whitespace-only element refused from the 9th and from the 12th element on: caught by the
   STRUCTURED sweep, the one built to reach them.
+
+The whitespace-only pair was added when round-1 validation of juniper-data#438 (lane A, F4)
+showed the first of them, its "W8", scoring 0 in all three sweeps. The second is the same
+mutant one position short of the structured sweep's reach, so it pins that reach.
 
 Run from the repo root::
 
@@ -57,8 +62,11 @@ MUTANTS = {
     "at most 5 list elements after the first": r"[ \t]*(?:" + _TAG + r"[ \t]*)?(?:,[ \t]*(?:" + _TAG + r"[ \t]*)?){0,5}",
     "at most 7 list elements after the first": r"[ \t]*(?:" + _TAG + r"[ \t]*)?(?:,[ \t]*(?:" + _TAG + r"[ \t]*)?){0,7}",
     "at most 10 list elements after the first": r"[ \t]*(?:" + _TAG + r"[ \t]*)?(?:,[ \t]*(?:" + _TAG + r"[ \t]*)?){0,10}",
+    # Lane A's W8: after the 8th element, an element is empty or carries a tag, never OWS alone.
+    "whitespace-only element refused from the 9th": r"[ \t]*(?:" + _TAG + r"[ \t]*)?(?:,[ \t]*(?:" + _TAG + r"[ \t]*)?){0,7}(?:,(?:[ \t]*" + _TAG + r"[ \t]*)?)*",
+    "whitespace-only element refused from the 12th": r"[ \t]*(?:" + _TAG + r"[ \t]*)?(?:,[ \t]*(?:" + _TAG + r"[ \t]*)?){0,10}(?:,(?:[ \t]*" + _TAG + r"[ \t]*)?)*",
 }
-LONG_LIST = ("at most 7 list elements after the first", "at most 10 list elements after the first")
+LONG_LIST = ("at most 7 list elements after the first", "at most 10 list elements after the first", "whitespace-only element refused from the 9th", "whitespace-only element refused from the 12th")
 
 
 def _load_equivalence_script():

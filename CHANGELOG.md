@@ -48,48 +48,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
       "task: regression" and drops its class-distribution line for these artifacts.
   - `juniper_data/tests/unit/test_equities_seq_task_type.py` (new). `test_val_emission_guards.py`
     records the reason for the 6.0.0 bump.
-  - *Moved here from `[0.16.0]`: #437 merged at 09:14Z on 2026-09-24, after `v0.16.0` was tagged at `39d1cab2`, so 0.16.0 does not carry it.*
 
 ### Fixed
 
 - **A conditional `PATCH /v1/datasets/{dataset_id}/tags` can no longer pass its check and then
-  lose the race.** 0.16.0 promised that it could not (#428). On one host it could.
-  `PATCH /v1/datasets/batch-tags` read and wrote the metadata in two unlocked hops, and
-  `DELETE /v1/datasets/{dataset_id}` took no lock, so either could land between a conditional
-  PATCH's passed check and its write. The PATCH then erased the batch's acknowledged edit, or
+  lose the race.** 0.16.0 promised that it could not (#428). On one host it could:
+  `PATCH /v1/datasets/batch-tags` read and wrote the metadata in two unlocked hops,
+  `DELETE /v1/datasets/{dataset_id}` took no lock, and `POST /v1/datasets` saved without the
+  file lock, and without either lock for an unnamed dataset. Any of them could land between a
+  conditional PATCH's passed check and its write.
+  The PATCH then erased the batch's acknowledged edit, wrote its stale copy over the create, or
   answered `200` with a new `ETag` for a dataset the delete had just removed, because
   `update_tags` ignored `update_meta` reporting it gone.
-  - **Every route that edits or deletes a dataset now takes the same two locks, in
-    `update_tags`' order.** batch-tags applies each dataset's edit through `update_tags`, still
-    without evaluating preconditions and with the same response. `DELETE`, batch delete and
-    expired-dataset cleanup delete through the new `DatasetStore.delete_under_lock`.
+  - **Every route that creates, edits or deletes a dataset now takes the same two locks, in
+    `update_tags`' order.**
+    - batch-tags applies each dataset's edit through `update_tags`, still without evaluating
+      preconditions. The response has the same shape, but a dataset gone by the time of its
+      write is now listed in `not_found`, not `updated`.
+    - `DELETE`, batch delete and expired-dataset cleanup delete through the new
+      `DatasetStore.delete_under_lock`.
+    - `POST /v1/datasets` and batch-create save through `save_versioned`, which now checks
+      again, under both locks, that the dataset is absent. A create that finds it there writes
+      nothing and answers with the stored dataset, as a cache hit does. Two creates of one id
+      used to both save, so the later save replaced a create already answered `201`.
   - **Why the lock is taken outside each store's `delete`.** `delete_under_lock` wraps each
     store's own `delete` and is never called from inside one: `_version_lock` is one
     non-reentrant lock shared by every store, and `CachedDatasetStore.delete` calls two other
     stores' `delete`.
-  - **A dataset gone by the write is a `404`.** One removed between the read and the write, by
-    something outside the locks, no longer gets a `200` with an `ETag`.
+  - **A dataset gone by the write is a `404`.** One removed by something outside the locks
+    between the read and the write no longer gets a `200` with an `ETag` -- unless, on LocalFS,
+    the removal lands between `update_meta`'s existence check and its rename, a narrower window
+    that predates this change.
   - **Scope.** The guarantee holds across processes on one host with LocalFS, and within one
-    process with the Redis, Postgres and cached stores.
-  - **Lock files for absent ids.** `DELETE`, batch delete and batch-tags now also leave the
-    lock file for an id that does not exist, as `PATCH .../tags` already did.
+    process with the Redis and Postgres stores. It does not hold for `CachedDatasetStore`, whose
+    cache fills write without either lock; the service wires LocalFS.
+  - **The cost.** Each of these store calls holds the process-global `_version_lock` throughout:
+    a create's save, a delete, each dataset of a batch-tags. `record_access`, which a read of a
+    dataset or its artifact schedules on the event loop, waits for it, and the loop waits with it.
+  - **Lock files.** LocalFS used to create a lock file per dataset id on first use and never
+    remove it. It now locks one of 16 fixed stripes, `locks/{0..f}.lock`, created with the store
+    and opened with `O_NOFOLLOW` and `O_CLOEXEC`.
+    - A request naming an absent id leaves no file behind.
+    - A symlink planted at a lock file is refused, not followed out of the storage root.
+    - Taking a lock needs no free inode, so on a volume out of inodes `DELETE`, batch delete and
+      cleanup still delete.
+    - The per-id files an older version left are harmless and are not removed. A process
+      running an older version locks those files, not the stripes, so the two do not exclude
+      each other: run one version against a storage directory at a time.
   - **Tests.** Interleaving tests hold a conditional PATCH inside its window and send
-    batch-tags or `DELETE`. A stand-in for `_version_lock` announces any thread that has to wait
-    for it, so both outcomes are observed events, not timeouts.
-- **A `*` wrapped in NBSP (0xA0) or NEL (0x85) is malformed.** 0.16.0 read it as `*`, because
-  `http_cache` matched `*` after `str.strip()`, which strips those obs-text bytes too. So a read
-  answered `304` where the full body was owed, and a `PATCH` that should have failed closed
+    batch-tags, `DELETE` or a create. A stand-in for `_version_lock` announces any thread that
+    has to wait for it, so both outcomes are observed events, not timeouts. Another records
+    whether the file lock is already held when `_version_lock` is entered, which pins the
+    order the two are taken in.
+- **A `*` wrapped in anything but spaces and tabs is malformed.** 0.16.0 matched `*` after
+  `str.strip()`, which also strips NBSP (0xA0), NEL (0x85) and the control characters
+  0x1C-0x1F. h11 passes all of those through; httptools refuses the control characters. So a
+  read answered `304` where the full body was owed, and a `PATCH` that should have failed closed
   wrote. Both sites now strip RFC 9110 OWS, spaces and tabs, only. The tests send raw bytes
   through `httpx.ASGITransport`, because Starlette's TestClient re-encodes `0xA0` as UTF-8.
-- **A metadata file that leads out of the storage root is a storage fault, not the caller's
-  error.** LocalFS's containment check raised `InvalidDatasetIdError`, so for such a dataset
-  0.16.0's artifact route answered with the caller's `400`, where 0.15.0 served the artifact.
+- **A stored file that leads out of the storage root is a storage fault, not the caller's
+  error.** LocalFS's containment check raised `InvalidDatasetIdError`, so 0.16.0 answered it
+  with the caller's `400`. For a dataset whose metadata file was such a symlink, that refused a
+  download 0.15.0 served.
   - The check now raises `StorageContainmentError`, still a `ValueError` but not an
     `InvalidDatasetIdError`.
-  - The artifact is served without a validator.
-  - A conditional request skips the `exists()` gate, which consults the same metadata, and is
-    judged after the open, as for an orphan.
-  - The other routes keep the `400` they gave through 0.15.0.
+  - The app's `ValueError` handler answers it with a generic `500`, logged by type only. The
+    routes answered it `400` "Invalid request parameters", and `/filter` answered `400` with the
+    error's text, which names the dataset id, as its detail. `/filter` now decodes its cursor
+    before calling the store, so only the cursor's own error is the caller's `400`. batch delete
+    still lists such an id in `not_found`.
+  - The artifact route serves a dataset whose metadata file leads out of the root without a
+    validator, and records no access, because recording one reads the same metadata. 0.15.0
+    tried, and asyncio logged a traceback carrying the dataset id on every download.
+  - A conditional request for it skips the `exists()` gate, which consults the same metadata,
+    and is judged after the open, as for an orphan.
+  - An `.npz` that leads out of the root is still refused, now with the `500`.
+  - One such file fails `/filter`, `/stats` and expired-dataset cleanup for the whole store.
 - **0.16.0's entries for conditional requests misstated four things.** The section below is left
   as released; `docs/api/JUNIPER_DATA_API.md` and `docs/REFERENCE.md` state them correctly.
   - **Malformed.** A malformed field is one that is not `*` or a well-formed entity-tag list. The
@@ -104,19 +138,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     breaking, because the same release removes `X_full` from the HF and Kaggle stores. The
     versioning policy in `docs/api/JUNIPER_DATA_API.md` now says the flag is the word in capitals,
     the form the renderer reads.
-- **The conditional-request tests pin what they did not.** Nothing tested either of these:
+- **The conditional-request tests pin what they did not.** Nothing tested any of these:
   - that the PATCH precondition runs under the cross-process lock. A check inside
     `_version_lock` but outside the `flock` passed all 1840 unit tests;
-  - that an empty `If-Match` is a `412`.
+  - that an empty `If-Match` is a `412`;
+  - the order the two locks are taken in. A taker that reverses it deadlocks against the
+    others, and every test of what a taker holds still passes.
 
-  Three verification scripts changed:
+  Four verification scripts changed:
   - **The non-vacuity harness.**
     `util/ad-hoc/2026-09-22_verify_conditional_request_tests_are_not_vacuous.py` now applies
-    fifty-three mutations. Every test in `test_conditional_requests.py` is named by one, 58 of
-    its 69 as a test that must go red.
+    seventy mutations. Every test in `test_conditional_requests.py` is named by one, 79 of
+    its 90 as a test that must go red.
   - **The equivalence script.** `util/ad-hoc/2026-09-23_verify_entity_tag_list_regex_equivalence.py`
-    adds a structured sweep over lists of up to twelve elements, with 0 mismatches in 3,495,076
-    inputs.
+    adds a structured sweep over lists of up to twelve elements, whitespace-only elements at
+    every position among them, with 0 mismatches in 3,495,583 inputs.
   - **Two new scripts beside them** re-derive the harness's coverage counts and show that the
     sweeps catch long-list mutants.
 

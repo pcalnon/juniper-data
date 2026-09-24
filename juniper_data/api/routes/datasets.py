@@ -54,7 +54,7 @@ from juniper_data.core.models import (
     UpdateTagsRequest,
 )
 from juniper_data.storage import DatasetStore
-from juniper_data.storage.base import InvalidDatasetIdError, PreconditionFailedError, encode_cursor
+from juniper_data.storage.base import InvalidDatasetIdError, PreconditionFailedError, decode_cursor, encode_cursor
 from juniper_data.storage.constants import JSON_INDENT_DEFAULT
 
 from .generators import GENERATOR_REGISTRY
@@ -442,9 +442,12 @@ async def create_dataset(
     )
 
     if request.persist:
-        # save_versioned() atomically allocates the version number under a lock
-        # to prevent concurrent requests from receiving the same version.
-        await asyncio.to_thread(store.save_versioned, dataset_id, meta, arrays)
+        # save_versioned() re-checks existence and saves under the store's locks, allocating the
+        # version number there too. The check above ran before generating, which can take
+        # seconds: a create of the same id, or a conditional PATCH of it, may have landed since.
+        # Then nothing is written, and the dataset that is there is the one returned -- as on
+        # the cache hit above.
+        meta = await asyncio.to_thread(store.save_versioned, dataset_id, meta, arrays)
     elif request.name is not None:
         # Non-persisted: preview the next version (no race since no write)
         meta.dataset_version = await asyncio.to_thread(store.next_version_number, request.name)
@@ -539,27 +542,35 @@ async def filter_datasets(
 
     tag_list = [t.strip() for t in tags.split(",")] if tags else None
 
-    try:
-        datasets, total = await asyncio.to_thread(
-            store.filter_datasets,
-            generator=generator,
-            tags=tag_list,
-            tags_match=tags_match,
-            created_after=created_after,
-            created_before=created_before,
-            min_samples=min_samples,
-            max_samples=max_samples,
-            include_expired=include_expired,
-            dataset_name=dataset_name,
-            dataset_version=dataset_version,
-            limit=limit,
-            offset=offset,
-            cursor=cursor,
-        )
-    except ValueError as exc:
-        # decode_cursor rejects a token it did not issue. Schema-valid string,
-        # semantically wrong -> 400, per the rule stated in create_dataset.
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    if cursor is not None:
+        # Decoded HERE, before the store is touched, so that only the cursor's own error is
+        # answered as the caller's. This used to wrap the whole store call, and every
+        # ValueError the store raised -- a stored metadata file that would not parse, or one
+        # the store refused to follow out of its root -- came back as a 400 whose detail was
+        # the exception's text, naming a dataset id.
+        try:
+            decode_cursor(cursor)
+        except ValueError as exc:
+            # decode_cursor rejects a token it did not issue. Schema-valid string,
+            # semantically wrong -> 400, per the rule stated in create_dataset.
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    datasets, total = await asyncio.to_thread(
+        store.filter_datasets,
+        generator=generator,
+        tags=tag_list,
+        tags_match=tags_match,
+        created_after=created_after,
+        created_before=created_before,
+        min_samples=min_samples,
+        max_samples=max_samples,
+        include_expired=include_expired,
+        dataset_name=dataset_name,
+        dataset_version=dataset_version,
+        limit=limit,
+        offset=offset,
+        cursor=cursor,
+    )
 
     return DatasetListResponse(
         datasets=datasets,
@@ -1142,11 +1153,16 @@ async def download_artifact(
             _close_artifact_stream(artifact_stream)
             if outcome == status.HTTP_412_PRECONDITION_FAILED:
                 raise _precondition_failed()
-            asyncio.get_event_loop().call_soon(lambda: store.record_access(dataset_id))
+            if metadata_readable:
+                asyncio.get_event_loop().call_soon(lambda: store.record_access(dataset_id))
             return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
 
-    # BUG-JD-08: record access asynchronously to avoid blocking I/O on read paths
-    asyncio.get_event_loop().call_soon(lambda: store.record_access(dataset_id))
+    # BUG-JD-08: record access asynchronously to avoid blocking I/O on read paths. Not when
+    # the metadata could not be read: ``record_access`` reads the same metadata, so it would
+    # fail the same way -- inside an event-loop callback, whose logged traceback carries the
+    # caller's id (ERR-08) -- and there is no readable document to count the access in anyway.
+    if metadata_readable:
+        asyncio.get_event_loop().call_soon(lambda: store.record_access(dataset_id))
 
     return StreamingResponse(
         artifact_stream,
@@ -1235,16 +1251,18 @@ async def update_dataset_tags(
     The body is the updated metadata representation and carries its new ``ETag``
     (APD-DATA-017), so a client can hold the edited copy without a second read. With
     ``If-Match`` it is an optimistic-concurrency write: the precondition is evaluated
-    against the CURRENT representation inside the store's locks, and every route that edits
-    or deletes a dataset takes the same locks, so the check cannot pass and then lose a race
-    to another writer. That holds across processes on one host with the default (LocalFS)
-    store; the Redis and Postgres stores and ``CachedDatasetStore`` lock within one process
-    only. A dataset that is gone by the time of the write is a 404, never a 200 with an
-    ``ETag``. ``If-None-Match`` naming the current representation (``*`` included) is a 412
-    here, not a 304 -- RFC 9110 §13.1.2 for a method other than GET -- and so is either
-    field when it is malformed: a write fails closed on a precondition it cannot read. No
-    other write route evaluates preconditions: an ``If-Match`` sent to
-    ``DELETE /{dataset_id}`` or ``PATCH /batch-tags`` is ignored.
+    against the CURRENT representation inside the store's locks, and every route that
+    creates, edits or deletes a dataset takes the same locks, so the check cannot pass and
+    then lose a race to another writer. That holds across processes on one host with the
+    default (LocalFS) store, and within one process with the Redis and Postgres stores. It
+    does not hold for ``CachedDatasetStore``, whose cache fills write without either lock;
+    the service wires LocalFS. A dataset removed from outside the locks before the write is a
+    404, not a 200 with an ``ETag`` -- unless, on LocalFS, the removal lands between the
+    write's own existence check and its rename. ``If-None-Match`` naming the current
+    representation (``*`` included) is a 412 here, not a 304 -- RFC 9110 §13.1.2 for a
+    method other than GET -- and so is either field when it is malformed: a write fails
+    closed on a precondition it cannot read. No other write route evaluates preconditions:
+    an ``If-Match`` sent to ``DELETE /{dataset_id}`` or ``PATCH /batch-tags`` is ignored.
 
     Args:
         dataset_id: Unique dataset identifier.

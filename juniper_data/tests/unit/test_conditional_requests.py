@@ -13,6 +13,7 @@ so any honest hash of the body changed with them -- a strong validator was impos
 """
 
 import contextlib
+import errno
 import fcntl
 import json
 import logging
@@ -23,6 +24,7 @@ import sys
 import threading
 from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime
+from pathlib import Path
 
 import httpx
 import numpy as np
@@ -38,6 +40,7 @@ from juniper_data.api.http_cache import MAX_PRECONDITION_FIELD_LENGTH, body_etag
 from juniper_data.api.routes import datasets
 from juniper_data.api.settings import Settings
 from juniper_data.core.models import DatasetMeta, PublicDatasetMeta
+from juniper_data.storage import local_fs
 from juniper_data.storage.local_fs import LocalFSDatasetStore
 from juniper_data.storage.memory import InMemoryDatasetStore
 
@@ -243,6 +246,80 @@ def _race_a_held_conditional_patch(client: TestClient, store: LocalFSDatasetStor
     if failures:
         raise failures[0]
     return first, responses["patch"], responses["rival"]
+
+
+def _checked_before_it_existed(store: LocalFSDatasetStore, monkeypatch: pytest.MonkeyPatch) -> Callable[[], None]:
+    """Arrange for the NEXT ``get_meta`` to find nothing, and return the function that arms it.
+
+    That is what a create sees when it checks for its dataset before a rival's copy exists: the
+    route's existence check passes, the create generates, and only the store's own check, under
+    the locks, can find that the dataset has appeared since. It is armed from inside the racing
+    request, so no earlier read is affected.
+    """
+    real_get_meta = store.get_meta
+    armed: list[bool] = []
+
+    def get_meta(dataset_id: str) -> DatasetMeta | None:
+        if armed:
+            armed.clear()
+            return None
+        return real_get_meta(dataset_id)
+
+    monkeypatch.setattr(store, "get_meta", get_meta)
+    return lambda: armed.append(True)
+
+
+class _OrderProbingLock:
+    """Stands in for ``DatasetStore._version_lock``, and records on each entry whether the file lock is already held.
+
+    Every taker must take ``_version_lock`` first and the file lock second, or two threads taking
+    them in opposite orders deadlock. Nothing else observes the order: a delete that took the file
+    lock first still ran under both, so the tests of what a delete holds passed, and only an
+    interleaving test noticed -- as a timeout, 36 seconds later.
+    """
+
+    def __init__(self, store: LocalFSDatasetStore, dataset_id: str) -> None:
+        self._lock = threading.Lock()
+        self._store = store
+        self._dataset_id = dataset_id
+        self.file_lock_held_on_entry: list[bool] = []
+
+    def __enter__(self) -> "_OrderProbingLock":
+        self.file_lock_held_on_entry.append(_file_lock_is_held(self._store, self._dataset_id))
+        self._lock.acquire()
+        return self
+
+    def __exit__(self, *_exc_info: object) -> None:
+        self._lock.release()
+
+    def locked(self) -> bool:
+        return self._lock.locked()
+
+
+class _NoFreeInodes:
+    """Stands in for ``os`` inside ``local_fs``: creating a file fails with ENOSPC, as on a volume out of inodes.
+
+    Only ``local_fs``'s own ``os.open`` calls see it, and those open the lock files. Opening a
+    file that exists needs no inode, and neither does anything else a delete does.
+    """
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(os, name)
+
+    @staticmethod
+    def open(path: str | os.PathLike[str], flags: int, mode: int = 0o777, *, dir_fd: int | None = None) -> int:
+        if flags & os.O_CREAT and not os.path.lexists(path):
+            raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC), os.fspath(path))
+        return os.open(path, flags, mode, dir_fd=dir_fd)
+
+
+def _lead_out_of_the_store(stored: Path, outside: Path) -> None:
+    """Replace a stored file with an absolute symlink to a copy outside the storage root: valid content, in the wrong place."""
+    outside.mkdir(exist_ok=True)
+    elsewhere = outside / stored.name
+    elsewhere.write_bytes(stored.read_bytes())
+    stored.unlink()
+    stored.symlink_to(elsewhere)
 
 
 @contextlib.asynccontextmanager
@@ -805,6 +882,60 @@ class TestPreconditionsRespectExistence:
             store.get_meta(dataset_id)
         assert not isinstance(refused.value, InvalidDatasetIdError)
 
+    def test_serving_a_dataset_whose_metadata_leads_out_of_the_store_logs_nothing_that_carries_its_id(self, localfs: tuple[TestClient, LocalFSDatasetStore], tmp_path, caplog: pytest.LogCaptureFixture) -> None:
+        # ``record_access`` reads the same metadata, so it failed the same way -- inside an
+        # event-loop callback, where asyncio logged "Exception in callback" at ERROR with a
+        # traceback ending in the store's message, which names the id. On every 200 and every
+        # 304. ERR-08 keeps caller strings out of log records, and the route's own warning keeps
+        # to the exception type.
+        client, store = localfs
+        dataset_id = _create(client)
+        _lead_out_of_the_store(store._meta_path(dataset_id), tmp_path / "outside")
+        with caplog.at_level(logging.DEBUG):
+            assert client.get(f"/v1/datasets/{dataset_id}/artifact").status_code == 200
+            assert client.get(f"/v1/datasets/{dataset_id}/artifact", headers={"If-None-Match": "*"}).status_code == 304
+        loud = [record for record in caplog.records if record.levelno >= logging.WARNING]
+        assert [record.name for record in loud if record.name.startswith("juniper_data")] == ["juniper_data.api.routes.datasets"] * 2, "control: the route's own warning, once per request, or nothing was captured"
+        assert [record.getMessage() for record in loud if record.name == "asyncio"] == [], "an event-loop callback failed"
+        # Formatting renders any traceback too, which is where the id travelled.
+        assert not any(dataset_id in logging.Formatter("%(message)s").format(record) for record in loud)
+
+    @pytest.mark.parametrize("target", ["metadata", "filter", "artifact-npz"])
+    def test_a_stored_file_that_leads_out_of_the_store_is_a_generic_500(self, target: str, localfs: tuple[TestClient, LocalFSDatasetStore], tmp_path, caplog: pytest.LogCaptureFixture) -> None:
+        # A storage fault, from a request that was fine. It was answered 400 "Invalid request
+        # parameters", logged at DEBUG only -- and ``/filter`` answered 400 with the store's
+        # message, which names the dataset id, as its detail. On the artifact route an ``.npz``
+        # that leads out of the root is refused, as it should be, but with the same 400.
+        client, store = localfs
+        dataset_id = _create(client)
+        stored = store._npz_path(dataset_id) if target == "artifact-npz" else store._meta_path(dataset_id)
+        _lead_out_of_the_store(stored, tmp_path / "outside")
+        url = {"metadata": f"/v1/datasets/{dataset_id}", "filter": "/v1/datasets/filter", "artifact-npz": f"/v1/datasets/{dataset_id}/artifact"}[target]
+        with caplog.at_level(logging.DEBUG, logger="juniper_data"):
+            response = client.get(url)
+        assert response.status_code == 500, response.text
+        assert response.json() == {"detail": "Internal server error"}
+        assert dataset_id not in response.text
+        faults = [record for record in caplog.records if record.name.startswith("juniper_data") and record.levelno >= logging.ERROR]
+        assert len(faults) == 1, [record.getMessage() for record in faults]
+        assert "StorageContainmentError" in faults[0].getMessage(), "the operator gets the exception TYPE"
+        assert faults[0].exc_info is None
+        loud = [record for record in caplog.records if record.levelno >= logging.WARNING]
+        assert not any(dataset_id in logging.Formatter("%(message)s").format(record) for record in loud)
+
+    def test_a_malformed_filter_cursor_is_still_the_callers_400_naming_the_cursor(self, localfs: tuple[TestClient, LocalFSDatasetStore]) -> None:
+        # /filter used to turn EVERY ValueError from the store into a 400 carrying its text, which
+        # is how a malformed cursor got its own message. It now decodes the cursor before calling
+        # the store: that error alone is the caller's, and it keeps its detail.
+        from juniper_data.storage.base import decode_cursor
+
+        client, _store = localfs
+        response = client.get("/v1/datasets/filter", params={"cursor": "not-a-real-cursor"})
+        assert response.status_code == 400
+        with pytest.raises(ValueError) as refused:
+            decode_cursor("not-a-real-cursor")
+        assert response.json()["detail"] == str(refused.value), "the cursor's own error, not the handler's generic detail"
+
 
 @pytest.mark.unit
 class TestIfMatch:
@@ -938,7 +1069,8 @@ class TestConditionalWriteIsAtomic:
     ``_version_lock``, or inside it but outside the cross-process lock; the route evaluating it
     itself and handing the store ``None``; and another writer that takes neither lock --
     ``PATCH /batch-tags`` and ``DELETE`` did, and a delete landing in the window turned the
-    PATCH into a 200 for a dataset that was gone.
+    PATCH into a 200 for a dataset that was gone. So did a create: it checked that its dataset
+    was absent before generating, and saved without the file lock.
     """
 
     def test_the_store_evaluates_the_precondition_under_its_version_lock(self, store: InMemoryDatasetStore) -> None:
@@ -1058,6 +1190,170 @@ class TestConditionalWriteIsAtomic:
         assert response.status_code == 404
         assert "etag" not in response.headers
         assert store.get_meta(dataset_id) is None
+
+    def test_a_create_cannot_land_inside_a_conditional_patchs_window(self, localfs: tuple[TestClient, LocalFSDatasetStore], monkeypatch: pytest.MonkeyPatch) -> None:
+        # A create checks that its dataset is absent BEFORE it generates, which can take seconds,
+        # and saved without the file lock -- without any lock, unnamed. A create of the same id
+        # whose check ran before the dataset existed could therefore save inside a conditional
+        # PATCH's window, and the PATCH then wrote its stale copy over the create.
+        client, store = localfs
+        dataset_id = _create(client)
+        arm = _checked_before_it_existed(store, monkeypatch)
+
+        def create_again(c: TestClient) -> httpx.Response:
+            arm()
+            return c.post("/v1/datasets", json={"generator": "spiral", "params": {"n_spirals": 2, "n_points_per_spiral": 20, "seed": 1}, "persist": True, "tags": ["from-create"]})
+
+        first, patched, created = _race_a_held_conditional_patch(client, store, monkeypatch, dataset_id, create_again)
+        assert first == "waited for the lock", "the create saved inside the conditional PATCH's window"
+        assert patched.status_code == 200
+        assert created.status_code == 201
+        assert created.json()["dataset_id"] == dataset_id, "the rival must create the SAME dataset, or nothing was raced"
+        tags = store.get_meta(dataset_id).tags
+        assert {"before", "mine"} <= set(tags), "the PATCH's acknowledged edit must survive"
+        assert "from-create" not in tags, "a create must write nothing over a dataset that exists by then"
+
+    def test_a_late_create_of_an_existing_dataset_writes_nothing_and_answers_with_the_stored_one(self, localfs: tuple[TestClient, LocalFSDatasetStore], monkeypatch: pytest.MonkeyPatch) -> None:
+        # Two creates of one id, both past the route's existence check: the later save replaced a
+        # create already answered 201. Checking again under the locks makes create-if-absent
+        # atomic, and the late create then describes the dataset that IS stored -- as a cache hit
+        # does -- not the copy it did not write.
+        client, store = localfs
+        body = {"generator": "spiral", "params": {"n_spirals": 2, "n_points_per_spiral": 20, "seed": 1}, "persist": True}
+        early = client.post("/v1/datasets", json={**body, "tags": ["early"], "description": "early"})
+        assert early.status_code == 201
+        dataset_id = early.json()["dataset_id"]
+        stored = store._meta_path(dataset_id).read_bytes()
+        _checked_before_it_existed(store, monkeypatch)()
+        late = client.post("/v1/datasets", json={**body, "tags": ["late"], "description": "late", "ttl_seconds": 3600})
+        assert late.status_code == 201
+        assert late.json()["dataset_id"] == dataset_id, "the late create must name the SAME dataset, or nothing was raced"
+        assert store._meta_path(dataset_id).read_bytes() == stored, "the late create must write nothing"
+        described = late.json()["meta"]
+        assert (described["tags"], described["description"], described["expires_at"]) == (["early"], "early", None), "the late create must describe what is stored"
+
+    @pytest.mark.parametrize(("route", "name"), [("create", None), ("create", "named"), ("batch-create", None), ("batch-create", "named")], ids=["create-unnamed", "create-named", "batch-create-unnamed", "batch-create-named"])
+    def test_every_route_that_creates_holds_both_locks(self, route: str, name: str | None, localfs: tuple[TestClient, LocalFSDatasetStore], monkeypatch: pytest.MonkeyPatch) -> None:
+        # The flock is what orders a create against a PATCH in another worker process. A named
+        # create took ``_version_lock`` only, to allocate its version; an unnamed one took nothing.
+        client, store = localfs
+        held: list[tuple[bool, bool]] = []
+        real_save = store.save
+
+        def probing_save(dataset_id: str, meta: DatasetMeta, arrays: dict[str, np.ndarray]) -> None:
+            held.append((store._version_lock.locked(), _file_lock_is_held(store, dataset_id)))
+            real_save(dataset_id, meta, arrays)
+
+        monkeypatch.setattr(store, "save", probing_save)
+        item = {"generator": "spiral", "params": {"n_spirals": 2, "n_points_per_spiral": 20, "seed": 4}, "persist": True}
+        if name is not None:
+            item["name"] = name
+        response = client.post("/v1/datasets", json=item) if route == "create" else client.post("/v1/datasets/batch-create", json={"datasets": [item]})
+        assert response.status_code == 201, response.text
+        assert held == [(True, True)], f"{route} must save under _version_lock and the cross-process lock"
+
+    @pytest.mark.parametrize("taker", ["record_access", "update_tags", "delete_under_lock", "save_versioned"])
+    def test_every_lock_taker_enters_the_version_lock_before_the_file_lock(self, taker: str, tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # One order everywhere, or two threads taking the locks in opposite orders deadlock. The
+        # stand-in records whether the file lock is already held as ``_version_lock`` is entered;
+        # the probe inside the store's write shows the file lock IS held there, so a False on
+        # entry is an observation, not a probe that cannot see the lock.
+        store = LocalFSDatasetStore(tmp_path / "storage")
+        if taker != "save_versioned":
+            store.save("guarded", _stored_meta("guarded"), _arrays())
+        order = _OrderProbingLock(store, "guarded")
+        monkeypatch.setattr(store, "_version_lock", order)
+        write = {"record_access": "update_meta", "update_tags": "update_meta", "delete_under_lock": "delete", "save_versioned": "save"}[taker]
+        real_write = getattr(store, write)
+        held_inside: list[bool] = []
+
+        def probing_write(*args: object) -> object:
+            held_inside.append(_file_lock_is_held(store, "guarded"))
+            return real_write(*args)
+
+        monkeypatch.setattr(store, write, probing_write)
+        call = {
+            "record_access": lambda: store.record_access("guarded"),
+            "update_tags": lambda: store.update_tags("guarded", ["b"], []),
+            "delete_under_lock": lambda: store.delete_under_lock("guarded"),
+            "save_versioned": lambda: store.save_versioned("guarded", _stored_meta("guarded"), _arrays()),
+        }[taker]
+        call()
+        assert order.file_lock_held_on_entry == [False], f"{taker} must enter _version_lock once, BEFORE it takes the file lock"
+        assert held_inside == [True], "control: the file lock is held inside, and the probe can see it"
+
+
+@pytest.mark.unit
+class TestLockStripes:
+    """LocalFS's cross-process locks are a fixed set of stripes, created with the store.
+
+    A lock file per dataset id was created on first use and never removed. Once every delete
+    and every batch edit took the lock, each request naming an absent id left one behind, and a
+    delete could not unlink anything until it had created one.
+    """
+
+    def test_requests_naming_absent_ids_leave_no_lock_files(self, localfs: tuple[TestClient, LocalFSDatasetStore]) -> None:
+        client, store = localfs
+        before = sorted(store.base_path.rglob("*"))
+        absent = ["absent-0000", "absent-0001", "absent-0002"]
+        assert client.delete(f"/v1/datasets/{absent[0]}").status_code == 404
+        assert client.post("/v1/datasets/batch-delete", json={"dataset_ids": absent}).json()["not_found"] == absent
+        assert client.patch("/v1/datasets/batch-tags", json={"dataset_ids": absent, "add_tags": ["x"]}).json()["not_found"] == absent
+        assert client.patch(f"/v1/datasets/{absent[1]}/tags", json={"add_tags": ["x"]}).status_code == 404
+        assert sorted(store.base_path.rglob("*")) == before, "a request naming an absent id must create nothing"
+        assert sorted(path.name for path in (store.base_path / "locks").iterdir()) == [f"{stripe:x}.lock" for stripe in range(16)], "the stripes exist from the start"
+
+    @pytest.mark.parametrize("route", ["delete", "batch-delete", "cleanup-expired"])
+    def test_the_delete_paths_need_no_free_inode(self, route: str, localfs: tuple[TestClient, LocalFSDatasetStore], monkeypatch: pytest.MonkeyPatch) -> None:
+        # On a volume out of inodes, the operations that free space were the ones that failed:
+        # each had to create its dataset's lock file first, and answered 500 with nothing deleted.
+        client, store = localfs
+        store.save("doomed", _stored_meta("doomed", expires_at=datetime(2026, 9, 22, 21, 0, tzinfo=UTC)), _arrays())
+        monkeypatch.setattr(local_fs, "os", _NoFreeInodes())
+        with pytest.raises(OSError) as refused:
+            local_fs.os.open(store.base_path / "one-more-file", os.O_CREAT | os.O_RDWR, 0o600)
+        assert refused.value.errno == errno.ENOSPC, "control: the simulated volume must refuse a new file"
+        send = {
+            "delete": lambda: client.delete("/v1/datasets/doomed"),
+            "batch-delete": lambda: client.post("/v1/datasets/batch-delete", json={"dataset_ids": ["doomed"]}),
+            "cleanup-expired": lambda: client.post("/v1/datasets/cleanup-expired"),
+        }
+        response = send[route]()
+        assert response.status_code in (200, 204), response.text
+        assert store.get_meta("doomed") is None
+
+    def test_a_symlink_planted_at_a_lock_file_is_refused_not_followed(self, tmp_path) -> None:
+        # The lock file was opened with O_CREAT and without O_NOFOLLOW, so a symlink planted at it
+        # -- which takes write access to the storage directory -- was followed, and DELETE, batch
+        # delete and batch-tags each created the lock file outside the storage root.
+        store = LocalFSDatasetStore(tmp_path / "storage")
+        store.save("guarded", _stored_meta("guarded"), _arrays())
+        planted = tmp_path / "outside" / "planted.lock"
+        planted.parent.mkdir()
+        lock_path = store._lock_path("guarded")
+        # The directory is there once the store is. Creating it here keeps this test about following
+        # the symlink, not about WHEN the stripes are created: harness arm M57 names it as a control.
+        lock_path.parent.mkdir(exist_ok=True)
+        lock_path.unlink(missing_ok=True)
+        lock_path.symlink_to(planted)  # dangling, and outside the storage root
+        with pytest.raises(OSError):
+            store.delete_under_lock("guarded")
+        assert not planted.exists(), "the store followed a symlink out of its storage root"
+        assert store.get_meta("guarded") is not None, "nothing may be deleted without the lock"
+
+    def test_a_storage_directory_that_cannot_hold_the_stripes_still_opens(self, tmp_path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        # Before the stripes existed, a store opened on any directory and failed only when it first
+        # wrote. Creating them must not make a read-only volume, or one out of inodes when the
+        # service first starts, fatal at startup: a stripe is then created when first locked.
+        monkeypatch.setattr(local_fs, "os", _NoFreeInodes())
+        with caplog.at_level(logging.WARNING, logger="juniper_data.storage.local_fs"):
+            store = LocalFSDatasetStore(tmp_path / "storage")
+        assert list((tmp_path / "storage" / "locks").iterdir()) == []
+        assert [record.levelno for record in caplog.records if record.name == "juniper_data.storage.local_fs"] == [logging.WARNING]
+        monkeypatch.setattr(local_fs, "os", os)
+        store.save("guarded", _stored_meta("guarded"), _arrays())
+        assert store.update_tags("guarded", ["b"], []) is not None
+        assert store._lock_path("guarded").is_file(), "the stripe is created when first locked"
 
 
 @pytest.mark.unit

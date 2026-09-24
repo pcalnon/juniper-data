@@ -1263,14 +1263,14 @@ long form of this section.
 | `GET /v1/datasets/{dataset_id}` | SHA-256 of the exact body | `If-Match` → 412; `If-None-Match` → 304 | a 304 is recorded as an access; a 412 is not |
 | `GET /v1/datasets/latest` | same as the canonical route's | as above | `Content-Location: /v1/datasets/<dataset_id>`; records no access, 200 or 304 |
 | `GET /v1/datasets/{dataset_id}/artifact` | WEAK, `W/"<checksum>"`; none if the metadata has no checksum | as above, for a target `store.exists()` confirms; an orphaned artifact is judged against no validator | a confirmed target's 304 is decided before the artifact is opened; a 412 is not an access |
-| `PATCH /v1/datasets/{dataset_id}/tags` | the NEW representation's | `If-Match` failing, `If-None-Match` matching, or either malformed → 412, nothing written | evaluated inside `update_tags`' locks, which every route that edits or deletes a dataset takes; `Content-Location` names `/v1/datasets/<dataset_id>` |
+| `PATCH /v1/datasets/{dataset_id}/tags` | the NEW representation's | `If-Match` failing, `If-None-Match` matching, or either malformed → 412, nothing written | evaluated inside `update_tags`' locks, which every route that creates, edits or deletes a dataset takes; `Content-Location` names `/v1/datasets/<dataset_id>` |
 
 All three reads send `Cache-Control: private, no-cache`. `private` because the key travels in
 `X-API-Key`, which RFC 9111 §3.5 does not oblige a shared cache to treat as authentication.
 `no-cache` — revalidate before every use — because none of these URIs is immutable: metadata
 changes with a tag edit, and **the artifact is not content-addressed**. `dataset_id` hashes the
-REQUEST, so a dataset deleted or expired and re-created serves whatever the generator now produces
-at the same URI (`equities` defaults `end_date` to today). The API primer
+REQUEST, so a dataset deleted (or expired and cleaned up) and then re-created serves whatever the
+generator now produces at the same URI (`equities` defaults `end_date` to today). The API primer
 (`juniper-ml/notes/JUNIPER_2026-08-13_JUNIPER-ECOSYSTEM_API-DESIGN-AND-IMPLEMENTATION-PRIMER.md`)
 prescribes `immutable` for the artifact on the content-addressed premise; that is rejected here —
 it would serve stale data for as long as it lasted. A 304 is cheap on the wire, not on the server:
@@ -1289,8 +1289,9 @@ lines is one list (§5.3), so the routes take it as `list[str]` and join the lin
 when it is not `*` or a well-formed entity-tag list (a tag embedded in garbage, `foo"<etag>"bar`, is
 not a list element), or when it is longer than 8192 characters (`MAX_PRECONDITION_FIELD_LENGTH`,
 counted over the joined lines). Only spaces and tabs -- RFC 9110 OWS -- may surround either, so a
-`*` wrapped in NBSP or NEL is malformed: those are obs-text a server passes through, and
-`str.strip()`, which removes them, read such a field as `*`. On a read, a malformed
+`*` wrapped in anything else is malformed. `str.strip()`, which removes every Unicode whitespace
+character, read `*` wrapped in NBSP or NEL (obs-text any server passes through) or, under h11, in
+one of the separators 0x1C-0x1F, as `*`. On a read, a malformed
 `If-None-Match` names nothing and the full body is served: a wrong 304 would leave a client on data
 it should not use. A malformed `If-Match`
 fails, read or write, and so does a malformed `If-None-Match` on `PATCH .../tags`: a 412, nothing
@@ -1314,11 +1315,17 @@ served without an `ETag`, as it was before validators existed, and a conditional
 orphan. That covers a corrupt document and a metadata file that leads out of the storage root:
 LocalFS refuses to follow it and raises `StorageContainmentError`, a storage fault. The fallback's
 warning names only the exception type, because a message or traceback can carry the
-caller-controlled id (ERR-08). A malformed `dataset_id` is not unreadable metadata:
-`InvalidDatasetIdError`, a `ValueError`, takes the same 400 every other route gives it.
-`StorageContainmentError` is a `ValueError` too, as the plain `ValueError` that check raised
-through 0.15.0 was, so batch delete still reports such an id as not found and the routes that do
-not degrade still answer 400; it is simply not the caller's error.
+caller-controlled id (ERR-08), and no access is recorded for such a download: `record_access` reads
+the same metadata, and failing inside an event-loop callback, it logged a traceback naming the id
+on every 200 and 304. A malformed `dataset_id` is not unreadable metadata: `InvalidDatasetIdError`,
+a `ValueError`, takes the same 400 every other route gives it. `StorageContainmentError` is a
+`ValueError` too, as the plain `ValueError` that check raised through 0.15.0 was, so batch delete
+still reports such an id as not found. Everywhere else the app's `ValueError` handler answers it as
+the server fault it is -- a generic 500, logged by type only -- where it used to answer 400 and
+blame the caller; and `/filter` no longer echoes its message, which named the id, as a 400 detail.
+The artifact route degrades only for its metadata: an `.npz` that leads out of the root is a 500
+too. One such file fails `/filter`, `/stats` and expired-dataset cleanup for the whole store, since
+each reads every dataset's metadata.
 
 **`PATCH .../tags` is an optimistic-concurrency write.** `update_tags` takes an optional
 `precondition`, evaluated against the CURRENT metadata inside its `_version_lock` and cross-process
@@ -1326,19 +1333,33 @@ write lock, before anything is written; the route passes one that recomputes the
 `ETag` exactly as the reads do, and a `False` raises `PreconditionFailedError` → 412. A check made in
 the route, outside those locks, could pass and then lose the race to another writer. So could a
 check inside them, if the other writer took neither: `PATCH /batch-tags` read and wrote in two
-unlocked hops and `DELETE` took no lock, so each could land between the check and the write, and
-the PATCH answered 200 over a lost edit or for a deleted dataset. Every route that edits or deletes
-a dataset now takes the same two locks in the same order: batch-tags through `update_tags`, and
-`DELETE`, batch delete and expired-dataset cleanup through `DatasetStore.delete_under_lock`, which
-wraps the store's own `delete`. The locks are taken there and never inside a `delete` override:
-`_version_lock` is one non-reentrant lock shared by every store, and `CachedDatasetStore.delete`
-calls two other stores' `delete`. A dataset removed by something outside the locks between the read
-and the write makes `update_meta` return `False`, and `update_tags` then returns `None` -- a 404, not
-a 200 with an `ETag`. `TestConditionalWriteIsAtomic` pins each part: the precondition runs under
-`_version_lock` and under the cross-process lock; a writer that lands after the route has decided
-still gets the 412; batch-tags and `DELETE`, sent while a PATCH is held between its check and its
-write, wait for its lock; every route that deletes holds both locks; and a dataset gone by the
-write is a 404.
+unlocked hops, `DELETE` took no lock, and a create saved with neither lock after checking, seconds
+earlier, that the dataset did not exist. Each could land between the check and the write, and the
+PATCH answered 200 over a lost edit, over a lost create, or for a deleted dataset. Every route that
+creates, edits or deletes a dataset now takes the same two locks in the same order: batch-tags
+through `update_tags`; `DELETE`, batch delete and expired-dataset cleanup through
+`DatasetStore.delete_under_lock`, which wraps the store's own `delete`; and `POST /v1/datasets` and
+`/batch-create` through `save_versioned`, which re-checks existence under the locks and, when the
+dataset is already there, writes nothing and returns it -- so a create no longer overwrites another
+create either. The locks are taken there and never inside a `delete` or `save` override:
+`_version_lock` is one non-reentrant lock shared by every store, and `CachedDatasetStore` calls two
+other stores' methods. A dataset removed by something outside the locks between the read and the
+write makes `update_meta` return `False`, and `update_tags` then returns `None` -- a 404, not a 200
+with an `ETag` -- unless, on LocalFS, the removal lands between `update_meta`'s own existence check
+and its rename: that one is still answered as applied, and leaves metadata without an artifact.
+`TestConditionalWriteIsAtomic` pins each part: the precondition runs under `_version_lock` and under
+the cross-process lock; a writer that lands after the route has decided still gets the 412;
+batch-tags, `DELETE` and a create, sent while a PATCH is held between its check and its write, wait
+for its lock; every route that deletes, and `save_versioned` for a named and an unnamed dataset,
+holds both locks; every lock taker enters `_version_lock` before the file lock; and a dataset gone
+by the write is a 404.
+
+**The cost of the locks.** `_version_lock` is process-global, and each of these store calls holds it
+for its whole length: a delete for its unlinks, batch-tags for each dataset's edit, and a create for
+its whole save -- for a large dataset, seconds, as a named create already did. `record_access`,
+which a read schedules on the event loop, waits for it, so a GET arriving during a long save stalls
+the loop until the save completes. Moving `record_access` off the loop, or saving outside the lock
+and committing inside it, would lift that; neither is done here.
 
 **It is the only write that honours preconditions today.** A `DELETE /v1/datasets/{dataset_id}`
 does not evaluate its `If-Match`, although that target now carries a strong `ETag` a client could
@@ -1347,10 +1368,27 @@ other write ignore both headers too. That is a recorded follow-up, not behaviour
 
 **The atomicity is per host.** `_version_lock` orders threads within one process. What extends it
 across processes is the store's cross-process write lock, and only LocalFS overrides the base
-class's no-op one, with `flock`: advisory, per host, and no guarantee across hosts or over NFS. The
-Redis and Postgres stores inherit the no-op, as does `CachedDatasetStore` whatever its primary, so
-for them the check and the write are atomic within one process only. The service wires LocalFS
-alone today (`juniper_data/api/app.py`).
+class's no-op one, with `flock`: advisory, per host, and no guarantee across hosts or over NFS. Its
+lock files are a fixed set of sixteen stripes in `<storage_path>/locks/`, created with the store; a
+dataset locks stripe `sha256(id)` mod 16. They are opened with `O_NOFOLLOW`, so a symlink planted at
+one is refused rather than followed out of the storage root, and without `O_CREAT`, so taking a lock
+needs no free inode. Creating them is best effort: a store over a directory it cannot write still
+opens, as it always did, and a stripe missing then is created when first locked. The first form
+created a lock file per dataset id on first use and never removed it, so every request naming an
+absent id left one behind, and `DELETE` needed a free inode before it could free anything -- on a
+volume out of inodes, deletes answered 500. A lock file per id from an earlier version is no longer
+used; one left in the directory is harmless. Two processes of different versions on one directory
+do not exclude each other: stop the old one first. `TestLockStripes` pins the stripes: absent ids
+leave no file, the delete paths work with no free inode (simulated), a planted symlink is refused,
+and an unwritable directory still opens. The Redis and Postgres stores inherit the no-op, so for them the check and the write are
+atomic within one process only. **`CachedDatasetStore` is not covered at all**: a cache fill on an
+artifact miss, and `warm_cache`, write a primary snapshot into the cache without either lock, and
+`get_meta` reads the cache first. The service wires LocalFS alone today (`juniper_data/api/app.py`).
+
+**Known issue: expired-dataset cleanup decides expiry outside the locks,** on a metadata snapshot
+up to five seconds old, which another process's writes never refresh. A dataset deleted and
+re-created without a TTL after that snapshot was taken is still deleted. This predates the locks;
+closing it means re-reading the metadata and re-deciding expiry under them.
 
 **Why the artifact `ETag` is weak** (owner ruling 2026-09-23, overturning the 2026-09-11 "strong"
 on its premise). The ruling assumed, with the API primer, that `checksum` hashes the served NPZ
@@ -1359,8 +1397,9 @@ bytes. It does not: it is `compute_checksum`'s SHA-256 over a canonical serializ
 `sha256(served bytes) != checksum`. Identical arrays re-serialized — another numpy or zlib, or
 another key order: `InMemoryDatasetStore` sorts keys where LocalFS, Redis and Postgres keep the
 generator's, so a `CachedDatasetStore` over an in-memory cache serves a hit and a miss as two byte
-sequences — keep one checksum. That is exactly "same content, possibly different bytes", the
-definition of a weak validator (RFC 9110 §8.8.1), so the tag is `W/"<checksum>"`. Revalidation is
+sequences — keep one checksum. RFC 9110 §8.8.1 names that case: "a validator is weak if it is
+shared by two or more representations of a given resource at the same time, unless those
+representations have identical representation data". So the tag is `W/"<checksum>"`. Revalidation is
 unaffected (`If-None-Match` compares weakly); `If-Match`, which compares strongly, can match the
 artifact only through `*`.
 
@@ -1379,12 +1418,15 @@ collides with APD-DATA-019's pushdown), plus a fallback for artifacts written be
 - Do not read `GET /{dataset_id}/access` as an access, or count it as one.
 - Do not evaluate a write precondition in the route. It has to run inside `update_tags`' lock, or
   it can pass and then lose the race it exists to prevent.
-- Do not add a route that edits or deletes a dataset without the store's two locks: go through
-  `update_tags` or `delete_under_lock`, or a conditional PATCH can lose the race to it. And do not
-  take `_version_lock` inside a store's own `delete` or `update_meta` -- it is not reentrant, and
-  the cached store calls those methods on the stores it wraps.
-- Do not `strip()` a precondition field to find `*`: `str.strip()` removes NBSP and NEL, which are
-  not OWS. Strip spaces and tabs only (`_OWS`).
+- Do not add a route that creates, edits or deletes a dataset without the store's two locks: go
+  through `save_versioned`, `update_tags` or `delete_under_lock`, or a conditional PATCH can lose
+  the race to it. And do not take `_version_lock` inside a store's own `save`, `delete` or
+  `update_meta` -- it is not reentrant, and the cached store calls those methods on the stores it
+  wraps. Take it before the file lock, never after: the reverse order deadlocks against
+  `record_access`.
+- Do not create a lock file per dataset id: the stripes exist so that no lock needs a new inode.
+- Do not `strip()` a precondition field to find `*`: `str.strip()` removes every Unicode whitespace
+  character, and only spaces and tabs are OWS. Strip those only (`_OWS`).
 - Do not let `_ENTITY_TAG_LIST` match an element's whitespace two ways, as in
   `[ \t]*(?:tag)?[ \t]*`. An element with no tag can then split its whitespace between the two
   runs, and a failing match tries every split of every element: exponential time on the event
@@ -1396,12 +1438,13 @@ collides with APD-DATA-019's pushdown), plus a fallback for artifacts written be
 `@router.get` do not add it. Out of scope here.
 
 Non-vacuity: `util/ad-hoc/2026-09-22_verify_conditional_request_tests_are_not_vacuous.py` applies
-fifty-three mutations, one behaviour each, and requires the tests named for each to go red while a
-named control stays green. Every test in `test_conditional_requests.py` is named by an arm, 58 of
-its 69 as a test that must go red; its docstring lists the 11 named only as controls.
+seventy mutations, one behaviour each, and requires the tests named for each to go red while a
+named control stays green. Every test in `test_conditional_requests.py` is named by an arm, 79 of
+its 90 as a test that must go red; its docstring lists the 11 named only as controls.
 `util/ad-hoc/2026-09-23_verify_entity_tag_list_regex_equivalence.py` checks that the linear grammar
 accepts exactly the language the backtracking one did, over an exhaustive sweep, a random one and a
-structured sweep of lists of up to twelve elements.
+structured sweep of lists of up to twelve elements, whitespace-only elements at every position
+among them.
 
 ---
 
