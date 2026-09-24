@@ -41,8 +41,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   quotes the last, so an outage after the first listing is not read as a missing listener. Every
   request has a time limit.
 
-## [0.16.0] - 2026-09-23
-
 ### Added
 
 - **`ETag`s and conditional requests on the three single-dataset reads** (APD-DATA-017, owner
