@@ -60,25 +60,25 @@ JuniperData is a dataset generation and management service for the Juniper ecosy
 2. **URL Versioning**: Major versions are indicated in the URL path (`/v1/`, `/v2/`, etc.)
 
 3. **Backward Compatibility Guarantees** — **in force from juniper-data 1.0.** While the package
-   is `0.x`, `/v1` may change incompatibly: every such change is flagged **Breaking** in
-   `CHANGELOG.md`, the way SemVer treats a `0.y` minor. Owner ruling 2026-09-23, taken when the
-   defect-register arc's rulings (the access counters leaving the metadata representation,
-   RFC 9457 errors, 200 on dataset reuse) were found to conflict with the unconditional wording
-   this section had. From 1.0 on:
+   is `0.x`, `/v1` may change incompatibly: every such change is flagged with an uppercase
+   **BREAKING** marker in `CHANGELOG.md`, the way SemVer treats a `0.y` minor. Owner ruling
+   2026-09-23, taken when the defect-register arc's rulings (the access counters leaving the
+   metadata representation, RFC 9457 errors, 200 on dataset reuse) were found to conflict with
+   the unconditional wording this section had. From 1.0 on:
    - Response fields will NOT be removed within a major version
    - New optional fields MAY be added to responses
    - New optional parameters MAY be added to requests
    - Existing endpoints will NOT change behavior within a major version
 
 4. **Deprecation Policy** — **in force from juniper-data 1.0**, as item 3 is. Before 1.0 no
-   advance notice is promised: a breaking change needs only a CHANGELOG **Breaking** entry.
+   advance notice is promised: a breaking change needs only a CHANGELOG **BREAKING** entry.
    From 1.0 on:
    - Deprecated features will be announced at least 2 minor versions in advance
    - Deprecated endpoints will return a `Deprecation` header
    - Old API versions will be supported for at least 6 months after a new major version
 
 5. **Breaking Changes** (from 1.0, require a major version bump; before 1.0, a CHANGELOG
-   **Breaking** entry):
+   **BREAKING** entry):
    - Removing an endpoint
    - Removing a response field
    - Changing the type of a response field
@@ -791,7 +791,9 @@ Delete multiple datasets by ID.
 ### PATCH /v1/datasets/batch-tags
 
 Add/remove tags on multiple datasets. `If-Match` / `If-None-Match` are not evaluated here; for a
-conditional tag edit, use [`PATCH /v1/datasets/{id}/tags`](#patch-v1datasetsidtags).
+conditional tag edit, use [`PATCH /v1/datasets/{id}/tags`](#patch-v1datasetsidtags). Each
+dataset's edit is applied under the same locks as that route's, so a batch edit never lands
+between a conditional edit's check and its write.
 
 **Request Body:**
 
@@ -906,8 +908,9 @@ Get metadata for a specific dataset.
   authentication.
 - **`If-None-Match`** — send a held `ETag` (or a list, or `*`; `W/` prefixes compare weakly; a
   list may span several header lines) and a match is answered `304 Not Modified` with no body. A
-  304 still counts as an access. A field that is not `*` or a well-formed entity-tag list, or is
-  longer than 8192 characters (all its lines joined), names nothing here: the full body is served.
+  304 still counts as an access. A field that is not `*` or a well-formed entity-tag list (only
+  spaces and tabs may surround either: a `*` wrapped in NBSP or NEL is not `*`), or is longer than
+  8192 characters (all its lines joined), names nothing here: the full body is served.
 - **`If-Match`** — the current representation must carry one of the listed tags, compared
   STRONGLY (a `W/` tag never matches), or the answer is `412 Precondition Failed`. A malformed or
   over-long field fails the same way. Evaluated before `If-None-Match` (RFC 9110 §13.2.2); a 412 is
@@ -925,9 +928,10 @@ Get metadata for a specific dataset.
 ### GET /v1/datasets/{id}/access
 
 The access counters of one dataset — where they live since APD-DATA-032. They are still
-maintained, exactly where they always were — every `GET /v1/datasets/{id}` (a 304 included) and
-every artifact download (a 304 included); `/latest`, `/filter` and `/versions` never recorded an
-access — and they are no longer part of any metadata representation.
+maintained, exactly where they always were — every `GET /v1/datasets/{id}` and every artifact
+download that answers 200 or 304 (a 412 reads nothing and records nothing); `/latest`, `/filter`
+and `/versions` never recorded an access — and they are no longer part of any metadata
+representation.
 
 **Response** (`Cache-Control: no-store`):
 
@@ -972,13 +976,17 @@ Download the dataset as an NPZ file.
   [`GET /v1/datasets/{id}`](#get-v1datasetsid). `If-None-Match: *` answers 304 even for a dataset
   with no checksum — `*` matches any current representation. When the store confirms the dataset
   exists (on the default store, metadata AND artifact on disk), preconditions are evaluated before
-  the artifact is opened, so a revalidation costs no artifact I/O; a deleted artifact is a 404,
-  never a 304. An orphaned artifact — its metadata gone, the file still there — is still served,
+  the artifact is opened, so a revalidation costs no artifact I/O; on the default store a deleted
+  artifact is a 404, never a 304. The in-memory, Redis and Postgres stores' `exists()` checks the
+  metadata alone, so on them a dataset whose artifact is gone can still be answered with a 304.
+  An orphaned artifact — its metadata gone, the file still there — is still served,
   so its preconditions are still evaluated, against no validator: `If-Match: *` holds and
   `If-None-Match: *` is a 304, while any listed tag names nothing, so another `If-Match` is a 412.
   A dataset with neither metadata nor artifact is a 404 whatever the headers say. If the metadata
-  cannot be read, the artifact is still served, without an `ETag`; a malformed dataset ID is a
-  `400`, as on every other route.
+  cannot be read — a corrupt document, or a metadata file that leads out of the storage root,
+  which the store refuses to follow — the artifact is still served, without an `ETag`, and a
+  conditional request for it is judged as for an orphan; a malformed dataset ID is a `400`, as on
+  every other route.
 
 **Status Codes:**
 
@@ -1024,7 +1032,9 @@ Delete a dataset.
 
 `If-Match` is **not evaluated** here: the delete proceeds whatever the header names, although
 [`GET /v1/datasets/{id}`](#get-v1datasetsid) serves a strong `ETag` a client could send back. Only
-[`PATCH /v1/datasets/{id}/tags`](#patch-v1datasetsidtags) honours preconditions today.
+[`PATCH /v1/datasets/{id}/tags`](#patch-v1datasetsidtags) honours preconditions today. The delete
+does take that route's locks, so it lands before or after a conditional tag edit, never between
+its check and its write.
 
 **Path Parameters:**
 
@@ -1056,14 +1066,20 @@ naming the resource that `ETag` describes (the request target, `.../tags`, has n
 
 **Optimistic concurrency.** Send the `ETag` of the copy you edited from as `If-Match`: if the
 dataset has changed since — a concurrent tag edit — the answer is `412 Precondition Failed` and
-nothing is written. The check runs against the current metadata inside the same lock as the write,
-so it cannot pass and then lose the race — on one host: the default store's lock is a per-host
-`flock`, and the Redis and Postgres stores have no cross-process lock at all, so for them the
-guarantee holds within one process. The service runs on the default (LocalFS) store today.
-`If-None-Match` naming the current representation (`*` included) is also a 412 here, not a 304 —
-the RFC 9110 §13.1.2 rule for a method other than GET. A header the server cannot read — not `*`
-or a well-formed entity-tag list, or longer than 8192 characters — is a 412 too, `If-Match` or
-`If-None-Match`: a write does not proceed under a condition the server could not read.
+nothing is written. The check runs against the current metadata inside the same locks as the
+write, and every route that edits or deletes a dataset — this one,
+[`PATCH /v1/datasets/batch-tags`](#patch-v1datasetsbatch-tags),
+[`DELETE /v1/datasets/{id}`](#delete-v1datasetsid), batch delete and expired-dataset cleanup —
+takes those locks too, so the check cannot pass and then lose the race — on one host: the
+default store's cross-process lock is a per-host `flock`, and the Redis and Postgres stores and
+`CachedDatasetStore` have none, so for them the guarantee holds within one process. The service
+runs on the default (LocalFS) store today. A dataset removed by something outside those locks —
+a file deleted by hand, another host — between the read and the write is a `404`, never a `200`
+with an `ETag`. `If-None-Match` naming the current representation (`*` included) is also a 412
+here, not a 304 — the RFC 9110 §13.1.2 rule for a method other than GET. A header the server
+cannot read — not `*` or a well-formed entity-tag list (only spaces and tabs may surround
+either), or longer than 8192 characters — is a 412 too, `If-Match` or `If-None-Match`: a write
+does not proceed under a condition the server could not read.
 
 This is the **only write that honours preconditions today**. `If-Match` sent to
 [`DELETE /v1/datasets/{id}`](#delete-v1datasetsid), to `PATCH /v1/datasets/batch-tags`, or to any
@@ -1072,7 +1088,7 @@ other write is not evaluated.
 **Status Codes:**
 
 - `200 OK` - Updated metadata returned
-- `404 Not Found` - Dataset not found
+- `404 Not Found` - Dataset not found, or gone by the time of the write
 - `412 Precondition Failed` - A precondition failed; nothing was written
 
 ---

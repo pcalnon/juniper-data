@@ -13,12 +13,18 @@ so any honest hash of the body changed with them -- a strong validator was impos
 """
 
 import contextlib
+import fcntl
 import json
 import logging
+import os
+import queue
 import subprocess
 import sys
+import threading
+from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime
 
+import httpx
 import numpy as np
 import pytest
 from fastapi import FastAPI
@@ -133,6 +139,143 @@ def _probe_streams(store, monkeypatch: pytest.MonkeyPatch) -> list[_ClosingProbe
     return opened
 
 
+def _file_lock_is_held(store: LocalFSDatasetStore, dataset_id: str) -> bool:
+    """Whether LocalFS's cross-process lock on ``dataset_id`` is held right now.
+
+    ``flock(2)`` locks belong to an open file DESCRIPTION, so a second ``open`` of the lock file
+    is refused a non-blocking lock while the store holds one -- even in this process, which is
+    what lets a single-process test see the lock another PROCESS would wait on.
+    """
+    fd = os.open(store._lock_path(dataset_id), os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return True
+    else:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        return False
+    finally:
+        os.close(fd)
+
+
+class _AnnouncingLock:
+    """Stands in for ``DatasetStore._version_lock``, and announces each thread that has to WAIT for it.
+
+    That announcement is what makes the interleaving tests deterministic in both directions. A
+    writer that takes the lock reports itself the moment it reaches it, and a writer that does
+    not take it simply finishes; each outcome is an event the test observes, never a timeout it
+    infers from.
+    """
+
+    def __init__(self, on_wait: Callable[[], None]) -> None:
+        self._lock = threading.Lock()
+        self._on_wait = on_wait
+
+    def __enter__(self) -> "_AnnouncingLock":
+        if not self._lock.acquire(blocking=False):
+            self._on_wait()
+            self._lock.acquire()
+        return self
+
+    def __exit__(self, *_exc_info: object) -> None:
+        self._lock.release()
+
+    def locked(self) -> bool:
+        return self._lock.locked()
+
+
+# A bound on each wait below, so a broken run fails instead of hanging. The interleavings are
+# decided by events, not by this bound: a passing run never comes near it.
+_RACE_TIMEOUT_SECONDS = 30
+
+
+def _race_a_held_conditional_patch(client: TestClient, store: LocalFSDatasetStore, monkeypatch: pytest.MonkeyPatch, dataset_id: str, rival: Callable[[TestClient], httpx.Response]) -> tuple[str, httpx.Response, httpx.Response]:
+    """Send ``rival`` while a conditional PATCH sits between its PASSED check and its write.
+
+    The PATCH's ``If-Match`` is current when it is checked. The PATCH is then held inside
+    ``update_tags``, right after the check -- the window the store's locks exist to close --
+    and the rival request is sent. Returns ``(first, patch_response, rival_response)``, where
+    ``first`` is what the rival did while the PATCH was held: ``"waited for the lock"`` or
+    ``"finished"``.
+    """
+    # A PATCH, not a GET, supplies the ETag: a GET schedules ``record_access``, which would take
+    # the lock under test from outside the interleaving.
+    etag = client.patch(f"/v1/datasets/{dataset_id}/tags", json={"add_tags": ["before"]}).headers["etag"]
+    events: queue.Queue[str] = queue.Queue()
+    monkeypatch.setattr(store, "_version_lock", _AnnouncingLock(lambda: events.put("waited for the lock")))
+    in_window, release = threading.Event(), threading.Event()
+    real_update_tags = store.update_tags
+
+    def held_after_the_check(target: str, add_tags: list[str], remove_tags: list[str], precondition: Callable[[DatasetMeta], bool] | None = None) -> DatasetMeta | None:
+        if precondition is None:
+            return real_update_tags(target, add_tags, remove_tags)
+
+        def check_then_hold(current: DatasetMeta) -> bool:
+            passed = precondition(current)
+            in_window.set()
+            release.wait(_RACE_TIMEOUT_SECONDS)
+            return passed
+
+        return real_update_tags(target, add_tags, remove_tags, check_then_hold)
+
+    monkeypatch.setattr(store, "update_tags", held_after_the_check)
+    responses: dict[str, httpx.Response] = {}
+    failures: list[Exception] = []
+
+    def run(name: str, request: Callable[[], httpx.Response]) -> None:
+        try:
+            responses[name] = request()
+        except Exception as exc:  # re-raised below, in the test's own thread
+            failures.append(exc)
+        finally:
+            if name == "rival":
+                events.put("finished")
+
+    patch = threading.Thread(target=run, args=("patch", lambda: client.patch(f"/v1/datasets/{dataset_id}/tags", json={"add_tags": ["mine"]}, headers={"If-Match": etag})))
+    patch.start()
+    assert in_window.wait(_RACE_TIMEOUT_SECONDS), "the conditional PATCH never reached its write"
+    rival_thread = threading.Thread(target=run, args=("rival", lambda: rival(client)))
+    rival_thread.start()
+    first = events.get(timeout=_RACE_TIMEOUT_SECONDS)
+    release.set()
+    patch.join(_RACE_TIMEOUT_SECONDS)
+    rival_thread.join(_RACE_TIMEOUT_SECONDS)
+    if failures:
+        raise failures[0]
+    return first, responses["patch"], responses["rival"]
+
+
+@contextlib.asynccontextmanager
+async def _raw_header_client(store: InMemoryDatasetStore, tmp_path) -> AsyncIterator[tuple[httpx.AsyncClient, list[bytes]]]:
+    """An async client that hands the app RAW header bytes, and a record of the precondition bytes it received.
+
+    Starlette's TestClient re-encodes a non-ASCII header value as UTF-8 -- ``b"\\xa0"`` arrives
+    as ``b"\\xc2\\xa0"`` -- so it cannot deliver an obs-text byte the way a real server passes it
+    through. ``httpx.ASGITransport`` puts the bytes in the ASGI scope as sent, and the record
+    lets each test prove that they arrived.
+    """
+    storage = tmp_path / "juniper_data_storage"
+    storage.mkdir()
+    app = create_app(settings=Settings(storage_path=str(storage)))
+    datasets.set_store(store)
+    received: list[bytes] = []
+
+    async def recording_app(scope, receive, send) -> None:
+        if scope["type"] == "http":
+            received.extend(value for name, value in scope["headers"] if name in (b"if-match", b"if-none-match"))
+        await app(scope, receive, send)
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=recording_app), base_url="http://testserver") as client:
+        yield client, received
+
+
+async def _create_over(client: httpx.AsyncClient) -> str:
+    """``_create`` for an async client."""
+    response = await client.post("/v1/datasets", json={"generator": "spiral", "params": {"n_spirals": 2, "n_points_per_spiral": 20, "seed": 1}, "persist": True})
+    assert response.status_code == 201, response.text
+    return response.json()["dataset_id"]
+
+
 @pytest.mark.unit
 class TestIfNoneMatchParsing:
     """The comparison rules of RFC 9110 §13.1.2, and the safe direction on garbage."""
@@ -212,6 +355,59 @@ class TestIfNoneMatchParsing:
         assert not if_none_match_fails_write('"zzz"', self.ETAG)
         assert not if_none_match_fails_write("", self.ETAG), "an empty field is an empty list and names nothing"
         assert not if_none_match_fails_write(None, self.ETAG), "no header, no precondition"
+
+
+@pytest.mark.unit
+class TestStarTakesOnlySpacesAndTabs:
+    """``*`` may be wrapped in RFC 9110 OWS -- spaces and tabs -- and in nothing else.
+
+    ``str.strip()`` also removes NBSP (0xA0) and NEL (0x85), which a server passes through as
+    obs-text, so a ``*`` wrapped in either read as ``*``: a 304 where the full body was owed, an
+    ``If-Match`` that held, and a PATCH that should have failed closed wrote. Each test sends RAW
+    header bytes (``_raw_header_client``) and checks the app received them as sent.
+    """
+
+    WRAPPED = (b"\xa0*", b"*\xa0", b"\x85*", b"*\x85")
+
+    @pytest.mark.asyncio
+    async def test_on_a_read_a_star_wrapped_in_nbsp_or_nel_is_malformed(self, store: InMemoryDatasetStore, tmp_path) -> None:
+        async with _raw_header_client(store, tmp_path) as (client, received):
+            dataset_id = await _create_over(client)
+            for raw in self.WRAPPED:
+                full = await client.get(f"/v1/datasets/{dataset_id}", headers={"If-None-Match": raw})
+                assert received[-1] == raw, "the app must receive the byte as sent, or this proves nothing"
+                assert full.status_code == 200, raw
+                assert full.json()["dataset_id"] == dataset_id, "a malformed If-None-Match names nothing: the full body"
+                artifact = await client.get(f"/v1/datasets/{dataset_id}/artifact", headers={"If-None-Match": raw})
+                assert artifact.status_code == 200, raw
+                assert artifact.content
+                assert (await client.get(f"/v1/datasets/{dataset_id}", headers={"If-Match": raw})).status_code == 412, raw
+
+    @pytest.mark.asyncio
+    async def test_on_the_patch_a_star_wrapped_in_nbsp_or_nel_fails_closed(self, store: InMemoryDatasetStore, tmp_path) -> None:
+        async with _raw_header_client(store, tmp_path) as (client, received):
+            dataset_id = await _create_over(client)
+            for raw in self.WRAPPED:
+                for field in ("If-Match", "If-None-Match"):
+                    response = await client.patch(f"/v1/datasets/{dataset_id}/tags", json={"add_tags": ["blind"]}, headers={field: raw})
+                    assert received[-1] == raw, "the app must receive the byte as sent, or this proves nothing"
+                    assert response.status_code == 412, (field, raw)
+                    assert "blind" not in store.get_meta(dataset_id).tags, (field, raw)
+
+    @pytest.mark.asyncio
+    async def test_a_star_wrapped_in_spaces_and_tabs_is_still_a_star(self, store: InMemoryDatasetStore, tmp_path) -> None:
+        # The control for the two tests above: the same raw path, with the whitespace RFC 9110
+        # does allow, still reads as ``*``.
+        async with _raw_header_client(store, tmp_path) as (client, received):
+            dataset_id = await _create_over(client)
+            for raw in (b" * ", b"\t*\t"):
+                assert (await client.get(f"/v1/datasets/{dataset_id}", headers={"If-None-Match": raw})).status_code == 304, raw
+                assert received[-1] == raw
+                assert (await client.get(f"/v1/datasets/{dataset_id}", headers={"If-Match": raw})).status_code == 200, raw
+                assert (await client.patch(f"/v1/datasets/{dataset_id}/tags", json={"add_tags": ["x"]}, headers={"If-None-Match": raw})).status_code == 412, raw
+            written = await client.patch(f"/v1/datasets/{dataset_id}/tags", json={"add_tags": ["star"]}, headers={"If-Match": b" * "})
+            assert written.status_code == 200
+            assert "star" in written.json()["tags"]
 
 
 # Run in a CHILD interpreter, so a parse that never returns cannot hang the suite: the parent
@@ -581,6 +777,34 @@ class TestPreconditionsRespectExistence:
         ours = [record.getMessage() for record in loud if record.name.startswith("juniper_data")]
         assert ours == [], ours
 
+    def test_a_metadata_file_that_leads_out_of_the_store_still_serves_the_artifact(self, localfs: tuple[TestClient, LocalFSDatasetStore], tmp_path) -> None:
+        # A symlink in the storage directory that leads outside it is the STORE's fault. LocalFS
+        # refuses to follow it -- correctly -- but it raised the error that means "the caller's
+        # id is malformed", so this route re-raised it as a 400 that blamed the caller, where
+        # 0.15.0 served the artifact. It is metadata the route cannot read: the artifact is
+        # served without a validator, and a conditional request is judged as for an orphan.
+        client, store = localfs
+        dataset_id = _create(client)
+        meta_path = store._meta_path(dataset_id)
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        elsewhere = outside / meta_path.name
+        elsewhere.write_bytes(meta_path.read_bytes())  # valid metadata: only where it lives is wrong
+        meta_path.unlink()
+        meta_path.symlink_to(elsewhere)  # an absolute target, outside the storage root
+        plain = client.get(f"/v1/datasets/{dataset_id}/artifact")
+        assert plain.status_code == 200, "a storage fault must not be answered as the caller's 400"
+        assert plain.content
+        assert "etag" not in plain.headers
+        for headers, expected in (({"If-None-Match": "*"}, 304), ({"If-None-Match": '"x"'}, 200), ({"If-Match": "*"}, 200), ({"If-Match": '"x"'}, 412)):
+            assert client.get(f"/v1/datasets/{dataset_id}/artifact", headers=headers).status_code == expected, headers
+        # The store's own verdict: a storage fault, not a malformed id.
+        from juniper_data.storage.base import InvalidDatasetIdError, StorageContainmentError
+
+        with pytest.raises(StorageContainmentError) as refused:
+            store.get_meta(dataset_id)
+        assert not isinstance(refused.value, InvalidDatasetIdError)
+
 
 @pytest.mark.unit
 class TestIfMatch:
@@ -606,6 +830,22 @@ class TestIfMatch:
         count_before = client.get(f"/v1/datasets/{dataset_id}/access").json()["access_count"]
         assert client.get(f"/v1/datasets/{dataset_id}", headers={"If-Match": '"stale"'}).status_code == 412
         assert client.get(f"/v1/datasets/{dataset_id}/access").json()["access_count"] == count_before
+
+    def test_an_empty_if_match_is_412_on_a_read(self, client: TestClient) -> None:
+        # An empty field is a well-formed EMPTY list: it names no representation, so If-Match
+        # fails. It is still a precondition -- a check that read an empty field as "no header"
+        # would serve the body.
+        dataset_id = _create(client)
+        assert client.get(f"/v1/datasets/{dataset_id}", headers={"If-Match": ""}).status_code == 412
+        assert client.get(f"/v1/datasets/{dataset_id}/artifact", headers={"If-Match": ""}).status_code == 412
+
+    def test_an_empty_if_match_is_412_on_the_patch_and_writes_nothing(self, client: TestClient, store: InMemoryDatasetStore) -> None:
+        # The write's own gate: a route that decided "is this conditional?" by the field's
+        # truthiness would skip the precondition and write.
+        dataset_id = _create(client)
+        response = client.patch(f"/v1/datasets/{dataset_id}/tags", json={"add_tags": ["blind"]}, headers={"If-Match": ""})
+        assert response.status_code == 412
+        assert "blind" not in store.get_meta(dataset_id).tags
 
 
 @pytest.mark.unit
@@ -690,13 +930,15 @@ class TestConditionalTagWrite:
 
 @pytest.mark.unit
 class TestConditionalWriteIsAtomic:
-    """The PATCH precondition is checked INSIDE the lock that guards the write, or it is a race.
+    """The PATCH precondition is checked INSIDE the locks that guard the write, or it is a race.
 
-    Two ways to lose that, each pinned by one test here: ``update_tags`` evaluating the
-    precondition before it takes ``_version_lock``, and the route evaluating it itself and
-    handing the store ``None``. Both pass every functional test -- a stale ``If-Match`` still
-    gets its 412 -- because the check still happens, just where another writer can slip in
-    between it and the write.
+    Every way to lose that passes every functional test -- a stale ``If-Match`` still gets its
+    412 -- because the check still happens, just where another writer can slip in between it and
+    the write. Each is pinned here: ``update_tags`` evaluating the precondition before it takes
+    ``_version_lock``, or inside it but outside the cross-process lock; the route evaluating it
+    itself and handing the store ``None``; and another writer that takes neither lock --
+    ``PATCH /batch-tags`` and ``DELETE`` did, and a delete landing in the window turned the
+    PATCH into a 200 for a dataset that was gone.
     """
 
     def test_the_store_evaluates_the_precondition_under_its_version_lock(self, store: InMemoryDatasetStore) -> None:
@@ -730,6 +972,92 @@ class TestConditionalWriteIsAtomic:
         assert "concurrent" in tags, "the other writer's edit must have landed, or no race was simulated"
         assert response.status_code == 412
         assert "mine" not in tags, "the stale write must not be applied over the concurrent one"
+
+    def test_the_store_evaluates_the_precondition_under_its_cross_process_file_lock(self, tmp_path) -> None:
+        # The half the version-lock test cannot see. ``_version_lock`` orders threads; on LocalFS
+        # what orders PROCESSES is the flock ``_meta_write_lock`` takes. A precondition checked
+        # inside the first but outside the second passed every other test in the suite, and let
+        # a second process write between the check and the write.
+        store = LocalFSDatasetStore(tmp_path / "storage")
+        store.save("guarded", _stored_meta("guarded"), _arrays())
+        held: list[bool] = []
+
+        def check(_current: DatasetMeta) -> bool:
+            held.append(_file_lock_is_held(store, "guarded"))
+            return True
+
+        store.update_tags("guarded", ["b"], [], check)
+        assert held == [True], "the precondition must run while update_tags holds the cross-process lock"
+        assert not _file_lock_is_held(store, "guarded"), "control: the probe must see the lock free once the write is done, or it proves nothing"
+
+    def test_batch_tags_cannot_land_inside_a_conditional_patchs_window(self, localfs: tuple[TestClient, LocalFSDatasetStore], monkeypatch: pytest.MonkeyPatch) -> None:
+        # batch-tags read the metadata and wrote it back in two unlocked hops, so its edit could
+        # land between a conditional PATCH's passed check and its write. The PATCH then erased it,
+        # and answered 200 although the If-Match it checked was stale by the time it wrote.
+        client, store = localfs
+        dataset_id = _create(client)
+        first, patched, batch = _race_a_held_conditional_patch(client, store, monkeypatch, dataset_id, lambda c: c.patch("/v1/datasets/batch-tags", json={"dataset_ids": [dataset_id], "add_tags": ["batch"]}))
+        assert first == "waited for the lock", "batch-tags finished inside the conditional PATCH's window"
+        assert patched.status_code == 200
+        assert batch.status_code == 200
+        assert batch.json()["updated"] == [dataset_id]
+        assert {"mine", "batch"} <= set(store.get_meta(dataset_id).tags), "both acknowledged edits must survive"
+
+    def test_a_delete_cannot_land_inside_a_conditional_patchs_window(self, localfs: tuple[TestClient, LocalFSDatasetStore], monkeypatch: pytest.MonkeyPatch) -> None:
+        # DELETE took no lock either. Inside the window it removed the dataset; the PATCH's write
+        # then found nothing to update, and the PATCH answered 200 with an ETag anyway.
+        client, store = localfs
+        dataset_id = _create(client)
+        first, patched, deleted = _race_a_held_conditional_patch(client, store, monkeypatch, dataset_id, lambda c: c.delete(f"/v1/datasets/{dataset_id}"))
+        assert first == "waited for the lock", "DELETE finished inside the conditional PATCH's window"
+        assert patched.status_code == 200, "the PATCH held the lock first, so its edit applied"
+        assert "mine" in patched.json()["tags"]
+        assert deleted.status_code == 204, "and then the delete ran"
+        assert store.get_meta(dataset_id) is None
+
+    @pytest.mark.parametrize("route", ["delete", "batch-delete", "cleanup-expired"])
+    def test_every_route_that_deletes_holds_both_locks(self, route: str, localfs: tuple[TestClient, LocalFSDatasetStore], monkeypatch: pytest.MonkeyPatch) -> None:
+        # The interleaving above proves the in-process half for DELETE; this proves the store's
+        # own delete runs under BOTH locks, from each route that deletes -- the flock is what
+        # orders a delete against a PATCH in another worker process.
+        client, store = localfs
+        store.save("doomed", _stored_meta("doomed", expires_at=datetime(2026, 9, 22, 21, 0, tzinfo=UTC)), _arrays())
+        held: list[tuple[bool, bool]] = []
+        real_delete = store.delete
+
+        def probing_delete(dataset_id: str) -> bool:
+            held.append((store._version_lock.locked(), _file_lock_is_held(store, dataset_id)))
+            return real_delete(dataset_id)
+
+        monkeypatch.setattr(store, "delete", probing_delete)
+        send = {
+            "delete": lambda: client.delete("/v1/datasets/doomed"),
+            "batch-delete": lambda: client.post("/v1/datasets/batch-delete", json={"dataset_ids": ["doomed"]}),
+            "cleanup-expired": lambda: client.post("/v1/datasets/cleanup-expired"),
+        }
+        assert send[route]().status_code in (200, 204)
+        assert held == [(True, True)], f"{route} must delete under _version_lock and the cross-process lock"
+        assert store.get_meta("doomed") is None
+
+    def test_a_dataset_gone_by_the_write_is_404_and_carries_no_etag(self, client: TestClient, store: InMemoryDatasetStore, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Every delete in this service takes the locks now, but something outside them can still
+        # remove a dataset between update_tags' read and its write: a file deleted by hand,
+        # another host, another process on a store whose cross-process lock is the no-op.
+        # update_meta reports that with False, which update_tags ignored -- answering 200 and a
+        # new ETag for a dataset that was gone.
+        dataset_id = _create(client)
+        etag = client.patch(f"/v1/datasets/{dataset_id}/tags", json={"add_tags": ["before"]}).headers["etag"]
+        real_update_meta = store.update_meta
+
+        def removed_first(target: str, meta: DatasetMeta) -> bool:
+            store.delete(target)  # the store's own delete, outside every lock, as an outside actor's would be
+            return real_update_meta(target, meta)
+
+        monkeypatch.setattr(store, "update_meta", removed_first)
+        response = client.patch(f"/v1/datasets/{dataset_id}/tags", json={"add_tags": ["mine"]}, headers={"If-Match": etag})
+        assert response.status_code == 404
+        assert "etag" not in response.headers
+        assert store.get_meta(dataset_id) is None
 
 
 @pytest.mark.unit

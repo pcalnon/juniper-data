@@ -5,16 +5,36 @@ Project:     Juniper
 Sub-Project: juniper-data
 Application: ad-hoc verification
 Author:      Paul Calnon
-Version:     1.1.0
+Version:     1.2.0
 License:     MIT
 
 WHY THIS EXISTS
 ---------------
 A test that passes against both the fixed and the broken implementation pins
-nothing (memory ``reference_vacuous_pass_check_class``). Every behaviour the D-B PR
-claims is reverted here one at a time, and each reversion must turn exactly the tests
-that describe it red -- while a named control test in the same area stays green, so a
-mutation that breaks everything cannot score as "caught".
+nothing (memory ``reference_vacuous_pass_check_class``). Each arm below reverts one
+behaviour and must turn the tests named for it red, while a named control test in the
+same area stays green, so a mutation that breaks everything cannot score as "caught".
+Other tests may go red too; only the named ones are checked.
+
+WHAT IT COVERS, EXACTLY
+-----------------------
+Every test in ``juniper_data/tests/unit/test_conditional_requests.py`` -- 69 -- is named by
+at least one arm. 58 are a must-fail of some arm, so this run shows each can fail. The other
+11 are named only as controls: the run shows they stay green under a nearby mutation, not that
+they can fail. They are ``test_access_endpoint_serves_the_counters_uncached``,
+``test_a_304_on_the_artifact_is_recorded_as_an_access``,
+``test_stale_if_none_match_gets_the_same_full_body``,
+``test_a_well_formed_if_none_match_naming_another_tag_applies_the_edit``,
+``test_list_form_and_weak_comparison``, ``test_star_matches_any_current_representation``,
+``test_etag_is_strong_and_is_the_hash_of_the_exact_body``,
+``test_stale_if_none_match_gets_the_full_body``,
+``test_a_dataset_that_is_really_absent_is_404_under_every_precondition``,
+``test_an_orphaned_artifact_still_satisfies_if_match_star`` and
+``test_a_star_wrapped_in_spaces_and_tabs_is_still_a_star``. One test outside that file is a
+control (M33). Version 1.1.0 said every behaviour the PR claimed was reverted; seven of the
+file's then 56 tests were named by no arm (round-3 validation, lane A2, F6).
+``util/ad-hoc/2026-09-24_count_conditional_request_harness_coverage.py`` re-derives these
+numbers from ``MUTATIONS`` and pytest's own collection.
 
 The load-bearing one is M1: put the access counters back into the representation.
 That is the state APD-DATA-032 describes, and ``test_metadata_etag_survives_recorded_
@@ -34,6 +54,14 @@ If-Match (M30, M31), the metadata fallback logging a traceback that can carry th
 id (M28) and swallowing a malformed id (M29), a malformed If-None-Match letting a write
 through (M25), and the artifact 304's Cache-Control and a 412's access count unasserted
 (M26, M27). M3 now covers reads only: writes no longer share its helper.
+
+M32-M44 were added when round-3 validation found the PATCH guarantee broken by two writers
+that took no lock -- batch-tags (M33) and DELETE (M34, M35; batch delete and expired-dataset
+cleanup, M36 and M37) -- and by ``update_tags`` ignoring a failed write (M38); the cross-process
+half of the precondition lock unpinned (M32, lane B's N7, which passed the whole suite); ``*``
+read after ``str.strip()``, which also strips NBSP and NEL (M39, M40); a symlinked metadata file
+blamed on the caller (M41, M42); and an empty ``If-Match`` pinned by nothing (M43, M44 -- lane
+B's C3 and C4). M45-M50 name the tests no earlier arm did.
 
 Run from the repo root::
 
@@ -101,6 +129,7 @@ FALLBACK_BLOCK = (
     '    except Exception as exc:  # noqa: BLE001 -- any other metadata read failure degrades to "no validator", never to a failed download\n'
     '        logger.warning("Artifact download: dataset metadata unreadable (%s); serving without an ETag", type(exc).__name__)\n'
     "        meta = None\n"
+    "        metadata_readable = False\n"
 )
 FALLBACK_WARNING = '        logger.warning("Artifact download: dataset metadata unreadable (%s); serving without an ETag", type(exc).__name__)\n'
 
@@ -145,6 +174,79 @@ ROUTE_CHECKS = (
 # The artifact route's existence-gated 412/304 (M26, M27 edit it; 16-space indent is unique to it).
 ARTIFACT_304 = "                return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)\n"
 ARTIFACT_412 = "            if outcome == status.HTTP_412_PRECONDITION_FAILED:\n                raise _precondition_failed()\n            if outcome == status.HTTP_304_NOT_MODIFIED:\n                # Revalidating"
+
+# ---- Round 3 (M32-M44): the defects round-3 validation of juniper-data#428 found ----------------
+LOCAL_FS = REPO / "juniper_data/storage/local_fs.py"
+STAR = "TestStarTakesOnlySpacesAndTabs"
+BATCH_API = "juniper_data/tests/api/test_batch_operations.py::TestBatchUpdateTags"
+
+# The two places ``*`` is recognised (M8a skips the first; M39 and M40 widen what it strips).
+STAR_OR_LIST = '    return field.strip(_OWS) == "*" or _ENTITY_TAG_LIST.fullmatch(field) is not None\n'
+STAR_IN_LIST_NAMES = '    if field.strip(_OWS) == "*":\n        return True\n'
+
+# update_tags' whole locked block, and lane B's "N7" (M32): the check inside _version_lock but
+# outside the cross-process lock, which then re-reads and writes under it.
+LOCKED_BLOCK = (
+    "        with self._version_lock, self._meta_write_lock(dataset_id):\n"
+    "            meta = self.get_meta(dataset_id)\n"
+    "            if meta is None:\n"
+    "                return None\n"
+    "            if precondition is not None and not precondition(meta):\n"
+    "                raise PreconditionFailedError(dataset_id)\n"
+    "            tags = set(meta.tags)\n"
+    "            tags.update(add_tags)\n"
+    "            tags -= set(remove_tags)\n"
+    "            meta.tags = sorted(tags)\n"
+    "            if not self.update_meta(dataset_id, meta):\n"
+    "                return None\n"
+    "            return meta\n"
+)
+CHECK_OUTSIDE_FILE_LOCK = (
+    "        with self._version_lock:\n"
+    "            meta = self.get_meta(dataset_id)\n"
+    "            if meta is None:\n"
+    "                return None\n"
+    "            if precondition is not None and not precondition(meta):\n"
+    "                raise PreconditionFailedError(dataset_id)\n"
+    "            with self._meta_write_lock(dataset_id):\n"
+    "                meta = self.get_meta(dataset_id)\n"
+    "                if meta is None:\n"
+    "                    return None\n"
+    "                tags = set(meta.tags)\n"
+    "                tags.update(add_tags)\n"
+    "                tags -= set(remove_tags)\n"
+    "                meta.tags = sorted(tags)\n"
+    "                if not self.update_meta(dataset_id, meta):\n"
+    "                    return None\n"
+    "                return meta\n"
+)
+
+# batch-tags' per-dataset edit, and the two unlocked hops it replaced (M33).
+BATCH_LOCKED = (
+    "        meta = await asyncio.to_thread(store.update_tags, dataset_id, request.add_tags, request.remove_tags)\n"
+    "        if meta is None:\n"
+    "            not_found.append(dataset_id)\n"
+    "            continue\n"
+    "        updated.append(dataset_id)\n"
+)
+BATCH_UNLOCKED = (
+    "        meta = await asyncio.to_thread(store.get_meta, dataset_id)\n"
+    "        if meta is None:\n"
+    "            not_found.append(dataset_id)\n"
+    "            continue\n"
+    "        meta.tags = sorted((set(meta.tags) | set(request.add_tags)) - set(request.remove_tags))\n"
+    "        await asyncio.to_thread(store.update_meta, dataset_id, meta)\n"
+    "        updated.append(dataset_id)\n"
+)
+
+# delete_under_lock's body (M35 drops the cross-process half).
+DELETE_BOTH_LOCKS = "        with self._version_lock, self._meta_write_lock(dataset_id):\n            return self.delete(dataset_id)\n"
+
+
+def deletes(route: str) -> str:
+    """The node id of one case of the every-route-that-deletes test."""
+    return node(ATOMIC, f"test_every_route_that_deletes_holds_both_locks[{route}]")
+
 
 MUTATIONS = [
     Mutation(
@@ -222,7 +324,7 @@ MUTATIONS = [
     Mutation(
         name="M8a: the list-grammar check is skipped",
         why="a tag embedded in garbage would then match",
-        edits=[(CACHE, "    return field.strip() == \"*\" or _ENTITY_TAG_LIST.fullmatch(field) is not None\n", "    return True\n")],
+        edits=[(CACHE, STAR_OR_LIST, "    return True\n")],
         must_fail=[node(PARSE, "test_unparseable_field_serves_the_full_body")],
         must_still_pass=[node(PARSE, "test_list_form_and_weak_comparison")],
     ),
@@ -403,6 +505,147 @@ MUTATIONS = [
         edits=[(ROUTES, "            _close_artifact_stream(artifact_stream)\n", "")],
         must_fail=[node(EXIST, "test_an_orphaned_artifact_is_412_on_a_failing_if_match_and_the_stream_is_closed"), node(EXIST, "test_an_orphaned_artifact_answers_if_none_match_star_with_a_304")],
         must_still_pass=[node(EXIST, "test_an_orphaned_artifact_still_satisfies_if_match_star")],
+    ),
+    Mutation(
+        name="M32: update_tags checks the precondition inside _version_lock but outside the cross-process lock",
+        why="lane B's N7: it passed the whole suite, and let another PROCESS write between the check and the write",
+        edits=[(STORE, LOCKED_BLOCK, CHECK_OUTSIDE_FILE_LOCK)],
+        must_fail=[node(ATOMIC, "test_the_store_evaluates_the_precondition_under_its_cross_process_file_lock")],
+        must_still_pass=[node(ATOMIC, "test_the_store_evaluates_the_precondition_under_its_version_lock"), node(WRITE, "test_stale_if_match_is_412_and_writes_nothing")],
+    ),
+    Mutation(
+        name="M33: batch-tags reads and writes in two unlocked hops again",
+        why="its edit lands inside a conditional PATCH's window, and the PATCH erases it",
+        edits=[(ROUTES, BATCH_LOCKED, BATCH_UNLOCKED)],
+        must_fail=[node(ATOMIC, "test_batch_tags_cannot_land_inside_a_conditional_patchs_window")],
+        must_still_pass=[node(ATOMIC, "test_a_delete_cannot_land_inside_a_conditional_patchs_window"), f"{BATCH_API}::test_add_and_remove_tags_simultaneously"],
+    ),
+    Mutation(
+        name="M34: DELETE calls the store's unlocked delete again",
+        why="a delete lands inside a conditional PATCH's window, and the PATCH answers 200 for a dataset that is gone",
+        edits=[(ROUTES, "    deleted = await asyncio.to_thread(store.delete_under_lock, dataset_id)\n", "    deleted = await asyncio.to_thread(store.delete, dataset_id)\n")],
+        must_fail=[node(ATOMIC, "test_a_delete_cannot_land_inside_a_conditional_patchs_window"), deletes("delete")],
+        must_still_pass=[deletes("batch-delete"), node(ATOMIC, "test_batch_tags_cannot_land_inside_a_conditional_patchs_window")],
+    ),
+    Mutation(
+        name="M35: delete_under_lock takes _version_lock only",
+        why="the flock is what orders a delete against a PATCH in another worker process",
+        edits=[(STORE, DELETE_BOTH_LOCKS, "        with self._version_lock:\n            return self.delete(dataset_id)\n")],
+        must_fail=[deletes("delete"), deletes("batch-delete"), deletes("cleanup-expired")],
+        # In one process _version_lock alone still orders the two requests.
+        must_still_pass=[node(ATOMIC, "test_a_delete_cannot_land_inside_a_conditional_patchs_window")],
+    ),
+    Mutation(
+        name="M36: batch delete calls the unlocked delete",
+        why="every route that deletes must take the locks, or the PATCH guarantee has an exception",
+        edits=[(STORE, "                ok = self.delete_under_lock(dataset_id)\n", "                ok = self.delete(dataset_id)\n")],
+        must_fail=[deletes("batch-delete")],
+        must_still_pass=[deletes("delete"), deletes("cleanup-expired")],
+    ),
+    Mutation(
+        name="M37: expired-dataset cleanup calls the unlocked delete",
+        why="every route that deletes must take the locks, or the PATCH guarantee has an exception",
+        edits=[(STORE, "self.is_expired(meta) and self.delete_under_lock(meta.dataset_id))", "self.is_expired(meta) and self.delete(meta.dataset_id))")],
+        must_fail=[deletes("cleanup-expired")],
+        must_still_pass=[deletes("delete"), deletes("batch-delete")],
+    ),
+    Mutation(
+        name="M38: update_tags ignores update_meta reporting the dataset gone",
+        why="the PATCH answers 200 with a new ETag for a dataset that no longer exists",
+        edits=[(STORE, "            if not self.update_meta(dataset_id, meta):\n                return None\n            return meta\n", "            self.update_meta(dataset_id, meta)\n            return meta\n")],
+        must_fail=[node(ATOMIC, "test_a_dataset_gone_by_the_write_is_404_and_carries_no_etag")],
+        must_still_pass=[node(WRITE, "test_current_if_match_applies_the_edit")],
+    ),
+    Mutation(
+        name="M39: '*' is matched after str.strip() again, at both sites",
+        why="NBSP and NEL are obs-text, not OWS: '*' wrapped in either read as '*', and a write went ahead",
+        edits=[(CACHE, STAR_OR_LIST, STAR_OR_LIST.replace(".strip(_OWS)", ".strip()")), (CACHE, STAR_IN_LIST_NAMES, STAR_IN_LIST_NAMES.replace(".strip(_OWS)", ".strip()"))],
+        must_fail=[node(STAR, "test_on_a_read_a_star_wrapped_in_nbsp_or_nel_is_malformed"), node(STAR, "test_on_the_patch_a_star_wrapped_in_nbsp_or_nel_fails_closed")],
+        must_still_pass=[node(STAR, "test_a_star_wrapped_in_spaces_and_tabs_is_still_a_star"), node(PARSE, "test_star_matches_any_current_representation")],
+    ),
+    Mutation(
+        name="M40: only the well-formedness check strips Unicode whitespace",
+        why="the reads still come out right, and only a write's If-None-Match shows the field was misread",
+        edits=[(CACHE, STAR_OR_LIST, STAR_OR_LIST.replace(".strip(_OWS)", ".strip()"))],
+        must_fail=[node(STAR, "test_on_the_patch_a_star_wrapped_in_nbsp_or_nel_fails_closed")],
+        must_still_pass=[node(STAR, "test_on_a_read_a_star_wrapped_in_nbsp_or_nel_is_malformed"), node(STAR, "test_a_star_wrapped_in_spaces_and_tabs_is_still_a_star")],
+    ),
+    Mutation(
+        name="M41: a metadata file that leads out of the store is the caller's error again",
+        why="the artifact route then re-raises it as a 400 where it should serve without a validator",
+        edits=[(LOCAL_FS, '            raise StorageContainmentError(f"Path traversal detected for dataset_id: {dataset_id!r}")\n', '            raise InvalidDatasetIdError(f"Path traversal detected for dataset_id: {dataset_id!r}")\n')],
+        must_fail=[node(EXIST, "test_a_metadata_file_that_leads_out_of_the_store_still_serves_the_artifact")],
+        must_still_pass=[node(EXIST, "test_an_invalid_id_on_the_artifact_route_is_the_normal_400_and_logs_no_warning")],
+    ),
+    Mutation(
+        name="M42: the artifact route consults exists() even when the metadata could not be read",
+        why="exists() reads the same metadata, so a conditional request for that dataset fails instead of degrading",
+        edits=[(ROUTES, "    if conditional and metadata_readable:\n", "    if conditional:\n")],
+        must_fail=[node(EXIST, "test_a_metadata_file_that_leads_out_of_the_store_still_serves_the_artifact")],
+        must_still_pass=[node(ART, "test_unreadable_metadata_still_serves_the_artifact"), node(EXIST, "test_an_orphaned_artifact_answers_if_none_match_star_with_a_304")],
+    ),
+    Mutation(
+        name="M43: the PATCH decides 'conditional' by truthiness",
+        why="lane B's C3: an empty If-Match -- a precondition that names nothing -- lets the write through",
+        edits=[(ROUTES, "    conditional = if_match_field is not None or if_none_match_field is not None\n", "    conditional = bool(if_match_field or if_none_match_field)\n")],
+        must_fail=[node(IFMATCH, "test_an_empty_if_match_is_412_on_the_patch_and_writes_nothing")],
+        must_still_pass=[node(IFMATCH, "test_an_empty_if_match_is_412_on_a_read"), node(WRITE, "test_stale_if_match_is_412_and_writes_nothing")],
+    ),
+    Mutation(
+        name="M44: an empty If-Match is read as no header",
+        why="lane B's C4: an empty list names nothing, so If-Match must fail, on a read and on a write",
+        edits=[(CACHE, "    return if_match is not None and not _list_names(if_match, etag, strong=True)\n", "    return bool(if_match) and not _list_names(if_match, etag, strong=True)\n")],
+        must_fail=[node(IFMATCH, "test_an_empty_if_match_is_412_on_a_read"), node(IFMATCH, "test_an_empty_if_match_is_412_on_the_patch_and_writes_nothing")],
+        must_still_pass=[node(IFMATCH, "test_reads_honour_if_match")],
+    ),
+    # M45-M50 give an arm to each test no earlier arm named (round-3 lane A2, F6).
+    Mutation(
+        name="M45: /access answers an unknown dataset with empty counters",
+        why="a 200 for a dataset that does not exist",
+        edits=[
+            (
+                ROUTES,
+                "        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f\"Dataset '{dataset_id}' not found\")\n    stats = DatasetAccessStats(",
+                '        return PrerenderedJSONResponse(content=_ACCESS_STATS.dump_json(DatasetAccessStats(dataset_id=dataset_id, access_count=0, last_accessed_at=None), by_alias=True), headers={"Cache-Control": CACHE_CONTROL_NO_STORE})\n    stats = DatasetAccessStats(',
+            )
+        ],
+        must_fail=[node(ACCESS, "test_access_endpoint_404s_for_an_unknown_dataset")],
+        must_still_pass=[node(ACCESS, "test_access_endpoint_serves_the_counters_uncached")],
+    ),
+    Mutation(
+        name="M46: '*' matches only a representation that has a validator",
+        why="RFC 9110 §13.1.2: '*' matches any current representation, an artifact with no checksum included",
+        edits=[(CACHE, STAR_IN_LIST_NAMES, STAR_IN_LIST_NAMES.replace("        return True\n", "        return etag is not None\n"))],
+        must_fail=[node(ART, "test_a_dataset_without_a_checksum_has_no_etag_but_star_still_matches")],
+        must_still_pass=[node(PARSE, "test_star_matches_any_current_representation")],
+    ),
+    Mutation(
+        name="M47: a read records its access before its preconditions are judged",
+        why="a 412 reads nothing, so it must not count as an access",
+        edits=[(ROUTES, "    response = _metadata_response(meta, combine_field_lines(if_match), combine_field_lines(if_none_match))\n", "    store.record_access(dataset_id)\n    response = _metadata_response(meta, combine_field_lines(if_match), combine_field_lines(if_none_match))\n")],
+        must_fail=[node(IFMATCH, "test_a_412_on_a_read_is_not_an_access")],
+        must_still_pass=[node(IFMATCH, "test_reads_honour_if_match")],
+    ),
+    Mutation(
+        name="M48: an empty If-None-Match is read as '*'",
+        why="an empty field is an empty list: it names nothing, and a 304 for it would leave a client on data it should not use",
+        edits=[(CACHE, "    return bool(if_none_match) and _list_names(if_none_match, etag, strong=False)\n", "    return if_none_match is not None and (not if_none_match.strip(_OWS) or _list_names(if_none_match, etag, strong=False))\n")],
+        must_fail=[node(PARSE, "test_absent_or_empty_matches_nothing")],
+        must_still_pass=[node(PARSE, "test_list_form_and_weak_comparison"), node(META, "test_stale_if_none_match_gets_the_full_body")],
+    ),
+    Mutation(
+        name="M49: the list grammar refuses an empty list element",
+        why="RFC 9110 §5.6.1 lets a list carry empty elements; refusing them makes a valid field malformed",
+        edits=[(CACHE, LINEAR_GRAMMAR, r"""_ENTITY_TAG_LIST = re.compile(r'[ \t]*(?:W/)?"[^"]*"[ \t]*(?:,[ \t]*(?:W/)?"[^"]*"[ \t]*)*')""")],
+        must_fail=[node(PARSE, "test_empty_list_elements_are_allowed")],
+        must_still_pass=[node(PARSE, "test_list_form_and_weak_comparison")],
+    ),
+    Mutation(
+        name="M50: the metadata ETag is the stored checksum, not the hash of the body",
+        why="a tag edit then leaves the ETag unchanged, so a client holding the pre-edit copy is told it is current",
+        edits=[(ROUTES, '    headers = {"ETag": body_etag(body), "Cache-Control": CACHE_CONTROL_REVALIDATE}\n', '    headers = {"ETag": f\'"{meta.checksum}"\', "Cache-Control": CACHE_CONTROL_REVALIDATE}\n')],
+        must_fail=[node(META, "test_a_tag_edit_moves_the_etag_and_the_patch_carries_the_new_one")],
+        must_still_pass=[node(META, "test_matching_if_none_match_answers_304_with_no_body")],
     ),
 ]
 
