@@ -4,9 +4,11 @@ import asyncio
 import io
 import json
 import logging
+import threading
 import time
 import uuid
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 
 import numpy as np
@@ -54,7 +56,7 @@ from juniper_data.core.models import (
     UpdateTagsRequest,
 )
 from juniper_data.storage import DatasetStore
-from juniper_data.storage.base import InvalidDatasetIdError, PreconditionFailedError, decode_cursor, encode_cursor
+from juniper_data.storage.base import InvalidDatasetIdError, PreconditionFailedError, StorageContainmentError, decode_cursor, encode_cursor
 from juniper_data.storage.constants import JSON_INDENT_DEFAULT
 
 from .generators import GENERATOR_REGISTRY
@@ -78,6 +80,58 @@ def set_store(store: DatasetStore) -> None:
     """Set the dataset store (called during app startup)."""
     global _store
     _store = store
+
+
+# The access recorder: ONE thread, of its own, that runs ``record_access`` for the reads.
+# ``record_access`` takes the store's ``_version_lock`` and cross-process lock, and a create,
+# a tag edit or a delete holds those -- in this process or, for the file lock, in another. It
+# used to run on the event loop (``call_soon``), so the loop, and with it every request and
+# ``/v1/health``, waited for whichever writer held them: seconds, for a large create
+# (round-1 validation of the #438 fix-forward, lane B M-1). It must not run on the loop's
+# default executor either: that pool serves the routes' own store I/O, and accesses queued
+# behind a held lock would take its threads. So a read hands its access over and never waits.
+# One worker keeps the recordings in the order the reads were answered; a failure is logged by
+# type only, because its message can carry the caller's id (ERR-08).
+_ACCESS_RECORDER_THREAD_NAME = "juniper-data-access-recorder"
+_access_recorder: ThreadPoolExecutor | None = None
+_access_recorder_guard = threading.Lock()
+
+
+def _record_access(store: DatasetStore, dataset_id: str) -> None:
+    try:
+        store.record_access(dataset_id)
+    except Exception as exc:  # noqa: BLE001 -- an access that cannot be recorded must not fail anything else
+        logger.warning("Could not record an access (%s)", type(exc).__name__)
+
+
+def record_access_later(store: DatasetStore, dataset_id: str) -> None:
+    """Hand one access to the recorder thread. Never waits for it, or for any lock."""
+    global _access_recorder
+    with _access_recorder_guard:
+        if _access_recorder is None:
+            _access_recorder = ThreadPoolExecutor(max_workers=1, thread_name_prefix=_ACCESS_RECORDER_THREAD_NAME)
+        _access_recorder.submit(_record_access, store, dataset_id)
+
+
+def drain_access_recorder(timeout: float | None = None) -> None:
+    """Wait until every access handed over so far is recorded.
+
+    Blocking: call it from a worker thread, never on the event loop. ``GET /{dataset_id}/access``
+    does, so the counters it serves include every access answered before it.
+    """
+    with _access_recorder_guard:
+        recorder = _access_recorder
+    if recorder is not None:
+        recorder.submit(lambda: None).result(timeout)
+
+
+def shutdown_access_recorder() -> None:
+    """Record what is queued, then stop the recorder thread (the app's lifespan calls this on shutdown)."""
+    global _access_recorder
+    with _access_recorder_guard:
+        recorder, _access_recorder = _access_recorder, None
+    if recorder is not None:
+        recorder.shutdown(wait=True)
 
 
 # The one serializer for a single dataset's metadata representation. Typed with the
@@ -543,11 +597,13 @@ async def filter_datasets(
     tag_list = [t.strip() for t in tags.split(",")] if tags else None
 
     if cursor is not None:
-        # Decoded HERE, before the store is touched, so that only the cursor's own error is
-        # answered as the caller's. This used to wrap the whole store call, and every
-        # ValueError the store raised -- a stored metadata file that would not parse, or one
-        # the store refused to follow out of its root -- came back as a 400 whose detail was
-        # the exception's text, naming a dataset id.
+        # Decoded HERE, before the store is touched, so that the cursor's own error keeps its
+        # 400 and its detail. This used to wrap the whole store call, and every ValueError the
+        # store raised -- a stored metadata file that would not parse, or one the store refused
+        # to follow out of its root -- came back as a 400 whose detail was the exception's
+        # text, naming a dataset id. Now the app's handler answers those: a file that leads
+        # out of the root is a 500; one that does not parse is still a 400, with a generic
+        # detail -- a known issue.
         try:
             decode_cursor(cursor)
         except ValueError as exc:
@@ -1003,10 +1059,11 @@ async def get_dataset_metadata(
     if meta is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dataset '{dataset_id}' not found")
     response = _metadata_response(meta, combine_field_lines(if_match), combine_field_lines(if_none_match))
-    # BUG-JD-08: record access asynchronously to avoid blocking I/O on read paths. A 304
-    # is recorded too: revalidating a held copy is a read of the dataset. A 412 raised
+    # BUG-JD-08: the access is recorded off the request path, on the access recorder's own
+    # thread -- never on the event loop, because ``record_access`` waits for the store's locks.
+    # A 304 is recorded too: revalidating a held copy is a read of the dataset. A 412 raised
     # above is not -- nothing was read.
-    asyncio.get_event_loop().call_soon(lambda: store.record_access(dataset_id))
+    record_access_later(store, dataset_id)
     return response
 
 
@@ -1019,10 +1076,16 @@ async def get_dataset_access_stats(
 
     ``access_count`` and ``last_accessed_at`` change on every ``GET /{dataset_id}`` and
     every artifact download that answers 200 or 304 (a 412 reads nothing and records
-    nothing), which is exactly why they could not stay in the metadata body:
-    no strong ``ETag`` can describe a representation that differs on every read. They
-    are still maintained as before; this is where they are read. Reading them is NOT
-    itself recorded as an access -- the count would then describe its own observation.
+    nothing; nor does a download whose stored metadata leads out of the storage root,
+    which has no readable document to count in), which is exactly why they could not stay
+    in the metadata body: no strong ``ETag`` can describe a representation that differs on
+    every read. They are still maintained as before; this is where they are read. Reading
+    them is NOT itself recorded as an access -- the count would then describe its own
+    observation.
+
+    A read hands its access to a thread of its own and does not wait for it to be recorded.
+    This waits for every access handed over before it, so the counters it serves include
+    every read answered before this request.
 
     Args:
         dataset_id: Unique dataset identifier.
@@ -1034,6 +1097,7 @@ async def get_dataset_access_stats(
     Raises:
         HTTPException: 404 if dataset not found.
     """
+    await asyncio.to_thread(drain_access_recorder)
     meta = await asyncio.to_thread(store.get_meta, dataset_id)
     if meta is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dataset '{dataset_id}' not found")
@@ -1087,6 +1151,7 @@ async def download_artifact(
     # warning names the exception TYPE only: a message or traceback can carry the
     # caller-controlled id, and ERR-08 keeps caller strings out of log records.
     metadata_readable = True
+    metadata_refused = False
     try:
         meta = await asyncio.to_thread(store.get_meta, dataset_id)
     except InvalidDatasetIdError:
@@ -1095,6 +1160,7 @@ async def download_artifact(
         logger.warning("Artifact download: dataset metadata unreadable (%s); serving without an ETag", type(exc).__name__)
         meta = None
         metadata_readable = False
+        metadata_refused = isinstance(exc, StorageContainmentError)
     etag = weak_etag(meta.checksum) if meta is not None and meta.checksum else None
     headers = {"Cache-Control": CACHE_CONTROL_REVALIDATE}
     if etag is not None:
@@ -1120,7 +1186,7 @@ async def download_artifact(
                 raise _precondition_failed()
             if outcome == status.HTTP_304_NOT_MODIFIED:
                 # Revalidating a held copy is a read of the dataset, as on the metadata route.
-                asyncio.get_event_loop().call_soon(lambda: store.record_access(dataset_id))
+                record_access_later(store, dataset_id)
                 return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
 
     # APD-DATA-016: stream the artifact rather than materialise it. The previous
@@ -1153,16 +1219,17 @@ async def download_artifact(
             _close_artifact_stream(artifact_stream)
             if outcome == status.HTTP_412_PRECONDITION_FAILED:
                 raise _precondition_failed()
-            if metadata_readable:
-                asyncio.get_event_loop().call_soon(lambda: store.record_access(dataset_id))
+            if not metadata_refused:
+                record_access_later(store, dataset_id)
             return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
 
-    # BUG-JD-08: record access asynchronously to avoid blocking I/O on read paths. Not when
-    # the metadata could not be read: ``record_access`` reads the same metadata, so it would
-    # fail the same way -- inside an event-loop callback, whose logged traceback carries the
-    # caller's id (ERR-08) -- and there is no readable document to count the access in anyway.
-    if metadata_readable:
-        asyncio.get_event_loop().call_soon(lambda: store.record_access(dataset_id))
+    # BUG-JD-08: the access is recorded on the access recorder's own thread, never on the
+    # event loop. Not when the store REFUSED the metadata (``StorageContainmentError``, a file
+    # that leads out of the root): ``record_access`` reads the same metadata, so it would only
+    # fail again. Any other failure may be transient -- a descriptor limit, say -- so the access
+    # is still handed over, and a failure there is logged by type only (ERR-08).
+    if not metadata_refused:
+        record_access_later(store, dataset_id)
 
     return StreamingResponse(
         artifact_stream,
@@ -1280,7 +1347,8 @@ async def update_dataset_tags(
     # APD-DATA-006: the read-modify-write must happen inside ONE hop, under the
     # store's ``_version_lock``. Doing it here across two ``asyncio.to_thread``
     # calls left a window in which ``record_access`` -- which fires on every
-    # metadata read and every artifact download, and which rewrites the whole
+    # ``GET /{dataset_id}`` and every artifact download (not on a list, ``/filter``,
+    # ``/latest``, ``/versions``, a preview or ``/access``), and which rewrites the whole
     # metadata document under that lock -- could write back a pre-edit snapshot
     # and silently discard the tag change.
     if_match_field, if_none_match_field = combine_field_lines(if_match), combine_field_lines(if_none_match)

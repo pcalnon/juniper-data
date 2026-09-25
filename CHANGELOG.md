@@ -82,24 +82,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Scope.** The guarantee holds across processes on one host with LocalFS, and within one
     process with the Redis and Postgres stores. It does not hold for `CachedDatasetStore`, whose
     cache fills write without either lock; the service wires LocalFS.
-  - **The cost.** Each of these store calls holds the process-global `_version_lock` throughout:
-    a create's save, a delete, each dataset of a batch-tags. `record_access`, which a read of a
-    dataset or its artifact schedules on the event loop, waits for it, and the loop waits with it.
+  - **A create holds the locks only to commit.** It compresses and writes its artifact to a
+    temporary file first, outside the locks (`stage_save`), so no other writer waits for that.
+    Under the locks it checks existence again, allocates a named dataset's version, writes the
+    metadata and renames both files into place. A store that stages nothing (every store but
+    LocalFS) still saves whole under the locks.
+  - **The cost.** `_version_lock` is process-global: a delete, each dataset of a batch-tags and a
+    create's commit each hold it, and every other lock taker in the process waits that long. On
+    LocalFS that is a few file operations, plus, for a named create, the listing that allocates
+    its version (`list_versions`), which reads every dataset's metadata unless it is cached. A
+    second process on the storage directory, holding the lock of any dataset on a lock stripe,
+    delays this process's lock takers on every dataset of that stripe, one in sixteen, until it
+    lets go. Nothing on the event loop waits for either lock (below).
   - **Lock files.** LocalFS used to create a lock file per dataset id on first use and never
     remove it. It now locks one of 16 fixed stripes, `locks/{0..f}.lock`, created with the store
     and opened with `O_NOFOLLOW` and `O_CLOEXEC`.
     - A request naming an absent id leaves no file behind.
-    - A symlink planted at a lock file is refused, not followed out of the storage root.
-    - Taking a lock needs no free inode, so on a volume out of inodes `DELETE`, batch delete and
-      cleanup still delete.
-    - The per-id files an older version left are harmless and are not removed. A process
-      running an older version locks those files, not the stripes, so the two do not exclude
-      each other: run one version against a storage directory at a time.
+    - `locks/` is opened once, without following a symlink, and each stripe is opened through
+      that descriptor, so a `locks` swapped for a symlink later is not followed. A symlink
+      planted at a stripe is refused, and one planted before the store opens does not stop the
+      other stripes being created.
+    - Anything at `locks` that is not a real directory -- a symlink, wherever it points, or a
+      file -- stops the store from opening. The service used to start over a file there and
+      answer every write with a `500`.
+    - Taking a lock needs no free inode. The stripes exist from the start, and a lock whose
+      stripe is missing and cannot be created -- when `locks/` could not be made, on a volume
+      already out of inodes -- takes the storage root itself, which needs none. So on a volume
+      out of inodes `DELETE`, batch delete and cleanup still delete, after an upgrade too.
+    - The per-id lock files an earlier version left in the storage root are removed when the
+      store opens. A process running an earlier version locks those files, not the stripes, so
+      the two do not exclude each other: run one version against a storage directory at a time.
   - **Tests.** Interleaving tests hold a conditional PATCH inside its window and send
     batch-tags, `DELETE` or a create. A stand-in for `_version_lock` announces any thread that
     has to wait for it, so both outcomes are observed events, not timeouts. Another records
     whether the file lock is already held when `_version_lock` is entered, which pins the
-    order the two are taken in.
+    order the two are taken in. A create in a second process, made while the test holds the
+    dataset's lock stripe, reports each existence check it makes, so a check made before the
+    file lock is an observed event too.
+- **A read no longer stalls the service while a writer holds the store's lock.** Every
+  `GET /v1/datasets/{dataset_id}` and artifact download records an access, and `record_access`
+  ran on the event loop, waiting for the process-global `_version_lock` and the file lock. In
+  0.16.0 a named create held `_version_lock` for its whole save, so a read during one stalled
+  every request, `/v1/health` included, until every save queued ahead of the read had finished --
+  seconds, for a large dataset. A read now hands its access to a thread of its own and answers
+  without waiting for it, and nothing on the event loop waits for either lock.
+  - `GET /{dataset_id}/access` waits for the accesses already handed over, so it counts every
+    read answered before it.
+  - A recording that fails is logged by type only.
+  - A download whose own metadata read fails still records its access, as in 0.16.0, unless the
+    store refused the metadata as leading out of the root (below).
 - **A `*` wrapped in anything but spaces and tabs is malformed.** 0.16.0 matched `*` after
   `str.strip()`, which also strips NBSP (0xA0), NEL (0x85) and the control characters
   0x1C-0x1F. h11 passes all of those through; httptools refuses the control characters. So a
@@ -115,15 +146,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The app's `ValueError` handler answers it with a generic `500`, logged by type only. The
     routes answered it `400` "Invalid request parameters", and `/filter` answered `400` with the
     error's text, which names the dataset id, as its detail. `/filter` now decodes its cursor
-    before calling the store, so only the cursor's own error is the caller's `400`. batch delete
-    still lists such an id in `not_found`.
+    before calling the store, so the cursor's own error keeps its `400` and detail, and no store
+    error's text reaches a detail. Two routes answer the batch as usual: batch delete lists such
+    an id in `not_found`, and batch-create reports the item failed.
+  - Only a file that leads out of the root is a `500`. A metadata file that does not parse is
+    still answered `400` "Invalid request parameters", as through 0.16.0: a known issue.
   - The artifact route serves a dataset whose metadata file leads out of the root without a
     validator, and records no access, because recording one reads the same metadata. 0.15.0
     tried, and asyncio logged a traceback carrying the dataset id on every download.
   - A conditional request for it skips the `exists()` gate, which consults the same metadata,
     and is judged after the open, as for an orphan.
   - An `.npz` that leads out of the root is still refused, now with the `500`.
-  - One such file fails `/filter`, `/stats` and expired-dataset cleanup for the whole store.
+  - One such file fails `/filter`, `/stats`, `/versions`, `/latest`, expired-dataset cleanup and
+    every named create for the whole store: each reads every dataset's metadata.
 - **0.16.0's entries for conditional requests misstated four things.** The section below is left
   as released; `docs/api/JUNIPER_DATA_API.md` and `docs/REFERENCE.md` state them correctly.
   - **Malformed.** A malformed field is one that is not `*` or a well-formed entity-tag list. The
@@ -148,8 +183,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Four verification scripts changed:
   - **The non-vacuity harness.**
     `util/ad-hoc/2026-09-22_verify_conditional_request_tests_are_not_vacuous.py` now applies
-    seventy mutations. Every test in `test_conditional_requests.py` is named by one, 79 of
-    its 90 as a test that must go red.
+    eighty-nine mutations. Every test in `test_conditional_requests.py` is named by one, 100
+    of its 111 as a test that must go red.
   - **The equivalence script.** `util/ad-hoc/2026-09-23_verify_entity_tag_list_regex_equivalence.py`
     adds a structured sweep over lists of up to twelve elements, whitespace-only elements at
     every position among them, with 0 mismatches in 3,495,583 inputs.

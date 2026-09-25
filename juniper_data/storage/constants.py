@@ -43,9 +43,12 @@ LOCK_FILE_SUFFIX: str = ".lock"
 # free inode before it could free anything.
 LOCK_DIR_NAME: str = "locks"
 # 16: in-process writers are already serialised by ``DatasetStore._version_lock``, so a
-# stripe is contended only between worker processes, and the service runs one. Each
-# storage directory costs 17 inodes (the directory and 16 files); a test suite builds
-# hundreds of stores, which at 256 stripes would cost a hundred thousand.
+# stripe is contended only between processes, and the service runs one worker. When a second
+# process does use the directory, its lock on any dataset of a stripe -- one in sixteen --
+# delays this process's lock takers on every dataset of that stripe until it lets go; a create
+# holds its stripe only for its commit. Each storage directory costs 17 inodes (the
+# directory and 16 files); the unit suite builds some 160 stores, which at 256 stripes
+# would create about 41,000.
 LOCK_STRIPE_COUNT: int = 16
 
 # ─── JSON Serialization ──────────────────────────────────────────────────────

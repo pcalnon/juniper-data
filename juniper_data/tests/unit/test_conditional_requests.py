@@ -19,12 +19,15 @@ import json
 import logging
 import os
 import queue
+import shutil
 import subprocess
 import sys
 import threading
+import time
 from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import httpx
 import numpy as np
@@ -41,8 +44,12 @@ from juniper_data.api.routes import datasets
 from juniper_data.api.settings import Settings
 from juniper_data.core.models import DatasetMeta, PublicDatasetMeta
 from juniper_data.storage import local_fs
+from juniper_data.storage.base import DatasetStore, StorageContainmentError
 from juniper_data.storage.local_fs import LocalFSDatasetStore
 from juniper_data.storage.memory import InMemoryDatasetStore
+
+if TYPE_CHECKING:
+    from juniper_data.storage.base import StagedSave
 
 COUNTERS = ("access_count", "last_accessed_at")
 
@@ -149,7 +156,12 @@ def _file_lock_is_held(store: LocalFSDatasetStore, dataset_id: str) -> bool:
     is refused a non-blocking lock while the store holds one -- even in this process, which is
     what lets a single-process test see the lock another PROCESS would wait on.
     """
-    fd = os.open(store._lock_path(dataset_id), os.O_CREAT | os.O_RDWR, 0o600)
+    return _flock_is_held(store._lock_path(dataset_id))
+
+
+def _flock_is_held(path: Path) -> bool:
+    """Whether anyone -- this process included -- holds an ``flock`` on the file at ``path`` right now."""
+    fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
     try:
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
@@ -159,6 +171,49 @@ def _file_lock_is_held(store: LocalFSDatasetStore, dataset_id: str) -> bool:
         return False
     finally:
         os.close(fd)
+
+
+def _root_is_locked_exclusively(storage: Path) -> bool:
+    """Whether anyone holds an EXCLUSIVE ``flock`` on the storage root: a shared probe is refused only then."""
+    fd = os.open(storage, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return True
+    else:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        return False
+    finally:
+        os.close(fd)
+
+
+class _LockHolder:
+    """Holds a ``threading.Lock`` in ANOTHER thread, as a writer mid-save would, until released -- or ``limit`` seconds at most.
+
+    The bound keeps a regression from hanging the suite: a read that waits for the lock on the
+    event loop completes only when the holder gives up, and the test sees how long that took.
+    """
+
+    def __init__(self, lock: threading.Lock, limit: float = 10.0) -> None:
+        self._lock = lock
+        self._limit = limit
+        self._held = threading.Event()
+        self._release = threading.Event()
+        self._thread = threading.Thread(target=self._hold, daemon=True)
+
+    def _hold(self) -> None:
+        with self._lock:
+            self._held.set()
+            self._release.wait(self._limit)
+
+    def __enter__(self) -> "_LockHolder":
+        self._thread.start()
+        assert self._held.wait(_RACE_TIMEOUT_SECONDS), "the holder never took the lock"
+        return self
+
+    def __exit__(self, *_exc_info: object) -> None:
+        self._release.set()
+        self._thread.join(_RACE_TIMEOUT_SECONDS)
 
 
 class _AnnouncingLock:
@@ -296,11 +351,20 @@ class _OrderProbingLock:
         return self._lock.locked()
 
 
-class _NoFreeInodes:
-    """Stands in for ``os`` inside ``local_fs``: creating a file fails with ENOSPC, as on a volume out of inodes.
+def _entry_exists(path: str | os.PathLike[str], dir_fd: int | None) -> bool:
+    try:
+        os.stat(path, dir_fd=dir_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return False
+    return True
 
-    Only ``local_fs``'s own ``os.open`` calls see it, and those open the lock files. Opening a
-    file that exists needs no inode, and neither does anything else a delete does.
+
+class _NoFreeInodes:
+    """Stands in for ``os`` inside ``local_fs``: creating a file or a directory fails with ENOSPC, as on a volume out of inodes.
+
+    Only ``local_fs``'s own ``os.open`` and ``os.mkdir`` calls see it: the lock directory, the
+    stripes, and the storage root it opens. Opening what exists needs no inode, and neither does
+    anything else a delete does. A name is looked up relative to ``dir_fd``, as the call does.
     """
 
     def __getattr__(self, name: str) -> object:
@@ -308,9 +372,51 @@ class _NoFreeInodes:
 
     @staticmethod
     def open(path: str | os.PathLike[str], flags: int, mode: int = 0o777, *, dir_fd: int | None = None) -> int:
-        if flags & os.O_CREAT and not os.path.lexists(path):
+        if flags & os.O_CREAT and not _entry_exists(path, dir_fd):
             raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC), os.fspath(path))
         return os.open(path, flags, mode, dir_fd=dir_fd)
+
+    @staticmethod
+    def mkdir(path: str | os.PathLike[str], mode: int = 0o777, *, dir_fd: int | None = None) -> None:
+        if not _entry_exists(path, dir_fd):
+            raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC), os.fspath(path))
+        os.mkdir(path, mode, dir_fd=dir_fd)
+
+
+def _probe_create_phases(store: LocalFSDatasetStore, monkeypatch: pytest.MonkeyPatch) -> dict[str, list[tuple[bool, bool]]]:
+    """Record, at each half of a create's save, whether ``_version_lock`` and the dataset's file lock are held.
+
+    ``stage`` writes the compressed artifact and must hold neither; ``commit`` checks nothing and
+    renames, and must hold both. Returns the two lists, which fill as creates run.
+    """
+    phases: dict[str, list[tuple[bool, bool]]] = {"stage": [], "commit": []}
+    if not hasattr(store, "stage_save"):
+        # A tree from before staging: the whole save is what a create does under its locks, and
+        # nothing is staged -- which is what ``stage`` staying empty then says.
+        real_save = store.save
+
+        def probing_save(dataset_id: str, meta: DatasetMeta, arrays: dict[str, np.ndarray]) -> None:
+            phases["commit"].append((store._version_lock.locked(), _file_lock_is_held(store, dataset_id)))
+            real_save(dataset_id, meta, arrays)
+
+        monkeypatch.setattr(store, "save", probing_save)
+        return phases
+    real_stage = store.stage_save
+
+    def probing_stage(dataset_id: str, arrays: dict[str, np.ndarray]) -> "StagedSave":
+        phases["stage"].append((store._version_lock.locked(), _file_lock_is_held(store, dataset_id)))
+        staged = real_stage(dataset_id, arrays)
+        real_commit = staged.commit
+
+        def probing_commit(meta: DatasetMeta) -> None:
+            phases["commit"].append((store._version_lock.locked(), _file_lock_is_held(store, dataset_id)))
+            real_commit(meta)
+
+        staged.commit = probing_commit  # type: ignore[method-assign]
+        return staged
+
+    monkeypatch.setattr(store, "stage_save", probing_stage)
+    return phases
 
 
 def _lead_out_of_the_store(stored: Path, outside: Path) -> None:
@@ -890,12 +996,16 @@ class TestPreconditionsRespectExistence:
         # to the exception type.
         client, store = localfs
         dataset_id = _create(client)
+        other = _create(client, seed=2)
         _lead_out_of_the_store(store._meta_path(dataset_id), tmp_path / "outside")
         with caplog.at_level(logging.DEBUG):
             assert client.get(f"/v1/datasets/{dataset_id}/artifact").status_code == 200
             assert client.get(f"/v1/datasets/{dataset_id}/artifact", headers={"If-None-Match": "*"}).status_code == 304
+            # Accesses are recorded on the recorder's thread, and reading any dataset's counters
+            # waits for every access handed over before it.
+            assert client.get(f"/v1/datasets/{other}/access").status_code == 200
         loud = [record for record in caplog.records if record.levelno >= logging.WARNING]
-        assert [record.name for record in loud if record.name.startswith("juniper_data")] == ["juniper_data.api.routes.datasets"] * 2, "control: the route's own warning, once per request, or nothing was captured"
+        assert [record.getMessage().split(";")[0] for record in loud if record.name.startswith("juniper_data")] == ["Artifact download: dataset metadata unreadable (StorageContainmentError)"] * 2, "control: the route's own warning, once per request, and no failed recording"
         assert [record.getMessage() for record in loud if record.name == "asyncio"] == [], "an event-loop callback failed"
         # Formatting renders any traceback too, which is where the id travelled.
         assert not any(dataset_id in logging.Formatter("%(message)s").format(record) for record in loud)
@@ -1213,16 +1323,25 @@ class TestConditionalWriteIsAtomic:
         assert {"before", "mine"} <= set(tags), "the PATCH's acknowledged edit must survive"
         assert "from-create" not in tags, "a create must write nothing over a dataset that exists by then"
 
-    def test_a_late_create_of_an_existing_dataset_writes_nothing_and_answers_with_the_stored_one(self, localfs: tuple[TestClient, LocalFSDatasetStore], monkeypatch: pytest.MonkeyPatch) -> None:
+    @pytest.mark.parametrize("case", ["unnamed", "named", "different-content"])
+    def test_a_late_create_of_an_existing_dataset_writes_nothing_and_answers_with_the_stored_one(self, case: str, localfs: tuple[TestClient, LocalFSDatasetStore], monkeypatch: pytest.MonkeyPatch) -> None:
         # Two creates of one id, both past the route's existence check: the later save replaced a
         # create already answered 201. Checking again under the locks makes create-if-absent
         # atomic, and the late create then describes the dataset that IS stored -- as a cache hit
-        # does -- not the copy it did not write.
+        # does -- not the copy it did not write. For a NAMED dataset too, which also allocates a
+        # version; and when the late create's content differs from what is stored, as an
+        # unseeded generator's can under one id.
         client, store = localfs
         body = {"generator": "spiral", "params": {"n_spirals": 2, "n_points_per_spiral": 20, "seed": 1}, "persist": True}
+        if case == "named":
+            body["name"] = "late-named"
         early = client.post("/v1/datasets", json={**body, "tags": ["early"], "description": "early"})
         assert early.status_code == 201
         dataset_id = early.json()["dataset_id"]
+        if case == "different-content":
+            meta = store.get_meta(dataset_id)
+            meta.checksum = "00" * 32
+            assert store.update_meta(dataset_id, meta)
         stored = store._meta_path(dataset_id).read_bytes()
         _checked_before_it_existed(store, monkeypatch)()
         late = client.post("/v1/datasets", json={**body, "tags": ["late"], "description": "late", "ttl_seconds": 3600})
@@ -1237,20 +1356,25 @@ class TestConditionalWriteIsAtomic:
         # The flock is what orders a create against a PATCH in another worker process. A named
         # create took ``_version_lock`` only, to allocate its version; an unnamed one took nothing.
         client, store = localfs
-        held: list[tuple[bool, bool]] = []
-        real_save = store.save
-
-        def probing_save(dataset_id: str, meta: DatasetMeta, arrays: dict[str, np.ndarray]) -> None:
-            held.append((store._version_lock.locked(), _file_lock_is_held(store, dataset_id)))
-            real_save(dataset_id, meta, arrays)
-
-        monkeypatch.setattr(store, "save", probing_save)
+        phases = _probe_create_phases(store, monkeypatch)
         item = {"generator": "spiral", "params": {"n_spirals": 2, "n_points_per_spiral": 20, "seed": 4}, "persist": True}
         if name is not None:
             item["name"] = name
         response = client.post("/v1/datasets", json=item) if route == "create" else client.post("/v1/datasets/batch-create", json={"datasets": [item]})
         assert response.status_code == 201, response.text
-        assert held == [(True, True)], f"{route} must save under _version_lock and the cross-process lock"
+        assert phases["commit"] == [(True, True)], f"{route} must commit under _version_lock and the cross-process lock"
+
+    def test_a_create_stages_its_artifact_before_it_takes_either_lock(self, localfs: tuple[TestClient, LocalFSDatasetStore], monkeypatch: pytest.MonkeyPatch) -> None:
+        # Compressing and writing the artifact is the expensive part of a create -- seconds for a
+        # large dataset -- and every other writer in the process, and in any other process on the
+        # dataset's stripe, waits while the locks are held. It needs neither: only the check, the
+        # version and the renames do.
+        client, store = localfs
+        phases = _probe_create_phases(store, monkeypatch)
+        response = client.post("/v1/datasets", json={"generator": "spiral", "params": {"n_spirals": 2, "n_points_per_spiral": 20, "seed": 5}, "persist": True})
+        assert response.status_code == 201, response.text
+        assert phases["stage"] == [(False, False)], "the artifact must be written before either lock is taken"
+        assert phases["commit"] == [(True, True)], "control: the commit holds both, and the probe can see them"
 
     @pytest.mark.parametrize("taker", ["record_access", "update_tags", "delete_under_lock", "save_versioned"])
     def test_every_lock_taker_enters_the_version_lock_before_the_file_lock(self, taker: str, tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1263,15 +1387,19 @@ class TestConditionalWriteIsAtomic:
             store.save("guarded", _stored_meta("guarded"), _arrays())
         order = _OrderProbingLock(store, "guarded")
         monkeypatch.setattr(store, "_version_lock", order)
-        write = {"record_access": "update_meta", "update_tags": "update_meta", "delete_under_lock": "delete", "save_versioned": "save"}[taker]
-        real_write = getattr(store, write)
         held_inside: list[bool] = []
+        if taker == "save_versioned":
+            # A create writes under the locks only in its commit; its staging holds neither.
+            phases = _probe_create_phases(store, monkeypatch)
+        else:
+            write = {"record_access": "update_meta", "update_tags": "update_meta", "delete_under_lock": "delete"}[taker]
+            real_write = getattr(store, write)
 
-        def probing_write(*args: object) -> object:
-            held_inside.append(_file_lock_is_held(store, "guarded"))
-            return real_write(*args)
+            def probing_write(*args: object) -> object:
+                held_inside.append(_file_lock_is_held(store, "guarded"))
+                return real_write(*args)
 
-        monkeypatch.setattr(store, write, probing_write)
+            monkeypatch.setattr(store, write, probing_write)
         call = {
             "record_access": lambda: store.record_access("guarded"),
             "update_tags": lambda: store.update_tags("guarded", ["b"], []),
@@ -1279,6 +1407,8 @@ class TestConditionalWriteIsAtomic:
             "save_versioned": lambda: store.save_versioned("guarded", _stored_meta("guarded"), _arrays()),
         }[taker]
         call()
+        if taker == "save_versioned":
+            held_inside = [file_lock for _version, file_lock in phases["commit"]]
         assert order.file_lock_held_on_entry == [False], f"{taker} must enter _version_lock once, BEFORE it takes the file lock"
         assert held_inside == [True], "control: the file lock is held inside, and the probe can see it"
 
@@ -1348,12 +1478,194 @@ class TestLockStripes:
         monkeypatch.setattr(local_fs, "os", _NoFreeInodes())
         with caplog.at_level(logging.WARNING, logger="juniper_data.storage.local_fs"):
             store = LocalFSDatasetStore(tmp_path / "storage")
-        assert list((tmp_path / "storage" / "locks").iterdir()) == []
+        assert not (tmp_path / "storage" / "locks").exists()
         assert [record.levelno for record in caplog.records if record.name == "juniper_data.storage.local_fs"] == [logging.WARNING]
         monkeypatch.setattr(local_fs, "os", os)
         store.save("guarded", _stored_meta("guarded"), _arrays())
         assert store.update_tags("guarded", ["b"], []) is not None
-        assert store._lock_path("guarded").is_file(), "the stripe is created when first locked"
+        assert store._lock_path("guarded").is_file(), "the stripe is created when first locked, once the directory is writable"
+
+    @pytest.mark.parametrize("route", ["delete", "batch-delete", "cleanup-expired"])
+    def test_a_volume_out_of_inodes_since_before_the_upgrade_still_deletes(self, route: str, tmp_path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        # The upgrade path: an earlier version filled the volume -- with its per-id lock files,
+        # among other things -- and this one starts on it, so it cannot create ``locks/`` either.
+        # Every lock then needed the inode a delete is trying to free, and deletes answered 500.
+        # The lock falls back to the storage root, which needs no inode.
+        storage = tmp_path / "juniper_data_storage"
+        LocalFSDatasetStore(storage).save("doomed", _stored_meta("doomed", expires_at=datetime(2026, 9, 22, 21, 0, tzinfo=UTC)), _arrays())
+        shutil.rmtree(storage / "locks")
+        monkeypatch.setattr(local_fs, "os", _NoFreeInodes())
+        with caplog.at_level(logging.WARNING, logger="juniper_data.storage.local_fs"):
+            store = LocalFSDatasetStore(storage)
+        app = create_app(settings=Settings(storage_path=str(storage)))
+        datasets.set_store(store)
+        client = TestClient(app)
+        send = {
+            "delete": lambda: client.delete("/v1/datasets/doomed"),
+            "batch-delete": lambda: client.post("/v1/datasets/batch-delete", json={"dataset_ids": ["doomed"]}),
+            "cleanup-expired": lambda: client.post("/v1/datasets/cleanup-expired"),
+        }
+        response = send[route]()
+        assert response.status_code in (200, 204), response.text
+        assert store.get_meta("doomed") is None
+        assert not (storage / "locks").exists(), "control: the simulated volume never let the lock directory be created"
+
+    def test_the_lock_files_an_earlier_version_left_are_removed_when_the_store_opens(self, tmp_path) -> None:
+        # They lock nothing now, and on a volume they filled they are the inodes a delete needs.
+        # Only what matches exactly -- a valid dataset id, then ``.meta.json.lock``, directly in the
+        # root, and not a directory -- is removed.
+        storage = tmp_path / "storage"
+        (storage / "nested").mkdir(parents=True)
+        legacy = [storage / f"{dataset_id}.meta.json.lock" for dataset_id in ("spiral-3.0.0-0123456789abcdef", "absent-0001")]
+        kept = [storage / "notes.meta.json.lock.bak", storage / "nested" / "absent-0002.meta.json.lock", storage / "absent-0003.meta.json"]
+        for path in legacy + kept:
+            path.write_bytes(b"")
+        (storage / "absent-0004.meta.json.lock").mkdir()
+        LocalFSDatasetStore(storage)
+        assert [path.name for path in legacy if path.exists()] == [], "the lock files an earlier version left must go"
+        assert all(path.exists() for path in kept) and (storage / "absent-0004.meta.json.lock").is_dir(), "only an exact match is removed"
+
+    def test_a_symlink_planted_at_a_stripe_before_the_store_opens_is_not_followed(self, tmp_path) -> None:
+        # Creating the stripes opens each with O_CREAT: following a symlink planted there would
+        # create its target, outside the storage root. And one bad stripe used to stop the rest,
+        # so every other stripe then needed an inode when first locked.
+        storage = tmp_path / "storage"
+        (storage / "locks").mkdir(parents=True)
+        planted = tmp_path / "outside" / "planted.lock"
+        planted.parent.mkdir()
+        (storage / "locks" / "1.lock").symlink_to(planted)  # dangling, and outside the storage root
+        LocalFSDatasetStore(storage)
+        assert not planted.exists(), "creating the stripes followed a symlink out of the storage root"
+        created = sorted(path.name for path in (storage / "locks").iterdir() if path.is_file() and not path.is_symlink())
+        assert created == [f"{stripe:x}.lock" for stripe in range(16) if stripe != 1], "one bad stripe must not stop the others"
+
+    def test_a_symlink_to_a_live_file_planted_at_a_stripe_is_refused(self, tmp_path) -> None:
+        # Its target exists, so an open that followed it would succeed -- and lock a file outside
+        # the root, which excludes nobody who locks the real stripe.
+        store = LocalFSDatasetStore(tmp_path / "storage")
+        store.save("guarded", _stored_meta("guarded"), _arrays())
+        live = tmp_path / "outside" / "live.lock"
+        live.parent.mkdir()
+        live.write_bytes(b"")
+        lock_path = store._lock_path("guarded")
+        lock_path.unlink()
+        lock_path.symlink_to(live)
+        with pytest.raises(OSError) as refused:
+            store.update_tags("guarded", ["b"], [])
+        assert refused.value.errno == errno.ELOOP
+        assert store.get_meta("guarded").tags == [], "nothing may be written without the lock"
+
+    @pytest.mark.parametrize("kind", ["symlink-outside", "symlink-inside", "file"])
+    def test_a_locks_entry_that_is_not_a_real_directory_fails_the_store_when_it_opens(self, kind: str, tmp_path) -> None:
+        # A symlink there -- wherever it points -- or a file. The store used to open over a file
+        # and answer every write with a 500, from a service whose health check was green.
+        storage = tmp_path / "storage"
+        storage.mkdir()
+        if kind == "file":
+            (storage / "locks").write_bytes(b"")
+        else:
+            target = tmp_path / "outside" if kind == "symlink-outside" else storage / "elsewhere"
+            target.mkdir()
+            (storage / "locks").symlink_to(target)
+        with pytest.raises(StorageContainmentError):
+            LocalFSDatasetStore(storage)
+        if kind == "symlink-outside":
+            assert list((tmp_path / "outside").iterdir()) == [], "nothing may be created through the symlink"
+
+    def test_a_locks_directory_swapped_for_a_symlink_after_the_store_opens_is_not_followed(self, tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # The stripes are opened through the descriptor of the ``locks/`` the store opened, never
+        # by path: a ``locks`` replaced by a symlink later -- to a directory that even holds a
+        # stripe of the right name -- is not followed, and the lock stays where the others take it.
+        storage = tmp_path / "storage"
+        store = LocalFSDatasetStore(storage)
+        store.save("guarded", _stored_meta("guarded"), _arrays())
+        stripe = store._lock_path("guarded").name
+        (storage / "locks").rename(storage / "moved")
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / stripe).write_bytes(b"")
+        (storage / "locks").symlink_to(outside)
+        seen: list[tuple[bool, bool]] = []
+        real_update_meta = store.update_meta
+
+        def probing_update_meta(dataset_id: str, meta: DatasetMeta) -> bool:
+            seen.append((_flock_is_held(outside / stripe), _flock_is_held(storage / "moved" / stripe)))
+            return real_update_meta(dataset_id, meta)
+
+        monkeypatch.setattr(store, "update_meta", probing_update_meta)
+        assert store.update_tags("guarded", ["b"], []) is not None
+        assert seen == [(False, True)], "the lock must stay on the stripe the store opened, not follow the symlink"
+
+    def test_a_lock_on_the_storage_root_excludes_every_stripe_lock(self, tmp_path) -> None:
+        # The lock of last resort, when a stripe cannot be made, is the storage root, locked
+        # exclusively -- by a process on a full volume, say. Every stripe lock holds the root
+        # shared, so that process excludes everyone else, and stripes still exclude only each other.
+        store = LocalFSDatasetStore(tmp_path / "storage")
+        store.save("guarded", _stored_meta("guarded"), _arrays())
+        edited = threading.Event()
+
+        def edit() -> None:
+            if store.update_tags("guarded", ["b"], []) is not None:
+                edited.set()
+
+        root = os.open(tmp_path / "storage", os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            fcntl.flock(root, fcntl.LOCK_EX)
+            editing = threading.Thread(target=edit)
+            editing.start()
+            assert not edited.wait(0.5), "a stripe lock was taken while another held the storage root"
+        finally:
+            fcntl.flock(root, fcntl.LOCK_UN)
+            os.close(root)
+        editing.join(_RACE_TIMEOUT_SECONDS)
+        assert edited.is_set(), "control: the edit completes once the root is free"
+        assert store.get_meta("guarded").tags == ["b"]
+
+    def test_a_stripe_that_cannot_be_made_is_replaced_by_an_exclusive_lock_on_the_root(self, tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # ``locks/`` is there, but this dataset's stripe is not -- removed, or never made on a volume
+        # already full -- and cannot be made now. The lock falls back to the storage root, taken
+        # exclusively, instead of failing the write.
+        storage = tmp_path / "storage"
+        store = LocalFSDatasetStore(storage)
+        store.save("guarded", _stored_meta("guarded"), _arrays())
+        store._lock_path("guarded").unlink()
+        monkeypatch.setattr(local_fs, "os", _NoFreeInodes())
+        seen: list[bool] = []
+        real_update_meta = store.update_meta
+
+        def probing_update_meta(dataset_id: str, meta: DatasetMeta) -> bool:
+            seen.append(_root_is_locked_exclusively(storage))
+            return real_update_meta(dataset_id, meta)
+
+        monkeypatch.setattr(store, "update_meta", probing_update_meta)
+        assert store.update_tags("guarded", ["b"], []) is not None
+        assert seen == [True], "the edit must run under an exclusive lock on the storage root"
+        assert not store._lock_path("guarded").exists(), "control: the simulated volume never let the stripe be made"
+
+    def test_a_locks_directory_removed_while_the_store_runs_is_made_again(self, tmp_path) -> None:
+        # The store holds a descriptor to the ``locks/`` it opened. Once that directory is gone --
+        # removed by hand, say -- nothing can be made in it, so the store opens whatever is at
+        # ``locks`` now, making it if need be, and locks there.
+        storage = tmp_path / "storage"
+        store = LocalFSDatasetStore(storage)
+        store.save("guarded", _stored_meta("guarded"), _arrays())
+        shutil.rmtree(storage / "locks")
+        assert store.update_tags("guarded", ["b"], []) is not None
+        assert store._lock_path("guarded").is_file(), "the stripe is made again, in a new locks/"
+
+    def test_a_storage_root_made_again_while_the_store_runs_is_opened_again(self, tmp_path) -> None:
+        # The store holds a descriptor to the root it opened, and every other operation finds the
+        # root by path. Once that directory is removed and made again at the same path -- by hand,
+        # say -- the locks follow it: nothing can be made through the old descriptor, so every
+        # write would fail until the service restarted.
+        storage = tmp_path / "storage"
+        store = LocalFSDatasetStore(storage)
+        shutil.rmtree(storage)
+        storage.mkdir()
+        store.save("guarded", _stored_meta("guarded"), _arrays())
+        assert store.update_tags("guarded", ["b"], []) is not None
+        assert store.get_meta("guarded").tags == ["b"]
+        assert store._lock_path("guarded").is_file(), "the stripe is made in the new root's locks/"
 
 
 @pytest.mark.unit
@@ -1377,6 +1689,94 @@ class TestLatestContentLocation:
         response = client.get("/v1/datasets/latest", params={"name": "cl-304"}, headers={"If-None-Match": etag})
         assert response.status_code == 304
         assert response.headers["content-location"] == f"/v1/datasets/{newest}"
+
+
+@pytest.mark.unit
+class TestAccessRecordingNeverBlocksTheLoop:
+    """``record_access`` waits for the store's locks, so nothing may run it on the event loop.
+
+    It did, through ``call_soon``: while a writer held ``_version_lock`` -- a create does, for its
+    save -- one read's access blocked the loop, and every request waited with it, ``/v1/health``
+    included. Measured on a live server: 6.6 s for one 80 MB create, 10.5 s for two (round-1
+    validation of the #438 fix-forward, lane B M-1).
+    """
+
+    # Far above a read's own cost, far below ``_LockHolder``'s limit: a read that waited for the
+    # lock takes the whole limit.
+    _PROMPT_SECONDS = 2.0
+
+    @pytest.mark.asyncio
+    async def test_reads_and_health_answer_at_once_while_a_writer_holds_the_lock(self, store: InMemoryDatasetStore, tmp_path) -> None:
+        # One event loop serves every request here, as in the service: httpx's ASGI transport runs
+        # the app on the test's own loop. The writer is another thread, holding the lock.
+        storage = tmp_path / "juniper_data_storage"
+        storage.mkdir()
+        app = create_app(settings=Settings(storage_path=str(storage)))
+        datasets.set_store(store)
+        timings: dict[str, float] = {}
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://testserver") as client:
+            created = await client.post("/v1/datasets", json={"generator": "spiral", "params": {"n_spirals": 2, "n_points_per_spiral": 20, "seed": 1}, "persist": True})
+            dataset_id = created.json()["dataset_id"]
+            before = store.get_meta(dataset_id).access_count
+            with _LockHolder(DatasetStore._version_lock):
+                for label, url in (("metadata", f"/v1/datasets/{dataset_id}"), ("artifact", f"/v1/datasets/{dataset_id}/artifact"), ("health", "/v1/health")):
+                    started = time.monotonic()
+                    response = await client.get(url)
+                    timings[label] = time.monotonic() - started
+                    assert response.status_code == 200, (label, response.status_code)
+            assert max(timings.values()) < self._PROMPT_SECONDS, f"a request waited for the writer's lock: {timings}"
+            after = (await client.get(f"/v1/datasets/{dataset_id}/access")).json()["access_count"]
+        assert after == before + 2, "control: both reads were recorded, once the writer let go"
+
+    def test_the_access_counters_include_every_read_answered_before_them(self, client: TestClient, store: InMemoryDatasetStore) -> None:
+        # Accesses are recorded after their reads are answered, so ``/access`` waits for the ones
+        # handed over before it: a client that reads and then asks for the count sees its read.
+        dataset_id = _create(client)
+        before = client.get(f"/v1/datasets/{dataset_id}/access").json()["access_count"]
+        answered: dict[str, httpx.Response] = {}
+        with _LockHolder(DatasetStore._version_lock):
+            assert client.get(f"/v1/datasets/{dataset_id}").status_code == 200, "the read is answered while its access waits"
+            asking = threading.Thread(target=lambda: answered.update(access=client.get(f"/v1/datasets/{dataset_id}/access")))
+            asking.start()
+            asking.join(0.5)
+            assert asking.is_alive(), "the counters were served before the access they must include was recorded"
+        asking.join(_RACE_TIMEOUT_SECONDS)
+        assert answered["access"].json()["access_count"] == before + 1
+
+    def test_a_download_whose_metadata_read_fails_for_a_moment_is_still_counted(self, client: TestClient, store: InMemoryDatasetStore, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Only a file the store REFUSES (one that leads out of the root) skips the recording: the
+        # recording reads the same metadata and would only fail again. A transient failure -- a
+        # descriptor limit -- skipped it too, and a real download went uncounted.
+        dataset_id = _create(client)
+        real_get_meta = store.get_meta
+        before = client.get(f"/v1/datasets/{dataset_id}/access").json()["access_count"]
+        failures = [OSError(errno.EMFILE, os.strerror(errno.EMFILE))]
+
+        def get_meta_failing_once(target: str) -> DatasetMeta | None:
+            if failures:
+                raise failures.pop()
+            return real_get_meta(target)
+
+        monkeypatch.setattr(store, "get_meta", get_meta_failing_once)
+        assert client.get(f"/v1/datasets/{dataset_id}/artifact").status_code == 200
+        assert not failures, "control: the route's read did fail"
+        assert client.get(f"/v1/datasets/{dataset_id}/access").json()["access_count"] == before + 1
+
+    def test_an_access_that_cannot_be_recorded_is_logged_by_type_only(self, client: TestClient, store: InMemoryDatasetStore, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        # It fails on the recorder's thread, after the read was answered; the message can carry the
+        # caller's id, and ERR-08 keeps caller strings out of log records.
+        dataset_id = _create(client)
+
+        def refuse(target: str) -> None:
+            raise ValueError(f"cannot record {target}")
+
+        monkeypatch.setattr(store, "record_access", refuse)
+        with caplog.at_level(logging.DEBUG):
+            assert client.get(f"/v1/datasets/{dataset_id}").status_code == 200
+            assert client.get(f"/v1/datasets/{dataset_id}/access").status_code == 200
+        failed = [record for record in caplog.records if "record an access" in record.getMessage()]
+        assert [(record.levelno, record.getMessage()) for record in failed] == [(logging.WARNING, "Could not record an access (ValueError)")]
+        assert not any(dataset_id in logging.Formatter("%(message)s").format(record) for record in caplog.records if record.levelno >= logging.WARNING)
 
 
 @pytest.mark.unit

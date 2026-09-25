@@ -1,5 +1,6 @@
 """FastAPI application factory and configuration."""
 
+import asyncio
 import functools
 import logging
 from collections.abc import AsyncGenerator
@@ -40,10 +41,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler for startup/shutdown."""
     settings: Settings = app.state.settings
     storage_path = Path(settings.storage_path)
-    store = LocalFSDatasetStore(storage_path)
-    datasets.set_store(store)
 
     configure_logging(settings.log_level, settings.log_format, "juniper-data")
+    # After logging is configured: opening the store can warn -- a lock directory it could not
+    # create -- or refuse, and either must reach the log as a formatted record.
+    store = LocalFSDatasetStore(storage_path)
+    datasets.set_store(store)
     configure_sentry(settings.sentry_dsn, "juniper-data", __version__, send_pii=settings.sentry_send_pii, traces_sample_rate=settings.sentry_traces_sample_rate)
     if settings.metrics_enabled:
         set_build_info("juniper_data", __version__, git_sha=provenance.git_sha(), build_date=provenance.build_date())
@@ -77,6 +80,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     yield
 
     logger.info("JuniperData API shutting down")
+    # Accesses already answered are recorded before the process exits.
+    await asyncio.to_thread(datasets.shutdown_access_recorder)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

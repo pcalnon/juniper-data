@@ -1,6 +1,7 @@
 """Local filesystem dataset store."""
 
 import contextlib
+import errno
 import fcntl
 import hashlib
 import io
@@ -8,7 +9,9 @@ import json
 import logging
 import os
 import re
+import stat
 import uuid
+import weakref
 from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
@@ -20,7 +23,7 @@ import numpy as np
 
 from juniper_data.core.constants import CHARSET_UTF8
 from juniper_data.core.models import DatasetMeta
-from juniper_data.storage.base import DatasetStore, InvalidDatasetIdError, StorageContainmentError
+from juniper_data.storage.base import DatasetStore, InvalidDatasetIdError, StagedSave, StorageContainmentError
 from juniper_data.storage.constants import (
     ARTIFACT_STREAM_CHUNK_SIZE,
     DEFAULT_LIST_LIMIT,
@@ -41,6 +44,38 @@ from juniper_data.storage.constants import (
 # separators, ``..`` parent references, and leading dots that could map to
 # hidden files outside the storage directory (JD-SEC-01).
 _VALID_DATASET_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._\-]{0,127}")
+
+logger = logging.getLogger(__name__)
+
+# Keys of the descriptors a store holds open (``LocalFSDatasetStore._descriptors``).
+_ROOT = "root"
+_LOCKS = "locks"
+
+# Why creating a file or directory can fail when nothing is wrong with the request: no inode or
+# block left, no quota, a read-only volume, or no write permission. A lock then falls back to
+# the storage root, which needs no new inode (``LocalFSDatasetStore._meta_write_lock``).
+_NO_NEW_ENTRY = frozenset({errno.ENOSPC, errno.EDQUOT, errno.EROFS, errno.EACCES, errno.EPERM})
+
+
+def _stripe_file_name(stripe: int) -> str:
+    """The file name of lock stripe ``stripe``: ``0.lock`` to ``f.lock``."""
+    return f"{stripe:x}{LOCK_FILE_SUFFIX}"
+
+
+def _close_descriptors(descriptors: dict[str, int]) -> None:
+    """Close the descriptors a store held, when it is collected."""
+    for fd in descriptors.values():
+        with contextlib.suppress(OSError):
+            os.close(fd)
+    descriptors.clear()
+
+
+def _discard_temp(path: Path, what: str) -> None:
+    """Remove a temporary file a save left, best effort."""
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        logger.debug("Failed to remove temporary %s file %s during cleanup", what, path, exc_info=True)
 
 
 def _validate_dataset_id(dataset_id: str) -> None:
@@ -96,13 +131,70 @@ class LocalFSDatasetStore(DatasetStore):
         # defense-in-depth containment check in ``_build_path`` (JD-SEC-01).
         self._resolved_base = self._base_path.resolve()
         self._lock_dir = self._base_path / LOCK_DIR_NAME
-        self._create_lock_stripes()
+        # Descriptors held for the store's life. The storage root is opened once -- again only if
+        # it is removed and made again -- and ``locks/`` once, without following a symlink: a
+        # stripe is then opened THROUGH that descriptor, so a ``locks`` swapped for a symlink
+        # after startup is never followed. The root is also the lock of last resort, which needs
+        # no inode (``_meta_write_lock``). Nothing closes a store, so they are closed when it is
+        # collected.
+        self._descriptors: dict[str, int] = {}
+        weakref.finalize(self, _close_descriptors, self._descriptors)
+        self._descriptors[_ROOT] = os.open(self._base_path, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+        if self._open_lock_dir() is not None:
+            self._create_lock_stripes()
+        self._remove_legacy_lock_files()
 
-    def _ensure_lock_dir(self) -> None:
-        """Create the lock directory if needed, and refuse one that leads out of the storage root."""
-        self._lock_dir.mkdir(mode=0o700, exist_ok=True)
-        if self._lock_dir.is_symlink() or not self._lock_dir.resolve().is_relative_to(self._resolved_base):
-            raise StorageContainmentError("The lock directory resolves outside the storage root")
+    def _open_lock_dir(self) -> int | None:
+        """Open ``locks/`` in the storage root, creating it if it is absent, and keep the descriptor.
+
+        When the directory the root descriptor holds is gone -- the storage root was removed, and
+        perhaps made again -- the root is opened again first (``_reopen_root``).
+
+        Returns:
+            The descriptor, or ``None`` when the directory is absent and cannot be created -- the
+            volume is out of inodes, read-only, or not writable. Every lock then falls back to
+            the storage root (``_meta_write_lock``), and this is tried again at the next lock.
+
+        Raises:
+            StorageContainmentError: what is at ``locks`` is not a real directory: a symlink,
+                wherever it points -- inside the root too -- or a file. Nothing is locked through
+                it, and a store that finds one when it opens does not open: a service that
+                started would answer every write with a 500.
+        """
+        root = self._descriptors[_ROOT]
+        try:
+            try:
+                os.mkdir(LOCK_DIR_NAME, 0o700, dir_fd=root)
+            except FileNotFoundError:
+                root = self._reopen_root()
+                os.mkdir(LOCK_DIR_NAME, 0o700, dir_fd=root)
+        except FileExistsError:
+            pass
+        except OSError as exc:
+            if exc.errno not in _NO_NEW_ENTRY:
+                raise
+            logger.warning("Could not create the lock directory in %s (%s); every lock falls back to the storage root until it exists", self._base_path, type(exc).__name__)
+            return None
+        try:
+            fd = os.open(LOCK_DIR_NAME, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=root)
+        except OSError as exc:
+            if exc.errno in (errno.ELOOP, errno.ENOTDIR):
+                raise StorageContainmentError(f"{self._lock_dir} is not a real directory in the storage root; the store will not lock through it") from None
+            raise
+        self._descriptors[_LOCKS] = fd
+        return fd
+
+    def _reopen_root(self) -> int:
+        """Open the storage root again, by path, in place of a descriptor whose directory is gone.
+
+        ``mkdir`` through a descriptor fails with ``ENOENT`` only when the directory it holds was
+        removed. Every other operation of this store finds the root by path, so the locks follow
+        it to a root made again at that path; if there is none, the ``FileNotFoundError`` stands.
+        """
+        fd = os.open(self._base_path, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+        os.close(self._descriptors[_ROOT])
+        self._descriptors[_ROOT] = fd
+        return fd
 
     def _create_lock_stripes(self) -> None:
         """Create every lock stripe now, so that taking a lock never needs a new inode.
@@ -113,17 +205,47 @@ class LocalFSDatasetStore(DatasetStore):
         free space were the ones that failed. The stripes are a fixed set, created here and
         then only ever opened.
 
-        Best effort: a storage directory this process cannot write to -- read-only, or out of
-        inodes on the first start -- still opens, as it did before the stripes existed, and a
-        stripe is then created when first locked. A lock directory that leads out of the
-        storage root is refused (``StorageContainmentError`` is not an ``OSError``).
+        Each stripe is tried on its own, and one that cannot be created -- a symlink planted at
+        it, which ``O_NOFOLLOW`` refuses -- does not stop the others. Best effort: a stripe still
+        missing is created when first locked, once the directory is writable; until then, a lock
+        on it falls back to the storage root.
         """
-        try:
-            self._ensure_lock_dir()
-            for stripe in range(LOCK_STRIPE_COUNT):
-                os.close(os.open(self._lock_dir / f"{stripe:x}{LOCK_FILE_SUFFIX}", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600))
-        except OSError as exc:
-            logging.getLogger(__name__).warning("Could not create the lock stripes in %s (%s); each is created when first locked", self._lock_dir, type(exc).__name__)
+        failed: list[str] = []
+        for stripe in range(LOCK_STRIPE_COUNT):
+            try:
+                os.close(os.open(_stripe_file_name(stripe), os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=self._descriptors[_LOCKS]))
+            except OSError as exc:
+                failed.append(type(exc).__name__)
+        if failed:
+            logger.warning("Could not create %d of the %d lock stripes in %s (%s)", len(failed), LOCK_STRIPE_COUNT, self._lock_dir, ", ".join(sorted(set(failed))))
+
+    def _remove_legacy_lock_files(self) -> None:
+        """Remove the per-dataset lock files an earlier version created in the storage root.
+
+        Before the stripes, LocalFS created ``<dataset_id>.meta.json.lock`` beside the metadata
+        on first use and never removed it: one for every id a request had named, present or not.
+        They lock nothing now, and on a volume they filled they are the inodes a delete needs.
+        Only an entry directly in the root, not a directory, whose name is a valid dataset id
+        followed by exactly ``.meta.json.lock`` is removed. An earlier version still running
+        against this directory locks those files, so do not run one beside this one.
+        """
+        suffix = META_FILE_SUFFIX + LOCK_FILE_SUFFIX
+        removed = 0
+        failed: list[str] = []
+        for path in self._base_path.glob("*" + suffix):
+            if not _VALID_DATASET_ID.fullmatch(path.name[: -len(suffix)]):
+                continue
+            try:
+                if stat.S_ISDIR(path.lstat().st_mode):
+                    continue
+                path.unlink()
+                removed += 1
+            except OSError as exc:
+                failed.append(type(exc).__name__)
+        if removed:
+            logger.info("Removed %d lock files an earlier version left in %s", removed, self._base_path)
+        if failed:
+            logger.warning("Could not remove %d lock files an earlier version left in %s (%s)", len(failed), self._base_path, ", ".join(sorted(set(failed))))
 
     def _build_path(self, dataset_id: str, suffix: str) -> Path:
         """Construct a storage path for ``dataset_id`` with traversal defense.
@@ -153,34 +275,55 @@ class LocalFSDatasetStore(DatasetStore):
         """Get path to metadata file."""
         return self._build_path(dataset_id, META_FILE_SUFFIX)
 
-    def _lock_path(self, dataset_id: str) -> Path:
-        """Path of the lock stripe guarding one dataset's metadata: ``sha256(id)`` mod the stripe count.
+    def _stripe_name(self, dataset_id: str) -> str:
+        """The name of the lock stripe guarding one dataset's metadata: ``sha256(id)`` mod the stripe count.
 
         The id is validated first, so a hostile id is refused before any file is touched, as
         by every other path this store builds.
         """
         _validate_dataset_id(dataset_id)
-        stripe = int(hashlib.sha256(dataset_id.encode(CHARSET_UTF8)).hexdigest(), 16) % LOCK_STRIPE_COUNT
-        return self._lock_dir / f"{stripe:x}{LOCK_FILE_SUFFIX}"
+        return _stripe_file_name(int(hashlib.sha256(dataset_id.encode(CHARSET_UTF8)).hexdigest(), 16) % LOCK_STRIPE_COUNT)
 
-    def _open_lock_stripe(self, lock_path: Path) -> int:
-        """Open an existing lock stripe; recreate it only if something removed it.
+    def _lock_path(self, dataset_id: str) -> Path:
+        """Where ``dataset_id``'s lock stripe is. For reading only: the store opens it through ``locks/``'s descriptor."""
+        return self._lock_dir / self._stripe_name(dataset_id)
+
+    def _open_lock_stripe(self, name: str) -> int | None:
+        """Open a lock stripe through the held ``locks/`` descriptor; create it only if it is missing.
 
         ``O_NOFOLLOW``: a symlink planted at a stripe is refused, never followed out of the
-        storage root. ``O_CLOEXEC``: the descriptor does not leak into a child process. The
-        stripe is opened without ``O_CREAT`` first, so the normal path creates nothing and
-        needs no free inode.
+        storage root, and ``locks`` itself is not re-resolved -- the descriptor is. ``O_CLOEXEC``:
+        the descriptor does not leak into a child process. The stripe is opened without
+        ``O_CREAT`` first, so the normal path creates nothing and needs no free inode.
+
+        Returns:
+            The stripe's descriptor, or ``None`` when it is missing and cannot be created (no
+            inode, a read-only or unwritable directory): the caller then locks the root.
         """
         flags = os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC
-        try:
-            return os.open(lock_path, flags)
-        except FileNotFoundError:
-            self._ensure_lock_dir()
-            # 0o600: the lock file carries no data -- it exists only as an flock target --
-            # so nothing needs to read it and a world-readable mode is pure exposure
-            # (CodeQL py/overly-permissive-file). Every process locking it runs as the
-            # service user; cross-user locking would be a deliberate change, not a default.
-            return os.open(lock_path, flags | os.O_CREAT, 0o600)
+        for _attempt in range(2):
+            locks = self._descriptors.get(_LOCKS)
+            if locks is None:
+                locks = self._open_lock_dir()
+                if locks is None:
+                    return None
+            with contextlib.suppress(FileNotFoundError):
+                return os.open(name, flags, dir_fd=locks)
+            try:
+                # 0o600: the lock file carries no data -- it exists only as an flock target --
+                # so nothing needs to read it and a world-readable mode is pure exposure
+                # (CodeQL py/overly-permissive-file). Every process locking it runs as the
+                # service user; cross-user locking would be a deliberate change, not a default.
+                return os.open(name, flags | os.O_CREAT, 0o600, dir_fd=locks)
+            except FileNotFoundError:
+                # The directory the descriptor holds was removed: open whatever is at
+                # ``locks`` now, and try once more.
+                os.close(self._descriptors.pop(_LOCKS))
+            except OSError as exc:
+                if exc.errno in _NO_NEW_ENTRY:
+                    return None
+                raise
+        return None
 
     @contextlib.contextmanager
     def _meta_write_lock(self, dataset_id: str) -> Iterator[None]:
@@ -197,23 +340,46 @@ class LocalFSDatasetStore(DatasetStore):
         would guard nothing once the first writer swapped it out. The lock files are a
         fixed set of stripes (``_create_lock_stripes``), never renamed or removed --
         unlinking one would let a second process create and lock a *different* inode by
-        the same name and immediately enter the critical section. Two datasets on one
-        stripe share its lock; within a process that costs nothing, because
-        ``_version_lock`` already serialises every metadata write.
+        the same name and immediately enter the critical section.
+
+        Two datasets on one stripe share its lock. Within a process that costs nothing,
+        because ``_version_lock`` already serialises every metadata write. Across processes
+        it does: a lock another process holds on any dataset of the stripe -- one in sixteen
+        -- delays this process's lock takers on every dataset of that stripe, for as long as
+        the other process holds it.
+
+        When the stripe is missing and cannot be created -- the volume is out of inodes, or
+        the directory is not writable -- the lock is taken on the storage root itself,
+        exclusively, which needs no inode. Every stripe lock also holds the root SHARED, so a
+        root lock taken by any process excludes every stripe lock, and stripes still exclude
+        only each other. Callers hold ``_version_lock`` first, so no two threads of a process
+        are ever in here at once -- and the root's lock relies on that: a ``flock`` belongs to
+        the open descriptor, which every lock this store takes shares, so one thread's unlock
+        would release another's.
 
         ``flock`` is advisory and per-host. It orders writers on one machine, including
         separate uvicorn workers, but is not a distributed lock and gives no guarantee
         over NFS.
         """
-        fd = self._open_lock_stripe(self._lock_path(dataset_id))
+        name = self._stripe_name(dataset_id)
+        stripe = self._open_lock_stripe(name)
+        # Read only now: opening the stripe can replace the root's descriptor (``_reopen_root``).
+        root = self._descriptors[_ROOT]
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX)
+            fcntl.flock(root, fcntl.LOCK_EX if stripe is None else fcntl.LOCK_SH)
             try:
-                yield
+                if stripe is not None:
+                    fcntl.flock(stripe, fcntl.LOCK_EX)
+                try:
+                    yield
+                finally:
+                    if stripe is not None:
+                        fcntl.flock(stripe, fcntl.LOCK_UN)
             finally:
-                fcntl.flock(fd, fcntl.LOCK_UN)
+                fcntl.flock(root, fcntl.LOCK_UN)
         finally:
-            os.close(fd)
+            if stripe is not None:
+                os.close(stripe)
 
     def _tmp_path(self, final_path: Path) -> Path:
         """A temp path unique to this process and call.
@@ -240,6 +406,9 @@ class LocalFSDatasetStore(DatasetStore):
     ) -> None:
         """Save dataset metadata and arrays to filesystem.
 
+        The two halves :meth:`save_versioned` runs apart -- :meth:`stage_save` outside the
+        locks, its commit under them -- run here back to back. This takes no lock itself.
+
         Args:
             dataset_id: Unique identifier for the dataset.
             meta: Dataset metadata.
@@ -248,58 +417,55 @@ class LocalFSDatasetStore(DatasetStore):
         Raises:
             IOError: If the save operation fails.
         """
+        staged = self.stage_save(dataset_id, arrays)
+        try:
+            staged.commit(meta)
+        finally:
+            staged.discard()
+
+    def stage_save(self, dataset_id: str, arrays: dict[str, np.ndarray]) -> StagedSave:
+        """Compress the arrays and write them to a temporary file; the commit puts them in place.
+
+        This is the expensive part of a save -- seconds for a large dataset -- and it needs no
+        lock: the temporary name is unique to this process and call (``_tmp_path``), and nothing
+        reads it. The commit, which :meth:`save_versioned` makes under the locks, writes the
+        metadata to its own temporary file and renames both into place, the artifact first so
+        there is never metadata without its artifact. Discarding removes the temporary file.
+        """
         meta_path = self._meta_path(dataset_id)
         npz_path = self._npz_path(dataset_id)
-
-        # Write to temporary files first, then atomically replace the final files
-        tmp_meta_path = self._tmp_path(meta_path)
         tmp_npz_path = self._tmp_path(npz_path)
-
-        meta_json = json.dumps(
-            meta.model_dump(),
-            default=_json_serializer,
-            indent=JSON_INDENT_DEFAULT,
-        )
-
         try:
-            # Write metadata JSON to temporary file
-            tmp_meta_path.write_text(meta_json, encoding=CHARSET_UTF8)
-
-            # Write NPZ data to temporary file
             buffer = io.BytesIO()
             np.savez_compressed(buffer, **arrays)  # type: ignore[arg-type]  # numpy stubs incomplete for **kwargs
-            buffer.seek(0)
-            tmp_npz_path.write_bytes(buffer.read())
-
-            # Atomically replace final files with the temporary ones.
-            # Write NPZ first so we never have metadata without its NPZ.
-            tmp_npz_path.replace(npz_path)
-            tmp_meta_path.replace(meta_path)
+            tmp_npz_path.write_bytes(buffer.getvalue())
         except Exception:
-            # Best-effort cleanup of temporary files on failure
-            try:
-                tmp_meta_path.unlink(missing_ok=True)
-            except OSError:
-                logging.debug(
-                    "Failed to remove temporary metadata file %s during cleanup",
-                    tmp_meta_path,
-                    exc_info=True,
-                )
-            try:
-                tmp_npz_path.unlink(missing_ok=True)
-            except OSError:
-                logging.debug(
-                    "Failed to remove temporary NPZ file %s during cleanup",
-                    tmp_npz_path,
-                    exc_info=True,
-                )
+            _discard_temp(tmp_npz_path, "NPZ")
             raise
 
-        # Reached only when the writes above succeeded -- the ``except`` arm
-        # re-raises. Without this the new dataset stays invisible to
-        # ``filter_datasets`` / ``get_stats`` for the whole cache TTL, which is
-        # read-your-writes broken.
-        self._invalidate_metadata_cache()
+        def commit(meta: DatasetMeta) -> None:
+            tmp_meta_path = self._tmp_path(meta_path)
+            meta_json = json.dumps(
+                meta.model_dump(),
+                default=_json_serializer,
+                indent=JSON_INDENT_DEFAULT,
+            )
+            try:
+                tmp_meta_path.write_text(meta_json, encoding=CHARSET_UTF8)
+                # Atomically replace final files with the temporary ones.
+                # Write NPZ first so we never have metadata without its NPZ.
+                tmp_npz_path.replace(npz_path)
+                tmp_meta_path.replace(meta_path)
+            except Exception:
+                _discard_temp(tmp_meta_path, "metadata")
+                raise
+            # Reached only when the writes above succeeded -- the ``except`` arm
+            # re-raises. Without this the new dataset stays invisible to
+            # ``filter_datasets`` / ``get_stats`` for the whole cache TTL, which is
+            # read-your-writes broken.
+            self._invalidate_metadata_cache()
+
+        return StagedSave(commit, lambda: _discard_temp(tmp_npz_path, "NPZ"))
 
     def get_meta(self, dataset_id: str) -> DatasetMeta | None:
         """Get dataset metadata from filesystem.

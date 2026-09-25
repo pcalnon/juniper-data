@@ -170,24 +170,25 @@ class TestRecordAccessWiring:
         return response.json()["dataset_id"]
 
     def test_get_metadata_schedules_record_access(self, client: TestClient, memory_store: InMemoryDatasetStore) -> None:
-        """GET /v1/datasets/{id} must schedule record_access via the event loop."""
+        """GET /v1/datasets/{id} must hand record_access to the access recorder."""
         dataset_id = self._create_dataset(client)
         with patch.object(memory_store, "record_access") as mock_access:
             response = client.get(f"/v1/datasets/{dataset_id}")
             assert response.status_code == 200
-            # call_soon hands off to the loop — TestClient drives it inline so the
-            # callback runs before the response returns to the test.
+            # The recorder runs it on its own thread, after the response: wait for it.
+            datasets.drain_access_recorder(30)
             called = mock_access.called
             assert called
             args = mock_access.call_args.args
             assert args[0] == dataset_id
 
     def test_get_artifact_schedules_record_access(self, client: TestClient, memory_store: InMemoryDatasetStore) -> None:
-        """GET /v1/datasets/{id}/artifact must schedule record_access via the event loop."""
+        """GET /v1/datasets/{id}/artifact must hand record_access to the access recorder."""
         dataset_id = self._create_dataset(client)
         with patch.object(memory_store, "record_access") as mock_access:
             response = client.get(f"/v1/datasets/{dataset_id}/artifact")
             assert response.status_code == 200
+            datasets.drain_access_recorder(30)
             called = mock_access.called
             assert called
             args = mock_access.call_args.args

@@ -22,6 +22,9 @@ against the unfixed code, which would make it a vacuous regression test.
 
 from __future__ import annotations
 
+import fcntl
+import json
+import os
 import subprocess
 import sys
 import textwrap
@@ -167,3 +170,95 @@ class TestMetaWriteCrossProcessLock:
 
         assert store._lock_path(DATASET_ID).exists(), "lock file was not created"
         assert [m.dataset_id for m in store.list_all_metadata()] == [DATASET_ID]
+
+    def test_a_create_in_another_process_checks_for_its_dataset_only_under_the_file_lock(self, tmp_path: Path) -> None:
+        """A create checks that its dataset is absent, then commits; the check must hold the FILE lock too.
+
+        Under ``_version_lock`` alone the check orders creates within one process only: another
+        process's create could land between this one's check and its commit, and be overwritten
+        after it had been answered 201. The test stands in for that other process: it holds the
+        dataset's lock stripe, as a create mid-commit does, while the child process creates the
+        same id. The child reports each existence check through a file, so a check made before
+        the lock is an observed event, not an inference from timing.
+        """
+        storage = tmp_path / "storage"
+        store = LocalFSDatasetStore(storage)
+        signals = tmp_path / "signals"
+        signals.mkdir()
+        script = _CREATE_WORKER.format(repo=str(Path(__file__).resolve().parents[3]), dataset_id=DATASET_ID)
+        lock_fd = os.open(store._lock_path(DATASET_ID), os.O_RDWR)
+        child: subprocess.Popen[str] | None = None
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            child = subprocess.Popen([sys.executable, "-c", textwrap.dedent(script), str(storage), str(signals)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            deadline = time.monotonic() + 120
+            while not (signals / "ready").exists():
+                assert child.poll() is None, f"the child exited early: {child.communicate()[1]}"
+                assert time.monotonic() < deadline, "the child never became ready"
+                time.sleep(0.005)
+            # "ready" is written just before the create. Its staging takes milliseconds; a check
+            # made before the file lock would be reported well inside this window.
+            window = time.monotonic() + 1.5
+            while time.monotonic() < window and not (signals / "checked").exists():
+                time.sleep(0.01)
+            checked_while_locked = (signals / "checked").exists()
+            # The other process's create lands now, inside its lock, while the child waits.
+            store.save(DATASET_ID, _meta(["from-the-other-process"]), _arrays(0.0))
+        finally:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            os.close(lock_fd)
+        assert child is not None
+        out, err = child.communicate(timeout=120)
+        assert child.returncode == 0, err
+        assert not checked_while_locked, "the create checked for its dataset before it had the file lock"
+        assert (signals / "checked").exists(), "control: the child did check, once it had the lock"
+        stored = store.get_meta(DATASET_ID)
+        assert stored is not None
+        assert stored.tags == ["from-the-other-process"], "the late create must write nothing"
+        assert json.loads(out) == ["from-the-other-process"], "the late create must answer with what is stored"
+
+
+_CREATE_WORKER = """
+import json, sys
+from datetime import UTC, datetime
+from pathlib import Path
+sys.path.insert(0, {repo!r})
+import numpy as np
+from juniper_data.core.models import DatasetMeta
+from juniper_data.storage.local_fs import LocalFSDatasetStore
+
+storage, signals = Path(sys.argv[1]), Path(sys.argv[2])
+store = LocalFSDatasetStore(storage)
+real_get_meta = store.get_meta
+
+
+def get_meta(dataset_id):
+    (signals / "checked").write_text("1")
+    return real_get_meta(dataset_id)
+
+
+store.get_meta = get_meta
+meta = DatasetMeta(dataset_id={dataset_id!r}, generator="spiral", generator_version="1.0.0", params={{}}, n_samples=4, n_features=2, n_train=2, n_test=2, tags=["from-the-child"], created_at=datetime.now(UTC))
+arrays = {{name: np.ones((2, 2), dtype=np.float32) for name in ("X_train", "y_train", "X_test", "y_test")}}
+(signals / "ready").write_text("1")
+print(json.dumps(store.save_versioned({dataset_id!r}, meta, arrays).tags))
+"""
+
+
+def _meta(tags: list[str]) -> DatasetMeta:
+    return DatasetMeta(
+        dataset_id=DATASET_ID,
+        generator="spiral",
+        generator_version="1.0.0",
+        params={},
+        n_samples=4,
+        n_features=2,
+        n_train=2,
+        n_test=2,
+        tags=tags,
+        created_at=datetime.now(UTC),
+    )
+
+
+def _arrays(fill: float) -> dict[str, np.ndarray]:
+    return {name: np.full((2, 2), fill, dtype=np.float32) for name in ("X_train", "y_train", "X_test", "y_test")}

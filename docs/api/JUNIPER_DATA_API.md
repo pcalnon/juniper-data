@@ -669,7 +669,8 @@ order. There are two ways to page:
 Pass `cursor` **or** `offset`, never both — a request carrying both is rejected with `400`,
 because a cursor already determines where the page starts. A cursor the service did not
 issue is also a `400`. Treat the token as opaque: it is not a stable identifier, and its
-encoding may change.
+encoding may change. **Known issue:** a cursor whose timestamp carries no timezone, and a
+`created_after` without one, are answered `500`, not `400`.
 
 ```bash
 # Stable walk of the whole collection.
@@ -934,9 +935,12 @@ Get metadata for a specific dataset.
 
 The access counters of one dataset — where they live since APD-DATA-032. They are still
 maintained, exactly where they always were — every `GET /v1/datasets/{id}` and every artifact
-download that answers 200 or 304 (a 412 reads nothing and records nothing); `/latest`, `/filter`
-and `/versions` never recorded an access — and they are no longer part of any metadata
-representation.
+download that answers 200 or 304 (a 412 reads nothing and records nothing, and neither does a
+download whose stored metadata leads out of the storage root); `/latest`, `/filter` and
+`/versions` never recorded an access — and they are no longer part of any metadata
+representation. A read hands its access to a thread of its own and does not wait for it to be
+recorded; this endpoint waits for those already handed over, so its counters include every read
+answered before it.
 
 **Response** (`Cache-Control: no-store`):
 
@@ -990,10 +994,13 @@ Download the dataset as an NPZ file.
   A dataset with neither metadata nor artifact is a 404 whatever the headers say. If the metadata
   cannot be read — a corrupt document, or a metadata file that leads out of the storage root,
   which the store refuses to follow — the artifact is still served, without an `ETag`, and a
-  conditional request for it is judged as for an orphan; no access is recorded for it. A
+  conditional request for it is judged as for an orphan. The access is still recorded, unless
+  the metadata leads out of the storage root: there is no readable document to count it in. A
   malformed dataset ID is a `400`, as on every other route. A stored file that leads out of the
-  storage root is a server fault: for the `.npz` itself here, and on every other route but batch
-  delete (which lists such an ID in `not_found`), the answer is `500 Internal Server Error`.
+  storage root is a server fault: for the `.npz` itself here, and on every other route but the
+  two batch routes, the answer is `500 Internal Server Error`. Batch delete lists such an ID in
+  `not_found`, and batch-create reports the item as failed. A metadata document that does not
+  parse is still answered `400` on the routes that read it — a known issue.
 
 **Status Codes:**
 

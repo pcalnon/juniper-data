@@ -5,7 +5,7 @@ Project:     Juniper
 Sub-Project: juniper-data
 Application: ad-hoc verification
 Author:      Paul Calnon
-Version:     1.3.0
+Version:     1.4.0
 License:     MIT
 
 WHY THIS EXISTS
@@ -18,8 +18,8 @@ Other tests may go red too; only the named ones are checked.
 
 WHAT IT COVERS, EXACTLY
 -----------------------
-Every test in ``juniper_data/tests/unit/test_conditional_requests.py`` -- 90 -- is named by
-at least one arm. 79 are a must-fail of some arm, so this run shows each can fail. The other
+Every test in ``juniper_data/tests/unit/test_conditional_requests.py`` -- 111 -- is named by
+at least one arm. 100 are a must-fail of some arm, so this run shows each can fail. The other
 11 are named only as controls: the run shows they stay green under a nearby mutation, not that
 they can fail. They are ``test_access_endpoint_serves_the_counters_uncached``,
 ``test_a_304_on_the_artifact_is_recorded_as_an_access``,
@@ -30,8 +30,9 @@ they can fail. They are ``test_access_endpoint_serves_the_counters_uncached``,
 ``test_stale_if_none_match_gets_the_full_body``,
 ``test_a_dataset_that_is_really_absent_is_404_under_every_precondition``,
 ``test_an_orphaned_artifact_still_satisfies_if_match_star`` and
-``test_a_star_wrapped_in_spaces_and_tabs_is_still_a_star``. Two tests outside that file are
-controls (M33; M62 and M64). Version 1.1.0 said every behaviour the PR claimed was reverted; seven of the
+``test_a_star_wrapped_in_spaces_and_tabs_is_still_a_star``. Three tests outside that file are
+named: two as controls (M33; M62 and M64), and the two-process create test in
+``test_meta_cross_process_lock.py`` as M73's must-fail. Version 1.1.0 said every behaviour the PR claimed was reverted; seven of the
 file's then 56 tests were named by no arm (round-3 validation, lane A2, F6).
 ``util/ad-hoc/2026-09-24_count_conditional_request_harness_coverage.py`` re-derives these
 numbers from ``MUTATIONS`` and pytest's own collection.
@@ -72,6 +73,19 @@ callback (M59, M60; F6, L3); a storage fault answered as the caller's 400, the `
 naming the id (M61, M62, M64; L4); and nothing but a 36-second timeout pinning the order the two
 locks are taken in (M51, M65-M67; L6 -- M51 is lane B's MB1, which every test of what a delete
 holds passed).
+
+M68-M85 were added when round-1 validation of the #438 fix-forward found ``record_access`` still
+run on the event loop, so one read stalled every request while a create held the lock for its
+save (M68, M69; lane B's M-1), and a transient metadata failure dropping an access (M70, M71;
+N-1); a create doing its whole save under the locks (M72) and its check unpinned across processes,
+for named creates and for different content (M73-M75; lane B's L-5 -- its MX10, MX1 and MX9);
+the stripes' ``O_NOFOLLOW`` and the ``locks`` refusal unpinned (M76-M78; MX23, MX24, MX13/MX14,
+N-4); no lock of last resort on a volume already full, the shared root lock that makes it one,
+and an earlier version's lock files kept (M79, M80, M82, M84; L-1); a ``locks`` swapped for a
+symlink after startup followed (M81; L-2); one bad stripe stopping the rest (M83; N-3); and a
+``locks/`` removed mid-run never opened again (M85). M86 came with them, for a regression the
+held descriptors themselves introduced, caught before it shipped: a storage root removed and
+made again never opened again, so every write failed until a restart.
 
 Run from the repo root::
 
@@ -140,6 +154,7 @@ FALLBACK_BLOCK = (
     '        logger.warning("Artifact download: dataset metadata unreadable (%s); serving without an ETag", type(exc).__name__)\n'
     "        meta = None\n"
     "        metadata_readable = False\n"
+    "        metadata_refused = isinstance(exc, StorageContainmentError)\n"
 )
 FALLBACK_WARNING = '        logger.warning("Artifact download: dataset metadata unreadable (%s); serving without an ETag", type(exc).__name__)\n'
 
@@ -263,17 +278,41 @@ APP = REPO / "juniper_data/api/app.py"
 STRIPES = "TestLockStripes"
 CURSOR_API = "juniper_data/tests/unit/test_api_routes.py::TestFilterCursorPagination::test_malformed_cursor_is_400_not_500"
 
-# save_versioned's body: create-if-absent under both locks (M52 restores 0.16.0's; M53, M54, M67 edit it).
+# save_versioned's body: stage outside the locks, then create-if-absent under both (M52 restores
+# 0.16.0's; M53, M54, M67 and M72-M75 edit it).
 CREATE_IF_ABSENT = (
-    "        with self._version_lock, self._meta_write_lock(dataset_id):\n"
-    "            existing = self.get_meta(dataset_id)\n"
-    "            if existing is not None:\n"
-    "                return existing\n"
-    "            if meta.dataset_name is not None and meta.dataset_version is None:\n"
-    "                meta.dataset_version = self.next_version_number(meta.dataset_name)\n"
-    "            self.save(dataset_id, meta, arrays)\n"
-    "            return meta\n"
+    "        staged = self.stage_save(dataset_id, arrays)\n"
+    "        try:\n"
+    "            with self._version_lock, self._meta_write_lock(dataset_id):\n"
+    "                existing = self.get_meta(dataset_id)\n"
+    "                if existing is not None:\n"
+    "                    return existing\n"
+    "                if meta.dataset_name is not None and meta.dataset_version is None:\n"
+    "                    meta.dataset_version = self.next_version_number(meta.dataset_name)\n"
+    "                staged.commit(meta)\n"
+    "                return meta\n"
+    "        finally:\n"
+    "            staged.discard()\n"
 )
+# Lane B's MX10: the check under ``_version_lock`` alone, the file lock taken only for the commit.
+CHECK_BEFORE_FILE_LOCK = (
+    "        staged = self.stage_save(dataset_id, arrays)\n"
+    "        try:\n"
+    "            with self._version_lock:\n"
+    "                existing = self.get_meta(dataset_id)\n"
+    "                if existing is not None:\n"
+    "                    return existing\n"
+    "                with self._meta_write_lock(dataset_id):\n"
+    "                    if meta.dataset_name is not None and meta.dataset_version is None:\n"
+    "                        meta.dataset_version = self.next_version_number(meta.dataset_name)\n"
+    "                    staged.commit(meta)\n"
+    "                    return meta\n"
+    "        finally:\n"
+    "            staged.discard()\n"
+)
+STAGE_THEN_LOCK = "        staged = self.stage_save(dataset_id, arrays)\n        try:\n            with self._version_lock, self._meta_write_lock(dataset_id):\n"
+LOCK_THEN_STAGE = "        try:\n            with self._version_lock, self._meta_write_lock(dataset_id):\n                staged = self.stage_save(dataset_id, arrays)\n"
+EXISTING_RETURNED = "                if existing is not None:\n                    return existing\n"
 CREATE_UNLOCKED = (
     "        if meta.dataset_name is not None and meta.dataset_version is None:\n"
     "            with self._version_lock:\n"
@@ -283,18 +322,20 @@ CREATE_UNLOCKED = (
     "            self.save(dataset_id, meta, arrays)\n"
     "        return meta\n"
 )
-RECHECK = "            existing = self.get_meta(dataset_id)\n            if existing is not None:\n                return existing\n"
+RECHECK = "                existing = self.get_meta(dataset_id)\n                if existing is not None:\n                    return existing\n"
 
 # record_access's locked block (M65 swaps its order).
 ACCESS_LOCKS = "        with self._version_lock, self._meta_write_lock(dataset_id):\n            meta = self.get_meta(dataset_id)\n            if meta is not None:\n"
 
-# LocalFS's stripe lookup, and the per-id lock file it replaced (M56).
-STRIPE_PATH = "        _validate_dataset_id(dataset_id)\n        stripe = int(hashlib.sha256(dataset_id.encode(CHARSET_UTF8)).hexdigest(), 16) % LOCK_STRIPE_COUNT\n        return self._lock_dir / f\"{stripe:x}{LOCK_FILE_SUFFIX}\"\n"
-PER_ID_PATH = "        meta_path = self._meta_path(dataset_id)\n        return meta_path.with_suffix(meta_path.suffix + LOCK_FILE_SUFFIX)\n"
+# LocalFS's stripe name, and a lock file per dataset id instead (M56).
+STRIPE_PATH = "        _validate_dataset_id(dataset_id)\n        return _stripe_file_name(int(hashlib.sha256(dataset_id.encode(CHARSET_UTF8)).hexdigest(), 16) % LOCK_STRIPE_COUNT)\n"
+PER_ID_PATH = '        _validate_dataset_id(dataset_id)\n        return f"{dataset_id}{META_FILE_SUFFIX}{LOCK_FILE_SUFFIX}"\n'
 
-# The artifact route's two record_access calls, each guarded now (M59, M60 drop a guard).
-RECORD_ON_200 = "    if metadata_readable:\n        asyncio.get_event_loop().call_soon(lambda: store.record_access(dataset_id))\n\n    return StreamingResponse(\n"
-RECORD_ON_ORPHAN_304 = "            if metadata_readable:\n                asyncio.get_event_loop().call_soon(lambda: store.record_access(dataset_id))\n            return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)\n"
+# Where the reads hand their access to the recorder (M10, M68 on the metadata read; M59, M60, M70
+# on the artifact route, whose guards skip only a file the store refused).
+RECORD_ON_METADATA_READ = "    record_access_later(store, dataset_id)\n    return response\n"
+RECORD_ON_200 = "    if not metadata_refused:\n        record_access_later(store, dataset_id)\n\n    return StreamingResponse(\n"
+RECORD_ON_ORPHAN_304 = "            if not metadata_refused:\n                record_access_later(store, dataset_id)\n            return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)\n"
 
 # The app's mapping of a storage fault to a 500 (M61 removes it).
 FAULT_TO_500 = (
@@ -330,7 +371,7 @@ FILTER_CALL_WRAPPED = "    try:\n" + "".join(f"    {line}" for line in FILTER_CA
 CURSOR_FIRST = "    if cursor is not None:\n        # Decoded HERE, before the store is touched"
 
 # The best-effort creation of the stripes (M63 makes a failure fatal).
-STRIPES_BEST_EFFORT = '        except OSError as exc:\n            logging.getLogger(__name__).warning("Could not create the lock stripes in %s (%s); each is created when first locked", self._lock_dir, type(exc).__name__)\n'
+STRIPES_BEST_EFFORT = '            logger.warning("Could not create the lock directory in %s (%s); every lock falls back to the storage root until it exists", self._base_path, type(exc).__name__)\n            return None\n'
 
 
 def lock_order(taker: str) -> str:
@@ -353,8 +394,38 @@ def fault(target: str) -> str:
     return node(EXIST, f"test_a_stored_file_that_leads_out_of_the_store_is_a_generic_500[{target}]")
 
 
+def late_create(case: str) -> str:
+    """The node id of one case of the late-create test."""
+    return node(ATOMIC, f"test_a_late_create_of_an_existing_dataset_writes_nothing_and_answers_with_the_stored_one[{case}]")
+
+
+def not_a_directory(kind: str) -> str:
+    """The node id of one case of the not-a-real-directory ``locks`` test."""
+    return node(STRIPES, f"test_a_locks_entry_that_is_not_a_real_directory_fails_the_store_when_it_opens[{kind}]")
+
+
+def upgrade(route: str) -> str:
+    """The node id of one case of the full-volume upgrade test."""
+    return node(STRIPES, f"test_a_volume_out_of_inodes_since_before_the_upgrade_still_deletes[{route}]")
+
+
 CREATE_WINDOW = node(ATOMIC, "test_a_create_cannot_land_inside_a_conditional_patchs_window")
-LATE_CREATE = node(ATOMIC, "test_a_late_create_of_an_existing_dataset_writes_nothing_and_answers_with_the_stored_one")
+LATE_CREATE = late_create("unnamed")
+STAGING = node(ATOMIC, "test_a_create_stages_its_artifact_before_it_takes_either_lock")
+OTHER_PROCESS_CREATE = "juniper_data/tests/unit/test_meta_cross_process_lock.py::TestMetaWriteCrossProcessLock::test_a_create_in_another_process_checks_for_its_dataset_only_under_the_file_lock"
+RECORDING = "TestAccessRecordingNeverBlocksTheLoop"
+LOOP_FREE = node(RECORDING, "test_reads_and_health_answer_at_once_while_a_writer_holds_the_lock")
+COUNTS_WAIT = node(RECORDING, "test_the_access_counters_include_every_read_answered_before_them")
+TRANSIENT = node(RECORDING, "test_a_download_whose_metadata_read_fails_for_a_moment_is_still_counted")
+LOGGED_BY_TYPE = node(RECORDING, "test_an_access_that_cannot_be_recorded_is_logged_by_type_only")
+PRE_OPEN = node(STRIPES, "test_a_symlink_planted_at_a_stripe_before_the_store_opens_is_not_followed")
+LIVE = node(STRIPES, "test_a_symlink_to_a_live_file_planted_at_a_stripe_is_refused")
+SWAPPED = node(STRIPES, "test_a_locks_directory_swapped_for_a_symlink_after_the_store_opens_is_not_followed")
+ROOT_EXCLUDES = node(STRIPES, "test_a_lock_on_the_storage_root_excludes_every_stripe_lock")
+LEGACY = node(STRIPES, "test_the_lock_files_an_earlier_version_left_are_removed_when_the_store_opens")
+ROOT_FALLBACK = node(STRIPES, "test_a_stripe_that_cannot_be_made_is_replaced_by_an_exclusive_lock_on_the_root")
+LOCKS_REMADE = node(STRIPES, "test_a_locks_directory_removed_while_the_store_runs_is_made_again")
+ROOT_REMADE = node(STRIPES, "test_a_storage_root_made_again_while_the_store_runs_is_opened_again")
 ALL_CREATES = [creates(case) for case in ("create-unnamed", "create-named", "batch-create-unnamed", "batch-create-named")]
 ALL_NO_INODE = [no_inode(route) for route in ("delete", "batch-delete", "cleanup-expired")]
 ABSENT_IDS = node(STRIPES, "test_requests_naming_absent_ids_leave_no_lock_files")
@@ -462,7 +533,7 @@ MUTATIONS = [
     Mutation(
         name="M10: a metadata 304 is not recorded as an access",
         why="a revalidation is a read of the dataset",
-        edits=[(ROUTES, "    asyncio.get_event_loop().call_soon(lambda: store.record_access(dataset_id))\n    return response\n", "    if response.status_code == 200:\n        asyncio.get_event_loop().call_soon(lambda: store.record_access(dataset_id))\n    return response\n")],
+        edits=[(ROUTES, RECORD_ON_METADATA_READ, "    if response.status_code == 200:\n        record_access_later(store, dataset_id)\n    return response\n")],
         must_fail=[node(META, "test_a_304_is_recorded_as_an_access")],
         must_still_pass=[node(META, "test_matching_if_none_match_answers_304_with_no_body")],
     ),
@@ -805,15 +876,16 @@ MUTATIONS = [
         name="M56: a lock file per dataset id again, created on first use",
         why="lane B's M2: each request naming an absent id left a file, and a delete needed a free inode before it could free one",
         edits=[(LOCAL_FS, STRIPE_PATH, PER_ID_PATH)],
-        must_fail=[ABSENT_IDS, *ALL_NO_INODE],
-        # O_NOFOLLOW still refuses a planted symlink wherever the lock file lives.
-        must_still_pass=[deletes("delete"), PLANTED],
+        must_fail=[ABSENT_IDS],
+        # O_NOFOLLOW still refuses a planted symlink wherever the lock file lives, and a delete
+        # that cannot create its lock file now falls back to the storage root (M79 removes that).
+        must_still_pass=[deletes("delete"), PLANTED, *ALL_NO_INODE],
     ),
     Mutation(
         name="M57: the stripes are created when first locked, not with the store",
-        why="the first delete to touch a stripe would need a free inode again",
-        edits=[(LOCAL_FS, "        self._lock_dir = self._base_path / LOCK_DIR_NAME\n        self._create_lock_stripes()\n", "        self._lock_dir = self._base_path / LOCK_DIR_NAME\n")],
-        must_fail=[ABSENT_IDS, *ALL_NO_INODE],
+        why="each request naming an absent id would create its stripe; and one bad stripe at startup must not stop the others",
+        edits=[(LOCAL_FS, "        if self._open_lock_dir() is not None:\n            self._create_lock_stripes()\n", "        self._open_lock_dir()\n")],
+        must_fail=[ABSENT_IDS, PRE_OPEN],
         must_still_pass=[deletes("delete"), PLANTED],
     ),
     Mutation(
@@ -824,16 +896,16 @@ MUTATIONS = [
         must_still_pass=[no_inode("delete"), ABSENT_IDS],
     ),
     Mutation(
-        name="M59: a 200 records the access even when the metadata could not be read",
-        why="lane A's F6 / lane B's L3: record_access failed in an event-loop callback, and asyncio logged the id at ERROR",
-        edits=[(ROUTES, RECORD_ON_200, RECORD_ON_200.replace("    if metadata_readable:\n        asyncio", "    asyncio"))],
+        name="M59: a 200 records the access even when the store refused the metadata",
+        why="lane A's F6 / lane B's L3: the recording reads the same metadata and fails again -- it logged the id at ERROR from an event-loop callback, and is still a failed recording on the recorder",
+        edits=[(ROUTES, RECORD_ON_200, RECORD_ON_200.replace("    if not metadata_refused:\n        record_access_later", "    record_access_later"))],
         must_fail=[QUIET],
         must_still_pass=[SERVES],
     ),
     Mutation(
-        name="M60: the orphan path's 304 records the access even when the metadata could not be read",
-        why="the same traceback, on a revalidation",
-        edits=[(ROUTES, RECORD_ON_ORPHAN_304, RECORD_ON_ORPHAN_304.replace("            if metadata_readable:\n                asyncio", "            asyncio"))],
+        name="M60: the orphan path's 304 records the access even when the store refused the metadata",
+        why="the same failed recording, on a revalidation",
+        edits=[(ROUTES, RECORD_ON_ORPHAN_304, RECORD_ON_ORPHAN_304.replace("            if not metadata_refused:\n                record_access_later", "            record_access_later"))],
         must_fail=[QUIET],
         must_still_pass=[SERVES, node(EXIST, "test_an_orphaned_artifact_answers_if_none_match_star_with_a_304")],
     ),
@@ -854,8 +926,8 @@ MUTATIONS = [
     Mutation(
         name="M63: a storage directory that cannot hold the stripes cannot open a store",
         why="a read-only volume, or one out of inodes at the first start, would fail the service at startup where it used to fail only at a write",
-        edits=[(LOCAL_FS, STRIPES_BEST_EFFORT, "        except OSError:\n            raise\n")],
-        must_fail=[UNWRITABLE],
+        edits=[(LOCAL_FS, STRIPES_BEST_EFFORT, "            raise\n")],
+        must_fail=[UNWRITABLE, upgrade("delete")],
         must_still_pass=[no_inode("delete")],
     ),
     Mutation(
@@ -886,6 +958,148 @@ MUTATIONS = [
         edits=[(STORE, CREATE_IF_ABSENT, CREATE_IF_ABSENT.replace("with self._version_lock, self._meta_write_lock(dataset_id):", "with self._meta_write_lock(dataset_id), self._version_lock:"))],
         must_fail=[lock_order("save_versioned")],
         must_still_pass=[creates("create-unnamed"), LATE_CREATE],
+    ),
+    # ---- Round 5: round-1 validation of the #438 fix-forward ----
+    Mutation(
+        name="M68: the metadata read records its access on the event loop again",
+        why="lane B's M-1: the loop waited for whichever writer held the lock, and every request with it, /v1/health included",
+        edits=[(ROUTES, RECORD_ON_METADATA_READ, "    asyncio.get_event_loop().call_soon(lambda: store.record_access(dataset_id))\n    return response\n")],
+        must_fail=[LOOP_FREE],
+        must_still_pass=[node(META, "test_a_304_is_recorded_as_an_access")],
+    ),
+    Mutation(
+        name="M69: /access serves the counters without waiting for the recorder",
+        why="a client that reads and then asks for the count would not see its own read",
+        edits=[(ROUTES, "    await asyncio.to_thread(drain_access_recorder)\n", "")],
+        must_fail=[COUNTS_WAIT],
+        must_still_pass=[node(ACCESS, "test_access_endpoint_serves_the_counters_uncached")],
+    ),
+    Mutation(
+        name="M70: a download whose metadata read failed for ANY reason records nothing",
+        why="lane B's N-1: a transient failure dropped a real access",
+        edits=[(ROUTES, RECORD_ON_200, RECORD_ON_200.replace("    if not metadata_refused:\n", "    if metadata_readable:\n"))],
+        must_fail=[TRANSIENT],
+        must_still_pass=[QUIET],
+    ),
+    Mutation(
+        name="M71: a failed recording is logged with its message",
+        why="ERR-08: the message can carry the caller's id",
+        edits=[(ROUTES, '        logger.warning("Could not record an access (%s)", type(exc).__name__)\n', '        logger.warning("Could not record an access (%s)", exc)\n')],
+        must_fail=[LOGGED_BY_TYPE],
+        must_still_pass=[TRANSIENT],
+    ),
+    Mutation(
+        name="M72: a create stages its artifact under the locks",
+        why="lane B's M-1 / lane A's L-2: every other writer, in this process or on the stripe in another, waited for the whole save",
+        edits=[(STORE, STAGE_THEN_LOCK, LOCK_THEN_STAGE)],
+        must_fail=[STAGING],
+        must_still_pass=[creates("create-unnamed"), LATE_CREATE],
+    ),
+    Mutation(
+        name="M73: a create checks for its dataset under _version_lock alone (lane B's MX10)",
+        why="lane B's L-5: a create in another process could land between the check and the commit, and be overwritten",
+        edits=[(STORE, CREATE_IF_ABSENT, CHECK_BEFORE_FILE_LOCK)],
+        must_fail=[OTHER_PROCESS_CREATE],
+        # In one process _version_lock still orders the check, and the commit holds both locks.
+        must_still_pass=[CREATE_WINDOW, creates("create-unnamed")],
+    ),
+    Mutation(
+        name="M74: only an unnamed create checks again (lane B's MX1)",
+        why="a named create would allocate a version and overwrite the dataset that is there",
+        edits=[(STORE, EXISTING_RETURNED, "                if existing is not None and meta.dataset_name is None:\n                    return existing\n")],
+        must_fail=[late_create("named")],
+        must_still_pass=[late_create("unnamed")],
+    ),
+    Mutation(
+        name="M75: a late create overwrites a stored dataset whose content differs (lane B's MX9)",
+        why="an unseeded generator, or equities with end_date=None, makes different data under one id",
+        edits=[(STORE, EXISTING_RETURNED, "                if existing is not None and existing.checksum == meta.checksum:\n                    return existing\n")],
+        must_fail=[late_create("different-content")],
+        must_still_pass=[late_create("unnamed")],
+    ),
+    Mutation(
+        name="M76: the stripes are created at startup without O_NOFOLLOW (lane B's MX23)",
+        why="a dangling symlink planted at a stripe before the store opens would create its target outside the root",
+        edits=[(LOCAL_FS, "os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=self._descriptors[_LOCKS])", "os.O_CREAT | os.O_RDWR | os.O_CLOEXEC, 0o600, dir_fd=self._descriptors[_LOCKS])")],
+        must_fail=[PRE_OPEN],
+        must_still_pass=[ABSENT_IDS],
+    ),
+    Mutation(
+        name="M77: an existing stripe is opened without O_NOFOLLOW (lane B's MX24)",
+        why="a symlink to a live file planted at a stripe would be followed, and the lock taken outside the root",
+        edits=[(LOCAL_FS, "                return os.open(name, flags, dir_fd=locks)\n", "                return os.open(name, flags & ~os.O_NOFOLLOW, dir_fd=locks)\n")],
+        must_fail=[LIVE],
+        # A dangling symlink still fails: the create that follows the missed open keeps O_NOFOLLOW.
+        must_still_pass=[PLANTED],
+    ),
+    Mutation(
+        name="M78: a locks entry that is not a real directory is not refused (lane B's MX13/MX14)",
+        why="lane B's N-4 / lane A's N-4: the store would lock through a symlink, or start over a file and 500 every write",
+        edits=[(LOCAL_FS, "            if exc.errno in (errno.ELOOP, errno.ENOTDIR):\n", "            if exc.errno in (errno.ELOOP, errno.ENOTDIR):\n                return None\n            if False:\n")],
+        must_fail=[not_a_directory("symlink-outside"), not_a_directory("symlink-inside"), not_a_directory("file")],
+        must_still_pass=[ABSENT_IDS],
+    ),
+    Mutation(
+        name="M79: no lock of last resort -- a lock with no stripe fails",
+        why="lane B's L-1: on a volume already out of inodes when the store opens, every delete answered 500",
+        edits=[(LOCAL_FS, "        stripe = self._open_lock_stripe(name)\n", '        stripe = self._open_lock_stripe(name)\n        if stripe is None:\n            raise OSError(errno.ENOSPC, "no lock stripe")\n')],
+        must_fail=[upgrade("delete"), upgrade("batch-delete"), upgrade("cleanup-expired"), ROOT_FALLBACK],
+        must_still_pass=[no_inode("delete"), UNWRITABLE],
+    ),
+    Mutation(
+        name="M80: a stripe lock does not hold the storage root shared",
+        why="a process locking the root, because it could not make a stripe, would exclude nobody",
+        edits=[(LOCAL_FS, "            fcntl.flock(root, fcntl.LOCK_EX if stripe is None else fcntl.LOCK_SH)\n", "            if stripe is None:\n                fcntl.flock(root, fcntl.LOCK_EX)\n")],
+        must_fail=[ROOT_EXCLUDES],
+        must_still_pass=[ABSENT_IDS, upgrade("delete")],
+    ),
+    Mutation(
+        name="M81: a stripe is opened by path, not through the held locks/ descriptor",
+        why="lane B's L-2 / lane A's N-4: a locks swapped for a symlink after startup was followed",
+        edits=[
+            (LOCAL_FS, "                return os.open(name, flags, dir_fd=locks)\n", "                return os.open(self._lock_dir / name, flags)\n"),
+            (LOCAL_FS, "                return os.open(name, flags | os.O_CREAT, 0o600, dir_fd=locks)\n", "                return os.open(self._lock_dir / name, flags | os.O_CREAT, 0o600)\n"),
+        ],
+        must_fail=[SWAPPED],
+        must_still_pass=[ABSENT_IDS, PLANTED],
+    ),
+    Mutation(
+        name="M82: the lock files an earlier version left are kept",
+        why="lane B's L-1: they are the inodes a delete on a full volume needs",
+        edits=[(LOCAL_FS, "        self._remove_legacy_lock_files()\n", "")],
+        must_fail=[LEGACY],
+        must_still_pass=[ABSENT_IDS],
+    ),
+    Mutation(
+        name="M83: creating the stripes stops at the first that fails",
+        why="lane B's N-3: one bad entry left every later stripe to need an inode on first use",
+        edits=[(LOCAL_FS, "dir_fd=self._descriptors[_LOCKS]))\n            except OSError as exc:\n                failed.append(type(exc).__name__)\n", "dir_fd=self._descriptors[_LOCKS]))\n            except OSError as exc:\n                failed.append(type(exc).__name__)\n                break\n")],
+        must_fail=[PRE_OPEN],
+        must_still_pass=[ABSENT_IDS],
+    ),
+    Mutation(
+        name="M84: no stripe exists before its first lock, and there is no lock of last resort",
+        why="lane B's M2 in its first form: a delete could not free an inode before it had taken one -- the two defences, removed together",
+        edits=[
+            (LOCAL_FS, "        if self._open_lock_dir() is not None:\n            self._create_lock_stripes()\n", "        self._open_lock_dir()\n"),
+            (LOCAL_FS, "        stripe = self._open_lock_stripe(name)\n", '        stripe = self._open_lock_stripe(name)\n        if stripe is None:\n            raise OSError(errno.ENOSPC, "no lock stripe")\n'),
+        ],
+        must_fail=ALL_NO_INODE,
+        must_still_pass=[deletes("delete")],
+    ),
+    Mutation(
+        name="M85: a locks/ removed while the store runs is not opened again",
+        why="the held descriptor points at a directory that is gone, and every lock on a missing stripe would fail from then on",
+        edits=[(LOCAL_FS, "                os.close(self._descriptors.pop(_LOCKS))\n", "                raise\n")],
+        must_fail=[LOCKS_REMADE],
+        must_still_pass=[ABSENT_IDS, ROOT_FALLBACK],
+    ),
+    Mutation(
+        name="M86: a storage root removed and made again is not opened again",
+        why="the root descriptor points at a directory that is gone, so locks/ cannot be made through it and every write fails until a restart",
+        edits=[(LOCAL_FS, "                root = self._reopen_root()\n                os.mkdir(LOCK_DIR_NAME, 0o700, dir_fd=root)\n", "                raise\n")],
+        must_fail=[ROOT_REMADE],
+        must_still_pass=[LOCKS_REMADE, ABSENT_IDS],
     ),
 ]
 

@@ -121,10 +121,46 @@ class StorageContainmentError(ValueError):
 
     It is still a ``ValueError``, as this check's error was before ``InvalidDatasetIdError``
     existed, so ``batch_delete`` keeps classifying such an id as not found without failing the
-    batch. Everywhere else the app's ``ValueError`` handler answers it as the server fault it
-    is: a generic ``500``, logged by type only. ``/filter``, ``/stats`` and expired-dataset
-    cleanup read every dataset's metadata, so one such file fails them for the whole store.
+    batch, and batch-create reports the item as failed and goes on with the rest. Everywhere
+    else the app's ``ValueError`` handler answers it as the server fault it is: a generic
+    ``500``, logged by type only. ``/filter``, ``/stats``, ``/versions``, ``/latest``,
+    expired-dataset cleanup and every named create read every dataset's metadata, so one such
+    file fails them for the whole store.
+
+    LocalFS raises it too when what is at ``locks``, its lock directory, is not a real
+    directory -- a symlink, wherever it points, or a file: the store then does not open, or,
+    finding one while it runs, locks nothing through it and fails the write.
+
+    It covers those two storage faults, nothing else: a metadata document that does not parse
+    still raises the parser's ``ValueError``, which the app answers as the caller's ``400`` --
+    a known issue.
     """
+
+
+class StagedSave:
+    """A save in two parts: the work that needs no lock, done first, and a commit made under the locks.
+
+    :meth:`DatasetStore.stage_save` returns one. :meth:`commit` stores ``meta`` and the staged
+    arrays; :meth:`discard` undoes the staging when nothing was committed, and does nothing after
+    a commit, so ``try: ... finally: staged.discard()`` is always right.
+    """
+
+    def __init__(self, commit: Callable[[DatasetMeta], None], discard: Callable[[], None] | None = None) -> None:
+        self._commit = commit
+        self._discard = discard
+        self._settled = False
+
+    def commit(self, meta: DatasetMeta) -> None:
+        """Finish the save. Called at most once, under the locks."""
+        self._commit(meta)
+        self._settled = True
+
+    def discard(self) -> None:
+        """Undo the staging unless :meth:`commit` completed. Idempotent."""
+        if not self._settled:
+            self._settled = True
+            if self._discard is not None:
+                self._discard()
 
 
 class DatasetStore(ABC):
@@ -342,10 +378,15 @@ class DatasetStore(ABC):
         one access was silently lost from the counter on every collision.
         Hold the existing ``_version_lock`` across the whole sequence so
         the increment is atomic from the perspective of any other thread
-        in the same process. The plan's caveat applies: this is a
-        per-process lock, so multi-process deployments accept best-effort
-        counting (see BUG-JD-05). Access counting is informational so
-        this is an acceptable trade-off.
+        in the same process, and :meth:`_meta_write_lock` so that it is
+        atomic against other processes too, on a store that overrides it
+        (LocalFS, since APD-DATA-007). Elsewhere the count is exact within
+        one process only (BUG-JD-05).
+
+        It waits for both locks, so it must never run on the event loop:
+        the routes hand it to the access recorder's own thread
+        (``juniper_data.api.routes.datasets``), and a read never waits for it --
+        only ``GET /{dataset_id}/access``, for the accesses handed over before it.
         """
         with self._version_lock, self._meta_write_lock(dataset_id):
             meta = self.get_meta(dataset_id)
@@ -398,9 +439,9 @@ class DatasetStore(ABC):
         snapshot -- silently discarding a committed tag edit. Losing a write to
         a *safe* method is the failure nobody thinks to look for.
 
-        The per-process caveat from :meth:`record_access` applies unchanged:
-        this serialises threads within one process, not across a multi-process
-        deployment (BUG-JD-05).
+        As for :meth:`record_access`: ``_version_lock`` orders threads within one process, and
+        :meth:`_meta_write_lock` orders processes on a store that overrides it (LocalFS). On
+        any other store the edit is atomic within one process only (BUG-JD-05).
         """
         with self._version_lock, self._meta_write_lock(dataset_id):
             meta = self.get_meta(dataset_id)
@@ -440,9 +481,10 @@ class DatasetStore(ABC):
         (LocalFS) orders processes.
 
         The cost: the process-global ``_version_lock`` is held for the store's whole
-        ``delete``, as for every metadata write. :meth:`record_access`, which a read schedules
-        on the event loop, waits for it -- on LocalFS a few unlinks; on a store whose
-        ``delete`` does more (``CachedDatasetStore`` lists its cache to update a gauge), longer.
+        ``delete``, as for every metadata write, so every other lock taker in the process waits
+        for it -- on LocalFS a few unlinks; on a store whose ``delete`` does more
+        (``CachedDatasetStore`` lists its cache to update a gauge), longer. The event loop never
+        waits: :meth:`record_access` runs on the access recorder's own thread.
         """
         with self._version_lock, self._meta_write_lock(dataset_id):
             return self.delete(dataset_id)
@@ -565,24 +607,51 @@ class DatasetStore(ABC):
             The metadata now stored under ``dataset_id``: ``meta`` when this call saved
             it, or the existing dataset's when it already existed -- nothing is written then.
 
-        The existence check and the save happen under ``_version_lock`` and
+        The existence check and the commit happen under ``_version_lock`` and
         :meth:`_meta_write_lock`, the locks every metadata write takes. The create route
         checks existence before it generates, which can take seconds, and so did two
         creates of one id: both passed the check, and the later save overwrote the earlier
         one -- or overwrote a conditional ``PATCH .../tags`` that had passed its check in
         between, which then wrote its stale copy back over the create. Checking again under
         the locks makes create-if-absent atomic: the second create returns the dataset that
-        is there. The cost is that a create holds the process-global ``_version_lock`` for
-        its whole save, as a named create already did.
+        is there.
+
+        What is written first, outside the locks, is whatever :meth:`stage_save` stages: on
+        LocalFS the compressed artifact, the expensive part, so the locks are held only for the
+        check, the version (a named create lists every version of its name), the metadata write
+        and the renames. A store that stages nothing does its whole :meth:`save` under the
+        locks, as every create did before staging existed.
         """
-        with self._version_lock, self._meta_write_lock(dataset_id):
-            existing = self.get_meta(dataset_id)
-            if existing is not None:
-                return existing
-            if meta.dataset_name is not None and meta.dataset_version is None:
-                meta.dataset_version = self.next_version_number(meta.dataset_name)
-            self.save(dataset_id, meta, arrays)
-            return meta
+        staged = self.stage_save(dataset_id, arrays)
+        try:
+            with self._version_lock, self._meta_write_lock(dataset_id):
+                existing = self.get_meta(dataset_id)
+                if existing is not None:
+                    return existing
+                if meta.dataset_name is not None and meta.dataset_version is None:
+                    meta.dataset_version = self.next_version_number(meta.dataset_name)
+                staged.commit(meta)
+                return meta
+        finally:
+            staged.discard()
+
+    def stage_save(self, dataset_id: str, arrays: dict[str, np.ndarray]) -> StagedSave:
+        """Do the part of saving ``arrays`` that needs no lock, and return its commit.
+
+        :meth:`save_versioned` calls this before it takes any lock and commits under them, so
+        whatever is staged here costs no other writer a wait. The default stages nothing: its
+        commit is the store's whole :meth:`save`. LocalFS overrides it to write the compressed
+        artifact first.
+
+        Args:
+            dataset_id: Unique identifier for the dataset.
+            arrays: Dictionary of numpy arrays.
+
+        Returns:
+            The staged save. Its ``commit(meta)`` finishes the save; its ``discard()`` undoes
+            the staging if nothing was committed.
+        """
+        return StagedSave(lambda meta: self.save(dataset_id, meta, arrays))
 
     def filter_datasets(
         self,

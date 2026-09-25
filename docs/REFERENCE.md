@@ -1315,17 +1315,23 @@ served without an `ETag`, as it was before validators existed, and a conditional
 orphan. That covers a corrupt document and a metadata file that leads out of the storage root:
 LocalFS refuses to follow it and raises `StorageContainmentError`, a storage fault. The fallback's
 warning names only the exception type, because a message or traceback can carry the
-caller-controlled id (ERR-08), and no access is recorded for such a download: `record_access` reads
-the same metadata, and failing inside an event-loop callback, it logged a traceback naming the id
-on every 200 and 304. A malformed `dataset_id` is not unreadable metadata: `InvalidDatasetIdError`,
-a `ValueError`, takes the same 400 every other route gives it. `StorageContainmentError` is a
-`ValueError` too, as the plain `ValueError` that check raised through 0.15.0 was, so batch delete
-still reports such an id as not found. Everywhere else the app's `ValueError` handler answers it as
-the server fault it is -- a generic 500, logged by type only -- where it used to answer 400 and
-blame the caller; and `/filter` no longer echoes its message, which named the id, as a 400 detail.
-The artifact route degrades only for its metadata: an `.npz` that leads out of the root is a 500
-too. One such file fails `/filter`, `/stats` and expired-dataset cleanup for the whole store, since
-each reads every dataset's metadata.
+caller-controlled id (ERR-08). No access is recorded for a download whose metadata the store
+refused (`StorageContainmentError`): `record_access` reads the same metadata and would only fail
+again -- it used to, inside an event-loop callback that logged a traceback naming the id on every
+200 and 304. Any other failure may be transient, so the access is still handed to the recorder,
+which logs a failure by type only. A malformed `dataset_id` is not unreadable metadata:
+`InvalidDatasetIdError`, a `ValueError`, takes the same 400 every other route gives it.
+`StorageContainmentError` is a `ValueError` too, as the plain `ValueError` that check raised through
+0.15.0 was, so batch delete still reports such an id as not found, and batch-create reports the
+item failed and goes on with the rest. Everywhere else the app's `ValueError` handler answers it as the server fault
+it is -- a generic 500, logged by type only -- where it used to answer 400 and blame the caller;
+and `/filter` no longer echoes its message, which named the id, as a 400 detail. The artifact route
+degrades only for its metadata: an `.npz` that leads out of the root is a 500 too. One such file
+fails `/filter`, `/stats`, `/versions`, `/latest`, expired-dataset cleanup and every named create
+for the whole store, since each reads every dataset's metadata. **Known issue:** only a file that
+leads out of the root is answered as a storage fault. A metadata document that does not parse
+raises the parser's `ValueError`, which the app still answers 400 "Invalid request parameters" --
+now with a generic detail -- on every route that reads it.
 
 **`PATCH .../tags` is an optimistic-concurrency write.** `update_tags` takes an optional
 `precondition`, evaluated against the CURRENT metadata inside its `_version_lock` and cross-process
@@ -1356,10 +1362,28 @@ by the write is a 404.
 
 **The cost of the locks.** `_version_lock` is process-global, and each of these store calls holds it
 for its whole length: a delete for its unlinks, batch-tags for each dataset's edit, and a create for
-its whole save -- for a large dataset, seconds, as a named create already did. `record_access`,
-which a read schedules on the event loop, waits for it, so a GET arriving during a long save stalls
-the loop until the save completes. Moving `record_access` off the loop, or saving outside the lock
-and committing inside it, would lift that; neither is done here.
+its commit. A create compresses and writes its artifact to a temporary file BEFORE it takes either
+lock (`stage_save`), and under them only re-checks existence, allocates a named dataset's version,
+writes the metadata and renames both files: on LocalFS a few file operations, not the seconds a
+large save takes -- plus, for a named create, the listing that allocates its version
+(`list_versions`), which reads every dataset's metadata unless it is cached. A store that stages
+nothing -- every one but LocalFS -- still saves whole under the locks, as every create did before.
+Every other lock taker in the process waits for the holder; so does one in another process on the
+same lock stripe (below).
+
+**Nothing on the event loop waits for a lock.** Every `GET /{dataset_id}` and artifact download
+records an access, and `record_access` takes both locks. It used to run on the event loop
+(`call_soon`), so while a writer held `_version_lock` one read stalled the loop, and every request
+with it, `/v1/health` included, until every save queued ahead of the read had finished -- measured,
+before the staging above, at 6.6 s for one 80 MB create and 10.5 s for two. A read now hands its
+access to the access recorder, one thread of its own (`juniper_data/api/routes/datasets.py`), and
+answers without waiting for it. The recorder records accesses in the order they were handed over, logs a failure
+by type only (ERR-08), and is shut down, after recording what is queued, when the app stops. It is
+not the loop's default executor: that pool serves the routes' own store I/O, and accesses queued
+behind a held lock would take its threads. `GET /{dataset_id}/access` waits for the accesses already
+handed over, so the counters it serves include every read answered before it.
+`TestAccessRecordingNeverBlocksTheLoop` pins it: reads and `/v1/health` answer at once while another
+thread holds `_version_lock`.
 
 **It is the only write that honours preconditions today.** A `DELETE /v1/datasets/{dataset_id}`
 does not evaluate its `If-Match`, although that target now carries a strong `ETag` a client could
@@ -1370,17 +1394,34 @@ other write ignore both headers too. That is a recorded follow-up, not behaviour
 across processes is the store's cross-process write lock, and only LocalFS overrides the base
 class's no-op one, with `flock`: advisory, per host, and no guarantee across hosts or over NFS. Its
 lock files are a fixed set of sixteen stripes in `<storage_path>/locks/`, created with the store; a
-dataset locks stripe `sha256(id)` mod 16. They are opened with `O_NOFOLLOW`, so a symlink planted at
-one is refused rather than followed out of the storage root, and without `O_CREAT`, so taking a lock
-needs no free inode. Creating them is best effort: a store over a directory it cannot write still
-opens, as it always did, and a stripe missing then is created when first locked. The first form
-created a lock file per dataset id on first use and never removed it, so every request naming an
-absent id left one behind, and `DELETE` needed a free inode before it could free anything -- on a
-volume out of inodes, deletes answered 500. A lock file per id from an earlier version is no longer
-used; one left in the directory is harmless. Two processes of different versions on one directory
-do not exclude each other: stop the old one first. `TestLockStripes` pins the stripes: absent ids
-leave no file, the delete paths work with no free inode (simulated), a planted symlink is refused,
-and an unwritable directory still opens. The Redis and Postgres stores inherit the no-op, so for them the check and the write are
+dataset locks stripe `sha256(id)` mod 16. The store opens the storage root and `locks/` once, when
+it opens, `locks/` without following a symlink, and keeps both descriptors -- it opens the root
+again, by path, only if that directory is removed and made again; a stripe is opened
+THROUGH `locks/`'s descriptor, with `O_NOFOLLOW` and without `O_CREAT`. So a symlink planted at a
+stripe is refused, a `locks` swapped for a symlink after startup is never followed, and taking a
+lock needs no free inode. Anything at `locks` that is not a real directory -- a symlink, even one
+pointing inside the root, or a file -- stops the store from opening; the service used to start over
+a file there and answer every write with a 500. Creating the stripes is best effort, stripe by
+stripe: one that cannot be made does not stop the others, and a stripe missing then is created
+when first locked, once the directory is writable. A lock whose stripe is missing and cannot be
+created -- on a volume already out of inodes when the store opened, `locks/` itself could not be
+made -- is taken on the storage root instead, exclusively, which needs no inode; every stripe lock
+holds the root shared, so the two exclude each other. The first form created a lock file per
+dataset id on first use and never removed it, so every request naming an absent id left one behind,
+and `DELETE` needed a free inode before it could free anything -- on a volume out of inodes, deletes
+answered 500. The lock files an earlier version left directly in the root, `<dataset_id>.meta.json.lock`,
+are removed when the store opens. Two processes of different versions on one directory do not
+exclude each other: stop the old one first. Stripes cost something across processes: a second
+process on the directory, holding the lock of any dataset on a stripe, delays this process's lock
+takers on every dataset of that stripe, one in sixteen, until it lets go. `TestLockStripes` pins the
+stripes: absent ids leave no file; the delete paths work with no free inode (simulated), after an
+upgrade on a full volume too; a symlink planted at a stripe, before or after the store opens, is
+refused; a `locks` swapped after startup is not followed; a `locks` that is not a directory fails
+the store; an unwritable directory still opens; a stripe that cannot be made is replaced by an
+exclusive lock on the root, which excludes every stripe lock; a `locks/` removed while the store
+runs is made again; a storage root removed and made again is opened again; and an earlier
+version's lock files are removed.
+The Redis and Postgres stores inherit the no-op, so for them the check and the write are
 atomic within one process only. **`CachedDatasetStore` is not covered at all**: a cache fill on an
 artifact miss, and `warm_cache`, write a primary snapshot into the cache without either lock, and
 `get_meta` reads the cache first. The service wires LocalFS alone today (`juniper_data/api/app.py`).
@@ -1389,6 +1430,13 @@ artifact miss, and `warm_cache`, write a primary snapshot into the cache without
 up to five seconds old, which another process's writes never refresh. A dataset deleted and
 re-created without a TTL after that snapshot was taken is still deleted. This predates the locks;
 closing it means re-reading the metadata and re-deciding expiry under them.
+
+**Known issue: a dataset with metadata but no artifact stays that way.** The window noted above --
+a removal between `update_meta`'s existence check and its rename -- leaves the metadata document
+without its `.npz`. Both the create route's existence check and `save_versioned`'s re-check read the
+metadata alone (`get_meta`), so a create of that id is answered as a cache hit and repairs nothing,
+while its artifact answers 404. Checking with `exists()`, which on LocalFS wants both files, would
+let a create replace it; that is not done here.
 
 **Why the artifact `ETag` is weak** (owner ruling 2026-09-23, overturning the 2026-09-11 "strong"
 on its premise). The ruling assumed, with the API primer, that `checksum` hashes the served NPZ
@@ -1425,6 +1473,14 @@ collides with APD-DATA-019's pushdown), plus a fallback for artifacts written be
   wraps. Take it before the file lock, never after: the reverse order deadlocks against
   `record_access`.
 - Do not create a lock file per dataset id: the stripes exist so that no lock needs a new inode.
+  And do not open a stripe by path: open it through the held `locks/` descriptor, so a `locks`
+  swapped for a symlink is never followed.
+- Do not call `record_access` -- or anything else that takes the store's locks -- on the event loop,
+  or hand it to the loop's default executor. Hand it to the access recorder
+  (`record_access_later`): a writer can hold the locks for as long as it likes, and the loop must
+  not wait with it.
+- Do not do a create's expensive work under the locks: stage it (`stage_save`) and commit under
+  them.
 - Do not `strip()` a precondition field to find `*`: `str.strip()` removes every Unicode whitespace
   character, and only spaces and tabs are OWS. Strip those only (`_OWS`).
 - Do not let `_ENTITY_TAG_LIST` match an element's whitespace two ways, as in
@@ -1438,9 +1494,9 @@ collides with APD-DATA-019's pushdown), plus a fallback for artifacts written be
 `@router.get` do not add it. Out of scope here.
 
 Non-vacuity: `util/ad-hoc/2026-09-22_verify_conditional_request_tests_are_not_vacuous.py` applies
-seventy mutations, one behaviour each, and requires the tests named for each to go red while a
-named control stays green. Every test in `test_conditional_requests.py` is named by an arm, 79 of
-its 90 as a test that must go red; its docstring lists the 11 named only as controls.
+eighty-nine mutations, one behaviour each, and requires the tests named for each to go red while
+a named control stays green. Every test in `test_conditional_requests.py` is named by an arm, 100 of
+its 111 as a test that must go red; its docstring lists the 11 named only as controls.
 `util/ad-hoc/2026-09-23_verify_entity_tag_list_regex_equivalence.py` checks that the linear grammar
 accepts exactly the language the backtracking one did, over an exhaustive sweep, a random one and a
 structured sweep of lists of up to twelve elements, whitespace-only elements at every position
