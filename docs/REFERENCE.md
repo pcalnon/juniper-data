@@ -1,6 +1,6 @@
 # Juniper Data Reference
 
-**Version:** 0.4.8
+**Version:** 0.4.9
 **Status:** Active
 **Last Updated:** October 5, 2026
 **Project:** Juniper Data - Dataset Generation Service
