@@ -1,6 +1,6 @@
 # Developer Cheatsheet -- juniper-data
 
-**Version**: 0.4.3 | **Date**: 2026-09-05 | **Project**: juniper-data -- Dataset Generation REST Service (FastAPI)
+**Version**: 0.4.8 | **Date**: 2026-10-05 | **Project**: juniper-data -- Dataset Generation REST Service (FastAPI)
 
 ---
 
@@ -104,7 +104,7 @@ All use `JUNIPER_DATA_` prefix (pydantic-settings in `juniper_data/api/settings.
 
 ## Rate-limit window
 
-The identity-keyed limiter is a fixed window. `JUNIPER_DATA_RATE_LIMIT_REQUESTS_PER_MINUTE` is the **count per window**, not a true per-minute rate when the window is not 60 s. Set the duration with `JUNIPER_DATA_RATE_LIMIT_WINDOW_SECONDS` (default 60; APD-DATA-033 / #297). Default `JUNIPER_DATA_RATE_LIMIT_ENABLED` is `true`. This knob does not move the failed-auth throttle (10 failures / 60 s, IP-keyed, only on 401). In-memory, per process.
+The identity-keyed limiter is a fixed window. `JUNIPER_DATA_RATE_LIMIT_REQUESTS_PER_MINUTE` is the **count per window**, not a true per-minute rate when the window is not 60 s. Set the duration with `JUNIPER_DATA_RATE_LIMIT_WINDOW_SECONDS` (default 60; APD-DATA-033 / #297). Default `JUNIPER_DATA_RATE_LIMIT_ENABLED` is `true`. This knob does not move the failed-auth throttle (10 failures / 60 s, IP-keyed, only on 401). A non-ASCII `X-API-Key` is a 401 and counts toward that throttle. See [Non-ASCII API Keys](REFERENCE.md#non-ascii-api-keys). In-memory, per process.
 
 ```bash
 export JUNIPER_DATA_RATE_LIMIT_REQUESTS_PER_MINUTE=7
@@ -306,7 +306,7 @@ pre-commit install --hook-type pre-push  # coverage gate (one-time)
 | Symptom                 | Cause              | Fix                                                      |
 |-------------------------|--------------------|----------------------------------------------------------|
 | `ruff` not found        | Dev extras missing | `pip install -e ".[dev]"`                                |
-| 401 Unauthorized        | API keys set       | Pass `X-API-Key` header or unset `JUNIPER_DATA_API_KEYS` |
+| 401 Unauthorized        | API keys set       | Pass `X-API-Key` header or unset `JUNIPER_DATA_API_KEYS`. A non-ASCII value is the same 401 (`Invalid API key.`), and ten of them from one IP in 60 s become 429. See [Non-ASCII API Keys](REFERENCE.md#non-ascii-api-keys). |
 | 429 Too Many Requests   | Rate limiter (or failed-auth throttle) | Wait `Retry-After`; or raise `JUNIPER_DATA_RATE_LIMIT_WINDOW_SECONDS` / count; or `JUNIPER_DATA_RATE_LIMIT_ENABLED=false`. The failed-auth 429 is a different budget (10/60 s on 401s). See [Rate-Limit Window](REFERENCE.md#rate-limit-window). |
 | Storage path error      | Dir missing        | Set `JUNIPER_DATA_STORAGE_PATH` to writable path         |
 | Artifact RSS scales with NPZ size | Store inherits base `open_artifact_stream` | Use LocalFS (default API store), or override like LocalFS; do not wrap LocalFS in Cached |

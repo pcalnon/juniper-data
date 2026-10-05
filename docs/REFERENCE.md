@@ -1,8 +1,8 @@
 # Juniper Data Reference
 
-**Version:** 0.4.3
+**Version:** 0.4.8
 **Status:** Active
-**Last Updated:** September 5, 2026
+**Last Updated:** October 5, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -13,6 +13,7 @@
 - [DatasetMeta n_val and Three-Partition Counts](#datasetmeta-n_val-and-three-partition-counts)
 - [Configuration Reference](#configuration-reference)
 - [Rate-Limit Window](#rate-limit-window)
+- [Non-ASCII API Keys](#non-ascii-api-keys)
 - [Storage Backend Notes](#storage-backend-notes)
 - [Postgres Model-Derived Schema](#postgres-model-derived-schema)
 - [Command Reference](#command-reference)
@@ -296,7 +297,7 @@ Default `rate_limit_enabled` is **true** (`_JUNIPER_DATA_API_RATELIMIT_ENABLED`)
 
 ### Not this knob
 
-`FailedAuthThrottle` is a separate pre-auth, IP-keyed budget (10 failures / 60 s). It is not wired to `Settings.rate_limit_window_seconds`. It only consumes budget on a **failed** credential. A 429 from the identity-keyed limiter is not recorded as an auth failure.
+`FailedAuthThrottle` is a separate pre-auth, IP-keyed budget (10 failures / 60 s). It is not wired to `Settings.rate_limit_window_seconds`. It only consumes budget on a **failed** credential. A 429 from the identity-keyed limiter is not recorded as an auth failure. A non-ASCII `X-API-Key` is one of those failures: it is a 401, and it consumes this budget. See [Non-ASCII API Keys](#non-ascii-api-keys).
 
 ### Operator usage
 
@@ -330,6 +331,66 @@ In-process only. Multiple uvicorn workers do not share counters. Restarting the 
 | `test_window_property_returns_configured_seconds` | `tests/unit/test_security.py` | Constructor window is readable |
 | `test_check_resets_after_window_expiry` | same | Count resets once `now - window_start >= window` |
 | `test_call_raises_429_when_over_limit` | same | Over-limit path is 429 |
+
+---
+
+## Non-ASCII API Keys
+
+`APIKeyAuth.validate` compares the presented `X-API-Key` with each configured key using `hmac.compare_digest` on UTF-8 bytes, encoded with the `surrogatepass` error handler (#440). A header Starlette decoded as latin-1 — any byte above `0x7F`, including a key whose bytes are `b"\xa0"` — is a mismatch. The method returns `False`. It does not raise.
+
+### Why bytes, and why `surrogatepass`
+
+`hmac.compare_digest` raises `TypeError` when either argument is a `str` that holds a non-ASCII character. Before the byte compare, that exception left `SecurityMiddleware`. The client received **500**. `FailedAuthThrottle.record_failure` never ran, because the middleware records a failure only for an `HTTPException` whose status is 401. With `JUNIPER_DATA_SENTRY_DSN` set, the unhandled error was an event whose stack frame included `candidate`, a configured key: `configure_sentry` does not pass `include_local_variables`, and the SDK default sends locals.
+
+`surrogatepass` is the built-in UTF-8 handler that is both total and injective:
+
+- A lone surrogate (for example `\ud800` from a JSON-decoded `JUNIPER_DATA_API_KEYS` value) encodes. `strict` and `surrogateescape` both raise on it.
+- `surrogateescape` maps `\xe9` and `\udcc3\udca9` to the same bytes, so two unequal strings would compare equal. `surrogatepass` does not.
+
+The compare accepts a presented key exactly when the two strings are equal. A prefix of a configured key does not match. The loop calls `compare_digest` for every configured key.
+
+### What the caller sees
+
+`create_app` installs `SecurityMiddleware` without a custom throttle, so the default `FailedAuthThrottle` is on: 10 failures / 60 seconds, keyed by client IP (`DEFAULT_FAILED_AUTH_MAX_FAILURES`, `DEFAULT_FAILED_AUTH_WINDOW_SECONDS`). `build_failed_auth_throttle` reads no `JUNIPER_DATA_*` setting. There is no operator knob for this budget.
+
+1. Exempt paths skip the throttle and authentication: `/v1/health`, `/v1/health/live`, `/v1/health/ready`, `/metrics`, `/metrics/`.
+2. The throttle is checked first. An IP already at 10 failures in the open window receives **429** with `Retry-After` and does not reach the comparison.
+3. A missing key is **401** `{"detail": "Missing API key. Provide X-API-Key header."}`.
+4. Any other mismatch, including a non-ASCII header, is **401** `{"detail": "Invalid API key."}`.
+5. `SecurityMiddleware` catches that `HTTPException`. Status 401 calls `record_failure`. The eleventh failure inside the window is the 429 in step 2.
+6. A key that matches is not recorded.
+
+```bash
+# Auth on. One non-ASCII byte is a 401. The eleventh such request from the same IP is a 429.
+curl -s -D - -o /dev/null \
+  --header $'X-API-Key: \xa0' \
+  http://127.0.0.1:8100/v1/generators
+```
+
+### Sentry
+
+`lifespan` calls `configure_sentry` from `juniper-observability` 0.4.0 (the pin in `requirements.lock`). That `sentry_sdk.init` sets `send_default_pii` from `JUNIPER_DATA_SENTRY_SEND_PII` (default `false`) and `before_send` to `_strip_sensitive_headers`. The hook rewrites the request headers `X-API-Key`, `Authorization`, and `Cookie` to `[Filtered]`. It leaves other headers, and it does not delete stack-frame locals. The init call does not pass `include_local_variables`.
+
+The non-ASCII path stays out of that event because `validate` returns `False` and `APIKeyAuth.__call__` raises a handled 401. The configured key is not placed on an error frame.
+
+### What not to do
+
+- Do not pass the header to `hmac.compare_digest` as `str`. A non-ASCII value raises `TypeError` again: the client sees 500, the throttle does not count it, and a Sentry event can contain `candidate`.
+- Do not encode with `surrogateescape`. Unequal strings can compare equal (`\xe9` and `\udcc3\udca9`).
+- Do not treat a non-ASCII 401 as a server fault. It is a failed credential, and it counts toward the 10-failure / 60-second IP budget.
+- Do not expect `JUNIPER_DATA_RATE_LIMIT_WINDOW_SECONDS` to move that budget.
+
+### Pins (on `main`)
+
+| Test | File | Guards |
+|------|------|--------|
+| `test_non_ascii_presented_key_is_a_mismatch_not_an_exception` | `tests/unit/test_security.py` | `\xa0`, `\x85`, `\xff`, and mixed values return `False` |
+| `test_validate_matches_exactly_when_the_strings_are_equal` | same | Match iff the strings are equal, including a lone surrogate and the `surrogateescape` collision pair |
+| `test_call_raises_401_on_a_non_ascii_header` | same | A real `Request` (latin-1 header decode) raises 401 `Invalid API key` |
+| `test_http_request_is_401_not_500` | same (`TestNonAsciiApiKeyThroughTheApp`) | `create_app` returns 401 for the raw header bytes |
+| `test_failed_attempts_reach_the_throttle` | same | Ten `\xa0` attempts are 401; the eleventh is 429 |
+| `test_before_send_redacts_sensitive_headers` | `tests/unit/test_phase1d_security.py` | `X-API-Key`, `Authorization`, and `Cookie` become `[Filtered]` |
+| `test_configure_sentry_passes_send_pii_and_before_send` | same | Default init sets `send_default_pii=False` and `before_send=_strip_sensitive_headers` |
 
 ---
 
@@ -848,7 +909,7 @@ the README section "MNIST / Fashion-MNIST (optional extra)". The Docker image sh
 | `201 Created` | Resource created | POST /v1/datasets |
 | `204 No Content` | Deleted | DELETE /v1/datasets/{id} |
 | `400 Bad Request` | Invalid parameters | Bad generator params |
-| `401 Unauthorized` | Missing/invalid API key | Auth enabled, no key sent |
+| `401 Unauthorized` | Missing or invalid API key, including a non-ASCII `X-API-Key` | Auth enabled. See [Non-ASCII API Keys](#non-ascii-api-keys). |
 | `404 Not Found` | Resource not found | Unknown generator or dataset ID |
 | `422 Unprocessable Entity` | Validation error, or `csv_import` source over its byte cap | Pydantic schema failure (`detail` is a list), or `InputTooLargeError` (`detail` is a string). See [CSV Import Byte Cap](#csv-import-byte-cap). |
 | `429 Too Many Requests` | Rate limited | Exceeded requests/minute |

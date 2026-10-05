@@ -1,8 +1,8 @@
 # Juniper Data User Manual
 
-**Version:** 0.4.3
+**Version:** 0.4.5
 **Status:** Active
-**Last Updated:** September 4, 2026
+**Last Updated:** October 5, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -459,6 +459,8 @@ curl -H "X-API-Key: my-secret-key-1" http://localhost:8100/v1/datasets
 ```
 
 Health endpoints (`/v1/health`, `/v1/health/live`, `/v1/health/ready`) are always accessible without authentication.
+
+A key that is not ASCII is a wrong key. The service answers **401** with `{"detail": "Invalid API key."}`. Ten such failures from one IP inside 60 seconds become **429**. See [Non-ASCII API Keys](REFERENCE.md#non-ascii-api-keys).
 
 ### Rate Limiting
 
