@@ -2,7 +2,7 @@
 
 ## Complete Navigation Guide to Juniper Data Documentation
 
-**Version:** 0.4.5
+**Version:** 0.4.6
 **Last Updated:** October 5, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
@@ -265,5 +265,5 @@ See [DOCUMENTATION_TEMPLATE_STANDARD.md](../../notes/DOCUMENTATION_TEMPLATE_STAN
 ---
 
 **Last Updated:** October 5, 2026
-**Version:** 0.4.5
+**Version:** 0.4.6
 **Maintainer:** Paul Calnon

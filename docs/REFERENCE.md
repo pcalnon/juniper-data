@@ -1,6 +1,6 @@
 # Juniper Data Reference
 
-**Version:** 0.4.5
+**Version:** 0.4.6
 **Status:** Active
 **Last Updated:** October 5, 2026
 **Project:** Juniper Data - Dataset Generation Service
@@ -2000,5 +2000,5 @@ Rollout and rationale: [juniper-ml#434](https://github.com/pcalnon/juniper-ml/is
 ---
 
 **Last Updated:** October 5, 2026
-**Version:** 0.4.5
+**Version:** 0.4.6
 **Maintainer:** Paul Calnon

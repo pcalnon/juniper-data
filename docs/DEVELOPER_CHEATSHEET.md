@@ -1,6 +1,6 @@
 # Developer Cheatsheet -- juniper-data
 
-**Version**: 0.4.5 | **Date**: 2026-10-05 | **Project**: juniper-data -- Dataset Generation REST Service (FastAPI)
+**Version**: 0.4.6 | **Date**: 2026-10-05 | **Project**: juniper-data -- Dataset Generation REST Service (FastAPI)
 
 ---
 
