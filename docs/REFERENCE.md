@@ -1,8 +1,8 @@
 # Juniper Data Reference
 
-**Version:** 0.4.3
+**Version:** 0.4.10
 **Status:** Active
-**Last Updated:** September 5, 2026
+**Last Updated:** October 5, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -33,6 +33,7 @@
 - [Docker Reference](#docker-reference)
 - [Equities Symbol Cap](#equities-symbol-cap)
 - [Equities Sequence: Recurrence-Ready Parameters](#equities-sequence-recurrence-ready-parameters)
+- [ARC-AGI Artifacts](#arc-agi-artifacts)
 - [CI/CD Pipeline Reference](#cicd-pipeline-reference)
 - [Additional Resources](#additional-resources)
 
@@ -1827,6 +1828,51 @@ Pins: `TestCostBasisUnderDrop` in `tests/unit/test_equities_generator.py`; `test
 
 ---
 
+## ARC-AGI Artifacts
+
+A fresh `POST /v1/datasets` with `"generator": "arc_agi"` mints `generator_version` **4.0.0**, so the id starts `arc_agi-4.0.0-`. Two facts about that artifact are easy to misread, and the artifacts it replaced are still on disk.
+
+### `task_ids` loads without pickle
+
+`task_ids` is one fixed-width unicode array (`np.str_`, `dtype.kind == "U"`), never `dtype=object`. `np.savez` pickles an object array. juniper-data-client's `download_artifact_npz` materialises every key with numpy's default `allow_pickle=False`, so one object array used to fail the whole download:
+
+```text
+ValueError: Object arrays cannot be loaded when allow_pickle=False
+```
+
+The array is not split per partition. It is passed through `partition_and_assemble` as an extra, so it takes the same shuffle and the same cut as the rows. `task_ids[i]` names the task of row `i` of `concatenate([X_train, X_val, X_test])`.
+
+| Id at the source | Stored text |
+|------------------|-------------|
+| Local JSON file | The filename stem (`_load_json_dir` overwrites `task_id`) |
+| Hub row with no `task_id` key | `task_{n}`, the index while the split is loaded |
+| Present JSON `null` | `"unknown"`. `str(None)` would be `"None"`, which collides with a task of that name |
+| Any other value | `str(value)` (an int `7` is `"7"`) |
+
+The Hub source is `lordspline/arc-agi`, split `training` (there is no `train` split). When that dataset declares columns and `train` or `test` is absent, generation raises `RuntimeError` instead of emitting an empty artifact. Zero usable grid pairs is the same error; an empty dataset is not persisted.
+
+### `task_type` is `structured`
+
+The registry declares `structured` (`core.meta.TASK_TYPE_STRUCTURED`). `compute_shape_meta` fills `n_classes` and `class_distribution` only for `classification`, so both are **null** on a 4.0.0 artifact. `GET /v1/generators` does not return `task_type` — `GeneratorInfo` carries name, version, description, availability, install hint, and the parameter schema. The stored dataset meta does.
+
+`y_*` is the padded **output grid**, the same shape as `X_*`, not a class label. Defaults are `flatten_pairs=true`, `pad_to=30`, `pad_value=-1`, so both are `(n, 900)`. Cells are ARC colors 0–9, with `-1` in the pad. Declared `classification`, that 900-wide `y` was argmax'd into a fabricated `n_classes = 900` over grid-cell positions. With `flatten_pairs=false` both stay `(n, 30, 30)`, and `n_features` is the trailing axis (30), not 900.
+
+### Why the id moved
+
+The dataset id hashes the generator version. It does not hash the meta or the array dtypes. #402 had already switched `task_type` from `classification` to `structured` without a bump, so a cached artifact kept serving the fabricated class meta under the id a new request resolved to. The same id also kept serving the pickled `task_ids`. **4.0.0** moves the id, the same way the equities `5.0.0` correction did. It stays clear of the minor bump reserved for the first partition-provenance block, so a later `4.1.0` can carry one.
+
+Stored `arc_agi-3.0.0-*` artifacts are not rewritten. A generate on 0.16.0 or later never reuses one. They stay reachable by that id, in listings, and through `GET /v1/datasets/latest?name=` and `/versions` when one is a name's newest version. Loading one still needs pickle. Delete them when nothing still names them.
+
+### A legacy artifact misses the cache, loudly once
+
+`CachedDatasetStore.get_artifact_bytes` reloads the primary bytes with `np.load` (default `allow_pickle=False`) to fill the cache. A `3.0.0` artifact fails that load. The read still returns the primary bytes.
+
+The first failure for an id is a `WARNING` with its traceback; a repeat of that id is `DEBUG`. The store remembers up to **1,024** warned ids (`_POPULATION_WARNING_ID_LIMIT`). The first new id past that bound logs one more `WARNING`, which says later new ids are `DEBUG`, and is not itself remembered. After that announcement, every id not already in the set logs at `DEBUG`. The set is in-process.
+
+Pins: `TestArcAgiTaskIdsLoadWithoutPickle` in `tests/unit/test_arc_agi_generator.py`; `test_artifacts_load_without_pickle.py` (every registered generator, offline, `allow_pickle=False`; the equities pair skips locally when the extra is missing and fails in CI if it is); `TestCachedDatasetStore` population cases in `tests/unit/test_cached_store.py`.
+
+---
+
 ## CI/CD Pipeline Reference
 
 Relocated verbatim from `AGENTS.md` (P3 of the shared-session-memory plan) so it is read on demand rather than loaded into every session.
@@ -1939,6 +1985,6 @@ Rollout and rationale: [juniper-ml#434](https://github.com/pcalnon/juniper-ml/is
 
 ---
 
-**Last Updated:** September 5, 2026
-**Version:** 0.4.3
+**Last Updated:** October 5, 2026
+**Version:** 0.4.10
 **Maintainer:** Paul Calnon

@@ -1,8 +1,8 @@
 # Juniper Data User Manual
 
-**Version:** 0.4.3
+**Version:** 0.4.6
 **Status:** Active
-**Last Updated:** September 4, 2026
+**Last Updated:** October 5, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -107,7 +107,9 @@ curl http://localhost:8100/v1/health
 | `checkerboard` | 2D checkerboard pattern | 2 | 2 |
 | `csv_import` | Import from CSV/JSON files | varies | varies |
 | `mnist` | MNIST / Fashion-MNIST | 784 (28x28) | 10 |
-| `arc_agi` | ARC-AGI visual reasoning tasks | varies | varies |
+| `arc_agi` | ARC-AGI grid-to-grid maps | 900 when flattened (default) | none (`structured`; `n_classes` is null) |
+
+`arc_agi` does not emit a class label. `y_*` is the padded output grid, the same shape as `X_*` (default `flatten_pairs` makes both `(n, 900)`). The artifact also carries `task_ids`, a unicode array aligned to `concatenate([X_train, X_val, X_test])`. A download that raises `Object arrays cannot be loaded when allow_pickle=False` is a stored `arc_agi-3.0.0-*` artifact; a new generate mints `arc_agi-4.0.0-*`. See [ARC-AGI Artifacts](REFERENCE.md#arc-agi-artifacts).
 
 ### Using Generators via API
 
@@ -403,6 +405,10 @@ Juniper Data guarantees:
 6. The three partitions ARE the dataset: there is no whole-set array to compare them
    against, and `meta.n_samples` equals `n_train + n_val + n_test`. A consumer that
    wants the whole set concatenates the three, in that order.
+7. `arc_agi` is the exception to 1 and 3. `task_type` is `structured`, so `n_classes`
+   and `class_distribution` are null, and `y_*` is the padded output grid rather than
+   a one-hot. `task_ids` is unicode, not `float32`. See
+   [ARC-AGI Artifacts](REFERENCE.md#arc-agi-artifacts).
 
 ### Loading Artifacts
 
@@ -578,6 +584,10 @@ Check the generator's parameter schema:
 ```bash
 curl http://localhost:8100/v1/generators/spiral/schema
 ```
+
+**`Object arrays cannot be loaded when allow_pickle=False`:**
+
+The id is an `arc_agi-3.0.0-*` artifact. `task_ids` in that generation was pickled. A new generate mints `arc_agi-4.0.0-*`, which loads with `allow_pickle=False`. The old id is not rewritten; delete it when nothing still names it. See [ARC-AGI Artifacts](REFERENCE.md#arc-agi-artifacts).
 
 ### Storage Issues
 

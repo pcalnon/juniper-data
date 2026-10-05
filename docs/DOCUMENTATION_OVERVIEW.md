@@ -2,8 +2,8 @@
 
 ## Complete Navigation Guide to Juniper Data Documentation
 
-**Version:** 0.4.2
-**Last Updated:** March 3, 2026
+**Version:** 0.4.9
+**Last Updated:** October 5, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -50,6 +50,7 @@
 | **See version history** | [CHANGELOG.md](../CHANGELOG.md) | Root |
 | **Quick-reference dev tasks** | [DEVELOPER_CHEATSHEET.md](DEVELOPER_CHEATSHEET.md) | docs/ |
 | **Bound an equities generate (14-symbol cap)** | [REFERENCE.md -- Equities Symbol Cap](REFERENCE.md#equities-symbol-cap) | docs/ |
+| **Load an arc_agi artifact without pickle** | [REFERENCE.md -- ARC-AGI Artifacts](REFERENCE.md#arc-agi-artifacts) | docs/ |
 | **Contribute code** | [AGENTS.md](../AGENTS.md) | Root |
 
 ---
@@ -262,6 +263,6 @@ See [DOCUMENTATION_TEMPLATE_STANDARD.md](../../notes/DOCUMENTATION_TEMPLATE_STAN
 
 ---
 
-**Last Updated:** March 3, 2026
-**Version:** 0.4.2
+**Last Updated:** October 5, 2026
+**Version:** 0.4.9
 **Maintainer:** Paul Calnon
