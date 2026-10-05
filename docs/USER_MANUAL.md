@@ -1,8 +1,8 @@
 # Juniper Data User Manual
 
-**Version:** 0.4.3
+**Version:** 0.4.4
 **Status:** Active
-**Last Updated:** September 4, 2026
+**Last Updated:** October 5, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -225,6 +225,32 @@ curl -X POST http://localhost:8100/v1/datasets \
 | `allow_truncation` | bool \| null | `null` | Accept a prefix of the source when it exceeds the cap. Tri-state: `true` accepts, `false` refuses even where the deployment opted in, `null` (or omitted) defers to `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION` — itself `false` by default, so omitting the field still refuses on a default deployment |
 
 The HTTP JSON body is still limited to 10 MB (`RequestBodyLimitMiddleware`). That is a different cap: the CSV is read from disk, not uploaded in the request.
+
+### Equities sequence for juniper-recurrence
+
+`equities` and `equities_seq` need the optional extra (`pip install "juniper-data[equities]"`). A deployment without it answers **501**. Both share one params model. The flat generator is classification (15 features, next-day direction in `y`, next-day regression in `y_reg`). `equities_seq` windows the same columns into `(W, L, 15)` and is declared **regression** (`n_classes` is null). The symbol cap is 14 unless truncation is opted in; see [Equities Symbol Cap](REFERENCE.md#equities-symbol-cap).
+
+Bare `equities_seq` defaults are not trainable by juniper-recurrence. Columns 7, 8 and 14 of `X` (`total_shares`, `market_cap`, `days_since_report`) are NaN before each ticker's first SEC filing, and the consumer refuses non-finite `X_train`. Send the dataset half explicitly:
+
+```bash
+curl -X POST http://localhost:8100/v1/datasets \
+  -H "Content-Type: application/json" \
+  -d '{
+    "generator": "equities_seq",
+    "params": {
+      "symbols": ["AAPL"],
+      "fundamentals_fill": "drop",
+      "normalize_features": false,
+      "regression_target": "log_return"
+    }
+  }'
+```
+
+`normalize_features: false` restates the default. The model fields (`readout`, `ridge`, `rff_features`, `rff_gamma`) go on the juniper-recurrence train or cross-validation request. This service ignores them if they are sent here.
+
+Under `fundamentals_fill="drop"`, `purchase_date` must be on or before `start_date`, or both left at their defaults (`2000-01-01` and `2000-01-03`). A purchase at least one weekday later is **400**, `detail` starting `Invalid parameters:` and naming both dates and the fill mode. The check runs before the dataset id is hashed, so it does not download and it does not return an older cached artifact. `"nan"` and `"zero"` still accept a later purchase and keep a NaN `cost_basis` on the rows before it.
+
+The bundle, the weekday rule, and the pins: [Equities Sequence: Recurrence-Ready Parameters](REFERENCE.md#equities-sequence-recurrence-ready-parameters).
 
 ---
 
@@ -481,7 +507,7 @@ export JUNIPER_DATA_CORS_ORIGINS='["*"]'
 
 ### Input Validation
 
-All request parameters are validated using Pydantic models. Invalid inputs return `400 Bad Request` or `422 Unprocessable Entity` with descriptive error messages. An over-cap `csv_import` source is also **422**, with a **string** `detail` (not the schema-validation list). See [CSV Import Byte Cap](REFERENCE.md#csv-import-byte-cap).
+All request parameters are validated using Pydantic models. Invalid inputs return `400 Bad Request` or `422 Unprocessable Entity` with descriptive error messages. An over-cap `csv_import` source is also **422**, with a **string** `detail` (not the schema-validation list). See [CSV Import Byte Cap](REFERENCE.md#csv-import-byte-cap). `equities` / `equities_seq` with `fundamentals_fill="drop"` and a `purchase_date` at least one weekday after `start_date` is **400** (string `detail`), decided before the cache lookup. See [Equities Sequence: Recurrence-Ready Parameters](REFERENCE.md#equities-sequence-recurrence-ready-parameters).
 
 ---
 
@@ -578,6 +604,10 @@ Check the generator's parameter schema:
 ```bash
 curl http://localhost:8100/v1/generators/spiral/schema
 ```
+
+**`400` naming `purchase_date`, `start_date`, and `fundamentals_fill='drop'`:** under `drop`, the purchase is at least one weekday after the start, so the rows before it have no cost basis. Put `purchase_date` on or before `start_date` (the defaults already satisfy this), or use `fundamentals_fill="nan"` to keep those rows. This is not a download failure: the request is refused before the cache is read.
+
+**juniper-recurrence reports `X_train has non-finite values` on an `equities_seq` artifact:** the dataset was created from the bare defaults (`fundamentals_fill="nan"`). Recreate it with the [recurrence-ready bundle](REFERENCE.md#equities-sequence-recurrence-ready-parameters). Sending `readout` / `ridge` / `rff_features` / `rff_gamma` to `POST /v1/datasets` does not change the artifact.
 
 ### Storage Issues
 

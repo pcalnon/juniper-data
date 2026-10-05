@@ -2,9 +2,9 @@
 
 ## Get juniper-data Running in 5 Minutes
 
-**Version:** 0.4.3
+**Version:** 0.4.4
 **Status:** Active
-**Last Updated:** September 5, 2026
+**Last Updated:** October 5, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -117,7 +117,7 @@ The NPZ artifact contains keys: `X_train`, `y_train`, `X_val`, `y_val`, `X_test`
 | `mnist` | MNIST / Fashion-MNIST |
 | `arc_agi` | ARC-AGI visual reasoning tasks |
 | `equities` | S&P 500 daily OHLCV + SEC shares (default cap **14** symbols; oversized universe is 422 unless `allow_truncation`) |
-| `equities_seq` | Windowed equities; same cap and annotation |
+| `equities_seq` | Windowed equities; same cap. Bare defaults leave NaN in `X` (columns 7, 8, 14). The recurrence-ready request, and the `400` when `drop` meets a later `purchase_date`, are in [Equities Sequence: Recurrence-Ready Parameters](REFERENCE.md#equities-sequence-recurrence-ready-parameters) |
 
 List all generators and their parameter schemas:
 
@@ -171,9 +171,10 @@ pytest -m generators
 - [Testing Quick Start](testing/TESTING_QUICK_START.md) -- get tests running in 5 minutes
 - [CI/CD Quick Start](ci_cd/CICD_QUICK_START.md) -- run CI checks locally
 - [Equities symbol cap](REFERENCE.md#equities-symbol-cap) -- APD-DATA-018: default 14-symbol bound; refuse unless opted in
+- [Recurrence-ready equities_seq](REFERENCE.md#equities-sequence-recurrence-ready-parameters) -- dataset half for this service, model half for juniper-recurrence; `drop` refuses a later `purchase_date`
 
 ---
 
-**Last Updated:** September 5, 2026
-**Version:** 0.4.3
+**Last Updated:** October 5, 2026
+**Version:** 0.4.4
 **Status:** Active
