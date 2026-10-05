@@ -2,9 +2,9 @@
 
 ## Comprehensive CI/CD Pipeline Guide for juniper-data
 
-**Version:** 0.4.2
+**Version:** 0.4.6
 **Status:** Active
-**Last Updated:** March 3, 2026
+**Last Updated:** October 5, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -18,6 +18,7 @@
    - [publish.yml -- PyPI Publishing](#publishyml----pypi-publishing)
    - [lockfile-update.yml -- Dependency Lockfile Auto-Update](#lockfile-updateyml----dependency-lockfile-auto-update)
    - [codeql.yml -- Code Quality Analysis](#codeqlyml----code-quality-analysis)
+   - [claude.yml -- Claude Code](#claudeyml----claude-code)
 4. [Pre-commit Hooks](#pre-commit-hooks)
    - [Hook Overview](#hook-overview)
    - [File Checks](#file-checks)
@@ -44,6 +45,7 @@ juniper-data uses a multi-layer CI/CD strategy:
 - **GitHub Actions publishing**: Two-stage PyPI publishing (TestPyPI then production PyPI)
 - **Dependabot**: Automated dependency updates with lockfile synchronization
 - **CodeQL**: Weekly semantic code analysis
+- **Claude Code**: `@claude` on issue comments, pull-request review comments, submitted reviews, and newly opened issues
 
 ---
 
@@ -71,6 +73,8 @@ pre-commit ──┬─→ unit-tests ──┬─→ build ──→ dependency
 | `publish.yml`         | No                   | No                  | No            | No                  | Yes     | No     |
 | `lockfile-update.yml` | No                   | dependabot branches | No            | No                  | No      | No     |
 | `codeql.yml`          | Yes                  | No                  | Yes (to main) | Weekly Mon 6 AM UTC | No      | No     |
+
+`claude.yml` is omitted from this matrix. It runs on `issue_comment` (`created`), `pull_request_review_comment` (`created`), `pull_request_review` (`submitted`), and `issues` (`opened`, `assigned`). See [claude.yml](#claudeyml----claude-code).
 
 ---
 
@@ -231,6 +235,40 @@ GitHub CodeQL semantic analysis for Python.
 
 ---
 
+### claude.yml -- Claude Code
+
+`.github/workflows/claude.yml` replies when someone writes `@claude` in a place the workflow watches. The job checks out with `fetch-depth: 1` and passes a single action input, `anthropic_api_key`, from `secrets.ANTHROPIC_API_KEY`. The file header says that secret is set at the org level and that the repo must be able to read it.
+
+Write the phrase in one of these:
+
+- the body of a new issue comment, including a comment on a pull request (`issue_comment`)
+- the body of a pull-request review comment
+- the body of a submitted pull-request review
+- the title or body of an issue at the moment it is opened
+
+The workflow `if` uses `contains(..., '@claude')`. That test is case-sensitive, so `@Claude` does not start the job. It is also a substring test, so `email@claude.com` and `@claudefoo` do start the job.
+
+When the job starts, the action checks the phrase again. The default phrase is `@claude`. The match is case-insensitive, and the phrase must sit at the start of the field or after whitespace, and must end at whitespace or one of `. , ! ? ; :`. A miss logs `No trigger found, skipping remaining steps` and the job succeeds with no reply. That is what an `issues` `assigned` delivery does: the workflow starts because the title or body already contains the substring, and `assignee_trigger` is unset so the action does not treat the assignment as a request. The action reads the issue title and body only on `opened`.
+
+The action checks write access before the phrase check. A commenter who is neither `admin` nor `write` fails with `Actor does not have write permissions to the repository`. A login ending in `[bot]` passes that lookup. After a real phrase match, a non-user actor fails with `Workflow initiated by non-human actor` because `allowed_bots` is empty.
+
+A matching run with an empty `ANTHROPIC_API_KEY` fails later:
+
+```text
+Environment variable validation failed:
+  - Either ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN, or workload identity federation (ANTHROPIC_FEDERATION_RULE_ID and ANTHROPIC_ORGANIZATION_ID) is required when using direct Anthropic API.
+```
+
+This workflow does not set the OAuth token or the federation inputs, and it leaves `use_bedrock`, `use_vertex`, and `use_foundry` at their default `false`.
+
+A phrase in a pull-request title or body never schedules the job: `on:` does not include `pull_request`. The action's default `label_trigger` is `claude`, and this workflow does not subscribe to `labeled`. The action accepts an edited review body; this workflow subscribes only to `submitted`.
+
+The action version is the `# vX.Y.Z` comment on the `uses:` line. Dependabot groups only `github/codeql-action*`, so a bump of `anthropics/claude-code-action` arrives as its own pull request.
+
+Tables for events, permissions, and the secret are in [Claude Code Workflow](CICD_REFERENCE.md#claude-code-workflow).
+
+---
+
 ## Pre-commit Hooks
 
 ### Hook Overview
@@ -312,6 +350,7 @@ Blocks commits of unencrypted `.env` or `.env.secrets` files. Ensures secrets ar
 - **PR limit**: 3 open PRs
 - **Labels**: `dependencies`, `ci`
 - **Commit prefix**: `ci`
+- **Grouping**: only `github/codeql-action*` (group `codeql-action`). Other actions, including `anthropics/claude-code-action`, each open their own PR
 
 When Dependabot pushes to `dependabot/pip/**`, the `lockfile-update.yml` workflow automatically regenerates `requirements.lock` and commits the update.
 
@@ -363,6 +402,10 @@ uv pip compile pyproject.toml --extra api --extra observability --extra mnist --
 **Dependabot PR missing lockfile update**: The `lockfile-update.yml` workflow handles `requirements.lock` automatically when the branch matches `dependabot/pip/**` and the actor is `dependabot[bot]`. If the PR only changes `conf/requirements.txt` and `conf/requirements-ORIG.txt`, a lockfile update may not be needed.
 
 **CodeQL findings**: Review in GitHub Security tab. These are informational and don't block the merge quality gate.
+
+**`@claude` produced no reply**: Put the phrase in an issue comment, a pull-request review comment, a submitted review body, or the title or body of an issue when it is opened. `@Claude` does not start the job. A green run that logs `No trigger found, skipping remaining steps` means the action's word-boundary check rejected the phrase, or the event was an assignment. See [claude.yml](#claudeyml----claude-code).
+
+**`@claude` failed before a reply**: `Actor does not have write permissions to the repository` means the commenter lacks write. `Workflow initiated by non-human actor` means a bot; `allowed_bots` is unset. `Environment variable validation failed` naming `ANTHROPIC_API_KEY` means the secret was empty for this repo.
 
 **TestPyPI publish fails**: Check that the release tag matches the version in `pyproject.toml`. Version is extracted by stripping the `v` prefix from the tag.
 

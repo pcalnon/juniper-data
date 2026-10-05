@@ -1,8 +1,8 @@
 # Juniper Data Reference
 
-**Version:** 0.4.3
+**Version:** 0.4.8
 **Status:** Active
-**Last Updated:** September 5, 2026
+**Last Updated:** October 5, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -1843,6 +1843,7 @@ Relocated verbatim from `AGENTS.md` (P3 of the shared-session-memory plan) so it
 | **Lockfile Update** | `lockfile-update.yml` | Schedule, manual | Update `requirements.lock` |
 | **Sequence Safety** | `sequence-safety.yml` | PR | Advisory per-PR symbol-loss + docs-deletion screens via `juniper-ci-tools` (`--scope 'juniper_data/**'`); never required, never blocks a merge |
 | **Main Verify** | `main-verify.yml` | Push (main) | Bypass-proof post-merge compositional-loss net (screens-only, advisory); stable-title failure-issue upsert + catch-up base |
+| **Claude Code** | `claude.yml` | Issue comment, review comment, submitted review, issue opened/assigned | `@claude` assistant. Contract: [Claude Code Workflow](ci_cd/CICD_REFERENCE.md#claude-code-workflow) |
 
 ### Pre-Commit Hooks
 
@@ -1939,6 +1940,6 @@ Rollout and rationale: [juniper-ml#434](https://github.com/pcalnon/juniper-ml/is
 
 ---
 
-**Last Updated:** September 5, 2026
-**Version:** 0.4.3
+**Last Updated:** October 5, 2026
+**Version:** 0.4.8
 **Maintainer:** Paul Calnon

@@ -2,9 +2,9 @@
 
 ## juniper-data CI/CD Jobs, Hooks, and Configuration
 
-**Version:** 0.4.2
+**Version:** 0.4.6
 **Status:** Active
-**Last Updated:** March 3, 2026
+**Last Updated:** October 5, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -12,6 +12,7 @@
 ## Table of Contents
 
 - [Workflow Files](#workflow-files)
+- [Claude Code Workflow](#claude-code-workflow)
 - [CI Jobs Reference](#ci-jobs-reference)
 - [Pre-commit Hook Reference](#pre-commit-hook-reference)
 - [Ruff Configuration](#ruff-configuration)
@@ -34,6 +35,40 @@
 | `.github/workflows/publish.yml` | PyPI publishing | GitHub Release published |
 | `.github/workflows/lockfile-update.yml` | Lockfile auto-update (v0.1.0) | Push to `dependabot/pip/**` |
 | `.github/workflows/codeql.yml` | Code quality analysis (v1.0.0) | Push to main/develop, PRs, weekly |
+| `.github/workflows/claude.yml` | `@claude` assistant | Issue comments, review comments, submitted reviews, issue opened/assigned |
+
+---
+
+## Claude Code Workflow
+
+`.github/workflows/claude.yml` is the live `@claude` assistant for this repo. The file header names `juniper-ml/.github/workflows/claude.yml` as the fleet source-of-truth copy. The action pin stays in the `# vX.Y.Z` comment on the `uses:` line.
+
+The job checks out with `fetch-depth: 1` and passes one input: `anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}`. `trigger_phrase`, `assignee_trigger`, `prompt`, and `allowed_bots` are left unset. The action's default phrase is `@claude`, assignee triggering is off, bots are not allowed, and a matching mention runs in tag mode because no `prompt` is passed.
+
+### Events
+
+| Event | Types subscribed | Workflow `if` |
+|-------|------------------|---------------|
+| `issue_comment` | `created` | `github.event.comment.body` contains `@claude` |
+| `pull_request_review_comment` | `created` | `github.event.comment.body` contains `@claude` |
+| `pull_request_review` | `submitted` | `github.event.review.body` contains `@claude` |
+| `issues` | `opened`, `assigned` | `github.event.issue.body` or `github.event.issue.title` contains `@claude` |
+
+GitHub's `contains` is case-sensitive and matches a substring. `@Claude` does not start the job. `email@claude.com` and `@claudefoo` do.
+
+### Action gate
+
+The action runs only after that `if` is true. In the action's `src/entrypoints/run.ts` the order is:
+
+1. **Write check** (`checkWritePermissions`), for these entity events. Permission must be `admin` or `write`, or the step throws `Actor does not have write permissions to the repository`. A login ending in `[bot]` returns success from this check without a collaborator lookup.
+2. **Phrase check** (`checkContainsTrigger`). The default phrase is `@claude`. The match is case-insensitive and must sit at the start of the text or after whitespace, and must end at whitespace or one of `. , ! ? ; :`. A miss logs `No trigger found, skipping remaining steps` and the job succeeds without a reply.
+3. **Human check** (`checkHumanActor` in tag mode), only after the phrase matches. `allowed_bots` is empty, so a non-user actor fails with `Workflow initiated by non-human actor`.
+
+An `issues` `assigned` delivery never satisfies step 2: `assignee_trigger` is unset, and the action reads the title and body only when `eventAction` is `opened`. The workflow `if` still starts the job when the title or body already contains the substring.
+
+`label_trigger` defaults to `claude` inside the action. This workflow does not subscribe to `labeled`, so that default never runs. The workflow also does not subscribe to `pull_request`, so a phrase in a pull-request title or body never schedules the job. The action would honor `pull_request_review` `edited`; this workflow subscribes only to `submitted`.
+
+A run that passes the phrase check and then finds `ANTHROPIC_API_KEY` empty throws `Environment variable validation failed` with: `Either ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN, or workload identity federation (ANTHROPIC_FEDERATION_RULE_ID and ANTHROPIC_ORGANIZATION_ID) is required when using direct Anthropic API.` This workflow sets none of the alternatives. `use_bedrock`, `use_vertex`, and `use_foundry` stay at their default `false`.
 
 ---
 
@@ -235,6 +270,7 @@ All actions are SHA-pinned for reproducibility:
 | publish.yml | -- | `id-token: write` (OIDC) |
 | lockfile-update.yml | -- | `contents: write` |
 | codeql.yml | -- | `actions: read`, `contents: read`, `security-events: write` |
+| claude.yml | -- | job: `contents: write`, `pull-requests: write`, `issues: write`, `id-token: write`, `actions: read` |
 
 ---
 
@@ -254,6 +290,7 @@ All actions are SHA-pinned for reproducibility:
 | `CODECOV_TOKEN` | ci.yml (unit-tests) | Codecov.io upload token |
 | `GITHUB_TOKEN` | ci.yml (security) | Built-in, used by Gitleaks |
 | `CROSS_REPO_DISPATCH_TOKEN` | lockfile-update.yml | Custom PAT for re-triggering CI on push |
+| `ANTHROPIC_API_KEY` | claude.yml | Passed as the action's `anthropic_api_key`. The workflow header says this secret is set at the org level and that the repo must be able to read it |
 
 ---
 
@@ -281,6 +318,7 @@ From `.github/dependabot.yml`:
 | Open PR limit | 3 |
 | Labels | `dependencies`, `ci` |
 | Commit prefix | `ci` |
+| Grouping | Only `github/codeql-action*` (group `codeql-action`). Other actions, including `anthropics/claude-code-action`, each open their own PR |
 
 ---
 
@@ -306,6 +344,6 @@ From `.github/dependabot.yml`:
 
 ---
 
-**Last Updated:** March 3, 2026
-**Version:** 0.4.2
+**Last Updated:** October 5, 2026
+**Version:** 0.4.6
 **Maintainer:** Paul Calnon
