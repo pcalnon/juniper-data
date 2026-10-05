@@ -1,6 +1,6 @@
 # Developer Cheatsheet -- juniper-data
 
-**Version**: 0.4.3 | **Date**: 2026-09-05 | **Project**: juniper-data -- Dataset Generation REST Service (FastAPI)
+**Version**: 0.4.5 | **Date**: 2026-10-05 | **Project**: juniper-data -- Dataset Generation REST Service (FastAPI)
 
 ---
 
@@ -265,7 +265,9 @@ juniper-data uses **ruff** (NOT black/isort/flake8). Config in `pyproject.toml`:
 
 Metrics use `juniper_data_` namespace. Pattern: `juniper_data_<subsystem>_<name>_<unit>`. Add custom metrics in `juniper_data/api/observability.py` using `prometheus_client` (Counter, Gauge, Histogram).
 
-> See: `juniper_data/api/observability.py` | [Observability Guide](../../juniper-deploy/docs/OBSERVABILITY_GUIDE.md)
+`create_app` passes `telemetry={tracing, metrics, logs, operation_spans, auto_configure: False}` ([#454](https://github.com/pcalnon/juniper-data/pull/454), FastAPI 0.142.2). Leave that dict in place. `OTEL_EXPORTER_OTLP_*` does not export and does not log `FastAPI automatic telemetry configuration failed`. Prometheus (`JUNIPER_DATA_METRICS_ENABLED`) and Sentry (`JUNIPER_DATA_SENTRY_DSN`) are the observability path. The keyword does not exist on FastAPI 0.141.1 (`main`'s lock).
+
+> See: `juniper_data/api/observability.py` | [FastAPI Native Telemetry](REFERENCE.md#fastapi-native-telemetry) | [Observability Guide](../../juniper-deploy/docs/OBSERVABILITY_GUIDE.md)
 
 ---
 
@@ -321,6 +323,8 @@ pre-commit install --hook-type pre-push  # coverage gate (one-time)
 | Equities `total_shares` all zeros | SEC returned no facts under `fundamentals_fill="zero"` (the default is `"nan"` since 2026-09-05) | Check CIK / logs; try `fundamentals_fill="nan"`; do not read 0 as "no shares" |
 | juniper-recurrence refuses an `equities_seq` artifact: `X_train has non-finite values` | Bare defaults: `fundamentals_fill="nan"` leaves NaN in `X` columns 7, 8 and 14 | Send the [recurrence-ready bundle](REFERENCE.md#equities-sequence-recurrence-ready-parameters) |
 | Equities `400` naming `purchase_date`, `start_date` and `fundamentals_fill='drop'` | A purchase after the start under `drop` (W1.8): the rows before it have no cost basis | Set `purchase_date` on or before `start_date`, or use `fundamentals_fill="nan"` to keep those rows |
+| No OTEL spans or metrics from the API | `create_app` sets FastAPI `telemetry` signals and `auto_configure` false ([#454](https://github.com/pcalnon/juniper-data/pull/454)) | Expected. Use Prometheus and Sentry. Leave the dict in place. See [FastAPI Native Telemetry](REFERENCE.md#fastapi-native-telemetry) |
+| `FastAPI automatic telemetry configuration failed` at startup | `telemetry` was omitted on FastAPI 0.142+ and an `OTEL_EXPORTER_OTLP_*` endpoint is set without `opentelemetry-sdk` | Restore the five-flag opt-out. Startup still continues on that warning |
 
 ---
 

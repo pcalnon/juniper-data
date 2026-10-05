@@ -2,9 +2,9 @@
 
 ## Complete Environment Configuration for Juniper Data
 
-**Version:** 0.4.2
+**Version:** 0.4.4
 **Status:** Active
-**Last Updated:** May 4, 2026
+**Last Updated:** October 5, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -280,6 +280,8 @@ export JUNIPER_DATA_STORAGE_PATH=/path/to/datasets
 | `JUNIPER_DATA_METRICS_ENABLED` | bool | `false` | Enable Prometheus metrics |
 | `JUNIPER_DATA_SENTRY_DSN` | string | *(none)* | Sentry error tracking DSN |
 
+`OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_SDK_DISABLED` are not juniper-data settings. On FastAPI 0.142.2, `create_app` sets `telemetry` tracing, metrics, logs, `operation_spans`, and `auto_configure` to false ([#454](https://github.com/pcalnon/juniper-data/pull/454)). An OTLP endpoint does not start export and does not produce `FastAPI automatic telemetry configuration failed`. Prometheus and Sentry above remain the observability path. The `telemetry` keyword is absent on FastAPI 0.141.1, the `main` lock. See [FastAPI Native Telemetry](REFERENCE.md#fastapi-native-telemetry).
+
 ### CSV / JSON import (`csv_import`)
 
 On-disk sources under `JUNIPER_DATA_IMPORT_DIR`. Over-cap imports are refused unless truncation is opted in. This is not the 10 MB HTTP body limit. See [CSV Import Byte Cap](REFERENCE.md#csv-import-byte-cap).
@@ -396,6 +398,12 @@ mypy juniper_data --ignore-missing-imports
 conda activate JuniperData
 pip install -e ".[all]"
 ```
+
+### No traces after setting `OTEL_EXPORTER_OTLP_ENDPOINT`
+
+**Cause:** This service does not export OpenTelemetry. FastAPI 0.141.1 (`main`) has no `telemetry` argument. On FastAPI 0.142.2, `create_app` sets the signals and `auto_configure` false ([#454](https://github.com/pcalnon/juniper-data/pull/454)), and the image does not install `opentelemetry-sdk`.
+
+**Fix:** Use `JUNIPER_DATA_METRICS_ENABLED` for Prometheus and `JUNIPER_DATA_SENTRY_DSN` for Sentry. Leave the `telemetry` dict in `juniper_data/api/app.py` in place. See [FastAPI Native Telemetry](REFERENCE.md#fastapi-native-telemetry).
 
 ### ModuleNotFoundError: No module named 'fastapi'
 

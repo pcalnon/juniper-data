@@ -1,8 +1,8 @@
 # Juniper Data Reference
 
-**Version:** 0.4.3
+**Version:** 0.4.5
 **Status:** Active
-**Last Updated:** September 5, 2026
+**Last Updated:** October 5, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -29,6 +29,7 @@
 - [Storage Backend Reference](#storage-backend-reference)
 - [CSV Import Truncation Edges](#csv-import-truncation-edges)
 - [Prometheus Collector Reference](#prometheus-collector-reference)
+- [FastAPI Native Telemetry](#fastapi-native-telemetry)
 - [Artifact Streaming](#artifact-streaming)
 - [Docker Reference](#docker-reference)
 - [Equities Symbol Cap](#equities-symbol-cap)
@@ -819,6 +820,8 @@ juniper-data/
 | `prometheus-client` | >= 0.20.0 | Metrics export |
 | `sentry-sdk[fastapi]` | >= 2.0.0 | Error tracking |
 
+FastAPI 0.142 can pull `opentelemetry-api` into `requirements.lock` (`# via fastapi`). That pin is not this extra and does not export. `create_app` turns FastAPI's own signals off. See [FastAPI Native Telemetry](#fastapi-native-telemetry).
+
 ### ARC-AGI (optional: `pip install -e ".[arc-agi]"`)
 
 | Package | Version | Purpose |
@@ -1230,6 +1233,8 @@ Note this is a stronger requirement than an `OPTIONS` bypass in
 still authenticates. Pinned by `TestCorsPreflight` in
 `juniper_data/tests/unit/test_api_app.py`.
 
+FastAPI's OpenTelemetry wrapper is not a row in this stack. `create_app` turns it off. See [FastAPI Native Telemetry](#fastapi-native-telemetry).
+
 ### Response Models
 
 Responses use typed Pydantic models (defined in `core/models.py` and `api/models/`):
@@ -1545,6 +1550,56 @@ For any new `prometheus_client` `Counter` / `Gauge` / `Histogram` / `Summary` / 
 Tests touching these collectors should use `juniper_observability.testing.reset_prometheus_registry`. Existing examples in this repo: `juniper_data/api/observability.py:_ensure_dataset_metrics`. See [the design doc in juniper-ml](https://github.com/pcalnon/juniper-ml/blob/main/notes/observability/JUNIPER_2026-05-05_JUNIPER-ML_REGISTER-OR-REUSE-HELPER-DESIGN.md) for the rationale.
 
 ---
+
+## FastAPI Native Telemetry
+
+FastAPI 0.141.1, the pin in `requirements.lock` on `main`, has no `telemetry` argument. FastAPI 0.142.2 — the pin on the python-minor stack ([#446](https://github.com/pcalnon/juniper-data/pull/446)) — adds one. Keys you omit keep the library defaults: `tracing`, `metrics`, `logs`, `operation_spans`, and `auto_configure` are all `True` (`fastapi/applications.py`).
+
+[#454](https://github.com/pcalnon/juniper-data/pull/454) makes `create_app` in `juniper_data/api/app.py` pass an explicit opt-out. That commit is not on `main` yet. Passing the keyword to FastAPI 0.141 raises `TypeError`.
+
+```python
+telemetry={
+    "tracing": False,
+    "metrics": False,
+    "logs": False,
+    "operation_spans": False,
+    "auto_configure": False,
+}
+```
+
+FastAPI merges that dict over its defaults. `tracer_provider`, `meter_provider`, `logger_provider`, and `exclude` stay `None`. There is no `JUNIPER_DATA_` setting that forwards `telemetry`.
+
+| Flag | Effect when `False` |
+|------|---------------------|
+| `tracing`, `metrics`, `logs` | `NativeTelemetry.enabled()` is false, so the ASGI wrapper does not run |
+| `operation_spans` | No child spans for dependencies, the endpoint, serialization, or background tasks |
+| `auto_configure` | Lifespan setup returns before it reads OTLP endpoint variables |
+
+With the three signal flags false, a later real provider does not turn the wrapper back on. Under the library defaults, a provider other than the API proxies (`ProxyTracerProvider`, `_ProxyMeterProvider`, `ProxyLoggerProvider`) does. The logs signal, when it is on, records validation failures and unhandled exceptions, including exception messages and stack traces. HTTP metrics FastAPI would register are `http.server.request.duration` and `http.server.active_requests`.
+
+`operation_spans` is unused on the request path while `tracing` is false. The factory still sets it so turning tracing back on does not also enable child spans.
+
+`auto_configure: False` skips `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_ENDPOINT`. FastAPI does not import `opentelemetry-sdk`, does not replace the global providers, and does not log `FastAPI automatic telemetry configuration failed`. `OTEL_SDK_DISABLED` has nothing left to skip. The lifespan wrapper is still installed; its startup hook returns immediately, then the app lifespan runs `configure_logging`, `configure_sentry`, and (when metrics are on) `set_build_info`.
+
+What still observes the process:
+
+| Surface | Switch | Default |
+|---------|--------|---------|
+| Prometheus (`PrometheusMiddleware`, `/metrics`) | `JUNIPER_DATA_METRICS_ENABLED` | `false` |
+| Sentry (`configure_sentry` in the app lifespan) | `JUNIPER_DATA_SENTRY_DSN` | unset (`sentry_traces_sample_rate` default `0.1`) |
+| Logs and `X-Request-ID` | `JUNIPER_DATA_LOG_FORMAT`, `JUNIPER_DATA_LOG_LEVEL` | `text` / `INFO` |
+
+The 0.142 lock records `opentelemetry-api` (`# via fastapi`) and does not install `opentelemetry-sdk` or the `fastapi[opentelemetry]` / `fastapi[standard]` extras. That API package is not an exporter.
+
+### Constraints
+
+- Leave all five flags `False`. The pin below fails if any one flips.
+- Prometheus and Sentry are the export path. An OTLP endpoint in the environment does not start FastAPI export.
+- The warning `FastAPI automatic telemetry configuration failed` is the omitted-argument path (endpoint set, SDK missing). FastAPI 0.142.2 logs it and continues startup. This service does not take that path once the opt-out is in place.
+
+### Pin
+
+`TestCreateApp.test_create_app_disables_fastapi_native_telemetry` in `juniper_data/tests/unit/test_api_app.py` asserts `app._telemetry` for the five keys above.
 
 ---
 
