@@ -2,9 +2,9 @@
 
 ## Run juniper-data CI Checks Locally in 5 Minutes
 
-**Version:** 0.4.2
+**Version:** 0.4.5
 **Status:** Active
-**Last Updated:** March 3, 2026
+**Last Updated:** October 5, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -128,6 +128,8 @@ python scripts/check_doc_links.py
 
 **Lockfile check fails in CI**: Regenerate with `uv pip compile pyproject.toml --extra api --extra observability --extra mnist --extra equities -o requirements.lock`.
 
+**Release publish is red after PyPI succeeded**: `notify-consumers.yml` did not see a consumer run. GitHub's dispatch `204` is not delivery. The listener must declare `repository_dispatch: types: [juniper-data-published]` and must not set `run-name:`. Re-send with `workflow_dispatch`; do not republish. See [Consumer release notification](../REFERENCE.md#consumer-release-notification).
+
 ---
 
 ## Next Steps
@@ -138,6 +140,6 @@ python scripts/check_doc_links.py
 
 ---
 
-**Last Updated:** March 3, 2026
-**Version:** 0.4.2
+**Last Updated:** October 5, 2026
+**Version:** 0.4.5
 **Status:** Active

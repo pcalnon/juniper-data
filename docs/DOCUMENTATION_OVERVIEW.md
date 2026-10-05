@@ -2,8 +2,8 @@
 
 ## Complete Navigation Guide to Juniper Data Documentation
 
-**Version:** 0.4.2
-**Last Updated:** March 3, 2026
+**Version:** 0.4.7
+**Last Updated:** October 5, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -163,6 +163,7 @@ See the [juniper-data-client documentation](https://github.com/pcalnon/juniper-d
 | `.pre-commit-config.yaml` | Root | Pre-commit hook configuration |
 | `.github/workflows/ci.yml` | Root | GitHub Actions CI pipeline |
 | `.github/workflows/publish.yml` | Root | PyPI publishing workflow |
+| `.github/workflows/notify-consumers.yml` | Root | After PyPI: dispatch `juniper-data-published` and wait for a consumer run. A 204 is not delivery. See [Consumer release notification](REFERENCE.md#consumer-release-notification) |
 
 ### Source Code Map
 

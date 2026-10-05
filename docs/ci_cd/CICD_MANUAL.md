@@ -2,9 +2,9 @@
 
 ## Comprehensive CI/CD Pipeline Guide for juniper-data
 
-**Version:** 0.4.2
+**Version:** 0.4.5
 **Status:** Active
-**Last Updated:** March 3, 2026
+**Last Updated:** October 5, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -16,6 +16,7 @@
 3. [GitHub Actions Workflows](#github-actions-workflows)
    - [ci.yml -- Main CI Pipeline](#ciyml----main-ci-pipeline)
    - [publish.yml -- PyPI Publishing](#publishyml----pypi-publishing)
+   - [notify-consumers.yml -- Consumer release notification](#notify-consumersyml----consumer-release-notification)
    - [lockfile-update.yml -- Dependency Lockfile Auto-Update](#lockfile-updateyml----dependency-lockfile-auto-update)
    - [codeql.yml -- Code Quality Analysis](#codeqlyml----code-quality-analysis)
 4. [Pre-commit Hooks](#pre-commit-hooks)
@@ -41,7 +42,7 @@ juniper-data uses a multi-layer CI/CD strategy:
 - **Pre-commit hooks**: Local code quality enforcement (ruff, mypy, bandit, yamllint, shellcheck)
 - **Pre-push hooks**: Coverage gate (80% aggregate, 85% per-module)
 - **GitHub Actions CI**: Automated testing across Python 3.12/3.13/3.14, security scanning, build verification, documentation validation
-- **GitHub Actions publishing**: Two-stage PyPI publishing (TestPyPI then production PyPI)
+- **GitHub Actions publishing**: Two-stage PyPI publishing (TestPyPI then production PyPI), then a consumer dispatch that waits for a run to start
 - **Dependabot**: Automated dependency updates with lockfile synchronization
 - **CodeQL**: Weekly semantic code analysis
 
@@ -69,6 +70,7 @@ pre-commit ──┬─→ unit-tests ──┬─→ build ──→ dependency
 |-----------------------|----------------------|---------------------|---------------|---------------------|---------|--------|
 | `ci.yml`              | Yes                  | Yes                 | Yes           | Daily 6 AM UTC      | No      | Yes    |
 | `publish.yml`         | No                   | No                  | No            | No                  | Yes     | No     |
+| `notify-consumers.yml` | No                  | No                  | No            | No                  | via `publish.yml` | Yes |
 | `lockfile-update.yml` | No                   | dependabot branches | No            | No                  | No      | No     |
 | `codeql.yml`          | Yes                  | No                  | Yes (to main) | Weekly Mon 6 AM UTC | No      | No     |
 
@@ -204,6 +206,23 @@ Identical to TestPyPI stage but publishes to production.
 **Environment**: `pypi` (5-minute wait timer + required reviewer approval)
 
 Both stages use `attestations: false` and SHA-pinned actions. Version is extracted from the release tag (strips `v` prefix).
+
+The `notify-consumers` job runs only after `pypi` succeeds. A failed notification does not unpublish the release. See the next section.
+
+---
+
+### notify-consumers.yml -- Consumer release notification
+
+Tells repos that install `juniper-data` from PyPI that a release is on PyPI. Today the matrix is `juniper-recurrence` only.
+
+- **From a release:** `publish.yml` calls this workflow with the release tag after the production PyPI job. A leading `v` is stripped. The value must be `X.Y.Z`.
+- **Manual:** `workflow_dispatch` with a `version` input re-sends for a version already on PyPI. It does not publish.
+- **Auth:** `CROSS_REPO_DISPATCH_TOKEN`. `GITHUB_TOKEN` cannot dispatch into another repository. An empty token fails before the POST. `curl --fail-with-body` makes a 403 or 404 fail the step.
+- **Event:** `juniper-data-published`, payload `{source: "juniper-data", version, sha}`. `sha` is `github.sha` of this run.
+- **204 is not delivery.** GitHub returns 204 whether or not a workflow listens. The next step polls up to 12 times, 10 seconds apart, for a `repository_dispatch` run created at or after 30 seconds before the POST whose `display_title` is `juniper-data-published`. The listener must not set `run-name:`.
+- **Two failures.** No successful listing means the step cannot tell whether a run started (check the repo name, and Actions: Read if the consumer is private). A successful listing with no matching run means no listener started. If some listings failed, that second error says how many.
+
+Full contract: [Consumer release notification](../REFERENCE.md#consumer-release-notification).
 
 ---
 
@@ -341,6 +360,7 @@ The `required-checks` job in ci.yml acts as the merge quality gate. All of these
 3. **TestPyPI stage**: Build, verify, publish, install-test (5-min environment wait)
 4. **PyPI stage**: Same process, requires manual reviewer approval
 5. Approve the PyPI deployment via GitHub environment approval or `gh api`
+6. **Notify consumers**: after PyPI succeeds, `notify-consumers.yml` dispatches `juniper-data-published` and waits until the consumer starts a run. A red notify job means the package is already on PyPI. The `pypi` job is the publish verdict.
 
 See [PyPI Publishing Procedure](../../../juniper-ml/notes/JUNIPER_2026-06-18_JUNIPER-ECOSYSTEM_PYPI-PUBLISH-PROCEDURE.md) for ecosystem-wide publishing lessons.
 
@@ -365,6 +385,12 @@ uv pip compile pyproject.toml --extra api --extra observability --extra mnist --
 **CodeQL findings**: Review in GitHub Security tab. These are informational and don't block the merge quality gate.
 
 **TestPyPI publish fails**: Check that the release tag matches the version in `pyproject.toml`. Version is extracted by stripping the `v` prefix from the tag.
+
+**Publish run red after PyPI succeeded**: The `notify-consumers` job failed. PyPI already has the release. A 204 from the dispatch API is only acceptance.
+
+If the error says the consumer's runs could not be listed, check `CROSS_REPO_DISPATCH_TOKEN` and Actions: Read on a private consumer. If it says no `juniper-data-published` run started in about two minutes, the consumer workflow needs `repository_dispatch: types: [juniper-data-published]` and must not set `run-name:`. Re-send with `workflow_dispatch` once that is fixed; do not cut another release to retry.
+
+See [Consumer release notification](../REFERENCE.md#consumer-release-notification).
 
 **Coverage drops after push**: Run `python scripts/check_module_coverage.py --run-tests` locally to identify modules below the 85% threshold.
 

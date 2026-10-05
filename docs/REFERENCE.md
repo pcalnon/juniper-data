@@ -1,8 +1,8 @@
 # Juniper Data Reference
 
-**Version:** 0.4.3
+**Version:** 0.4.7
 **Status:** Active
-**Last Updated:** September 5, 2026
+**Last Updated:** October 5, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -34,6 +34,7 @@
 - [Equities Symbol Cap](#equities-symbol-cap)
 - [Equities Sequence: Recurrence-Ready Parameters](#equities-sequence-recurrence-ready-parameters)
 - [CI/CD Pipeline Reference](#cicd-pipeline-reference)
+- [Consumer release notification](#consumer-release-notification)
 - [Additional Resources](#additional-resources)
 
 ---
@@ -1838,11 +1839,59 @@ Relocated verbatim from `AGENTS.md` (P3 of the shared-session-memory plan) so it
 | **CI** | `ci.yml` | Push, PR, daily schedule | Pre-commit, tests (3.12-3.14), coverage, security, type checking, docs |
 | **CodeQL** | `codeql.yml` | Push, PR, schedule | GitHub code scanning |
 | **Security Scan** | `security-scan.yml` | Push, PR | Gitleaks + Bandit SARIF |
-| **Publish** | `publish.yml` | GitHub release | TestPyPI -> PyPI (Trusted Publishing/OIDC) |
+| **Publish** | `publish.yml` | GitHub release | TestPyPI -> PyPI (Trusted Publishing/OIDC), then [notify consumers](#consumer-release-notification) |
+| **Notify consumers** | `notify-consumers.yml` | Called by `publish.yml` after PyPI; manual re-send | `repository_dispatch` `juniper-data-published`, then wait until the consumer starts a run |
 | **Publish container image** | `publish-image.yml` | GitHub release (`v*`), PR touching image inputs (build-only), manual | GHCR multi-arch image (amd64 + arm64); asserts no torch / CUDA stack inside the image; never a required check |
 | **Lockfile Update** | `lockfile-update.yml` | Schedule, manual | Update `requirements.lock` |
 | **Sequence Safety** | `sequence-safety.yml` | PR | Advisory per-PR symbol-loss + docs-deletion screens via `juniper-ci-tools` (`--scope 'juniper_data/**'`); never required, never blocks a merge |
 | **Main Verify** | `main-verify.yml` | Push (main) | Bypass-proof post-merge compositional-loss net (screens-only, advisory); stable-title failure-issue upsert + catch-up base |
+
+### Consumer release notification
+
+A consumer CI lane that only watches its own paths cannot see a break that arrives through the `juniper-data` package. After PyPI accepts a release, `publish.yml`'s `notify-consumers` job calls `.github/workflows/notify-consumers.yml` so each consumer starts a run against that version. The `pypi` job is the publish verdict. This job can still turn the **run** red after PyPI has accepted the release.
+
+#### When it runs
+
+| Entry | Version it sends | What it does not do |
+|-------|------------------|---------------------|
+| `workflow_call` from `publish.yml` (`needs: pypi`) | `github.event.release.tag_name`, leading `v` stripped | Does not run unless the production PyPI job succeeded |
+| `workflow_dispatch` | The `version` input, leading `v` stripped | Does not publish. Use it to re-send for a version already on PyPI |
+
+The version must match `X.Y.Z` (`^[0-9]+\.[0-9]+\.[0-9]+$`). `v0.16.0` is accepted as `0.16.0`. `0.16`, `0.16.0rc1`, and a trailing space exit 1 before any request. The matrix is `juniper-recurrence` only, with `fail-fast: false`. The job timeout is 10 minutes. Both the caller job and the reusable workflow set `permissions: {}`; the workflow-level `id-token: write` on `publish.yml` is not granted here.
+
+#### What the dispatch contains
+
+`CROSS_REPO_DISPATCH_TOKEN` must be set. An empty token exits 1 before the POST. `GITHUB_TOKEN` cannot dispatch into another repository. The POST is `curl --fail-with-body --max-time 30` to `https://api.github.com/repos/pcalnon/<repo>/dispatches`, so a 403 or 404 fails the step. The body is built with `jq` and the values reach the shell only through `env:`:
+
+```json
+{"event_type": "juniper-data-published", "client_payload": {"source": "juniper-data", "version": "<X.Y.Z>", "sha": "<github.sha>"}}
+```
+
+`sha` is `github.sha` of the notifying run (the tagged commit on a release). The workflow comment states the token needs Contents: Read and write on the consumer to dispatch.
+
+#### A 204 is not delivery
+
+GitHub returns 204 from `/dispatches` whether or not any workflow listens for `juniper-data-published`. The next step waits for a run.
+
+- `since` is written 30 seconds before the POST, to absorb clock skew. The listing query is `event=repository_dispatch`, `created>=since`, `per_page=20`.
+- Up to 12 listings, 10 seconds apart when another attempt remains (11 sleeps). Each listing uses `curl --fail-with-body --max-time 20`. When requests return promptly the window is about two minutes.
+- A match is the first `workflow_runs` entry whose `display_title` is `juniper-data-published`. The runs API does not expose `client_payload`. A dispatch run's default title is the event type, so the listener must not set `run-name:`. A second dispatch of the same event inside the window also satisfies the check. juniper-data is the only sender into juniper-recurrence today. The request asks for one page of 20 and does not follow `Link` headers, so a matching run past that page is invisible.
+- A listing counts only when the body is a JSON object that has a `workflow_runs` key. An empty body, `{}`, non-JSON, or an error object is a failed listing and is retried. Failure text kept for the final error is capped at 300 characters.
+- If **no** listing succeeds: the step fails because whether a run started is unknown. Check the repo name, and Actions: Read on the token when the consumer is private. Listing a public repo needs no extra permission; grant Actions: Read anyway so confirmation does not depend on that.
+- If **some** listing succeeded and none matched: the step fails. Check that one workflow declares `repository_dispatch: types: [juniper-data-published]`, sets no `run-name:`, and is enabled. When some of the 12 listings failed, that error says how many and quotes the last failure, so an outage after the first good listing is not read as a missing listener.
+
+#### Adding a consumer
+
+Append the repo slug to the matrix. Give that repo a workflow with `repository_dispatch: types: [juniper-data-published]` and no `run-name:`. This workflow confirms only that a run with that title started. It does not read the payload, and it does not wait for the consumer's tests to finish.
+
+#### What not to do
+
+- Do not treat the dispatch POST's 204 as proof a consumer ran.
+- Do not notify before the `pypi` job. A consumer that installs that version would otherwise test the previous release.
+- Do not set `run-name:` on the listener. Confirmation matches the default title, not the payload.
+- Do not pass the token, version, repo, or sha except through `env:`.
+
+The contract is the two workflow files. `main` has no unit test that parses them.
 
 ### Pre-Commit Hooks
 

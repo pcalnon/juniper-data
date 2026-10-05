@@ -2,9 +2,9 @@
 
 ## juniper-data CI/CD Jobs, Hooks, and Configuration
 
-**Version:** 0.4.2
+**Version:** 0.4.5
 **Status:** Active
-**Last Updated:** March 3, 2026
+**Last Updated:** October 5, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -32,6 +32,7 @@
 |------|---------|---------|
 | `.github/workflows/ci.yml` | Main CI pipeline (v0.4.0) | Push, PR, schedule, dispatch |
 | `.github/workflows/publish.yml` | PyPI publishing | GitHub Release published |
+| `.github/workflows/notify-consumers.yml` | Tell PyPI consumers a release is installable, then wait for a run | `workflow_call` from `publish.yml` after PyPI; `workflow_dispatch` to re-send |
 | `.github/workflows/lockfile-update.yml` | Lockfile auto-update (v0.1.0) | Push to `dependabot/pip/**` |
 | `.github/workflows/codeql.yml` | Code quality analysis (v1.0.0) | Push to main/develop, PRs, weekly |
 
@@ -61,6 +62,15 @@
 |-----|-----------|-------------|---------|
 | `testpypi` | -- | `testpypi` | Publish to TestPyPI, verify install |
 | `pypi` | testpypi | `pypi` | Publish to production PyPI |
+| `notify-consumers` | pypi | -- (`permissions: {}`) | Call `notify-consumers.yml` with the release tag |
+
+### Consumer release notification
+
+`notify-consumers.yml` posts `juniper-data-published` to `pcalnon/juniper-recurrence` using `CROSS_REPO_DISPATCH_TOKEN` (`curl --fail-with-body`). The version is `X.Y.Z` after a leading `v` is stripped. A 204 only means GitHub accepted the event.
+
+The confirm step then looks for a run titled `juniper-data-published` (no `run-name:` on the listener): 12 listings, 10 seconds apart, `created` at or after 30 seconds before the POST. No successful listing and a listing with no matching run are different failures.
+
+Contract: [Consumer release notification](../REFERENCE.md#consumer-release-notification).
 
 ---
 
@@ -253,7 +263,7 @@ All actions are SHA-pinned for reproducibility:
 |--------|---------|---------|
 | `CODECOV_TOKEN` | ci.yml (unit-tests) | Codecov.io upload token |
 | `GITHUB_TOKEN` | ci.yml (security) | Built-in, used by Gitleaks |
-| `CROSS_REPO_DISPATCH_TOKEN` | lockfile-update.yml | Custom PAT for re-triggering CI on push |
+| `CROSS_REPO_DISPATCH_TOKEN` | lockfile-update.yml; notify-consumers.yml | PAT. Lockfile pushes use it so CI re-triggers. Consumer notification uses it to `repository_dispatch` into another repo (`GITHUB_TOKEN` cannot) and to list that repo's Actions runs |
 
 ---
 
