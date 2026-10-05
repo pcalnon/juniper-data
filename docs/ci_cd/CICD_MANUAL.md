@@ -2,9 +2,9 @@
 
 ## Comprehensive CI/CD Pipeline Guide for juniper-data
 
-**Version:** 0.4.2
+**Version:** 0.4.3
 **Status:** Active
-**Last Updated:** March 3, 2026
+**Last Updated:** October 5, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -69,7 +69,7 @@ pre-commit ──┬─→ unit-tests ──┬─→ build ──→ dependency
 |-----------------------|----------------------|---------------------|---------------|---------------------|---------|--------|
 | `ci.yml`              | Yes                  | Yes                 | Yes           | Daily 6 AM UTC      | No      | Yes    |
 | `publish.yml`         | No                   | No                  | No            | No                  | Yes     | No     |
-| `lockfile-update.yml` | No                   | dependabot branches | No            | No                  | No      | No     |
+| `lockfile-update.yml` | No                   | `dependabot/pip/**` by `dependabot[bot]` | `pyproject.toml` paths, same repo, not `release/**` | No | No | No |
 | `codeql.yml`          | Yes                  | No                  | Yes (to main) | Weekly Mon 6 AM UTC | No      | No     |
 
 ---
@@ -123,13 +123,13 @@ Generates dependency documentation snapshots.
 
 - **Depends on**: `build`
 - Installs `.[all]` plus the `juniper-data-client` main branch before capture
-- Runs `scripts/generate_dep_docs.sh`
-- Outputs `conf/requirements_ci.txt` and `conf/conda_environment_ci.yaml` as workflow artifacts, with timestamped backups if prior files exist in the checkout
-- Does not update the committed `conf/requirements.txt` or `conf/requirements-ORIG.txt` environment snapshots
+- Installs `juniper-ci-tools` (`>=0.9.0,<0.10.0`) and runs `juniper-generate-dep-docs`
+- Uploads `conf/requirements_ci.txt` and `conf/conda_environment_ci.yaml` (plus timestamped backups) as workflow artifacts
+- Does not commit those captures, and does not update `conf/requirements.txt` or `conf/requirements-ORIG.txt`
 - Uses Conda (Miniforge) for environment capture
 - 90 day artifact retention
 
-These generated files describe the environment that ran in CI. They are diagnostic artifacts, not source inputs for local setup. The checked-in setup script installs supplemental packages from `conf/requirements.txt`, and `conf/requirements-ORIG.txt` is kept as the paired baseline copy for that setup snapshot.
+The upload describes the environment that ran in CI. The job does not commit it. The committed `conf/requirements_ci.txt` is a separate freeze that the `python-minor` group rewrites. Local setup installs supplemental packages from `conf/requirements.txt`, and `conf/requirements-ORIG.txt` is the paired baseline for that snapshot.
 
 #### Job: `integration-tests`
 
@@ -209,15 +209,19 @@ Both stages use `attestations: false` and SHA-pinned actions. Version is extract
 
 ### lockfile-update.yml -- Dependency Lockfile Auto-Update
 
-Automatically regenerates `requirements.lock` when Dependabot updates dependencies.
+Regenerates `requirements.lock` from `pyproject.toml` and, when the pin lines change, pushes a GitHub-signed commit.
 
-- **Trigger**: Push to `dependabot/pip/**` branches
-- **Condition**: Only runs for `dependabot[bot]` actor
-- Runs `uv pip compile pyproject.toml --extra api --extra observability --extra mnist --extra equities --upgrade -o requirements.lock`
-- Uses `CROSS_REPO_DISPATCH_TOKEN` (not `GITHUB_TOKEN`) so the push re-triggers CI
-- Commits with `[dependabot skip]` prefix to prevent Dependabot re-processing
+- **Push trigger**: `dependabot/pip/**` when `github.actor == dependabot[bot]`. A grouped pip push qualifies even when it edits only `conf/requirements*.txt`.
+- **Pull request trigger**: `pyproject.toml` changed, the head repo is this repo, and the branch is not `release/**`. Forks are skipped.
+- **Token gate**: `CROSS_REPO_DISPATCH_TOKEN`. Dependabot-triggered runs read the Dependabot secret store. An empty token there skips the rest of the job (green notice). A non-Dependabot run without the token fails the job. Repository Actions secrets are a different store.
+- **Compile**: `uv pip compile pyproject.toml --extra api --extra observability --extra mnist --extra equities --upgrade -o requirements.lock`
+- **Commit**: `[dependabot skip] Update requirements.lock` via `createCommitOnBranch` when the pin lines differ. The PAT is the author, so the push re-triggers CI.
 
-The workflow only updates `requirements.lock`, which is generated from `pyproject.toml` for Docker and CI reproducibility. Dependabot PRs that target `conf/requirements.txt` or `conf/requirements-ORIG.txt` are changing the legacy/local setup snapshot used by `util/setup_environment.bash`; keep those two files in sync and do not expect the lockfile workflow to rewrite them.
+The lockfile is the Docker pin set for those four extras. `conf/requirements.txt` and `conf/requirements-ORIG.txt` are the local setup snapshots (`util/setup_environment.bash`); keep that pair on the same floors. `conf/requirements_ci.txt` is the committed freeze the `python-minor` group rewrites. The lockfile and the freeze can name different versions, and `--upgrade` can add a transitive the freeze does not list.
+
+`lockfile-check` compiles with `--constraint requirements.lock` and compares pin lines. It fails when the lock no longer satisfies `pyproject.toml`. A newer release inside the current ranges leaves it green, which is why a conf-only Dependabot push can be freshness-green before the `--upgrade` commit lands.
+
+Full review steps: [Dependency Update Workflow](../../notes/DEPENDENCY_UPDATE_WORKFLOW.md).
 
 ---
 
@@ -313,7 +317,7 @@ Blocks commits of unencrypted `.env` or `.env.secrets` files. Ensures secrets ar
 - **Labels**: `dependencies`, `ci`
 - **Commit prefix**: `ci`
 
-When Dependabot pushes to `dependabot/pip/**`, the `lockfile-update.yml` workflow automatically regenerates `requirements.lock` and commits the update.
+When Dependabot pushes to `dependabot/pip/**`, `lockfile-update.yml` compiles `requirements.lock` with `--upgrade` and commits when the pin lines move. That includes grouped updates that never touch `pyproject.toml`. The commit is skipped, green, when `CROSS_REPO_DISPATCH_TOKEN` is absent from the Dependabot secret store.
 
 ---
 
@@ -354,13 +358,13 @@ See [PyPI Publishing Procedure](../../../juniper-ml/notes/JUNIPER_2026-06-18_JUN
 
 **CI fails but local passes**: Check Python version matrix. CI tests on 3.12, 3.13, and 3.14. Ensure your local environment matches.
 
-**Lockfile check fails**: Regenerate with:
+**Lockfile check fails**: The committed pins no longer satisfy `pyproject.toml`. Refresh with the same extras the workflow uses:
 
 ```bash
-uv pip compile pyproject.toml --extra api --extra observability --extra mnist --extra equities -o requirements.lock
+uv pip compile pyproject.toml --extra api --extra observability --extra mnist --extra equities --upgrade -o requirements.lock
 ```
 
-**Dependabot PR missing lockfile update**: The `lockfile-update.yml` workflow handles `requirements.lock` automatically when the branch matches `dependabot/pip/**` and the actor is `dependabot[bot]`. If the PR only changes `conf/requirements.txt` and `conf/requirements-ORIG.txt`, a lockfile update may not be needed.
+**Dependabot PR and `requirements.lock`**: A `python-minor` PR can edit only `conf/requirements*.txt` and still receive `[dependabot skip] Update requirements.lock`. That commit is the `--upgrade` resolution of `pyproject.toml`, so its pins can differ from `conf/requirements_ci.txt`. When the commit is missing, open the Update Lockfile run. A notice that `CROSS_REPO_DISPATCH_TOKEN` is unavailable means the PAT is missing from the Dependabot secret store; the job stays green and `lockfile-check` still enforces freshness. See [Dependency Update Workflow](../../notes/DEPENDENCY_UPDATE_WORKFLOW.md).
 
 **CodeQL findings**: Review in GitHub Security tab. These are informational and don't block the merge quality gate.
 

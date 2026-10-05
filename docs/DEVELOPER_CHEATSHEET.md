@@ -1,6 +1,6 @@
 # Developer Cheatsheet -- juniper-data
 
-**Version**: 0.4.3 | **Date**: 2026-09-05 | **Project**: juniper-data -- Dataset Generation REST Service (FastAPI)
+**Version**: 0.4.4 | **Date**: 2026-10-05 | **Project**: juniper-data -- Dataset Generation REST Service (FastAPI)
 
 ---
 
@@ -30,7 +30,7 @@
 | `ruff format juniper_data`                                                             | Format (replaces black)                                                         |
 | `mypy juniper_data --ignore-missing-imports`                                           | Type check                                                                      |
 | `pre-commit run --all-files`                                                           | Run all pre-commit hooks                                                        |
-| `uv pip compile pyproject.toml --extra api --extra observability --extra mnist --extra equities -o requirements.lock` | Regenerate lockfile                                                             |
+| `uv pip compile pyproject.toml --extra api --extra observability --extra mnist --extra equities --upgrade -o requirements.lock` | Regenerate lockfile (same extras as `lockfile-update.yml`) |
 
 ---
 
@@ -304,6 +304,7 @@ pre-commit install --hook-type pre-push  # coverage gate (one-time)
 | Equities `422` / `InputTooLargeError` | Default universe is 503 names; cap is 14 | Pass `symbols` ≤ cap, or set `allow_truncation=true` / `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION` |
 | Equities generate hangs / times out | Uncached fan-out still costs ~2.1 s/symbol | Keep `use_cache=True`; do not raise the cap without re-measuring |
 | Equities `total_shares` all zeros | SEC returned no facts; default `fundamentals_fill="zero"` | Check CIK / logs; try `fundamentals_fill="nan"`; do not read 0 as "no shares" |
+| `python-minor` PR: lockfile pins differ from `conf/requirements_ci.txt` | `lockfile-update.yml` runs `uv pip compile --upgrade` on every `dependabot/pip/**` push, even when `pyproject.toml` is untouched | Review `[dependabot skip] Update requirements.lock` as the Docker resolution. A missing commit plus a green Update Lockfile run means the Dependabot secret store has no `CROSS_REPO_DISPATCH_TOKEN`. See [Dependency Update Workflow](../notes/DEPENDENCY_UPDATE_WORKFLOW.md) |
 
 ---
 

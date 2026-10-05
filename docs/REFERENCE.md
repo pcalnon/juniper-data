@@ -1,8 +1,8 @@
 # Juniper Data Reference
 
-**Version:** 0.4.3
+**Version:** 0.4.4
 **Status:** Active
-**Last Updated:** September 5, 2026
+**Last Updated:** October 5, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -521,8 +521,8 @@ pip install -e ".[api]"
 # Install everything
 pip install -e ".[all]"
 
-# Regenerate lockfile for Docker
-uv pip compile pyproject.toml --extra api --extra observability --extra mnist --extra equities -o requirements.lock
+# Regenerate lockfile for Docker (same extras and --upgrade as lockfile-update.yml)
+uv pip compile pyproject.toml --extra api --extra observability --extra mnist --extra equities --upgrade -o requirements.lock
 ```
 
 ---
@@ -1028,8 +1028,8 @@ juniper-data/
 │   └── ci_cd/                      # CI/CD documentation
 ├── scripts/                        # CI and coverage scripts
 │   ├── check_module_coverage.py    # Per-module coverage enforcement (85% min)
-│   ├── check_doc_links.py          # Internal markdown link validation
-│   └── generate_dep_docs.sh        # Dependency documentation generator
+│   └── check_doc_links.py          # Internal markdown link validation
+# dep-docs capture is juniper-generate-dep-docs (juniper-ci-tools) in the dependency-docs job. No generate_dep_docs.sh.
 ├── notes/                          # Development notes, procedures, roadmaps
 ├── conf/                           # Shell and logging configuration files
 ├── util/                           # Bash utility scripts (40+ scripts)
@@ -1761,7 +1761,7 @@ Relocated verbatim from `AGENTS.md` (P3 of the shared-session-memory plan) so it
 | **Security Scan** | `security-scan.yml` | Push, PR | Gitleaks + Bandit SARIF |
 | **Publish** | `publish.yml` | GitHub release | TestPyPI -> PyPI (Trusted Publishing/OIDC) |
 | **Publish container image** | `publish-image.yml` | GitHub release (`v*`), PR touching image inputs (build-only), manual | GHCR multi-arch image (amd64 + arm64); asserts no torch / CUDA stack inside the image; never a required check |
-| **Lockfile Update** | `lockfile-update.yml` | Schedule, manual | Update `requirements.lock` |
+| **Lockfile Update** | `lockfile-update.yml` | Push to `dependabot/pip/**` by `dependabot[bot]`; PR when `pyproject.toml` changes (same repo, not `release/**`) | `--upgrade` compile of `requirements.lock` (`api`, `observability`, `mnist`, `equities`). Conf-only grouped bumps still qualify. Dependabot secret store must hold `CROSS_REPO_DISPATCH_TOKEN` or the job skips green |
 | **Sequence Safety** | `sequence-safety.yml` | PR | Advisory per-PR symbol-loss + docs-deletion screens via `juniper-ci-tools` (`--scope 'juniper_data/**'`); never required, never blocks a merge |
 | **Main Verify** | `main-verify.yml` | Push (main) | Bypass-proof post-merge compositional-loss net (screens-only, advisory); stable-title failure-issue upsert + catch-up base |
 
@@ -1860,6 +1860,6 @@ Rollout and rationale: [juniper-ml#434](https://github.com/pcalnon/juniper-ml/is
 
 ---
 
-**Last Updated:** September 5, 2026
-**Version:** 0.4.3
+**Last Updated:** October 5, 2026
+**Version:** 0.4.4
 **Maintainer:** Paul Calnon

@@ -2,9 +2,9 @@
 
 ## juniper-data CI/CD Jobs, Hooks, and Configuration
 
-**Version:** 0.4.2
+**Version:** 0.4.3
 **Status:** Active
-**Last Updated:** March 3, 2026
+**Last Updated:** October 5, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -32,7 +32,7 @@
 |------|---------|---------|
 | `.github/workflows/ci.yml` | Main CI pipeline (v0.4.0) | Push, PR, schedule, dispatch |
 | `.github/workflows/publish.yml` | PyPI publishing | GitHub Release published |
-| `.github/workflows/lockfile-update.yml` | Lockfile auto-update (v0.1.0) | Push to `dependabot/pip/**` |
+| `.github/workflows/lockfile-update.yml` | Lockfile auto-update (v0.1.0) | Push to `dependabot/pip/**` by `dependabot[bot]`; `pull_request` when `pyproject.toml` changes (same repo, not `release/**`) |
 | `.github/workflows/codeql.yml` | Code quality analysis (v1.0.0) | Push to main/develop, PRs, weekly |
 
 ---
@@ -253,7 +253,7 @@ All actions are SHA-pinned for reproducibility:
 |--------|---------|---------|
 | `CODECOV_TOKEN` | ci.yml (unit-tests) | Codecov.io upload token |
 | `GITHUB_TOKEN` | ci.yml (security) | Built-in, used by Gitleaks |
-| `CROSS_REPO_DISPATCH_TOKEN` | lockfile-update.yml | Custom PAT for re-triggering CI on push |
+| `CROSS_REPO_DISPATCH_TOKEN` | lockfile-update.yml | PAT that authors the signed lockfile commit so CI re-triggers. Dependabot pushes read the Dependabot secret store; an empty token there is a green skip. A non-Dependabot run without the token fails |
 
 ---
 
@@ -270,7 +270,11 @@ From `.github/dependabot.yml`:
 | Open PR limit | 5 |
 | Labels | `dependencies`, `security` |
 | Commit prefix | `deps` |
-| Grouping | Minor + patch updates together |
+| Grouping | Minor + patch updates together (`python-minor`, patterns `*`) |
+
+The pip group rewrites committed requirement files, including `conf/requirements.txt`, `conf/requirements-ORIG.txt`, and `conf/requirements_ci.txt`. `pyproject.toml` is unchanged when its `>=` floors already accept the new releases. `lockfile-update.yml` still compiles `requirements.lock` with `--upgrade` and the `api`, `observability`, `mnist`, and `equities` extras on that push. The lockfile pin set can differ from the freeze. `lockfile-check` uses `--constraint requirements.lock` and stays green while the lock still satisfies `pyproject.toml`.
+
+Review steps: [Dependency Update Workflow](../../notes/DEPENDENCY_UPDATE_WORKFLOW.md).
 
 ### GitHub Actions
 
@@ -290,7 +294,7 @@ From `.github/dependabot.yml`:
 |--------|---------|-------|
 | `scripts/check_module_coverage.py` | Per-module coverage enforcement (85% module, 80% aggregate) | `python scripts/check_module_coverage.py [--run-tests]` |
 | `scripts/check_doc_links.py` | Markdown link validation | `python scripts/check_doc_links.py [--verbose] [--exclude DIR]` |
-| `scripts/generate_dep_docs.sh` | Dependency documentation artifact generation (`conf/requirements_ci.txt`, `conf/conda_environment_ci.yaml`) | `bash scripts/generate_dep_docs.sh` |
+| `juniper-generate-dep-docs` | Dependency documentation artifact (`conf/requirements_ci.txt`, `conf/conda_environment_ci.yaml`). Installed from `juniper-ci-tools>=0.9.0,<0.10.0` in the `dependency-docs` job. The job uploads the capture and does not commit it. Dependabot may still edit the committed freeze. | `juniper-generate-dep-docs` |
 
 ---
 
@@ -306,6 +310,6 @@ From `.github/dependabot.yml`:
 
 ---
 
-**Last Updated:** March 3, 2026
-**Version:** 0.4.2
+**Last Updated:** October 5, 2026
+**Version:** 0.4.3
 **Maintainer:** Paul Calnon

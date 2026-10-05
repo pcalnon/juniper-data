@@ -2,9 +2,9 @@
 
 ## Run juniper-data CI Checks Locally in 5 Minutes
 
-**Version:** 0.4.2
+**Version:** 0.4.3
 **Status:** Active
-**Last Updated:** March 3, 2026
+**Last Updated:** October 5, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -126,7 +126,9 @@ python scripts/check_doc_links.py
 
 **Coverage below 80%**: Run `python scripts/check_module_coverage.py --run-tests` to see per-module breakdown. Add tests for modules below 85%.
 
-**Lockfile check fails in CI**: Regenerate with `uv pip compile pyproject.toml --extra api --extra observability --extra mnist --extra equities -o requirements.lock`.
+**Lockfile check fails in CI**: The pins no longer satisfy `pyproject.toml`. Regenerate with `uv pip compile pyproject.toml --extra api --extra observability --extra mnist --extra equities --upgrade -o requirements.lock`.
+
+**Grouped Dependabot PR, lockfile differs from `conf/requirements_ci.txt`**: `lockfile-update.yml` compiles with `--upgrade` on every `dependabot/pip/**` push by `dependabot[bot]`, including pushes that leave `pyproject.toml` unchanged. Review `[dependabot skip] Update requirements.lock` as that resolution. A missing commit with a green Update Lockfile run usually means `CROSS_REPO_DISPATCH_TOKEN` is absent from the Dependabot secret store. See [Dependency Update Workflow](../../notes/DEPENDENCY_UPDATE_WORKFLOW.md).
 
 ---
 
@@ -138,6 +140,6 @@ python scripts/check_doc_links.py
 
 ---
 
-**Last Updated:** March 3, 2026
-**Version:** 0.4.2
+**Last Updated:** October 5, 2026
+**Version:** 0.4.3
 **Status:** Active
