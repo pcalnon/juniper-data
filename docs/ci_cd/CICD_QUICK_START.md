@@ -2,9 +2,9 @@
 
 ## Run juniper-data CI Checks Locally in 5 Minutes
 
-**Version:** 0.4.2
+**Version:** 0.4.3
 **Status:** Active
-**Last Updated:** March 3, 2026
+**Last Updated:** October 5, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -128,6 +128,8 @@ python scripts/check_doc_links.py
 
 **Lockfile check fails in CI**: Regenerate with `uv pip compile pyproject.toml --extra api --extra observability --extra mnist --extra equities -o requirements.lock`.
 
+**Grouped Dependabot PR**: The PR table is the requirements-file bump. The `[dependabot skip] Update requirements.lock` commit is a separate `--upgrade` compile and can add transitives (FastAPI 0.142 pulls `opentelemetry-api`). The service does not enable that exporter. See [Grouped minor bumps and the Docker lock](../ENVIRONMENT_SETUP.md#grouped-minor-bumps-and-the-docker-lock).
+
 ---
 
 ## Next Steps
@@ -138,6 +140,6 @@ python scripts/check_doc_links.py
 
 ---
 
-**Last Updated:** March 3, 2026
-**Version:** 0.4.2
+**Last Updated:** October 5, 2026
+**Version:** 0.4.3
 **Status:** Active

@@ -1,6 +1,6 @@
 # Developer Cheatsheet -- juniper-data
 
-**Version**: 0.4.3 | **Date**: 2026-09-05 | **Project**: juniper-data -- Dataset Generation REST Service (FastAPI)
+**Version**: 0.4.4 | **Date**: 2026-10-05 | **Project**: juniper-data -- Dataset Generation REST Service (FastAPI)
 
 ---
 
@@ -250,6 +250,8 @@ juniper-data uses **ruff** (NOT black/isort/flake8). Config in `pyproject.toml`:
 
 Metrics use `juniper_data_` namespace. Pattern: `juniper_data_<subsystem>_<name>_<unit>`. Add custom metrics in `juniper_data/api/observability.py` using `prometheus_client` (Counter, Gauge, Histogram).
 
+FastAPI 0.142 can put `opentelemetry-api` in `requirements.lock` (`# via fastapi`). `create_app` does not pass `telemetry`. The API proxies do not export spans. `OTEL_EXPORTER_OTLP_ENDPOINT` without the SDK logs `FastAPI automatic telemetry configuration failed` and the process still starts.
+
 > See: `juniper_data/api/observability.py` | [Observability Guide](../../juniper-deploy/docs/OBSERVABILITY_GUIDE.md)
 
 ---
@@ -304,6 +306,8 @@ pre-commit install --hook-type pre-push  # coverage gate (one-time)
 | Equities `422` / `InputTooLargeError` | Default universe is 503 names; cap is 14 | Pass `symbols` ≤ cap, or set `allow_truncation=true` / `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION` |
 | Equities generate hangs / times out | Uncached fan-out still costs ~2.1 s/symbol | Keep `use_cache=True`; do not raise the cap without re-measuring |
 | Equities `total_shares` all zeros | SEC returned no facts; default `fundamentals_fill="zero"` | Check CIK / logs; try `fundamentals_fill="nan"`; do not read 0 as "no shares" |
+| Dependabot table has no `opentelemetry-api`, lockfile does | FastAPI 0.142, `lockfile-update.yml` `--upgrade` | Expected transitive (`# via fastapi`). Service does not export OTEL. See [Grouped minor bumps](ENVIRONMENT_SETUP.md#grouped-minor-bumps-and-the-docker-lock) |
+| `FastAPI automatic telemetry configuration failed` at startup | `OTEL_EXPORTER_OTLP_*` endpoint set, SDK not installed | Process still starts. Unset the endpoint, or set `OTEL_SDK_DISABLED=true`. There is no `telemetry` setting on this app |
 
 ---
 

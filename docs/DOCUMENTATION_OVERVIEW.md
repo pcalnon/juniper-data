@@ -2,8 +2,8 @@
 
 ## Complete Navigation Guide to Juniper Data Documentation
 
-**Version:** 0.4.2
-**Last Updated:** March 3, 2026
+**Version:** 0.4.3
+**Last Updated:** October 5, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -74,7 +74,7 @@
 
 **What:** Complete environment configuration from scratch
 **Audience:** New developers and CI/CD setup
-**Key contents:** Conda environment, dependency groups, environment variables, verification
+**Key contents:** Conda environment, dependency groups, grouped Dependabot pin surfaces, environment variables, verification
 
 #### 4. [AGENTS.md](../AGENTS.md)
 
@@ -262,6 +262,6 @@ See [DOCUMENTATION_TEMPLATE_STANDARD.md](../../notes/DOCUMENTATION_TEMPLATE_STAN
 
 ---
 
-**Last Updated:** March 3, 2026
-**Version:** 0.4.2
+**Last Updated:** October 5, 2026
+**Version:** 0.4.3
 **Maintainer:** Paul Calnon

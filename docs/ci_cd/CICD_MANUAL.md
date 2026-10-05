@@ -2,9 +2,9 @@
 
 ## Comprehensive CI/CD Pipeline Guide for juniper-data
 
-**Version:** 0.4.2
+**Version:** 0.4.3
 **Status:** Active
-**Last Updated:** March 3, 2026
+**Last Updated:** October 5, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -211,13 +211,18 @@ Both stages use `attestations: false` and SHA-pinned actions. Version is extract
 
 Automatically regenerates `requirements.lock` when Dependabot updates dependencies.
 
-- **Trigger**: Push to `dependabot/pip/**` branches
-- **Condition**: Only runs for `dependabot[bot]` actor
+- **Trigger**: Push to `dependabot/pip/**` (actor must be `dependabot[bot]`), and `pull_request` when `pyproject.toml` changes on a same-repo branch other than `release/**`
 - Runs `uv pip compile pyproject.toml --extra api --extra observability --extra mnist --extra equities --upgrade -o requirements.lock`
 - Uses `CROSS_REPO_DISPATCH_TOKEN` (not `GITHUB_TOKEN`) so the push re-triggers CI
 - Commits with `[dependabot skip]` prefix to prevent Dependabot re-processing
 
-The workflow only updates `requirements.lock`, which is generated from `pyproject.toml` for Docker and CI reproducibility. Dependabot PRs that target `conf/requirements.txt` or `conf/requirements-ORIG.txt` are changing the legacy/local setup snapshot used by `util/setup_environment.bash`; keep those two files in sync and do not expect the lockfile workflow to rewrite them.
+The workflow only updates `requirements.lock`, which is generated from `pyproject.toml` for Docker and CI reproducibility. The `push` trigger has no path filter: any `dependabot/pip/**` push from `dependabot[bot]` recompiles with `--upgrade`, including a grouped minor bump that never edits `pyproject.toml`. Pins can move inside the existing floors, and a new transitive can appear. The Dependabot PR table lists the requirements files Dependabot edited (`conf/requirements.txt`, `conf/requirements-ORIG.txt`, `conf/requirements_ci.txt`). It does not list that lockfile diff. Read the `[dependabot skip] Update requirements.lock` commit.
+
+`conf/requirements.txt` and `conf/requirements-ORIG.txt` are the legacy snapshot pair used by `util/setup_environment.bash`. Keep those two floors in sync. `conf/requirements_ci.txt` is a separate committed freeze; the `dependency-docs` job uploads another freeze via `juniper-generate-dep-docs` and does not commit it. Those freezes and `requirements.lock` are allowed to disagree.
+
+When `CROSS_REPO_DISPATCH_TOKEN` is missing from the Dependabot secret store, the job logs a notice and skips. The lockfile freshness gate still runs in CI. It resolves under the committed lock (no `--upgrade`), so a skipped regen does not fail the gate merely because a newer transitive exists.
+
+FastAPI 0.142 records `opentelemetry-api` in the lock (`# via fastapi`). `create_app` does not pass `telemetry`, and the image does not install the OpenTelemetry SDK. Request spans stay off unless a real provider replaces the API proxies. An `OTEL_EXPORTER_OTLP_*` endpoint makes startup log `FastAPI automatic telemetry configuration failed` and continue. See [Grouped minor bumps and the Docker lock](../ENVIRONMENT_SETUP.md#grouped-minor-bumps-and-the-docker-lock).
 
 ---
 
@@ -360,7 +365,7 @@ See [PyPI Publishing Procedure](../../../juniper-ml/notes/JUNIPER_2026-06-18_JUN
 uv pip compile pyproject.toml --extra api --extra observability --extra mnist --extra equities -o requirements.lock
 ```
 
-**Dependabot PR missing lockfile update**: The `lockfile-update.yml` workflow handles `requirements.lock` automatically when the branch matches `dependabot/pip/**` and the actor is `dependabot[bot]`. If the PR only changes `conf/requirements.txt` and `conf/requirements-ORIG.txt`, a lockfile update may not be needed.
+**Dependabot PR missing lockfile update**: `lockfile-update.yml` runs for `dependabot[bot]` on `dependabot/pip/**`. A missing `[dependabot skip]` commit means the lock was already current, or `CROSS_REPO_DISPATCH_TOKEN` was absent from the Dependabot secret store (the job logs a notice and skips). The freshness gate does not demand `--upgrade`. A present lock commit can add packages the PR table never names; review that diff. See [Grouped minor bumps and the Docker lock](../ENVIRONMENT_SETUP.md#grouped-minor-bumps-and-the-docker-lock).
 
 **CodeQL findings**: Review in GitHub Security tab. These are informational and don't block the merge quality gate.
 

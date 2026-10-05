@@ -1,8 +1,8 @@
 # Juniper Data Reference
 
-**Version:** 0.4.3
+**Version:** 0.4.4
 **Status:** Active
-**Last Updated:** September 5, 2026
+**Last Updated:** October 5, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -817,6 +817,8 @@ juniper-data/
 |---------|---------|---------|
 | `prometheus-client` | >= 0.20.0 | Metrics export |
 | `sentry-sdk[fastapi]` | >= 2.0.0 | Error tracking |
+
+FastAPI 0.142's lock compile records `opentelemetry-api` (`# via fastapi`). That package is not an observability extra. `create_app` (`juniper_data/api/app.py`) does not pass `telemetry` to `FastAPI()`, and the image does not install `opentelemetry-sdk`. Request instrumentation stays off while the global providers are the API proxies. The lifespan calls `configure_sentry` (`sentry_traces_sample_rate` default 0.1) and enables Prometheus only when `JUNIPER_DATA_METRICS_ENABLED` is true. An `OTEL_EXPORTER_OTLP_ENDPOINT` (or per-signal endpoint) makes lifespan log `FastAPI automatic telemetry configuration failed` and continue. `OTEL_SDK_DISABLED=true` skips the attempt. See [Grouped minor bumps and the Docker lock](ENVIRONMENT_SETUP.md#grouped-minor-bumps-and-the-docker-lock).
 
 ### ARC-AGI (optional: `pip install -e ".[arc-agi]"`)
 
@@ -1761,7 +1763,7 @@ Relocated verbatim from `AGENTS.md` (P3 of the shared-session-memory plan) so it
 | **Security Scan** | `security-scan.yml` | Push, PR | Gitleaks + Bandit SARIF |
 | **Publish** | `publish.yml` | GitHub release | TestPyPI -> PyPI (Trusted Publishing/OIDC) |
 | **Publish container image** | `publish-image.yml` | GitHub release (`v*`), PR touching image inputs (build-only), manual | GHCR multi-arch image (amd64 + arm64); asserts no torch / CUDA stack inside the image; never a required check |
-| **Lockfile Update** | `lockfile-update.yml` | Schedule, manual | Update `requirements.lock` |
+| **Lockfile Update** | `lockfile-update.yml` | Push to `dependabot/pip/**` by `dependabot[bot]`; `pull_request` on `pyproject.toml` (not `release/**`) | Recompile `requirements.lock` with `--upgrade` (`api`, `observability`, `mnist`, `equities`) |
 | **Sequence Safety** | `sequence-safety.yml` | PR | Advisory per-PR symbol-loss + docs-deletion screens via `juniper-ci-tools` (`--scope 'juniper_data/**'`); never required, never blocks a merge |
 | **Main Verify** | `main-verify.yml` | Push (main) | Bypass-proof post-merge compositional-loss net (screens-only, advisory); stable-title failure-issue upsert + catch-up base |
 
@@ -1860,6 +1862,6 @@ Rollout and rationale: [juniper-ml#434](https://github.com/pcalnon/juniper-ml/is
 
 ---
 
-**Last Updated:** September 5, 2026
-**Version:** 0.4.3
+**Last Updated:** October 5, 2026
+**Version:** 0.4.4
 **Maintainer:** Paul Calnon

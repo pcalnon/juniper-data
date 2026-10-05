@@ -2,9 +2,9 @@
 
 ## juniper-data CI/CD Jobs, Hooks, and Configuration
 
-**Version:** 0.4.2
+**Version:** 0.4.3
 **Status:** Active
-**Last Updated:** March 3, 2026
+**Last Updated:** October 5, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -32,7 +32,7 @@
 |------|---------|---------|
 | `.github/workflows/ci.yml` | Main CI pipeline (v0.4.0) | Push, PR, schedule, dispatch |
 | `.github/workflows/publish.yml` | PyPI publishing | GitHub Release published |
-| `.github/workflows/lockfile-update.yml` | Lockfile auto-update (v0.1.0) | Push to `dependabot/pip/**` |
+| `.github/workflows/lockfile-update.yml` | Lockfile auto-update (v0.1.0) | Push to `dependabot/pip/**` by `dependabot[bot]`; `pull_request` when `pyproject.toml` changes (skips `release/**`) |
 | `.github/workflows/codeql.yml` | Code quality analysis (v1.0.0) | Push to main/develop, PRs, weekly |
 
 ---
@@ -270,7 +270,9 @@ From `.github/dependabot.yml`:
 | Open PR limit | 5 |
 | Labels | `dependencies`, `security` |
 | Commit prefix | `deps` |
-| Grouping | Minor + patch updates together |
+| Grouping | Minor + patch updates together (`python-minor`, pattern `*`) |
+
+A `python-minor` PR edits every committed requirements file Dependabot matches. `requirements.lock` is not one of those files. `lockfile-update.yml` recompiles it with `--upgrade` on the Dependabot push (when `CROSS_REPO_DISPATCH_TOKEN` is in the Dependabot secret store) and commits `[dependabot skip] Update requirements.lock`. That diff can add a transitive the PR table does not name. FastAPI 0.142 adds `opentelemetry-api` (`# via fastapi`); `create_app` does not pass `telemetry`, and the SDK is not an extra. See [Grouped minor bumps and the Docker lock](../ENVIRONMENT_SETUP.md#grouped-minor-bumps-and-the-docker-lock).
 
 ### GitHub Actions
 
@@ -306,6 +308,6 @@ From `.github/dependabot.yml`:
 
 ---
 
-**Last Updated:** March 3, 2026
-**Version:** 0.4.2
+**Last Updated:** October 5, 2026
+**Version:** 0.4.3
 **Maintainer:** Paul Calnon
