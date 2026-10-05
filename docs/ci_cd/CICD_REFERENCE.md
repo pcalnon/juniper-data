@@ -2,9 +2,9 @@
 
 ## juniper-data CI/CD Jobs, Hooks, and Configuration
 
-**Version:** 0.4.2
+**Version:** 0.4.4
 **Status:** Active
-**Last Updated:** March 3, 2026
+**Last Updated:** October 5, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -34,6 +34,7 @@
 | `.github/workflows/publish.yml` | PyPI publishing | GitHub Release published |
 | `.github/workflows/lockfile-update.yml` | Lockfile auto-update (v0.1.0) | Push to `dependabot/pip/**` |
 | `.github/workflows/codeql.yml` | Code quality analysis (v1.0.0) | Push to main/develop, PRs, weekly |
+| `.github/workflows/publish-image.yml` | GHCR image (amd64 + arm64). Serve-and-version gate runs before any tag | Release `v*`, PR on image inputs (build-only), manual |
 
 ---
 
@@ -61,6 +62,12 @@
 |-----|-----------|-------------|---------|
 | `testpypi` | -- | `testpypi` | Publish to TestPyPI, verify install |
 | `pypi` | testpypi | `pypi` | Publish to production PyPI |
+
+### publish-image.yml serve check
+
+`util/check_image_serves.py` is invoked from the build job with `--dist juniper-data --module juniper_data --port 8100`. Build-only runs address `data-smoke:<arch>` and pass `pyproject.toml`'s version. Publish runs address `ghcr.io/pcalnon/juniper-data@<digest>`. On a release, `--expect-version` is the tag with the leading `v` removed, and the step exits before the script when that string disagrees with `pyproject.toml`.
+
+Defaults left in place: health path `/v1/health` (version field required), no enveloped path, 120s timeout. The merge job is the only tag writer. Contract: [Image serve-and-version gate](../REFERENCE.md#image-serve-and-version-gate).
 
 ---
 
@@ -306,6 +313,6 @@ From `.github/dependabot.yml`:
 
 ---
 
-**Last Updated:** March 3, 2026
-**Version:** 0.4.2
+**Last Updated:** October 5, 2026
+**Version:** 0.4.4
 **Maintainer:** Paul Calnon

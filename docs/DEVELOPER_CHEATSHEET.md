@@ -1,6 +1,6 @@
 # Developer Cheatsheet -- juniper-data
 
-**Version**: 0.4.3 | **Date**: 2026-09-05 | **Project**: juniper-data -- Dataset Generation REST Service (FastAPI)
+**Version**: 0.4.5 | **Date**: 2026-10-05 | **Project**: juniper-data -- Dataset Generation REST Service (FastAPI)
 
 ---
 
@@ -292,7 +292,7 @@ Metrics use `juniper_data_` namespace. Pattern: `juniper_data_<subsystem>_<name>
 | Coverage gate        | **pre-push** | 80% aggregate (env `COVERAGE_FAIL_UNDER`), 85% per-module             |
 | SOPS guard           | pre-commit   | Block unencrypted `.env` files                                       |
 
-GitHub Actions: `ci.yml`, `publish.yml`, `security-scan.yml`, `codeql.yml`, `lockfile-update.yml`.
+GitHub Actions: `ci.yml`, `publish.yml`, `publish-image.yml`, `security-scan.yml`, `codeql.yml`, `lockfile-update.yml`. `publish-image.yml` is not a required check. Its serve-and-version gate is [Image serve-and-version gate](REFERENCE.md#image-serve-and-version-gate).
 
 ```bash
 pre-commit install                       # install hooks (one-time)
@@ -321,6 +321,7 @@ pre-commit install --hook-type pre-push  # coverage gate (one-time)
 | Equities `total_shares` all zeros | SEC returned no facts under `fundamentals_fill="zero"` (the default is `"nan"` since 2026-09-05) | Check CIK / logs; try `fundamentals_fill="nan"`; do not read 0 as "no shares" |
 | juniper-recurrence refuses an `equities_seq` artifact: `X_train has non-finite values` | Bare defaults: `fundamentals_fill="nan"` leaves NaN in `X` columns 7, 8 and 14 | Send the [recurrence-ready bundle](REFERENCE.md#equities-sequence-recurrence-ready-parameters) |
 | Equities `400` naming `purchase_date`, `start_date` and `fundamentals_fill='drop'` | A purchase after the start under `drop` (W1.8): the rows before it have no cost basis | Set `purchase_date` on or before `start_date`, or use `fundamentals_fill="nan"` to keep those rows |
+| Image publish: import is green, serve step fails | Metadata, `juniper_data.__version__`, and `/v1/health` `version` disagree, or the release tag (minus `v`) disagrees with `pyproject.toml` | The digest may already be in GHCR; the merge job writes no tag. See [Image serve-and-version gate](REFERENCE.md#image-serve-and-version-gate) |
 
 ---
 

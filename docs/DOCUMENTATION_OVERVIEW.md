@@ -2,8 +2,8 @@
 
 ## Complete Navigation Guide to Juniper Data Documentation
 
-**Version:** 0.4.2
-**Last Updated:** March 3, 2026
+**Version:** 0.4.5
+**Last Updated:** October 5, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -143,6 +143,8 @@ See the [juniper-data-client documentation](https://github.com/pcalnon/juniper-d
 | [CICD_MANUAL.md](ci_cd/CICD_MANUAL.md) | Full CI/CD pipeline guide | ~400 |
 | [CICD_REFERENCE.md](ci_cd/CICD_REFERENCE.md) | Jobs, hooks, environment variables reference | ~250 |
 
+The GHCR publish check — `GET /v1/health` plus one version on metadata, `juniper_data.__version__`, and that body, before any tag — is [Image serve-and-version gate](REFERENCE.md#image-serve-and-version-gate). The manual and the CI reference point at the same section.
+
 ### API Documentation
 
 | Document | Purpose | Lines |
@@ -262,6 +264,6 @@ See [DOCUMENTATION_TEMPLATE_STANDARD.md](../../notes/DOCUMENTATION_TEMPLATE_STAN
 
 ---
 
-**Last Updated:** March 3, 2026
-**Version:** 0.4.2
+**Last Updated:** October 5, 2026
+**Version:** 0.4.5
 **Maintainer:** Paul Calnon

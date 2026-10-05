@@ -2,9 +2,9 @@
 
 ## Comprehensive CI/CD Pipeline Guide for juniper-data
 
-**Version:** 0.4.2
+**Version:** 0.4.4
 **Status:** Active
-**Last Updated:** March 3, 2026
+**Last Updated:** October 5, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -18,6 +18,7 @@
    - [publish.yml -- PyPI Publishing](#publishyml----pypi-publishing)
    - [lockfile-update.yml -- Dependency Lockfile Auto-Update](#lockfile-updateyml----dependency-lockfile-auto-update)
    - [codeql.yml -- Code Quality Analysis](#codeqlyml----code-quality-analysis)
+   - [publish-image.yml -- Container Image](#publish-imageyml----container-image)
 4. [Pre-commit Hooks](#pre-commit-hooks)
    - [Hook Overview](#hook-overview)
    - [File Checks](#file-checks)
@@ -71,6 +72,7 @@ pre-commit ──┬─→ unit-tests ──┬─→ build ──→ dependency
 | `publish.yml`         | No                   | No                  | No            | No                  | Yes     | No     |
 | `lockfile-update.yml` | No                   | dependabot branches | No            | No                  | No      | No     |
 | `codeql.yml`          | Yes                  | No                  | Yes (to main) | Weekly Mon 6 AM UTC | No      | No     |
+| `publish-image.yml`   | No                   | No                  | Image inputs    | No                  | `v*`    | Yes    |
 
 ---
 
@@ -221,6 +223,17 @@ The workflow only updates `requirements.lock`, which is generated from `pyprojec
 
 ---
 
+### publish-image.yml -- Container Image
+
+Publishes `ghcr.io/pcalnon/juniper-data` as one manifest for linux/amd64 and linux/arm64. It is not a required check, and it does not run as part of `publish.yml`.
+
+- **Build-only** (pull request touching image inputs, or a manual run with `push` left false): load `data-smoke:<arch>`, no registry login. Smoke-test the import, assert CPU-only (`EXPECT_TORCH=absent`), scan for credentials, then run the serve-and-version check against `pyproject.toml`'s version.
+- **Publish** (a `v*` release, or a manual run with `push` true): push each arch by digest with no tag, run the same content checks plus the serve check against that digest, then let the merge job write tags. A release's expected version is the tag minus the leading `v`, and the job stops when that string disagrees with `pyproject.toml`.
+
+The serve check is `util/check_image_serves.py --dist juniper-data --module juniper_data --port 8100`. It starts the image `CMD` and requires `GET /v1/health` to return 200 with a `version` equal to the installed package metadata and to `juniper_data.__version__`. Full contract, including what a failed check leaves in GHCR: [Image serve-and-version gate](../REFERENCE.md#image-serve-and-version-gate).
+
+---
+
 ### codeql.yml -- Code Quality Analysis
 
 GitHub CodeQL semantic analysis for Python.
@@ -341,6 +354,7 @@ The `required-checks` job in ci.yml acts as the merge quality gate. All of these
 3. **TestPyPI stage**: Build, verify, publish, install-test (5-min environment wait)
 4. **PyPI stage**: Same process, requires manual reviewer approval
 5. Approve the PyPI deployment via GitHub environment approval or `gh api`
+6. The same release event starts `publish-image.yml` when the tag starts with `v`. That workflow is independent: PyPI success does not prove the image serves or that its tag matches the package. See [publish-image.yml](#publish-imageyml----container-image).
 
 See [PyPI Publishing Procedure](../../../juniper-ml/notes/JUNIPER_2026-06-18_JUNIPER-ECOSYSTEM_PYPI-PUBLISH-PROCEDURE.md) for ecosystem-wide publishing lessons.
 
@@ -365,6 +379,8 @@ uv pip compile pyproject.toml --extra api --extra observability --extra mnist --
 **CodeQL findings**: Review in GitHub Security tab. These are informational and don't block the merge quality gate.
 
 **TestPyPI publish fails**: Check that the release tag matches the version in `pyproject.toml`. Version is extracted by stripping the `v` prefix from the tag.
+
+**Image job fails the serve-and-version step**: The arch was already pushed by digest. No tag is written unless every arch exports its digest. Read the `::error::` from `util/check_image_serves.py`: metadata, `juniper_data.__version__`, and `/v1/health` `version` must all equal the expected `X.Y.Z`. On a release that value is the tag without `v`, and it must equal `pyproject.toml`. See [Image serve-and-version gate](../REFERENCE.md#image-serve-and-version-gate).
 
 **Coverage drops after push**: Run `python scripts/check_module_coverage.py --run-tests` locally to identify modules below the 85% threshold.
 

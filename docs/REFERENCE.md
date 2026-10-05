@@ -1,8 +1,8 @@
 # Juniper Data Reference
 
-**Version:** 0.4.3
+**Version:** 0.4.5
 **Status:** Active
-**Last Updated:** September 5, 2026
+**Last Updated:** October 5, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -34,6 +34,7 @@
 - [Equities Symbol Cap](#equities-symbol-cap)
 - [Equities Sequence: Recurrence-Ready Parameters](#equities-sequence-recurrence-ready-parameters)
 - [CI/CD Pipeline Reference](#cicd-pipeline-reference)
+- [Image serve-and-version gate](#image-serve-and-version-gate)
 - [Additional Resources](#additional-resources)
 
 ---
@@ -1612,8 +1613,8 @@ Relocated verbatim from `AGENTS.md` (P3 of the shared-session-memory plan) so it
 - **Build**: Multi-stage (builder -> runtime) using `python:3.14-slim`
 - **User**: Non-root `juniper:juniper` (UID 1000, GID 1000)
 - **Port**: 8100 (exposed)
-- **Health Check**: `curl -f http://localhost:8100/v1/health` (30s interval, 10s timeout, 3 retries)
-- **Entry Point**: `python -m juniper_data`
+- **Health Check**: the image `HEALTHCHECK` is `python -c` plus `urllib` against `http://localhost:8100/v1/health` (30s interval, 10s timeout, 5s start period, 3 retries). The publish workflow's serve-and-version gate is a separate check; see [Image serve-and-version gate](#image-serve-and-version-gate).
+- **Command**: `CMD ["python", "-m", "juniper_data"]`. There is no `ENTRYPOINT`, so `docker run IMG python -c ...` replaces that command. The serve check starts the image with no command override, which is how a deployment runs it.
 
 ### Environment Variables
 
@@ -1839,10 +1840,69 @@ Relocated verbatim from `AGENTS.md` (P3 of the shared-session-memory plan) so it
 | **CodeQL** | `codeql.yml` | Push, PR, schedule | GitHub code scanning |
 | **Security Scan** | `security-scan.yml` | Push, PR | Gitleaks + Bandit SARIF |
 | **Publish** | `publish.yml` | GitHub release | TestPyPI -> PyPI (Trusted Publishing/OIDC) |
-| **Publish container image** | `publish-image.yml` | GitHub release (`v*`), PR touching image inputs (build-only), manual | GHCR multi-arch image (amd64 + arm64); asserts no torch / CUDA stack inside the image; never a required check |
+| **Publish container image** | `publish-image.yml` | GitHub release (`v*`), PR touching image inputs (build-only), manual | GHCR multi-arch image (amd64 + arm64). Before any tag: CPU-only (`EXPECT_TORCH=absent`), credential scan, and the [serve-and-version gate](#image-serve-and-version-gate). Never a required check |
 | **Lockfile Update** | `lockfile-update.yml` | Schedule, manual | Update `requirements.lock` |
 | **Sequence Safety** | `sequence-safety.yml` | PR | Advisory per-PR symbol-loss + docs-deletion screens via `juniper-ci-tools` (`--scope 'juniper_data/**'`); never required, never blocks a merge |
 | **Main Verify** | `main-verify.yml` | Push (main) | Bypass-proof post-merge compositional-loss net (screens-only, advisory); stable-title failure-issue upsert + catch-up base |
+
+### Image serve-and-version gate
+
+`publish-image.yml` is a separate workflow from `publish.yml`. A green PyPI publish does not run these checks. The image workflow is never a required status check.
+
+An import smoke test used to be the last word on the image. That passes an image that starts and serves nothing, and an image whose package version is not the tag it will be pulled as. `util/check_image_serves.py` runs on the runner (stdlib only; it drives `docker`) and is the check that closes both gaps.
+
+#### When it runs
+
+| Event | Image the check addresses | Registry login | Expected version |
+|-------|---------------------------|----------------|------------------|
+| Pull request whose paths include `Dockerfile`, `requirements.lock`, `pyproject.toml`, `juniper_data/**`, `util/check_image_cpu_only.py`, `util/check_image_no_secrets.py`, `util/check_image_serves.py`, or this workflow | Local load `data-smoke:<arch>` (`amd64` and `arm64`, native runners). Nothing is pushed | None | `pyproject.toml` `project.version` |
+| `workflow_dispatch` with `push` left false (the default) | Same local load | None | `pyproject.toml` `project.version` |
+| GitHub release whose tag starts with `v` | The digest just pushed, `ghcr.io/pcalnon/juniper-data@sha256:…` | `GITHUB_TOKEN` | The tag with the leading `v` removed. That string must equal `pyproject.toml` before the script runs |
+| `workflow_dispatch` with `push` true | The digest just pushed | `GITHUB_TOKEN` | `pyproject.toml` `project.version`. The merge job's tag is `dispatch-<sha>` |
+
+A release whose tag does not start with `v` skips the build job, so it publishes neither the image nor `:latest`.
+
+#### What the script requires
+
+CI invokes it as:
+
+```bash
+python3 util/check_image_serves.py \
+  --image <ref> \
+  --dist juniper-data \
+  --module juniper_data \
+  --port 8100 \
+  --expect-version <X.Y.Z>
+```
+
+The workflow leaves the script defaults in place: `--health-path /v1/health`, `--health-version required`, no `--enveloped-path`, `--timeout 120`. With that invocation the image passes only when all of these hold:
+
+1. The installed distribution `juniper-data` reports metadata version `--expect-version`.
+2. `juniper_data.__version__` equals that metadata. A module with no `__version__` fails. Inside the image, `__version__` is `importlib.metadata.version("juniper-data")`. The literal `"0.16.0"` in `juniper_data/__init__.py` is only the fallback for a source checkout where the distribution is not installed, and that literal can lag `pyproject.toml`.
+3. `docker run -d <image>` starts the image `CMD` (`python -m juniper_data`, no command override) and `GET /v1/health` answers 200 within 120 seconds. The probe is `docker exec` against `127.0.0.1:8100` inside the container, so no host port is published.
+4. The `/v1/health` JSON `version` field equals the metadata version. That route is the combined health check (`health_check`); it returns 200 while the process can respond and it carries `version`. The script does not call `/v1/health/live` or `/v1/health/ready`. A standalone container has no backing store, so a readiness 503 would be the probe working.
+
+`--expect-version` must match `X.Y.Z` (optional prerelease suffix). `v0.16.0`, `0.16`, `latest`, and a trailing space are usage errors (exit 2). The release step strips `v` before the call. Exit 0 is a pass, exit 1 is a failed check, exit 2 is usage or a missing `docker`.
+
+The script can also require `meta.version` on repeatable `--enveloped-path` values. This workflow does not pass that flag, so a juniper-data publish does not check envelope versions.
+
+#### Order relative to the tag
+
+On a publish the arch image is pushed **by digest, with no tag**, and only then scanned. Against that digest, in order: CPU-only (`EXPECT_TORCH=absent`: torch must not import, and no `nvidia-*`, `cuda-*`, or `triton` distribution may be installed), the credential scan (`util/check_image_no_secrets.py`), an import of `juniper_data`, then this serve check. Export of the digest artifact is the next step. The merge job (`needs: [build]`) is the only job that writes a tag. A failed serve check fails the arch job, so the digest is not exported and no tag is written. The untagged digest can already be in GHCR.
+
+Release tags are `X.Y.Z`, `X.Y`, and `latest`. The merge job fails a release that produced no `X.Y.Z` tag, including one that would otherwise publish `:latest` alone. Both `amd64` and `arm64` must appear in the manifest list.
+
+#### What not to do
+
+- Do not read a green import smoke test as "the image serves" or "the tag matches the package".
+- Do not retarget the check at `/v1/health/ready` for this image.
+- Do not pass a `v` prefix, a floating tag, or the source-checkout literal as `--expect-version`.
+- Do not expect a docs-only pull request to run this workflow. The path filter is the list in the table above.
+- Do not treat `publish.yml` (TestPyPI, then PyPI) as the image gate. They share the release event and nothing else.
+
+#### Pins
+
+`TestEvaluate` and `TestPublishWorkflowRunsTheServeCheck` in `juniper_data/tests/unit/test_check_image_serves.py`. The unit tests drive `evaluate()` with synthetic observations and parse the workflow; the pull-request arm is what actually executes the script against a built image.
 
 ### Pre-Commit Hooks
 
@@ -1939,6 +1999,6 @@ Rollout and rationale: [juniper-ml#434](https://github.com/pcalnon/juniper-ml/is
 
 ---
 
-**Last Updated:** September 5, 2026
-**Version:** 0.4.3
+**Last Updated:** October 5, 2026
+**Version:** 0.4.5
 **Maintainer:** Paul Calnon

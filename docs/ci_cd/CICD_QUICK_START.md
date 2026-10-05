@@ -2,9 +2,9 @@
 
 ## Run juniper-data CI Checks Locally in 5 Minutes
 
-**Version:** 0.4.2
+**Version:** 0.4.4
 **Status:** Active
-**Last Updated:** March 3, 2026
+**Last Updated:** October 5, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -128,6 +128,8 @@ python scripts/check_doc_links.py
 
 **Lockfile check fails in CI**: Regenerate with `uv pip compile pyproject.toml --extra api --extra observability --extra mnist --extra equities -o requirements.lock`.
 
+**Image publish fails after a green import**: `publish-image.yml` also runs `util/check_image_serves.py`. `GET /v1/health` must return 200, and its `version`, `juniper_data.__version__`, and the installed `juniper-data` metadata must equal one `X.Y.Z`. On a release that value is the tag without a leading `v`, and it must match `pyproject.toml`. A docs-only change does not run the workflow. See [Image serve-and-version gate](../REFERENCE.md#image-serve-and-version-gate).
+
 ---
 
 ## Next Steps
@@ -138,6 +140,6 @@ python scripts/check_doc_links.py
 
 ---
 
-**Last Updated:** March 3, 2026
-**Version:** 0.4.2
+**Last Updated:** October 5, 2026
+**Version:** 0.4.4
 **Status:** Active
