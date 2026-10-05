@@ -19,6 +19,48 @@ regression target -- raw close / return / log-return, per ``regression_target``)
 
 See ``juniper-ml/notes/JUNIPER_2026-06-05_JUNIPER-RECURRENCE_RECURSE-DELTA-T-HANDLING.md`` §3
 (schema delta) and §6 (the dt / observed_mask contract).
+
+Recurrence-ready request (W1.1(a))
+----------------------------------
+juniper-recurrence cannot train on the bare defaults. Send the dataset half of the bundle
+explicitly to ``POST /v1/datasets``::
+
+    {"generator": "equities_seq",
+     "params": {"symbols": ["AAPL"], "fundamentals_fill": "drop",
+                "normalize_features": false, "regression_target": "log_return"}}
+
+``symbols`` is an explicit list within the 14-symbol cap: omitting it asks for the 503 bundled
+S&P 500 names, which the cap refuses. ``normalize_features: false`` is also the default and
+hashes to the same ``dataset_id``; it is stated so the request says what it relies on.
+
+The model half is the consumer's -- the juniper-recurrence ``POST /v1/train`` or
+``POST /v1/crossval`` body -- and is written here so an operator does not stop at the dataset::
+
+    {"readout": "rff", "ridge": 1.0, "rff_features": 256, "rff_gamma": "median"}
+
+Those four are not juniper-data params. ``EquitiesSeqParams`` ignores keys it does not declare,
+so sending them to ``POST /v1/datasets`` does nothing, silently. An omitted ``readout`` is the
+linear rung at the service's ``default_ridge`` (0.0 by default), and an RFF request that omits
+``ridge`` gets GCV.
+
+Why: at the bare defaults (``fundamentals_fill="nan"``, ``regression_target="next_close"``)
+columns 7, 8 and 14 of ``X`` (``total_shares``, ``market_cap``, ``days_since_report``) carry NaN
+before each ticker's first SEC filing, which the recurrence service refuses as non-finite
+``X_train`` (F-P1, juniper-data#409). Producer normalisation is a convenience for the happy
+path, not a cross-validation control -- it is fitted on the pooled ``train`` partition, and the
+walk-forward folds inside that partition inherit its statistics (the plan's R4 note) -- and the
+2026-10-04 measurement gave no reason to enable it (RFF at ridge 1.0: aggregate cross-validated
+r² -0.115 raw against -0.142 normalised).
+
+Under ``fundamentals_fill="drop"`` keep ``purchase_date`` on or before ``start_date``, or leave
+both at their defaults (a Saturday start and the Monday that opens the window): a purchase after
+the start is refused (W1.8). Pin ``start_date`` and ``end_date`` when the artifact must be
+reproducible, because ``end_date`` defaults to today.
+
+Sources, both in juniper-ml ``notes/``:
+``JUNIPER_2026-10-03_JUNIPER-RECURRENCE_EQUITIES-END-TO-END-AUDIT-AND-DEVELOPMENT-PLAN.md``
+(W1.1, F-P1, the R4 note) and ``JUNIPER_2026-10-04_JUNIPER-RECURRENCE_EQUITIES-CV-BLOWUP-INVESTIGATION.md``
+(§2.3(b), §3.3). Pinned by ``tests/unit/test_equities_seq_generator.py::TestRecurrenceReadyBundle``.
 """
 
 # Project:       Juniper
@@ -66,6 +108,12 @@ class EquitiesSeqGenerator:
 
     All methods are static (stateless, side-effect free aside from the shared
     on-disk download cache reused from ``EquitiesGenerator``).
+
+    For juniper-recurrence, do not call it with the bare defaults: send the
+    recurrence-ready bundle in the module docstring -- ``fundamentals_fill="drop"``,
+    ``normalize_features=False``, ``regression_target="log_return"`` and explicit
+    ``symbols`` -- and train with ``readout="rff"``, ``ridge=1.0``,
+    ``rff_features=256``, ``rff_gamma="median"`` on the recurrence side.
     """
 
     @staticmethod

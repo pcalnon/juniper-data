@@ -751,6 +751,26 @@ class TestGeneratorAvailability:
             # writing the list as the TWO-way set would fail on a correct artifact.
             assert set(npz.files) <= {"X_train", "y_train", "X_val", "y_val", "X_test", "y_test", "X_full", "y_full"}
 
+    @pytest.mark.parametrize("generator", ["equities", "equities_seq"])
+    def test_create_dataset_refuses_drop_with_a_later_purchase_before_the_cache(self, client: TestClient, generator: str) -> None:
+        """W1.8: ``drop`` with ``purchase_date`` after ``start_date`` is a 400, decided before the cache.
+
+        The refusal lives in the params model, which the route validates BEFORE it hashes the
+        dataset id and looks it up, so an artifact minted before the rule existed cannot answer the
+        refused request. Both seams below raise if the request gets that far.
+        """
+        from juniper_data.api.routes.generators import GENERATOR_REGISTRY
+
+        generator_class = GENERATOR_REGISTRY[generator]["generator"]
+        request = {"generator": generator, "params": {"symbols": ["AAPL"], "fundamentals_fill": "drop", "start_date": "2015-01-01", "purchase_date": "2016-01-04"}, "persist": True}
+        with patch.object(InMemoryDatasetStore, "get_meta", side_effect=AssertionError("the cache was consulted for a refused request")), patch.object(generator_class, "generate", side_effect=AssertionError("generate ran for a refused request")):
+            response = client.post("/v1/datasets", json=request)
+
+        assert response.status_code == 400
+        detail = response.json()["detail"]
+        assert detail.startswith("Invalid parameters:")
+        assert "start_date 2015-01-01" in detail and "purchase_date 2016-01-04" in detail and "fundamentals_fill='drop'" in detail
+
 
 @pytest.mark.unit
 class TestHealthEndpoint:

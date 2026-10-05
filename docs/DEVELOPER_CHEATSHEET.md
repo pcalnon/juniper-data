@@ -204,6 +204,21 @@ EquitiesParams(symbols=["AAPL", "MSFT", "AMZN"], max_symbols=2, allow_truncation
 
 ---
 
+## Equities sequence for juniper-recurrence
+
+The bare `equities_seq` defaults are untrainable by juniper-recurrence (NaN in `X` columns 7, 8 and 14). Send the documented bundle explicitly — the dataset half to juniper-data, the model half to juniper-recurrence:
+
+```text
+POST /v1/datasets              {"generator": "equities_seq", "params": {"symbols": ["AAPL"], "fundamentals_fill": "drop", "normalize_features": false, "regression_target": "log_return"}}
+recurrence /v1/train|crossval  {"readout": "rff", "ridge": 1.0, "rff_features": 256, "rff_gamma": "median"}
+```
+
+The model fields are not juniper-data params; sent to `POST /v1/datasets` they are silently ignored. Under `fundamentals_fill="drop"`, keep `purchase_date` on or before `start_date` (or leave both at their defaults): a later purchase is refused with 400.
+
+> See: [REFERENCE.md -- Equities Sequence: Recurrence-Ready Parameters](REFERENCE.md#equities-sequence-recurrence-ready-parameters)
+
+---
+
 ## Testing
 
 | Marker                                      | Scope                             |
@@ -303,7 +318,9 @@ pre-commit install --hook-type pre-push  # coverage gate (one-time)
 | Path traversal / file not found on `csv_import` | `file_path` outside `JUNIPER_DATA_IMPORT_DIR` | Put the file under the import dir and pass a relative path. This is not the 10 MB HTTP body limit. |
 | Equities `422` / `InputTooLargeError` | Default universe is 503 names; cap is 14 | Pass `symbols` ≤ cap, or set `allow_truncation=true` / `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION` |
 | Equities generate hangs / times out | Uncached fan-out still costs ~2.1 s/symbol | Keep `use_cache=True`; do not raise the cap without re-measuring |
-| Equities `total_shares` all zeros | SEC returned no facts; default `fundamentals_fill="zero"` | Check CIK / logs; try `fundamentals_fill="nan"`; do not read 0 as "no shares" |
+| Equities `total_shares` all zeros | SEC returned no facts under `fundamentals_fill="zero"` (the default is `"nan"` since 2026-09-05) | Check CIK / logs; try `fundamentals_fill="nan"`; do not read 0 as "no shares" |
+| juniper-recurrence refuses an `equities_seq` artifact: `X_train has non-finite values` | Bare defaults: `fundamentals_fill="nan"` leaves NaN in `X` columns 7, 8 and 14 | Send the [recurrence-ready bundle](REFERENCE.md#equities-sequence-recurrence-ready-parameters) |
+| Equities `400` naming `purchase_date`, `start_date` and `fundamentals_fill='drop'` | A purchase after the start under `drop` (W1.8): the rows before it have no cost basis | Set `purchase_date` on or before `start_date`, or use `fundamentals_fill="nan"` to keep those rows |
 
 ---
 

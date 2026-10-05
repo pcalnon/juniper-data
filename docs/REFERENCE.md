@@ -32,6 +32,7 @@
 - [Artifact Streaming](#artifact-streaming)
 - [Docker Reference](#docker-reference)
 - [Equities Symbol Cap](#equities-symbol-cap)
+- [Equities Sequence: Recurrence-Ready Parameters](#equities-sequence-recurrence-ready-parameters)
 - [CI/CD Pipeline Reference](#cicd-pipeline-reference)
 - [Additional Resources](#additional-resources)
 
@@ -1690,7 +1691,7 @@ When a cut is authorised, the generator places the descriptor on the reserved `"
 
 For each remaining ticker, `_condition_one` does one `yf.download` (class shares mapped `BRK.B` → `BRK-B`) plus, if a CIK is known, 1–2 SEC GETs (`dei` then `us-gaap` shares-outstanding), spaced by `_SEC_MIN_INTERVAL = 0.12` s.
 
-`use_cache` defaults `True` (`~/.cache/juniper_data/equities`, override `JUNIPER_DATA_EQUITIES_CACHE_DIR`). Yahoo is `download` only — not `Ticker.info`. Missing SEC facts + default `fundamentals_fill="zero"` writes `0.0`. A later download failure still skips with a warning; only an empty conditioned set raises `ValueError`. Extra: `pip install "juniper-data[equities]"`; missing extra → `501`.
+`use_cache` defaults `True` (`~/.cache/juniper_data/equities`, override `JUNIPER_DATA_EQUITIES_CACHE_DIR`). Yahoo is `download` only — not `Ticker.info`. Missing SEC facts under `fundamentals_fill="zero"` write `0.0`; the default is `"nan"` (since 2026-09-05), which leaves NaN. A later download failure still skips with a warning; only an empty conditioned set raises `ValueError`. Extra: `pip install "juniper-data[equities]"`; missing extra → `501`.
 
 ### Operator usage
 
@@ -1726,7 +1727,7 @@ Via `POST /v1/datasets`: `"generator": "equities"` / `"equities_seq"` with `"par
 - Do not add a second resolver in `equities_seq`. Inherit both the bound and the record.
 - Do not assume the default-universe prefix is the largest names — it is alphabetical.
 - Do not call `Ticker.info`. The Yahoo path is `yf.download` only.
-- Do not take `total_shares == 0` as "the company has no shares" under default fill.
+- Do not take `total_shares == 0` as "the company has no shares" under `fundamentals_fill="zero"`.
 
 ### Pins (land with #354)
 
@@ -1745,6 +1746,84 @@ Via `POST /v1/datasets`: `"generator": "equities"` / `"equities_seq"` with `"par
 `equities_seq` is covered by calling `EquitiesGenerator._resolve_symbols` and then attaching the same channel key. Re-measure with `util/ad-hoc/2026-09-04_measure_equities_payloads.py` before moving the constant. Keep SEC spacing at `_SEC_MIN_INTERVAL`. Full analysis: juniper-ml `notes/JUNIPER_2026-09-04_JUNIPER-DATA_EQUITIES-INGEST-SIZING-AND-FIELD-AVAILABILITY.md`.
 
 ---
+
+## Equities Sequence: Recurrence-Ready Parameters
+
+`equities_seq` at its bare defaults produces windows juniper-recurrence refuses to train on. The request below is the documented **recurrence-ready bundle**:
+work item W1.1(a) of juniper-ml `notes/JUNIPER_2026-10-03_JUNIPER-RECURRENCE_EQUITIES-END-TO-END-AUDIT-AND-DEVELOPMENT-PLAN.md`,
+with the values fixed by the 2026-10-04 measurement in juniper-ml `notes/JUNIPER_2026-10-04_JUNIPER-RECURRENCE_EQUITIES-CV-BLOWUP-INVESTIGATION.md` §3.3.
+It is a convention for callers, not a preset: the service applies none of it for you, and an omitted key falls back to the default in the table.
+
+### Dataset half — `POST /v1/datasets`
+
+```json
+{"generator": "equities_seq", "params": {"symbols": ["AAPL"], "fundamentals_fill": "drop", "normalize_features": false, "regression_target": "log_return"}}
+```
+
+| Param | Bundle value | Default (`generators/equities/defaults.py`) | Allowed (`generators/equities/params.py`) |
+|-------|--------------|---------------------------------------------|-------------------------------------------|
+| `fundamentals_fill` | `"drop"` | `"nan"` (`EQUITIES_DEFAULT_FUNDAMENTALS_FILL`) | `"zero"`, `"nan"`, `"drop"` |
+| `normalize_features` | `false` | `false` (`EQUITIES_DEFAULT_NORMALIZE_FEATURES`) | `true`, `false` |
+| `regression_target` | `"log_return"` | `"next_close"` (`EQUITIES_DEFAULT_REGRESSION_TARGET`) | `"next_close"`, `"return"`, `"log_return"` |
+| `symbols` | an explicit list, at most 14 names | `null`: the 503 bundled S&P 500 names, which the 14-symbol cap refuses | a list of tickers |
+
+`normalize_features: false` restates the default. It hashes to the same `dataset_id` as omitting it, because the id hashes `params.model_dump()`, which fills defaults; it is written so the request says what it relies on.
+
+**Why.** At the bare defaults (`fundamentals_fill="nan"`, `regression_target="next_close"`) columns 7, 8 and 14 of `X` (`total_shares`, `market_cap`, `days_since_report`) carry NaN
+before each ticker's first SEC filing, which the recurrence service refuses as non-finite `X_train` (F-P1, juniper-data#409).
+Producer normalisation is a convenience for the happy path, not a cross-validation control — it is fitted on the pooled `train` partition, and the walk-forward folds inside
+that partition inherit its statistics (the plan's R4 note) — and the 2026-10-04 measurement gave no reason to enable it (RFF at ridge 1.0: aggregate cross-validated r² −0.115 raw against −0.142 normalised).
+
+### Model half — the juniper-recurrence request
+
+The bundle does not stop at the dataset. These four go in the juniper-recurrence `POST /v1/train` or `POST /v1/crossval` body (`TrainRequest` / `CrossValRequest` in `juniper_recurrence/schemas.py`):
+
+```json
+{"readout": "rff", "ridge": 1.0, "rff_features": 256, "rff_gamma": "median"}
+```
+
+| Field | Value | Why it is stated |
+|-------|-------|------------------|
+| `readout` | `"rff"` | Omitted, it is the linear rung at the service's `default_ridge` (0.0 by default): the configuration that blew up on this data (aggregate cross-validated r² −18,081 on 2026-10-03, −20,345 on 2026-10-04 — the class reproduces, the digits do not) |
+| `ridge` | `1.0` | Omitted on the RFF rung, it is GCV, whose selected penalty sat at the grid's upper edge (1000) in 15 of the matrix's 20 GCV folds |
+| `rff_features` | `256` | The RFF rung's default, stated so the request is self-describing |
+| `rff_gamma` | `"median"` | The RFF rung's default, stated so the request is self-describing |
+
+They are **not** juniper-data params. `EquitiesSeqParams` ignores keys it does not declare, so sending them to `POST /v1/datasets` does nothing, silently.
+
+Two more things the bundle leaves to the caller:
+
+- Under `fundamentals_fill="drop"`, keep `purchase_date` on or before `start_date`, or leave both at their defaults. A later purchase is refused (next subsection).
+- Pin `start_date` and `end_date` when the artifact must be reproducible: `end_date` defaults to today, so the same params mint different data on different days.
+
+### `cost_basis` under `fundamentals_fill="drop"` (W1.8)
+
+Applies to `equities` and `equities_seq` alike: both condition rows through `EquitiesGenerator._condition_one`, and both emit `cost_basis` as feature column 9.
+
+`cost_basis` is causal (APD-DATA-042): every row before the purchase session carries NaN, because no row may know a price from its own future.
+`drop` used to remove only the rows lacking shares, so a `purchase_date` after `start_date` shipped NaN `cost_basis` in an artifact the caller had asked to be complete (plan finding F-P2).
+
+This **applies the plan's recommended R3 pending the owner's ruling** (alternatives: a documented finite sentinel; dropping rows without refusing):
+
+| Request under `drop` | Outcome |
+|----------------------|---------|
+| `purchase_date` after `start_date`, at least one weekday apart | **400** `Invalid parameters: …`, naming both dates and the fill mode |
+| `purchase_date` on or before `start_date`, or only a weekend between them | Accepted; every emitted row carries a finite `cost_basis` |
+| A pre-purchase row arrives anyway (a provider row dated on a weekend, or before `start_date`) | Dropped exactly like a row without shares, with a `WARNING` naming the count |
+
+- **Where the refusal lives.** In `EquitiesParams._validate`, which the create route runs **before** it hashes the `dataset_id` and looks it up.
+  An artifact minted before the rule existed therefore cannot answer a request the rule now refuses; a refusal raised from `generate()` would run only on a cache miss.
+  It is the 400 of APD-DATA-014 (schema-valid, semantically wrong for this generator), the status the generator's other cross-field refusals already return, and it costs no download.
+- **"After" counts weekdays.** The defaults are `start_date="2000-01-01"`, a Saturday, and `purchase_date="2000-01-03"`, the Monday that opens that window.
+  A calendar-day comparison would refuse the defaults themselves, and with them juniper-canopy's two equities registry seeds and the bundle above, all of which send `drop` with the default dates.
+- **Exchange holidays are not modelled.** A start on a weekday holiday with a purchase on the next session (`2008-01-01` → `2008-01-02`) is refused. Set `purchase_date` to `start_date`; the basis is the same.
+- **`nan` and `zero` are unchanged.** A later purchase is accepted and the rows before it are emitted with a NaN `cost_basis`. Zero-fill does not reach `cost_basis`: 0.0 is a price a consumer would divide by.
+- **`generator_version` is unchanged** (`equities` 5.0.0, `equities_seq` 6.0.0). A refused request mints nothing and is refused before the cache lookup.
+  A request that still mints has no weekday between `start_date` and `purchase_date`, so its frame holds a pre-purchase row only if the provider returns one dated on a weekend or before `start_date`.
+  None of the 3,193,942 rows in the 556 OHLCV files of the development host's download cache is either, so every still-mintable request emits the arrays it emitted before, under the id it had before.
+
+Pins: `TestCostBasisUnderDrop` in `tests/unit/test_equities_generator.py`; `test_create_dataset_refuses_drop_with_a_later_purchase_before_the_cache` in `tests/unit/test_api_routes.py`;
+`TestRecurrenceReadyBundle` in `tests/unit/test_equities_seq_generator.py`.
 
 ---
 

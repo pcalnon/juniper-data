@@ -953,6 +953,26 @@ class EquitiesGenerator:
         on_or_before = frame.loc[frame.index <= purchase]
         basis = float(on_or_before[basis_field].iloc[-1]) if len(on_or_before) else float(frame[basis_field].iloc[0])
         basis_known_from = on_or_before.index[-1] if len(on_or_before) else frame.index[0]
+        # UNDER "drop", A PRE-PURCHASE ROW LEAVES THE FRAME LIKE A ROW WITHOUT SHARES (W1.8 / F-P2).
+        #
+        # ``drop`` used to remove only the rows lacking shares, so a purchase after the first
+        # session left NaN ``cost_basis`` in an artifact the caller had asked to be complete.
+        # The contradictory request -- ``purchase_date`` after ``start_date`` -- is refused in
+        # ``EquitiesParams`` before the dataset id is hashed. What reaches here can still carry a
+        # provider row that check cannot see (one dated on a weekend, or before ``start_date``).
+        # None of the 3,193,942 rows in the 556 OHLCV files of the development host's download
+        # cache is either (scanned 2026-10-05), so for real data this removes nothing; it exists
+        # so ``drop`` can promise a finite ``cost_basis`` without depending on the provider.
+        # Applies the plan's recommended R3, pending the owner's ruling.
+        #
+        # Index-based, not ``dropna(subset=["cost_basis"])``: only rows strictly before the basis
+        # session are pre-purchase. A NaN price ON the basis row is a different defect, and
+        # ``dropna`` would answer it by deleting the whole ticker.
+        if params.fundamentals_fill == "drop":
+            pre_purchase = frame.index < basis_known_from
+            if pre_purchase.any():
+                _logger.warning("equities: %s dropped %d row(s) dated before its purchase session %s under fundamentals_fill='drop'", ticker, int(pre_purchase.sum()), basis_known_from.date())
+                frame = frame.loc[~pre_purchase].copy()
         frame["cost_basis"] = np.where(frame.index >= basis_known_from, basis, np.nan)
 
         frame["name"] = info.get("name", ticker)

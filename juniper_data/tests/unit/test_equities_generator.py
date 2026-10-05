@@ -36,6 +36,7 @@ from juniper_data.core.artifacts import load_npz, save_npz  # noqa: E402
 from juniper_data.generators.equities import VERSION, EquitiesGenerator, EquitiesParams, get_schema  # noqa: E402
 from juniper_data.generators.equities import generator as eq_gen  # noqa: E402
 from juniper_data.generators.equities.defaults import EQUITIES_FEATURE_COLUMNS  # noqa: E402
+from juniper_data.generators.equities_seq import EquitiesSeqParams  # noqa: E402
 from juniper_data.tests.partitions import whole
 
 pytestmark = [pytest.mark.unit, pytest.mark.generators]
@@ -1601,3 +1602,129 @@ class TestTheOwnerRulingsOf20260909:
         assert meta is not None, "a stale series must not be reported as clean"
         assert "AAPL" in meta["degraded"]
         assert eq_gen.SHARES_QUALITY_STALE in meta["degraded"]["AAPL"]
+
+
+class TestCostBasisUnderDrop:
+    """W1.8 / F-P2: ``cost_basis`` under ``fundamentals_fill="drop"``.
+
+    ``cost_basis`` is causal (APD-DATA-042): every row before the purchase session carries NaN.
+    ``drop`` used to remove only the rows lacking shares, so a purchase after the first session
+    shipped NaN in an artifact the caller had asked to be complete. This applies the plan's
+    recommended R3, pending the owner's ruling (alternatives: a documented finite sentinel;
+    dropping rows without refusing): under ``drop`` that request is refused, and any
+    pre-purchase row that still arrives is dropped exactly like a missing-share row. ``nan``
+    and ``zero`` are unchanged, and ``test_nan_and_zero_still_emit_the_pre_purchase_rows`` pins
+    that scope. Plan: juniper-ml
+    ``notes/JUNIPER_2026-10-03_JUNIPER-RECURRENCE_EQUITIES-END-TO-END-AUDIT-AND-DEVELOPMENT-PLAN.md``.
+    """
+
+    @pytest.mark.parametrize("params_class", [EquitiesParams, EquitiesSeqParams], ids=["equities", "equities_seq"])
+    def test_a_purchase_after_the_start_is_refused_under_drop(self, params_class) -> None:
+        with pytest.raises(ValueError) as excinfo:
+            params_class(symbols=["AAPL"], start_date="2015-01-01", purchase_date="2016-01-04", fundamentals_fill="drop")
+        message = str(excinfo.value)
+        assert "start_date 2015-01-01" in message, "the refusal must name the start date"
+        assert "purchase_date 2016-01-04" in message, "the refusal must name the purchase date"
+        assert "fundamentals_fill='drop'" in message, "the refusal must name the fill mode"
+
+    @pytest.mark.parametrize(
+        ("start_date", "purchase_date", "refused"),
+        [
+            ("2000-01-01", "2000-01-03", False),  # the defaults: a Saturday start, and the Monday that opens the window
+            ("2000-01-01", "2000-01-02", False),  # Saturday -> Sunday: no session can lie between them
+            ("2008-01-02", "2008-01-02", False),  # the same day
+            ("2008-01-02", "2007-06-01", False),  # before the start: clamped forward to the first session, never NaN
+            ("2000-01-01", "2000-01-04", True),  # Monday 2000-01-03 lies between them
+            ("2008-01-02", "2008-01-03", True),  # one weekday apart
+            ("2008-01-01", "2008-01-02", True),  # 2008-01-01 is an exchange holiday, and holidays are NOT modelled
+            ("2008-1-2", "2008-1-3", True),  # unpadded, which the date-format check accepts: refused, not a parser error
+        ],
+        ids=["defaults", "weekend-only", "same-day", "purchase-first", "monday-between", "one-weekday", "holiday-not-modelled", "unpadded-dates"],
+    )
+    def test_after_means_at_least_one_weekday_between_the_dates(self, start_date: str, purchase_date: str, refused: bool) -> None:
+        """A plain ``purchase_date > start_date`` would refuse the generator's own defaults.
+
+        The holiday row records a known limit rather than a goal: without an exchange calendar a
+        weekday holiday counts as a possible session. ``purchase_date=start_date`` is the remedy
+        and yields the same basis, so a change that models holidays should flip that row on purpose.
+        """
+        if refused:
+            with pytest.raises(ValueError, match="fundamentals_fill='drop'"):
+                EquitiesParams(symbols=["AAPL"], start_date=start_date, purchase_date=purchase_date, fundamentals_fill="drop")
+        else:
+            params = EquitiesParams(symbols=["AAPL"], start_date=start_date, purchase_date=purchase_date, fundamentals_fill="drop")
+            assert params.fundamentals_fill == "drop"
+
+    def test_the_default_dates_and_the_callers_that_rely_on_them_are_accepted(self) -> None:
+        """juniper-canopy's two equities registry seeds and the documented recurrence bundle all
+        send ``drop`` with the default dates. A calendar-day comparison would refuse all three."""
+        assert pd.Timestamp("2000-01-01").dayofweek == 5 and pd.Timestamp("2000-01-03").dayofweek == 0
+        defaults = EquitiesParams()
+        assert (defaults.start_date, defaults.purchase_date) == ("2000-01-01", "2000-01-03")
+        five = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA"]
+        EquitiesParams(symbols=five, fundamentals_fill="drop", normalize_features=True)
+        EquitiesSeqParams(symbols=five, regression_target="return", fundamentals_fill="drop")
+        EquitiesSeqParams(symbols=["AAPL"], fundamentals_fill="drop", normalize_features=False, regression_target="log_return")
+
+    @pytest.mark.parametrize("purchase_date", ["2008-01-01", "2007-06-01", "2000-01-03"], ids=["on-the-start", "before-the-start", "the-default"])
+    def test_drop_with_a_purchase_on_or_before_the_start_is_finite(self, purchase_date: str) -> None:
+        frame = _ohlcv(seed=31)
+        shares = _shares()
+        params = EquitiesParams(symbols=["AAPL"], start_date="2008-01-01", end_date="2011-01-01", use_cache=False, fundamentals_fill="drop", purchase_date=purchase_date)
+        with _mocked({"AAPL": frame}, shares):
+            conditioned = EquitiesGenerator._condition_one("AAPL", {"cik": 320193}, params, "2011-01-01")
+            arrays = EquitiesGenerator.generate(params)
+
+        # The rows `drop` keeps for shares are the sessions on or after the first filing; the last
+        # one leaves because it has no next-day target. Nothing else may go.
+        first_filed = shares["filed"].min()
+        kept = frame.index[frame.index >= first_filed]
+        assert len(conditioned) == len(kept) - 1, "drop removed more than the rows lacking shares"
+        assert np.isfinite(conditioned["cost_basis"].to_numpy()).all(), "under drop every row must carry a cost basis"
+        # Every purchase here precedes every surviving row, so the basis is clamped forward to the
+        # first surviving session -- the per-ticker rule in the ``purchase_date`` description.
+        assert np.allclose(conditioned["cost_basis"].to_numpy(), float(frame.loc[kept[0], "Close"]))
+
+        basis_column = whole(arrays, "X")[:, _FEATURES.index("cost_basis")]
+        assert np.isfinite(basis_column).all(), "a NaN cost basis reached the emitted matrix under drop"
+        assert np.isfinite(whole(arrays, "X")).all(), "drop must emit a fully finite feature matrix"
+        assert int(whole(arrays, "date").min()) == int(kept[0].strftime("%Y%m%d")), "the series must start at the first session with shares"
+
+    @pytest.mark.parametrize("fill", ["nan", "zero"])
+    def test_nan_and_zero_still_emit_the_pre_purchase_rows(self, fill: str) -> None:
+        """R3 is scoped to ``drop``. Under the other two modes a later purchase is accepted and the
+        rows before it are still emitted with a NaN basis -- zero-fill does not reach ``cost_basis``,
+        because 0.0 is a price a consumer would divide by."""
+        frame = _ohlcv(seed=33)
+        purchase = "2009-01-05"
+        arrays = _generate(["AAPL"], {"AAPL": frame}, _shares(), purchase_date=purchase, fundamentals_fill=fill)
+        basis = whole(arrays, "X")[:, _FEATURES.index("cost_basis")]
+        missing = np.isnan(basis)
+        assert missing.any(), f"under {fill!r} the rows before the purchase must still be emitted"
+        first_known = int(np.argmax(~missing))
+        assert missing[:first_known].all() and not missing[first_known:].any(), "the NaN rows must be exactly the pre-purchase prefix"
+        assert int(whole(arrays, "date")[first_known]) == 20090105, "the basis must start at the purchase session"
+        expected = float(frame.loc[frame.index <= pd.Timestamp(purchase), "Close"].iloc[-1])
+        assert np.allclose(basis[~missing], np.float32(expected))
+
+    def test_drop_removes_a_pre_purchase_row_the_params_check_cannot_see(self, caplog: pytest.LogCaptureFixture) -> None:
+        """The params check counts weekdays, so a provider row dated on a weekend between the start
+        and the purchase reaches conditioning. Under ``drop`` it leaves exactly like a row without
+        shares; under ``nan`` it stays, with a NaN basis."""
+        frame = _ohlcv(start="2009-08-17", periods=60, seed=34)
+        saturday = frame.iloc[[0]].copy()
+        saturday.index = pd.DatetimeIndex([pd.Timestamp("2009-08-15")])
+        frame = pd.concat([saturday, frame])
+        shares = pd.DataFrame({"shares": [1_000_000_000.0], "filed": [pd.Timestamp("2009-08-14")]}, index=pd.to_datetime([pd.Timestamp("2009-06-30")]))
+        params = EquitiesParams(symbols=["AAPL"], start_date="2009-08-15", purchase_date="2009-08-17", end_date="2011-01-01", use_cache=False, fundamentals_fill="drop")
+
+        with _mocked({"AAPL": frame}, shares), caplog.at_level("WARNING", logger=eq_gen.__name__):
+            dropped = EquitiesGenerator._condition_one("AAPL", {"cik": 320193}, params, "2011-01-01")
+        assert pd.Timestamp("2009-08-15") not in dropped.index
+        assert np.isfinite(dropped["cost_basis"].to_numpy()).all()
+        assert len(dropped) == len(frame) - 2, "only the weekend row and the target-less last session may go"
+        assert "dropped 1 row(s) dated before its purchase session 2009-08-17" in caplog.text
+
+        with _mocked({"AAPL": frame}, shares):
+            kept = EquitiesGenerator._condition_one("AAPL", {"cik": 320193}, params.model_copy(update={"fundamentals_fill": "nan"}), "2011-01-01")
+        assert np.isnan(kept.loc[pd.Timestamp("2009-08-15"), "cost_basis"]), "nan mode must keep the row and its NaN basis"

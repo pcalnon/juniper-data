@@ -13,6 +13,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
+import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from juniper_data.core.constants import DEFAULT_GENERATOR_SEED
@@ -44,6 +45,56 @@ def _validate_date(label: str, value: str) -> None:
         raise ValueError(f"{label} must be an ISO date (YYYY-MM-DD), got {value!r}") from exc
 
 
+def _refuse_drop_with_a_later_purchase(fundamentals_fill: str, start_date: str, purchase_date: str) -> None:
+    """Refuse ``fundamentals_fill="drop"`` with a ``purchase_date`` after ``start_date``.
+
+    ``cost_basis`` is causal (APD-DATA-042): a row before the purchase session carries NaN,
+    because no row may know a price from its own future. ``drop`` removed only the rows that
+    lack shares, so a later purchase date left non-finite ``cost_basis`` in an artifact the
+    caller had asked to be complete (juniper-ml plan F-P2). Dropping those rows as well would
+    move the start of the series to the purchase date without saying so, which is a
+    contradiction in the request rather than a gap in the data.
+
+    This applies the plan's recommended R3, pending the owner's ruling (alternatives: a
+    documented finite sentinel; dropping rows without refusing). Plan: juniper-ml
+    ``notes/JUNIPER_2026-10-03_JUNIPER-RECURRENCE_EQUITIES-END-TO-END-AUDIT-AND-DEVELOPMENT-PLAN.md``,
+    W1.8.
+
+    WHERE: here, in the params model, not in ``generate()``. The create route validates
+    params BEFORE it hashes the ``dataset_id`` and before it looks the id up in the store, so
+    an artifact minted before this rule existed can never answer a request the rule now
+    refuses. A refusal raised from ``generate()`` runs only on a cache miss. It is also the
+    400 of APD-DATA-014 (schema-valid, semantically wrong for this generator), the status
+    every other cross-field refusal in ``_validate`` already returns, and it costs no download.
+
+    "AFTER" COUNTS WEEKDAYS, NOT CALENDAR DAYS. The defaults are ``start_date="2000-01-01"``,
+    a Saturday, and ``purchase_date="2000-01-03"``, the Monday that opens that window, so a
+    plain ``purchase_date > start_date`` would refuse the defaults themselves -- and with them
+    juniper-canopy's two equities registry seeds and the documented recurrence bundle, all of
+    which send ``drop`` with the default dates. No US equity session falls on a weekend, so a
+    weekend cannot separate the start from the purchase. Exchange holidays are not modelled:
+    a start on a weekday holiday followed by a purchase on the next session is refused, and
+    ``purchase_date=start_date`` is the remedy, which yields the same basis.
+
+    Raises:
+        ValueError: under ``drop``, when at least one weekday lies in
+            ``[start_date, purchase_date)``. The message names both dates and the fill mode.
+    """
+    if fundamentals_fill != "drop":
+        return
+    # Parsed with the format ``_validate_date`` accepted, not handed to numpy as strings: strptime
+    # takes an unpadded "2008-1-2", which numpy's datetime parser rejects with an unrelated error.
+    start_day = datetime.strptime(start_date, _DATE_FORMAT).date()
+    purchase_day = datetime.strptime(purchase_date, _DATE_FORMAT).date()
+    weekdays = int(np.busday_count(start_day, purchase_day))
+    if weekdays > 0:
+        raise ValueError(
+            f"purchase_date {purchase_date} is after start_date {start_date} under fundamentals_fill='drop' ({weekdays} weekday(s) apart). "
+            "Rows dated before the purchase have no cost basis, so 'drop' would have to delete them and the series would silently start at the purchase instead of at start_date. "
+            "Set purchase_date on or before start_date, move start_date to the purchase date, or use fundamentals_fill='nan' to keep those rows with a NaN cost_basis."
+        )
+
+
 class EquitiesParams(BaseModel):
     """Configuration parameters for the equities time-series generator.
 
@@ -71,7 +122,7 @@ class EquitiesParams(BaseModel):
     )
     purchase_date: str = Field(
         default=EQUITIES_DEFAULT_PURCHASE_DATE,
-        description="Cost-basis purchase date (YYYY-MM-DD); per-ticker clamped to the first available trading day.",
+        description="Cost-basis purchase date (YYYY-MM-DD); per-ticker clamped to the first available trading day. Rows before it carry a NaN cost_basis. Under fundamentals_fill='drop' a purchase_date after start_date (at least one weekday apart) is refused.",
     )
     basis_price_field: Literal["close", "adj_close"] = Field(
         default=EQUITIES_DEFAULT_BASIS_PRICE_FIELD,
@@ -79,7 +130,7 @@ class EquitiesParams(BaseModel):
     )
     fundamentals_fill: Literal["zero", "nan", "drop"] = Field(
         default=EQUITIES_DEFAULT_FUNDAMENTALS_FILL,
-        description="How to represent pre-2009 missing total_shares / market_cap: zero-fill, leave NaN, or drop rows.",
+        description="How to represent pre-2009 missing total_shares / market_cap: zero-fill, leave NaN, or drop rows. 'drop' also drops any row before the purchase session (its cost_basis is unknown) and refuses a purchase_date after start_date.",
     )
     regression_target: Literal["next_close", "return", "log_return"] = Field(
         default=EQUITIES_DEFAULT_REGRESSION_TARGET,
@@ -140,11 +191,13 @@ class EquitiesParams(BaseModel):
 
     @model_validator(mode="after")
     def _validate(self) -> EquitiesParams:
-        """Validate ratio bounds and date formats."""
+        """Validate ratio bounds, date formats, and the ``drop`` / purchase-date contradiction."""
         if self.train_ratio + self.val_ratio + self.test_ratio > 1.0:
             raise ValueError(f"train_ratio + val_ratio + test_ratio must not exceed 1.0, got {self.train_ratio} + {self.val_ratio} + {self.test_ratio}")
         _validate_date("start_date", self.start_date)
         _validate_date("purchase_date", self.purchase_date)
         if self.end_date is not None:
             _validate_date("end_date", self.end_date)
+        # After the date formats: the weekday count needs two well-formed dates.
+        _refuse_drop_with_a_later_purchase(self.fundamentals_fill, self.start_date, self.purchase_date)
         return self
