@@ -22,6 +22,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and fails that image when told to expect `0.16.0`. The script is the same one the four other image
   repos carry. `juniper_data/tests/unit/test_check_image_serves.py` (new, 22 tests) needs no Docker.
   This is item 5 of the juniper-ml container-registry rollout handoff.
+- **`equities_seq` documents the recurrence-ready request** (W1.1(a) of juniper-ml
+  `notes/JUNIPER_2026-10-03_JUNIPER-RECURRENCE_EQUITIES-END-TO-END-AUDIT-AND-DEVELOPMENT-PLAN.md`;
+  docs only, no behaviour change). The bare defaults are untrainable by juniper-recurrence: columns
+  7, 8 and 14 of `X` carry NaN before each ticker's first SEC filing (F-P1, juniper-data#409).
+  - **Dataset half:** `fundamentals_fill: "drop"`, `normalize_features: false`,
+    `regression_target: "log_return"`, explicit `symbols`. `normalize_features: false` restates the
+    default and hashes to the same `dataset_id`.
+  - **Model half** (the juniper-recurrence `POST /v1/train` / `POST /v1/crossval` body):
+    `readout: "rff"`, `ridge: 1.0`, `rff_features: 256`, `rff_gamma: "median"`. They are not
+    juniper-data params, and `POST /v1/datasets` ignores them silently.
+  - `normalize_features` stays `false`: producer normalisation is fitted on the pooled `train`
+    partition, so it is a convenience for the happy path and not a cross-validation control, and
+    the 2026-10-04 measurement (juniper-ml
+    `notes/JUNIPER_2026-10-04_JUNIPER-RECURRENCE_EQUITIES-CV-BLOWUP-INVESTIGATION.md` §3.3) gave no
+    reason to enable it.
+  - Written in the `equities_seq` module and class docstrings, a new `docs/REFERENCE.md` section
+    (Equities Sequence: Recurrence-Ready Parameters) and `docs/DEVELOPER_CHEATSHEET.md`. Both
+    documents also carried a claim that the `fundamentals_fill` default is `"zero"`; it has been
+    `"nan"` since 2026-09-05, and the claim is corrected.
+  - `TestRecurrenceReadyBundle` (`juniper_data/tests/unit/test_equities_seq_generator.py`) pins the
+    bundle as finite and the bare defaults as non-finite in exactly columns 7, 8 and 14.
 
 ### Changed
 
@@ -49,6 +70,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `juniper_data/tests/unit/test_equities_seq_task_type.py` (new). `test_val_emission_guards.py`
     records the reason for the 6.0.0 bump.
   - *Moved here from `[0.16.0]`: #437 merged at 09:14Z on 2026-09-24, after `v0.16.0` was tagged at `39d1cab2`, so 0.16.0 does not carry it.*
+- **Under `fundamentals_fill="drop"`, a `purchase_date` after `start_date` is refused** (W1.8,
+  F-P2). This applies the plan's recommended R3 pending the owner's ruling (alternatives: a
+  documented finite sentinel; dropping rows without refusing).
+  - **Before:** `cost_basis` is NaN on every row before the purchase session (APD-DATA-042), and
+    `drop` removed only the rows lacking shares, so such a request minted a non-finite
+    `cost_basis` in an artifact the caller had asked to be complete.
+  - **Now:** `EquitiesParams` refuses it with **400** `Invalid parameters: …`, naming both dates
+    and the fill mode. The check runs before the `dataset_id` is hashed and looked up, so an
+    artifact minted before this change cannot answer the refused request. A pre-purchase row
+    that still reaches conditioning (a provider row dated on a weekend, or before `start_date`)
+    is dropped exactly like a row without shares, with a WARNING.
+  - **"After" means at least one weekday apart.** The defaults (`2000-01-01`, a Saturday, and
+    `2000-01-03`, a Monday) stay accepted, and with them juniper-canopy's two equities registry
+    seeds, which send `drop` with the default dates. Exchange holidays are not modelled, so a
+    start on one with a purchase on the next session is refused.
+  - **Unchanged:** `nan` and `zero`, which still emit the pre-purchase rows with a NaN
+    `cost_basis`.
+  - **`generator_version` is not bumped** (`equities` 5.0.0, `equities_seq` 6.0.0). A refused
+    request mints nothing, and every request that still mints emits the arrays it emitted before:
+    with no weekday between the two dates its frame holds a pre-purchase row only if the provider
+    dates one on a weekend or before `start_date`, and none of the 3,193,942 rows in the
+    development host's download cache is either.
+  - Both generators are affected: they share `EquitiesGenerator._condition_one` and both emit
+    `cost_basis`. Pins: `TestCostBasisUnderDrop` (`test_equities_generator.py`) and
+    `test_create_dataset_refuses_drop_with_a_later_purchase_before_the_cache`
+    (`test_api_routes.py`).
 
 ### Fixed
 

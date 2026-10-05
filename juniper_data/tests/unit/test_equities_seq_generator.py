@@ -276,3 +276,37 @@ class TestEquitiesSeqGeneratorBranches:
         arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=22), "MSFT": _ohlcv(seed=23)}, _shares(), lookback=5, normalize_features=True)
         train = arrays["X_train"]
         assert np.nanmin(train) >= -1e-6 and np.nanmax(train) <= 1.0 + 1e-6, "the fitted partition's windows must be bounded"
+
+
+class TestRecurrenceReadyBundle:
+    """W1.1(a): the documented recurrence-ready request, pinned against the generator it documents.
+
+    The bundle is written up in this generator's module docstring and in ``docs/REFERENCE.md``
+    (Equities Sequence: Recurrence-Ready Parameters). These tests hold the dataset half to the
+    two claims the write-up makes: the bundle is finite, and the bare defaults are not -- in
+    exactly the columns it names. The model half belongs to juniper-recurrence and is not
+    exercised here.
+    """
+
+    def test_the_bundle_is_finite_in_every_split(self) -> None:
+        arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=41), "MSFT": _ohlcv(seed=42)}, _shares(), fundamentals_fill="drop", normalize_features=False, regression_target="log_return")
+        for split in ("train", "val", "test"):
+            assert arrays[f"X_{split}"].shape[0] > 0, f"the bundle emitted no {split} windows"
+            for key in ("X", "y", "y_reg", "dt", "target_dt"):
+                assert np.isfinite(arrays[f"{key}_{split}"]).all(), f"{key}_{split} carries non-finite values under the bundle"
+
+    def test_the_bare_defaults_leave_nan_in_exactly_columns_7_8_and_14(self) -> None:
+        arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=43)}, _shares())
+        non_finite_columns = sorted({int(column) for column in np.nonzero(~np.isfinite(whole(arrays, "X")))[2]})
+        assert non_finite_columns == [7, 8, 14], "the documented reason the bare defaults are untrainable no longer holds"
+        assert [EQUITIES_FEATURE_COLUMNS[index] for index in non_finite_columns] == ["total_shares", "market_cap", "days_since_report"]
+
+    def test_stating_normalize_features_false_does_not_move_the_dataset_id(self) -> None:
+        """``false`` is also the default. The bundle states it so the request says what it relies
+        on, and that must not cost a cache miss: the id hashes ``model_dump()``, which fills defaults."""
+        from juniper_data.core.dataset_id import generate_dataset_id
+
+        omitted = EquitiesSeqParams(symbols=["AAPL"], fundamentals_fill="drop", regression_target="log_return")
+        stated = EquitiesSeqParams(symbols=["AAPL"], fundamentals_fill="drop", normalize_features=False, regression_target="log_return")
+        ids = {generate_dataset_id(generator="equities_seq", version=esq_gen.VERSION, params=params.model_dump()) for params in (omitted, stated)}
+        assert len(ids) == 1
