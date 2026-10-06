@@ -2,9 +2,9 @@
 
 ## Comprehensive CI/CD Pipeline Guide for juniper-data
 
-**Version:** 0.4.2
+**Version:** 0.4.7
 **Status:** Active
-**Last Updated:** March 3, 2026
+**Last Updated:** October 6, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -119,17 +119,31 @@ Package build and verification.
 
 #### Job: `dependency-docs`
 
-Generates dependency documentation snapshots.
+Captures the environment that installed this repo and uploads it. The capture is a diagnostic artifact. CI does not commit it, and it leaves `conf/requirements.txt` and `conf/requirements-ORIG.txt` alone. Those two files remain the supplemental pip list for `util/setup_environment.bash`.
 
 - **Depends on**: `build`
-- Installs `.[all]` plus the `juniper-data-client` main branch before capture
-- Runs `scripts/generate_dep_docs.sh`
-- Outputs `conf/requirements_ci.txt` and `conf/conda_environment_ci.yaml` as workflow artifacts, with timestamped backups if prior files exist in the checkout
-- Does not update the committed `conf/requirements.txt` or `conf/requirements-ORIG.txt` environment snapshots
-- Uses Conda (Miniforge) for environment capture
-- 90 day artifact retention
+- **Python**: `PYTHON_TEST_VERSION` (`3.14`)
+- **Conda setup**: `conda-incubator/setup-miniconda` with `miniforge-version: latest`, `auto-activate-base: true`, and `python-version` set to `PYTHON_TEST_VERSION`. The version record is the `# vX.Y.Z` comment on that step's SHA pin.
+- **Shell**: the install and generate steps use `bash -l {0}` (a login shell). That login shell is what puts Miniforge `conda` and the activated base on `PATH`.
+- **Installed before capture**: `juniper-data-client` from `git+https://github.com/pcalnon/juniper-data-client.git@main`, then `pip install ".[all]"`, then `juniper-ci-tools>=0.9.0,<0.10.0`. The freeze is that environment, which is separate from `requirements.lock`.
+- **Command**: `juniper-generate-dep-docs` with no arguments. In `juniper-ci-tools` 0.9.0 that console script is `juniper_ci_tools.cli:main`. This repository has no `scripts/generate_dep_docs.sh`.
+- **Pip file**: `conf/requirements_ci.txt`. The body is `python -m pip list --format=freeze` for the interpreter running the tool.
+- **Conda file**: `conf/conda_environment_ci.yaml`. The body is the `dependencies:` block of `conda env export --no-builds`: lines after `dependencies:` and before the next top-level key (`prefix:` or `variables:`). The generator does not run `conda list --explicit`.
+- **Headers**: with no arguments the tool reads `notes/JUNIPER_2026-03-11_JUNIPER-ML_PIP-DEPENDENCY-FILE-HEADER.md` and `notes/JUNIPER_2026-03-15_JUNIPER-ML_CONDA-DEPENDENCY-FILE-HEADER.md`. This repo ships `notes/PIP_DEPENDENCY_FILE_HEADER.md` and `notes/CONDA_DEPENDENCY_FILE_HEADER.md` under different names, so CI writes the two-line fallback (`# <filename> - Generated <date>` and `# Python: <version>`). The conda template ends with a `dependencies:` key. The fallback does not, so the uploaded conda document is a YAML list of dependency lines. `yaml.safe_load` accepts that list, and the step still exits 0.
+- **Backups**: an existing output is copied to `conf/requirements_ci_<YYYY-MM-DD_HH-MM-SS>.txt` or `conf/conda_environment_ci_<YYYY-MM-DD_HH-MM-SS>.yaml` before overwrite.
+- **Conda missing**: if `conda` is not on `PATH`, the yaml is skipped, a warning is printed, and the command still exits 0. A YAML parse failure exits 1. A missing `pyproject.toml`, or one with no `[project].version`, exits 1.
+- **Upload**: artifact `dependency-docs`, retained 90 days: `conf/requirements_ci.txt`, `conf/requirements_ci_*.txt`, `conf/conda_environment_ci.yaml`, `conf/conda_environment_ci_*.yaml`.
 
-These generated files describe the environment that ran in CI. They are diagnostic artifacts, not source inputs for local setup. The checked-in setup script installs supplemental packages from `conf/requirements.txt`, and `conf/requirements-ORIG.txt` is kept as the paired baseline copy for that setup snapshot.
+Regenerate locally with this repo's headers, from a login shell whose base environment is active:
+
+```bash
+pip install "juniper-ci-tools>=0.9.0,<0.10.0"
+juniper-generate-dep-docs \
+  --pip-header PIP_DEPENDENCY_FILE_HEADER.md \
+  --conda-header CONDA_DEPENDENCY_FILE_HEADER.md
+```
+
+The checked-in copies under `conf/` are snapshots from the previous generator. The next CI run uploads new artifacts and leaves those committed files in place.
 
 #### Job: `integration-tests`
 
@@ -367,6 +381,10 @@ uv pip compile pyproject.toml --extra api --extra observability --extra mnist --
 **TestPyPI publish fails**: Check that the release tag matches the version in `pyproject.toml`. Version is extracted by stripping the `v` prefix from the tag.
 
 **Coverage drops after push**: Run `python scripts/check_module_coverage.py --run-tests` locally to identify modules below the 85% threshold.
+
+**`dependency-docs` conda artifact is a YAML list**: the job calls `juniper-generate-dep-docs` with no arguments, so it does not load `notes/CONDA_DEPENDENCY_FILE_HEADER.md`. Pass `--conda-header CONDA_DEPENDENCY_FILE_HEADER.md` and `--pip-header PIP_DEPENDENCY_FILE_HEADER.md` when you want the committed header shape.
+
+**`dependency-docs` succeeds and uploads no conda file**: `conda` was not on `PATH`. The tool warns and exits 0. The job's install and generate steps need `shell: bash -l {0}` after `setup-miniconda`. A non-login shell does not see the activated base.
 
 ---
 

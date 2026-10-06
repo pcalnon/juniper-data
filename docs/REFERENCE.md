@@ -1,8 +1,8 @@
 # Juniper Data Reference
 
-**Version:** 0.4.3
+**Version:** 0.4.13
 **Status:** Active
-**Last Updated:** September 5, 2026
+**Last Updated:** October 6, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -1029,8 +1029,7 @@ juniper-data/
 │   └── ci_cd/                      # CI/CD documentation
 ├── scripts/                        # CI and coverage scripts
 │   ├── check_module_coverage.py    # Per-module coverage enforcement (85% min)
-│   ├── check_doc_links.py          # Internal markdown link validation
-│   └── generate_dep_docs.sh        # Dependency documentation generator
+│   └── check_doc_links.py          # Internal markdown link validation
 ├── notes/                          # Development notes, procedures, roadmaps
 ├── conf/                           # Shell and logging configuration files
 ├── util/                           # Bash utility scripts (40+ scripts)
@@ -1939,6 +1938,6 @@ Rollout and rationale: [juniper-ml#434](https://github.com/pcalnon/juniper-ml/is
 
 ---
 
-**Last Updated:** September 5, 2026
-**Version:** 0.4.3
+**Last Updated:** October 6, 2026
+**Version:** 0.4.13
 **Maintainer:** Paul Calnon

@@ -2,9 +2,9 @@
 
 ## juniper-data CI/CD Jobs, Hooks, and Configuration
 
-**Version:** 0.4.2
+**Version:** 0.4.7
 **Status:** Active
-**Last Updated:** March 3, 2026
+**Last Updated:** October 6, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -290,7 +290,9 @@ From `.github/dependabot.yml`:
 |--------|---------|-------|
 | `scripts/check_module_coverage.py` | Per-module coverage enforcement (85% module, 80% aggregate) | `python scripts/check_module_coverage.py [--run-tests]` |
 | `scripts/check_doc_links.py` | Markdown link validation | `python scripts/check_doc_links.py [--verbose] [--exclude DIR]` |
-| `scripts/generate_dep_docs.sh` | Dependency documentation artifact generation (`conf/requirements_ci.txt`, `conf/conda_environment_ci.yaml`) | `bash scripts/generate_dep_docs.sh` |
+| `juniper-generate-dep-docs` | `dependency-docs` capture. Pip body is `python -m pip list --format=freeze`. Conda body is the `dependencies:` block of `conda env export --no-builds` (stops before `prefix:` / `variables:`). Package `juniper-ci-tools>=0.9.0,<0.10.0`. | CI: `juniper-generate-dep-docs` (no arguments, login shell). Local headers: `--pip-header PIP_DEPENDENCY_FILE_HEADER.md --conda-header CONDA_DEPENDENCY_FILE_HEADER.md` |
+
+The `dependency-docs` job runs that command after `conda-incubator/setup-miniconda` (`miniforge-version: latest`, `auto-activate-base: true`, `python-version` = `PYTHON_TEST_VERSION`) in `shell: bash -l {0}`. No-argument mode looks for `notes/JUNIPER_2026-03-11_JUNIPER-ML_PIP-DEPENDENCY-FILE-HEADER.md` and `notes/JUNIPER_2026-03-15_JUNIPER-ML_CONDA-DEPENDENCY-FILE-HEADER.md`. This repo's templates are `notes/PIP_DEPENDENCY_FILE_HEADER.md` and `notes/CONDA_DEPENDENCY_FILE_HEADER.md`, so the upload uses the two-line fallback header. The conda template ends with `dependencies:`; the fallback does not, and the uploaded conda document is a YAML list. If `conda` is absent from `PATH`, the yaml is skipped and the command still exits 0. A YAML parse failure exits 1. Timestamped backups of the previous files are included in the 90-day artifact. The job does not commit the files. Full steps: [CI/CD manual](CICD_MANUAL.md#job-dependency-docs).
 
 ---
 
@@ -306,6 +308,6 @@ From `.github/dependabot.yml`:
 
 ---
 
-**Last Updated:** March 3, 2026
-**Version:** 0.4.2
+**Last Updated:** October 6, 2026
+**Version:** 0.4.7
 **Maintainer:** Paul Calnon
