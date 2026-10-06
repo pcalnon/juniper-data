@@ -2,8 +2,8 @@
 
 ## Complete Navigation Guide to Juniper Data Documentation
 
-**Version:** 0.4.2
-**Last Updated:** March 3, 2026
+**Version:** 0.4.10
+**Last Updated:** October 6, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -51,6 +51,7 @@
 | **Quick-reference dev tasks** | [DEVELOPER_CHEATSHEET.md](DEVELOPER_CHEATSHEET.md) | docs/ |
 | **Bound an equities generate (14-symbol cap)** | [REFERENCE.md -- Equities Symbol Cap](REFERENCE.md#equities-symbol-cap) | docs/ |
 | **Contribute code** | [AGENTS.md](../AGENTS.md) | Root |
+| **Read an `equities_seq` label** | [REFERENCE.md -- equities_seq Declared Regression](REFERENCE.md#equities_seq-declared-regression) | docs/ |
 
 ---
 
@@ -262,6 +263,6 @@ See [DOCUMENTATION_TEMPLATE_STANDARD.md](../../notes/DOCUMENTATION_TEMPLATE_STAN
 
 ---
 
-**Last Updated:** March 3, 2026
-**Version:** 0.4.2
+**Last Updated:** October 6, 2026
+**Version:** 0.4.10
 **Maintainer:** Paul Calnon

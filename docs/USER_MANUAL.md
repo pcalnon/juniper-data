@@ -1,8 +1,8 @@
 # Juniper Data User Manual
 
-**Version:** 0.4.3
+**Version:** 0.4.7
 **Status:** Active
-**Last Updated:** September 4, 2026
+**Last Updated:** October 6, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -403,6 +403,8 @@ Juniper Data guarantees:
 6. The three partitions ARE the dataset: there is no whole-set array to compare them
    against, and `meta.n_samples` equals `n_train + n_val + n_test`. A consumer that
    wants the whole set concatenates the three, in that order.
+
+`equities_seq` at generator 6.0.0 is declared `regression`. `meta.n_classes` and `meta.class_distribution` are null, while `y_*` is still a one-hot next-day direction beside `y_reg_*` (next-day close, or the return selected by `regression_target`). Flat `equities` stays classification at generator 5.0.0. `GET /v1/generators` lists `version` and has no `task_type` field. A stored `equities_seq-5.0.0-…` artifact keeps the class meta it was written with. See [equities_seq Declared Regression](REFERENCE.md#equities_seq-declared-regression).
 
 ### Loading Artifacts
 

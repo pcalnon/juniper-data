@@ -1,6 +1,6 @@
 # Developer Cheatsheet -- juniper-data
 
-**Version**: 0.4.3 | **Date**: 2026-09-05 | **Project**: juniper-data -- Dataset Generation REST Service (FastAPI)
+**Version**: 0.4.10 | **Date**: 2026-10-06 | **Project**: juniper-data -- Dataset Generation REST Service (FastAPI)
 
 ---
 
@@ -219,6 +219,16 @@ The model fields are not juniper-data params; sent to `POST /v1/datasets` they a
 
 ---
 
+## equities_seq task type
+
+`equities_seq` is `regression` at generator **6.0.0**. `POST /v1/datasets` stores `task_type="regression"` and leaves `n_classes` and `class_distribution` null. The arrays still include a one-hot next-day direction (`y_*`) and a next-day close (`y_reg_*`). Flat `equities` stays `classification` at **5.0.0** (`n_classes` 2).
+
+The dataset id is `equities_seq-6.0.0-<hash>` over generator, version, and params. A cache hit returns the stored meta. An `equities_seq-5.0.0-…` artifact keeps classification meta and is a different id. `GET /v1/generators` lists `version` and has no `task_type` field.
+
+> See: [REFERENCE.md -- equities_seq Declared Regression](REFERENCE.md#equities_seq-declared-regression)
+
+---
+
 ## Testing
 
 | Marker                                      | Scope                             |
@@ -321,6 +331,7 @@ pre-commit install --hook-type pre-push  # coverage gate (one-time)
 | Equities `total_shares` all zeros | SEC returned no facts under `fundamentals_fill="zero"` (the default is `"nan"` since 2026-09-05) | Check CIK / logs; try `fundamentals_fill="nan"`; do not read 0 as "no shares" |
 | juniper-recurrence refuses an `equities_seq` artifact: `X_train has non-finite values` | Bare defaults: `fundamentals_fill="nan"` leaves NaN in `X` columns 7, 8 and 14 | Send the [recurrence-ready bundle](REFERENCE.md#equities-sequence-recurrence-ready-parameters) |
 | Equities `400` naming `purchase_date`, `start_date` and `fundamentals_fill='drop'` | A purchase after the start under `drop` (W1.8): the rows before it have no cost basis | Set `purchase_date` on or before `start_date`, or use `fundamentals_fill="nan"` to keep those rows |
+| `equities_seq` meta has `task_type: regression` and `n_classes: null` | Generator 6.0.0 declares regression; `y_*` is still the one-hot direction | Expected. Flat `equities` stays classification at 5.0.0. A cached `equities_seq-5.0.0-…` id still has class meta. See [equities_seq Declared Regression](REFERENCE.md#equities_seq-declared-regression) |
 
 ---
 

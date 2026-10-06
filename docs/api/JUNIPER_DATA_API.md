@@ -1,7 +1,7 @@
 # JuniperData API Reference
 
-**Version:** 0.4.3
-**Last Updated:** 2026-09-05
+**Version:** 0.4.5
+**Last Updated:** 2026-10-06
 **Base URL:** `http://localhost:8100`  
 **API Prefix:** `/v1`
 
@@ -396,7 +396,9 @@ metadata representation (APD-DATA-032) and are read from
 
 **Caching Behavior:**
 
-Datasets are cached by their deterministic ID (hash of generator + version + params). Requesting the same parameters returns the existing dataset.
+Datasets are cached by a deterministic ID. `generate_dataset_id` hashes the generator name, the registry version, and params, and the id is `{generator}-{version}-{hash}`. The same parameters return the stored meta and do not regenerate.
+
+`equities_seq` is version `6.0.0` with `task_type` `regression`, so a current create stores `n_classes` and `class_distribution` as `null`. The NPZ still has a one-hot next-day direction in `y_*` and a next-day close in `y_reg_*`. Flat `equities` stays `classification` at `5.0.0`. An `equities_seq-5.0.0-…` id keeps its old class meta; a current create resolves under `equities_seq-6.0.0-`. `GET /v1/generators` returns `version` and does not return `task_type`. See [equities_seq Declared Regression](../REFERENCE.md#equities_seq-declared-regression).
 
 **Versioning Behavior (named datasets):**
 

@@ -1,8 +1,8 @@
 # Juniper Data Reference
 
-**Version:** 0.4.3
+**Version:** 0.4.11
 **Status:** Active
-**Last Updated:** September 5, 2026
+**Last Updated:** October 6, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -33,6 +33,7 @@
 - [Docker Reference](#docker-reference)
 - [Equities Symbol Cap](#equities-symbol-cap)
 - [Equities Sequence: Recurrence-Ready Parameters](#equities-sequence-recurrence-ready-parameters)
+- [equities_seq Declared Regression](#equities_seq-declared-regression)
 - [CI/CD Pipeline Reference](#cicd-pipeline-reference)
 - [Additional Resources](#additional-resources)
 
@@ -1818,12 +1819,50 @@ This **applies the plan's recommended R3 pending the owner's ruling** (alternati
   A calendar-day comparison would refuse the defaults themselves, and with them juniper-canopy's two equities registry seeds and the bundle above, all of which send `drop` with the default dates.
 - **Exchange holidays are not modelled.** A start on a weekday holiday with a purchase on the next session (`2008-01-01` → `2008-01-02`) is refused. Set `purchase_date` to `start_date`; the basis is the same.
 - **`nan` and `zero` are unchanged.** A later purchase is accepted and the rows before it are emitted with a NaN `cost_basis`. Zero-fill does not reach `cost_basis`: 0.0 is a price a consumer would divide by.
-- **`generator_version` is unchanged** (`equities` 5.0.0, `equities_seq` 6.0.0). A refused request mints nothing and is refused before the cache lookup.
+- **`generator_version` is unchanged** (`equities` 5.0.0, `equities_seq` 6.0.0). Why `equities_seq` is 6.0.0 is [equities_seq Declared Regression](#equities_seq-declared-regression). A refused request mints nothing and is refused before the cache lookup.
   A request that still mints has no weekday between `start_date` and `purchase_date`, so its frame holds a pre-purchase row only if the provider returns one dated on a weekend or before `start_date`.
   None of the 3,193,942 rows in the 556 OHLCV files of the development host's download cache is either, so every still-mintable request emits the arrays it emitted before, under the id it had before.
 
 Pins: `TestCostBasisUnderDrop` in `tests/unit/test_equities_generator.py`; `test_create_dataset_refuses_drop_with_a_later_purchase_before_the_cache` in `tests/unit/test_api_routes.py`;
 `TestRecurrenceReadyBundle` in `tests/unit/test_equities_seq_generator.py`.
+
+---
+
+## equities_seq Declared Regression
+
+`equities_seq` is `task_type="regression"` at `generator_version` **6.0.0** (X8, #437, owner ruling 2026-09-24). Flat `equities` stays `task_type="classification"` at **5.0.0**.
+
+Both generators emit two targets. `y_{split}` is a one-hot next-day direction. `y_reg_{split}` is the next-day close, or the return / log return selected by `regression_target`. The registry has no task type that means both. `POST /v1/datasets` copies `GENERATOR_REGISTRY[name]["task_type"]` onto `DatasetMeta` and passes that string to `compute_shape_meta`. Only `"classification"` fills `n_classes` and `class_distribution`.
+
+| Field | `equities` 5.0.0 | `equities_seq` 6.0.0 |
+|-------|------------------|----------------------|
+| `meta.task_type` | `"classification"` | `"regression"` |
+| `meta.n_classes` | `2` | `null` |
+| `meta.class_distribution` | counts from `argmax` over `y` | `null` |
+| Arrays | one-hot `y_*` plus `y_reg_*` | the same targets, with `X` windowed to `(W, L, F)` |
+
+`n_features` stays `X`'s trailing axis. Sequence fields (`sequence`, `lookback`, `time_unit="calendar_days"`) are unchanged.
+
+`GET /v1/generators` does not carry the label. `GeneratorInfo` is `name`, `version`, `description`, `available`, `install_hint`, and `schema`. The listing does show `version`: `6.0.0` on `equities_seq`, `5.0.0` on `equities`.
+
+### Why the id moved
+
+`generate_dataset_id` hashes the generator name, the registry version, and `params.model_dump()`. The id string is `{generator}-{version}-{hash[:16]}`. Meta is not an input. When `store.get_meta` finds that id, the route returns the stored `DatasetMeta` and skips `generate()`.
+
+A current create resolves under the prefix `equities_seq-6.0.0-`. An artifact stored as `equities_seq-5.0.0-…` keeps the classification meta it was written with (`n_classes` 2). That id is a different resource; fetching it still returns the old meta.
+
+`seed` defaults to `DEFAULT_GENERATOR_SEED` (fallback 42, override `JUNIPER_DATA_DEFAULT_GENERATOR_SEED`). The temporal split does not use it, and `model_dump()` still includes it, so an omitted seed produces a stable id. An explicit `"seed": null` mixes in a per-call nonce (`dataset_id.py`), and that request misses the cache.
+
+### What not to do
+
+- Do not read `n_classes: null` as "no direction target". `y_*` is still the one-hot direction. The registry comment records that the LMU reads `y_reg_*`.
+- Do not relabel flat `equities`. The ruling named `equities_seq`. Classification meta is what keeps its `n_classes` at 2.
+- Do not read `task_type` from `GET /v1/generators`. That payload has no such field; the dataset's `meta.task_type` does.
+- Do not change the registry label without a `VERSION` bump. The id does not hash meta, so the previous id keeps serving the previous meta. That is the `arc_agi` #402 / #427 precedent this bump follows.
+
+### Pins
+
+`juniper_data/tests/unit/test_equities_seq_task_type.py` (`TestX8EquitiesSeqIsRegression`, `TestX8MovedTheVersion`).
 
 ---
 
