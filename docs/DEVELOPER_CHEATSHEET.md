@@ -1,6 +1,6 @@
 # Developer Cheatsheet -- juniper-data
 
-**Version**: 0.4.3 | **Date**: 2026-09-05 | **Project**: juniper-data -- Dataset Generation REST Service (FastAPI)
+**Version**: 0.4.11 | **Date**: 2026-10-06 | **Project**: juniper-data -- Dataset Generation REST Service (FastAPI)
 
 ---
 
@@ -138,6 +138,12 @@ Default filesystem layout: `{JUNIPER_DATA_STORAGE_PATH}/{dataset_id}.meta.json` 
 `PostgresDatasetStore` DDL, upsert, update, and both row mappers derive from `DatasetMeta.model_fields` (#343). Do not re-transcribe the column list — that dropped seven fields and made `n_classes` NOT NULL after the model allowed None. `SCHEMA_SQL` runs on every init (`ADD COLUMN IF NOT EXISTS`; NOT NULL adds carry a DEFAULT). Table names must be bare identifiers. The API still uses LocalFS; this store is opt-in.
 
 > See: [REFERENCE.md -- Postgres Model-Derived Schema](REFERENCE.md#postgres-model-derived-schema)
+
+### Hugging Face and Kaggle loads
+
+`HuggingFaceDatasetStore.load_hf_dataset` and `KaggleDatasetStore.load_kaggle_dataset` are library adapters, not REST generators. A load returns the six partition keys only (`X_train` … `y_test`), `generator_version` `3.0.0`, and no `X_full`. Defaults are a `0.8 / 0.1 / 0.1` carve. Bad ratios raise `ValueError` before the download, including a `float32` `0.8 + 0.1 + 0.1` once it is widened. An omitted seed does not shuffle and reuses one id (`params["seed"]` stays `None`). Scaling, when on, is fit on train only, so val and test can leave `[0, 1]`. HF `normalize` defaults to `True` (images are `/ 255`); Kaggle `normalize_features` defaults to `False`. Arrays go to `cache_store` (in-memory if you pass none). Kaggle also needs `~/.kaggle/kaggle.json` or `KAGGLE_USERNAME` and `KAGGLE_KEY`.
+
+> See: [REFERENCE.md -- External Stores](REFERENCE.md#external-stores-decision-11-contract)
 
 ---
 
@@ -321,6 +327,8 @@ pre-commit install --hook-type pre-push  # coverage gate (one-time)
 | Equities `total_shares` all zeros | SEC returned no facts under `fundamentals_fill="zero"` (the default is `"nan"` since 2026-09-05) | Check CIK / logs; try `fundamentals_fill="nan"`; do not read 0 as "no shares" |
 | juniper-recurrence refuses an `equities_seq` artifact: `X_train has non-finite values` | Bare defaults: `fundamentals_fill="nan"` leaves NaN in `X` columns 7, 8 and 14 | Send the [recurrence-ready bundle](REFERENCE.md#equities-sequence-recurrence-ready-parameters) |
 | Equities `400` naming `purchase_date`, `start_date` and `fundamentals_fill='drop'` | A purchase after the start under `drop` (W1.8): the rows before it have no cost basis | Set `purchase_date` on or before `start_date`, or use `fundamentals_fill="nan"` to keep those rows |
+| HF or Kaggle load has no `X_full`, or two ratio choices share one id | Pre-#411 id was `hf-<name>-<rows>` and the arrays included `*_full` | Read the six partition keys. The id now hashes version `3.0.0` and the parameters. See [External Stores](REFERENCE.md#external-stores-decision-11-contract) |
+| `ValueError` on `train_ratio` / `val_ratio` / `test_ratio` before any download | Sum above 1, `train_ratio` of 0, a ratio outside `[0, 1]`, or widened `float32` `0.8 / 0.1 / 0.1` | Pass Python floats that sum to at most 1, with `train_ratio` > 0 |
 
 ---
 

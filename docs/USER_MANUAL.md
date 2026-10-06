@@ -1,8 +1,8 @@
 # Juniper Data User Manual
 
-**Version:** 0.4.3
+**Version:** 0.4.8
 **Status:** Active
-**Last Updated:** September 4, 2026
+**Last Updated:** October 6, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -311,8 +311,18 @@ curl -X POST http://localhost:8100/v1/datasets \
 | **CachedDatasetStore** | `storage.cached` | Production (wraps any backend with in-memory cache) |
 | **PostgresDatasetStore** | `storage.postgres_store` | Shared multi-service storage |
 | **RedisDatasetStore** | `storage.redis_store` | Fast caching layer |
-| **HFDatasetStore** | `storage.hf_store` | Public dataset sharing (HuggingFace Hub) |
-| **KaggleDatasetStore** | `storage.kaggle_store` | Kaggle dataset integration |
+| **HuggingFaceDatasetStore** | `storage.hf_store` | Read-only Hugging Face Hub load |
+| **KaggleDatasetStore** | `storage.kaggle_store` | Read-only Kaggle CSV load |
+
+### Hugging Face and Kaggle loads
+
+These two classes are library adapters. The API process does not construct them, and `POST /v1/datasets` cannot name `huggingface` or `kaggle`.
+
+`load_hf_dataset` and `load_kaggle_dataset` return the six partition arrays (`X_train`, `y_train`, `X_val`, `y_val`, `X_test`, `y_test`) at `generator_version` `3.0.0`. They do not emit `X_full` or `y_full`. The default carve is `0.8 / 0.1 / 0.1`. A ratio the carve cannot honour raises `ValueError` before the download. An omitted seed is repeatable and reuses one dataset id. When scaling is on, it is fit on the train partition only, so validation and test values can fall outside `[0, 1]`.
+
+The arrays are stored in the cache store you pass. The default cache is in-memory and does not survive the process. Kaggle also needs API credentials (`~/.kaggle/kaggle.json`, or `KAGGLE_USERNAME` and `KAGGLE_KEY`).
+
+See [External Stores: Decision-11 Contract](REFERENCE.md#external-stores-decision-11-contract).
 
 ### Common Interface
 

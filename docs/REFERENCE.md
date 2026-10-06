@@ -1,8 +1,8 @@
 # Juniper Data Reference
 
-**Version:** 0.4.3
+**Version:** 0.4.12
 **Status:** Active
-**Last Updated:** September 5, 2026
+**Last Updated:** October 6, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -27,6 +27,7 @@
 - [API Design Reference](#api-design-reference)
 - [Empty-Train Shape Metadata](#empty-train-shape-metadata)
 - [Storage Backend Reference](#storage-backend-reference)
+- [External Stores: Decision-11 Contract](#external-stores-decision-11-contract)
 - [CSV Import Truncation Edges](#csv-import-truncation-edges)
 - [Prometheus Collector Reference](#prometheus-collector-reference)
 - [Artifact Streaming](#artifact-streaming)
@@ -1470,8 +1471,10 @@ JuniperData supports 7 storage backend implementations with a composable archite
 | **Cached** | `storage/cached.py` | Composable cache wrapper | None (wraps another store) |
 | **Redis** | `storage/redis_store.py` | Distributed caching | `redis` |
 | **PostgreSQL** | `storage/postgres_store.py` | Persistent metadata with JSONB | `psycopg2` |
-| **HuggingFace** | `storage/hf_store.py` | Read-only HF Hub integration | `datasets` |
-| **Kaggle** | `storage/kaggle_store.py` | Kaggle dataset downloads | `kaggle` |
+| **HuggingFace** | `storage/hf_store.py` | Read-only HF Hub load | `datasets` |
+| **Kaggle** | `storage/kaggle_store.py` | Read-only Kaggle CSV load | `kaggle` |
+
+Hugging Face and Kaggle are library adapters. A load emits the [decision-11 contract](#external-stores-decision-11-contract). The API process does not construct either store.
 
 ### Composable Caching
 
@@ -1482,6 +1485,127 @@ primary = LocalFSDatasetStore(path="./data")
 cache = InMemoryDatasetStore()
 store = CachedDatasetStore(primary=primary, cache=cache)
 ```
+
+---
+
+## External Stores: Decision-11 Contract
+
+`HuggingFaceDatasetStore.load_hf_dataset` and `KaggleDatasetStore.load_kaggle_dataset` are library loaders (`storage/external_partition.py`, juniper-data#411). They are not registered generators, and `create_app` does not construct them. `POST /v1/datasets` cannot name `huggingface` or `kaggle`.
+
+They used to cut two ways (`X[:n_train]` / the rest), emit `X_full` / `y_full`, and stamp `generator_version="1.0.0"`. The id was `hf-<name>-<rows>`: no version and no parameters, so two partitionings of one dataset collided, and a cached two-way artifact answered a three-way request. The generator sweep in `test_val_emission_guards.py` still walks only `juniper_data.generators`, which is why `1.0.0` survived decision 11. Each store now publishes a module-level `VERSION = "3.0.0"`. `TestExternalStoresAtTheDecision11Floor` imports that constant and requires a major of at least 3. The same constant is `generator_version`, and it is hashed into the id.
+
+### What a load returns
+
+Exactly six keys, all `float32`: `X_train`, `y_train`, `X_val`, `y_val`, `X_test`, `y_test`. No `*_full`.
+
+| Field | Value |
+|-------|-------|
+| `generator` | `"huggingface"` or `"kaggle"` |
+| `generator_version` | `"3.0.0"` (`EXTERNAL_STORE_VERSION`), hashed into the id |
+| `n_train` / `n_val` / `n_test` | Match the array lengths |
+| `n_samples` | Rows actually emitted (`n_train + n_val + n_test`) |
+| `class_distribution` | Counts those emitted rows only |
+
+`params["n_samples"]` is the row count **after** the caller's `n_samples` limit and **before** the carve. When the ratios sum to less than 1 it is larger than `meta.n_samples`.
+
+### Carve
+
+Defaults are `0.8` / `0.1` / `0.1`, the same carve as `mnist`, `csv_import`, and `arc_agi`. Rows are cut in their current order. The only shuffle is the one a **non-`None` seed** requests, and it happens before the cut. A ratio sum below 1 leaves the tail out of every partition and out of `meta.n_samples`.
+
+A small corpus can leave a partition empty. At the defaults, two rows carve to `2 / 0 / 0` and five to `4 / 0 / 1` (`resolve_partition_counts`, whole-dataset remainder absorbed by test).
+
+`validate_carve_ratios` runs **before** any Hub or Kaggle fetch, and the carve calls it again:
+
+- each ratio is in `[0, 1]` (NaN fails)
+- `train_ratio` is greater than 0
+- the three sum to at most `1.0 + 1e-9`
+
+Ratios are converted with `float()` first, so the early check and the carve see the same numbers. `np.float32(0.8) + np.float32(0.1) + np.float32(0.1)` widens past 1 and is a `ValueError` with no download.
+
+### Identity
+
+`external_dataset_id` builds `<prefix>-<generator>-3.0.0-<hash>` via `generate_dataset_id`.
+
+| Store | Prefix | Example stem |
+|-------|--------|----------------|
+| Hugging Face | `hf-<dataset_name>` plus `-<config_name>` when set | `hf-mnist-huggingface-3.0.0-…` |
+| Kaggle | `kaggle-<ref>` with `/` replaced by `-` | `kaggle-owner-iris-kaggle-3.0.0-…` |
+
+The same parameters hash to the same id. A different ratio, seed, or column list hashes to a different id.
+
+An omitted seed does **not** shuffle, so the load is repeatable. `generate_dataset_id` would otherwise add a per-call nonce when `seed` is `None` (BUG-JD-04: for a generator, no seed means a fresh draw). These stores hash that `None` as the fixed marker `"unshuffled"`. `DatasetMeta.params["seed"]` stays `None`. Without the marker, every identical call would add a full copy to the default in-memory cache, which does not evict.
+
+An `np.int64` seed hashes as a Python `int`. On the Hugging Face path, a non-`str` split is passed through `str()` (so a `NamedSplit` becomes `"train"`) and a column array becomes a list of strings, both before the hash and before the Hub call.
+
+### Scaling (decision 7)
+
+Statistics are fit on **train only** and applied unchanged to val and test. Held-out values may leave `[0, 1]`. Fitting on every row before the cut leaked val and test into the scale.
+
+| Store | Knob | Default | Fit |
+|-------|------|---------|-----|
+| Hugging Face | `normalize` | `True` | Images: constant `/ 255` on every row, not a fit. Tabular: divide by `X_train.max()` when that max is greater than 1; otherwise leave the values. An empty train (`size == 0`) skips the scale. |
+| Kaggle | `normalize_features` | `False` | Per-column min-max on train. A zero range becomes 1. An empty train is left raw (nothing to fit). |
+
+### Where the bytes go
+
+Both loaders `save` into `cache_store`. The default is a new `InMemoryDatasetStore`. `save`, `get_meta`, `get_artifact_bytes`, `exists`, `delete`, and `list_datasets` delegate there. A load writes the cache store directly and then invalidates this store's metadata cache.
+
+Kaggle's `download_dataset` also writes files under `download_path` (default `./data/kaggle`). That directory is the extracted CSV, not the NPZ. Credentials are `~/.kaggle/kaggle.json` or `KAGGLE_USERNAME` and `KAGGLE_KEY`. A missing `kaggle` package raises `ImportError` at init. A download with no API client raises `RuntimeError`. If `file_name` is absent, the first `*.csv` in the extract is used; if there is none, `FileNotFoundError`. An empty CSV raises `ValueError` (`No data found in CSV file`). A non-numeric feature cell becomes `0.0`.
+
+A missing `datasets` package raises `ImportError` from `HuggingFaceDatasetStore`. `cache_dir` is the Hub cache, separate from `cache_store`.
+
+```python
+from juniper_data.storage import get_hf_store, get_kaggle_store
+
+dataset_id, meta, arrays = get_hf_store().load_hf_dataset(
+    "mnist",
+    feature_columns=["image"],
+    label_column="label",
+    n_samples=100,
+    seed=7,
+)
+assert set(arrays) == {"X_train", "y_train", "X_val", "y_val", "X_test", "y_test"}
+assert meta.generator == "huggingface" and meta.generator_version == "3.0.0"
+assert "X_full" not in arrays
+
+# Kaggle: credentials required. normalize_features defaults to False.
+dataset_id, meta, arrays = get_kaggle_store().load_kaggle_dataset(
+    "owner/dataset-name",
+    file_name="data.csv",
+    label_column="label",
+    seed=7,
+)
+```
+
+### What not to do
+
+- Do not read `X_full` or `y_full` off a new load. Concatenate `train`, then `val`, then `test` if you need the emitted rows.
+- Do not cache on `hf-<name>-<rows>`. That id no longer exists, and it could not tell two partitionings apart.
+- Do not treat an omitted seed as a fresh draw, and do not write the `"unshuffled"` marker into `params`.
+- Do not fit a scale on all rows before the cut, and do not require val and test to stay inside `[0, 1]`.
+- Do not validate ratios after the download. A `float32` `0.8 / 0.1 / 0.1` already fails the pre-check.
+- Do not equate `params["n_samples"]` with `meta.n_samples`.
+- Do not expect `GET /v1/generators` to list these stores.
+
+### Pins
+
+| Test | Property |
+|------|----------|
+| `test_load_emits_three_partitions_at_the_decision_11_version` | HF: 20 rows at the defaults are `16 / 2 / 2`, version `3.0.0`, no `X_full` |
+| `test_load_csv_dataset` | Kaggle: six keys, `generator_version` `3.0.0`, id contains `-kaggle-3.0.0-` |
+| `test_load_carves_three_partitions` | Kaggle: 20 rows at the defaults are `16 / 2 / 2` |
+| `test_ratios_are_honoured_and_unused_rows_are_left_out` | A `0.5 / 0.2 / 0.1` cut leaves the tail out of meta and arrays (both stores) |
+| `test_invalid_ratios_raise` | HF: over-sum, zero train, and negative val raise `ValueError` |
+| `test_invalid_ratios_fail_before_the_download` | HF over-sum does not call the Hub. Kaggle over-sum and widened `float32` `0.8 / 0.1 / 0.1` do not call `download_dataset` |
+| `test_float32_ratios_are_judged_as_the_carve_sees_them_before_the_download` | HF widened `float32` `0.8 / 0.1 / 0.1` fails before the Hub call |
+| `test_dataset_id_carries_version_and_params` | Same request, same id; a different ratio, a different id |
+| `test_unseeded_loads_reuse_one_id_and_one_cache_entry` | Three unseeded loads share one id; recorded `seed` stays `None` |
+| `test_load_with_normalization` | Train-only scale; HF val/test and Kaggle val/test can exceed 1 |
+| `test_image_normalisation_is_the_constant_not_a_fit` | Image `/ 255` is not a train-fit; the fixture's max stays below 1 |
+| `test_empty_train_partition_is_left_unscaled` | Kaggle empty train stays raw |
+| `test_store_version_is_at_or_above_the_floor` | `hf_store.VERSION` and `kaggle_store.VERSION` have major ≥ 3 |
+
+Hugging Face tests live in `juniper_data/tests/unit/test_hf_store.py`. Kaggle tests live in `juniper_data/tests/unit/test_kaggle_store.py`. The version floor lives in `juniper_data/tests/unit/test_val_emission_guards.py`.
 
 ---
 
