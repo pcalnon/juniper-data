@@ -179,9 +179,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Pin.** `test_check_never_allocates_an_entry` (`juniper_data/tests/unit/test_middleware.py`)
     probes 1,000 distinct IPs and requires an empty table, then exactly one entry after one
     `record_failure()`. Against the old code it fails with `assert 1000 == 0`.
-  - The copies in juniper-service-core and juniper-cascor carry the same defect and the same fix.
-    juniper-ml's `tests/test_service_fork_drift.py` guard `failed-auth-check-no-insert` matches the
-    `self._failures: dict[str, tuple[int, float]] = {}` line verbatim, so keep it as written.
+  - The copies in juniper-service-core and juniper-cascor carry the same defect and get the same
+    fix in their own repos, each pinned by its own test.
 - **`docs/REFERENCE.md` called the `Sequence Safety` check advisory, "never required, never blocks
   a merge".** The `main` ruleset (`juniper-data-rules`, id `14748749`) requires that context, so a
   red run blocks merge. `sequence-safety.yml` is a standalone workflow, so its job is absent from
