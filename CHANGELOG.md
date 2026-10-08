@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-10-08
+
 ### Added
 
 - **The publish path asserts that the image serves, and that it is the version it is tagged**
@@ -46,6 +48,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`create_app` opts out of FastAPI's native telemetry** (#454). FastAPI 0.142, which the image
+  runs since #446 (below), ships built-in telemetry with tracing, metrics, logs, operation spans and
+  auto-configuration all on by default. `create_app` now passes all five as `False`, so FastAPI's own
+  instrumentation cannot overlap the service's configured observability (Sentry, Prometheus,
+  structured logging). This is hardening rather than a fix for a live leak: `configure_sentry`
+  installs no OpenTelemetry provider, so the only visible effect before was a startup warning when
+  `OTEL_EXPORTER_OTLP_ENDPOINT` is set. On FastAPI < 0.142, which `pyproject.toml` still admits, the
+  keyword is inert (it lands in `app.extra`); the test pins all five flags off and skips there.
+- **The image's dependency lock moved** (Dependabot #441, #446; `requirements.lock`). The notable pins:
+  `fastapi` 0.141.1 → 0.142.2 (which adds `opentelemetry-api` 1.45.0 for the telemetry above),
+  `starlette` 1.6.0 → 1.7.0, `uvicorn` 0.53.0 → 0.54.0, `sentry-sdk` 2.70.0 → 2.71.0, `uvloop` 0.22.1 →
+  0.23.0 and `websockets` 17.1 → 17.2, plus eight smaller moves (`charset-normalizer`, `filelock`,
+  `huggingface-hub`, `peewee`, `platformdirs`, `python-dotenv`, `pytz`, `soupsieve`). The wheel's declared requirements are
+  unchanged; this is the image.
 - **`equities_seq` is declared `regression`, not `classification`, and its `generator_version`
   is 6.0.0** (X8, owner ruling 2026-09-24). The generator emits two targets: a one-hot next-day
   direction (`y_*`) and a next-day close (`y_reg_*`). `task_type` has no word for "both".
