@@ -17,7 +17,7 @@
 #    Post-merge main-verification net (sequence-safety rollout plan Wave 2; ported from the
 #    juniper-ml pioneer via the published juniper-ci-tools package -- ml#873 / #880 / #1008,
 #    cascor#482). Runs AFTER a merge lands on main, so it fires no matter who merged or what
-#    they bypassed -- the bypass-proof compositional-loss net the per-PR advisory screen
+#    they bypassed -- the bypass-proof compositional-loss net the per-PR REQUIRED screen
 #    (sequence-safety.yml) cannot guarantee. The flood damage class was every-PR-green but
 #    serial same-file merges fused / silently deleted sibling content, and a deleted test
 #    cannot fail, so nothing per-PR saw it.

@@ -41,6 +41,7 @@
 - [CI/CD Pipeline Reference](#cicd-pipeline-reference)
   - [Image serve-and-version gate](#image-serve-and-version-gate)
   - [Consumer release notification](#consumer-release-notification)
+  - [Sequence Safety (required check)](#sequence-safety-required-check)
 - [Additional Resources](#additional-resources)
 
 ---
@@ -2175,8 +2176,8 @@ Relocated verbatim from `AGENTS.md` (P3 of the shared-session-memory plan) so it
 | **Notify consumers** | `notify-consumers.yml` | Called by `publish.yml` after PyPI; manual re-send | `repository_dispatch` `juniper-data-published`, then wait until the consumer starts a run |
 | **Publish container image** | `publish-image.yml` | GitHub release (`v*`), PR touching image inputs (build-only), manual | GHCR multi-arch image (amd64 + arm64). Before any tag: CPU-only (`EXPECT_TORCH=absent`), credential scan, and the [serve-and-version gate](#image-serve-and-version-gate). Never a required check |
 | **Lockfile Update** | `lockfile-update.yml` | Push to `dependabot/pip/**` by `dependabot[bot]`; PR when `pyproject.toml` changes (same repo, not `release/**`) | `--upgrade` compile of `requirements.lock` (`api`, `observability`, `mnist`, `equities`). Conf-only grouped bumps still qualify. Dependabot secret store must hold `CROSS_REPO_DISPATCH_TOKEN` or the job skips green |
-| **Sequence Safety** | `sequence-safety.yml` | PR | Advisory per-PR symbol-loss + docs-deletion screens via `juniper-ci-tools` (`--scope 'juniper_data/**'`); never required, never blocks a merge |
-| **Main Verify** | `main-verify.yml` | Push (main) | Bypass-proof post-merge compositional-loss net (screens-only, advisory); stable-title failure-issue upsert + catch-up base |
+| **Sequence Safety** | `sequence-safety.yml` | PR | **Required** check `Sequence Safety` on the default branch (ruleset `juniper-data-rules`). Per-PR symbol-loss + docs-deletion screens via `juniper-ci-tools` (`--scope 'juniper_data/**'`). Absent from the Quality Gate `needs:`, so a green Quality Gate alone does not make a PR mergeable. See [Sequence Safety (required check)](#sequence-safety-required-check) |
+| **Main Verify** | `main-verify.yml` | Push (main), manual | Bypass-proof post-merge compositional-loss net (screens-only) over a catch-up base. Not a PR status check: it runs after the merge, so a finding cannot block it; the run goes red and upserts a stable-title failure issue |
 | **Claude Code** | `claude.yml` | Issue comment, review comment, submitted review, issue opened/assigned | `@claude` assistant. Contract: [Claude Code Workflow](ci_cd/CICD_REFERENCE.md#claude-code-workflow) |
 
 ### Image serve-and-version gate
@@ -2343,6 +2344,37 @@ close/re-open.
 PR mergeable into `main`, and it does **not** re-land the stack -- do that separately.
 
 Rollout and rationale: [juniper-ml#434](https://github.com/pcalnon/juniper-ml/issues/434).
+
+### Sequence Safety (required check)
+
+`.github/workflows/sequence-safety.yml` publishes the status check **`Sequence Safety`**. Ruleset
+`juniper-data-rules` (id `14748749`) requires that context on `~DEFAULT_BRANCH`, so a red run
+blocks merge into `main`. The workflow also runs for pull requests into `develop`; required
+enforcement is the default-branch ruleset. Read the ruleset when the workflow header and this page
+disagree:
+
+```bash
+gh api repos/pcalnon/juniper-data/rulesets/14748749 \
+  --jq '.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context'
+```
+
+**Quality Gate and the ruleset are different levers.** `sequence-safety.yml` is its own workflow,
+so its job is not in `ci.yml`'s Quality Gate `needs:` (a `needs:` entry can only name a job in the
+same workflow). Being required is a ruleset property, so a green Quality Gate does not mean a PR is
+mergeable. #393 corrected the workflow header, which still called the check advisory after the
+ruleset promotion; the workflow table above kept the same stale claim until 2026-10-08.
+
+**Waivers.** An `Allow-Symbol-Loss: <qualified.symbol>` or `Allow-Docs-Rewrite: <path>` commit
+trailer waives that finding. On a squash merge, carry the trailer into the squash commit message:
+that commit is what `main-verify.yml` screens on `main`. The owner labels `allow-symbol-loss` and
+`docs-rewrite` pass `--advisory` to the matching screen only: its findings still print but no
+longer fail the check, so with the other screen clean the required context goes green. An
+invocation error (exit `2`) still fails it. A label is invisible on a push to `main`, so it does
+not clear the post-merge net.
+
+**After the merge.** `main-verify.yml` runs the same two screens on push to `main`. It is not a PR
+status check and cannot block a merge: a finding turns its run red and upserts one tracking issue
+per red streak.
 
 ---
 

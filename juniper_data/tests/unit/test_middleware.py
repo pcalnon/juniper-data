@@ -363,6 +363,17 @@ class TestFailedAuthThrottle:
             throttle.record_failure(f"10.0.0.{i % 255}")
         assert len(throttle._failures) <= FailedAuthThrottle._MAX_ENTRIES
 
+    def test_check_never_allocates_an_entry(self):
+        """``check()`` runs on every request pre-auth and only ``record_failure`` prunes, so a probe must not insert."""
+        throttle = FailedAuthThrottle(max_failures=1, window_seconds=60)
+        ips = [f"10.0.{i // 256}.{i % 256}" for i in range(1000)]
+        assert len(set(ips)) == 1000  # distinct, so an inserting probe would leave 1000 entries
+        assert [throttle.check(ip) for ip in ips] == [(False, 0)] * len(ips)
+        assert len(throttle._failures) == 0
+        throttle.record_failure(ips[0])  # the counting path still records, and still blocks
+        assert len(throttle._failures) == 1
+        assert throttle.check(ips[0])[0] is True
+
     def test_build_factory_defaults_match_the_documented_budget(self):
         throttle = build_failed_auth_throttle()
         assert throttle.enabled is True
