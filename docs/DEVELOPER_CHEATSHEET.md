@@ -1,6 +1,6 @@
 # Developer Cheatsheet -- juniper-data
 
-**Version**: 0.4.3 | **Date**: 2026-09-05 | **Project**: juniper-data -- Dataset Generation REST Service (FastAPI)
+**Version**: 0.4.4 | **Date**: 2026-10-08 | **Project**: juniper-data -- Dataset Generation REST Service (FastAPI)
 
 ---
 
@@ -30,7 +30,7 @@
 | `ruff format juniper_data`                                                             | Format (replaces black)                                                         |
 | `mypy juniper_data --ignore-missing-imports`                                           | Type check                                                                      |
 | `pre-commit run --all-files`                                                           | Run all pre-commit hooks                                                        |
-| `uv pip compile pyproject.toml --extra api --extra observability --extra mnist --extra equities -o requirements.lock` | Regenerate lockfile                                                             |
+| `uv pip compile pyproject.toml --extra api --extra observability --extra mnist --extra equities --upgrade -o requirements.lock` | Regenerate lockfile (same extras as `lockfile-update.yml`) |
 
 ---
 
@@ -104,7 +104,7 @@ All use `JUNIPER_DATA_` prefix (pydantic-settings in `juniper_data/api/settings.
 
 ## Rate-limit window
 
-The identity-keyed limiter is a fixed window. `JUNIPER_DATA_RATE_LIMIT_REQUESTS_PER_MINUTE` is the **count per window**, not a true per-minute rate when the window is not 60 s. Set the duration with `JUNIPER_DATA_RATE_LIMIT_WINDOW_SECONDS` (default 60; APD-DATA-033 / #297). Default `JUNIPER_DATA_RATE_LIMIT_ENABLED` is `true`. This knob does not move the failed-auth throttle (10 failures / 60 s, IP-keyed, only on 401). In-memory, per process.
+The identity-keyed limiter is a fixed window. `JUNIPER_DATA_RATE_LIMIT_REQUESTS_PER_MINUTE` is the **count per window**, not a true per-minute rate when the window is not 60 s. Set the duration with `JUNIPER_DATA_RATE_LIMIT_WINDOW_SECONDS` (default 60; APD-DATA-033 / #297). Default `JUNIPER_DATA_RATE_LIMIT_ENABLED` is `true`. This knob does not move the failed-auth throttle (10 failures / 60 s, IP-keyed, only on 401). A non-ASCII `X-API-Key` is a 401 and counts toward that throttle. See [Non-ASCII API Keys](REFERENCE.md#non-ascii-api-keys). In-memory, per process.
 
 ```bash
 export JUNIPER_DATA_RATE_LIMIT_REQUESTS_PER_MINUTE=7
@@ -138,6 +138,12 @@ Default filesystem layout: `{JUNIPER_DATA_STORAGE_PATH}/{dataset_id}.meta.json` 
 `PostgresDatasetStore` DDL, upsert, update, and both row mappers derive from `DatasetMeta.model_fields` (#343). Do not re-transcribe the column list — that dropped seven fields and made `n_classes` NOT NULL after the model allowed None. `SCHEMA_SQL` runs on every init (`ADD COLUMN IF NOT EXISTS`; NOT NULL adds carry a DEFAULT). Table names must be bare identifiers. The API still uses LocalFS; this store is opt-in.
 
 > See: [REFERENCE.md -- Postgres Model-Derived Schema](REFERENCE.md#postgres-model-derived-schema)
+
+### Hugging Face and Kaggle loads
+
+`HuggingFaceDatasetStore.load_hf_dataset` and `KaggleDatasetStore.load_kaggle_dataset` are library adapters, not REST generators. A load returns the six partition keys only (`X_train` … `y_test`), `generator_version` `3.0.0`, and no `X_full`. Defaults are a `0.8 / 0.1 / 0.1` carve. Bad ratios raise `ValueError` before the download, including a `float32` `0.8 + 0.1 + 0.1` once it is widened. An omitted seed does not shuffle and reuses one id (`params["seed"]` stays `None`). Scaling, when on, is fit on train only, so val and test can leave `[0, 1]`. HF `normalize` defaults to `True` (images are `/ 255`); Kaggle `normalize_features` defaults to `False`. Arrays go to `cache_store` (in-memory if you pass none). Kaggle also needs `~/.kaggle/kaggle.json` or `KAGGLE_USERNAME` and `KAGGLE_KEY`.
+
+> See: [REFERENCE.md -- External Stores](REFERENCE.md#external-stores-decision-11-contract)
 
 ---
 
@@ -219,6 +225,16 @@ The model fields are not juniper-data params; sent to `POST /v1/datasets` they a
 
 ---
 
+## equities_seq task type
+
+`equities_seq` is `regression` at generator **6.0.0**. `POST /v1/datasets` stores `task_type="regression"` and leaves `n_classes` and `class_distribution` null. The arrays still include a one-hot next-day direction (`y_*`) and a next-day close (`y_reg_*`). Flat `equities` stays `classification` at **5.0.0** (`n_classes` 2).
+
+The dataset id is `equities_seq-6.0.0-<hash>` over generator, version, and params. A cache hit returns the stored meta. An `equities_seq-5.0.0-…` artifact keeps classification meta and is a different id. `GET /v1/generators` lists `version` and has no `task_type` field.
+
+> See: [REFERENCE.md -- equities_seq Declared Regression](REFERENCE.md#equities_seq-declared-regression)
+
+---
+
 ## Testing
 
 | Marker                                      | Scope                             |
@@ -265,7 +281,9 @@ juniper-data uses **ruff** (NOT black/isort/flake8). Config in `pyproject.toml`:
 
 Metrics use `juniper_data_` namespace. Pattern: `juniper_data_<subsystem>_<name>_<unit>`. Add custom metrics in `juniper_data/api/observability.py` using `prometheus_client` (Counter, Gauge, Histogram).
 
-> See: `juniper_data/api/observability.py` | [Observability Guide](../../juniper-deploy/docs/OBSERVABILITY_GUIDE.md)
+`create_app` passes `telemetry={tracing, metrics, logs, operation_spans, auto_configure: False}` ([#454](https://github.com/pcalnon/juniper-data/pull/454), FastAPI 0.142.2). Leave that dict in place. `OTEL_EXPORTER_OTLP_*` does not export and does not log `FastAPI automatic telemetry configuration failed`. Prometheus (`JUNIPER_DATA_METRICS_ENABLED`) and Sentry (`JUNIPER_DATA_SENTRY_DSN`) are the observability path. FastAPI 0.141 and earlier have no native telemetry; there the keyword is ignored (FastAPI keeps unknown keywords in `app.extra`).
+
+> See: `juniper_data/api/observability.py` | [FastAPI Native Telemetry](REFERENCE.md#fastapi-native-telemetry) | [Observability Guide](../../juniper-deploy/docs/OBSERVABILITY_GUIDE.md)
 
 ---
 
@@ -292,7 +310,7 @@ Metrics use `juniper_data_` namespace. Pattern: `juniper_data_<subsystem>_<name>
 | Coverage gate        | **pre-push** | 80% aggregate (env `COVERAGE_FAIL_UNDER`), 85% per-module             |
 | SOPS guard           | pre-commit   | Block unencrypted `.env` files                                       |
 
-GitHub Actions: `ci.yml`, `publish.yml`, `security-scan.yml`, `codeql.yml`, `lockfile-update.yml`.
+GitHub Actions: `ci.yml`, `publish.yml`, `notify-consumers.yml`, `publish-image.yml`, `security-scan.yml`, `codeql.yml`, `lockfile-update.yml`. After PyPI succeeds, `notify-consumers.yml` dispatches `juniper-data-published` and waits for a consumer run. A dispatch `204` is not delivery. See [Consumer release notification](REFERENCE.md#consumer-release-notification). `publish-image.yml` is not a required check. Its serve-and-version gate is [Image serve-and-version gate](REFERENCE.md#image-serve-and-version-gate).
 
 ```bash
 pre-commit install                       # install hooks (one-time)
@@ -306,7 +324,7 @@ pre-commit install --hook-type pre-push  # coverage gate (one-time)
 | Symptom                 | Cause              | Fix                                                      |
 |-------------------------|--------------------|----------------------------------------------------------|
 | `ruff` not found        | Dev extras missing | `pip install -e ".[dev]"`                                |
-| 401 Unauthorized        | API keys set       | Pass `X-API-Key` header or unset `JUNIPER_DATA_API_KEYS` |
+| 401 Unauthorized        | API keys set       | Pass `X-API-Key` header or unset `JUNIPER_DATA_API_KEYS`. A non-ASCII value is the same 401 (`Invalid API key.`), and ten of them from one IP in 60 s become 429. See [Non-ASCII API Keys](REFERENCE.md#non-ascii-api-keys). |
 | 429 Too Many Requests   | Rate limiter (or failed-auth throttle) | Wait `Retry-After`; or raise `JUNIPER_DATA_RATE_LIMIT_WINDOW_SECONDS` / count; or `JUNIPER_DATA_RATE_LIMIT_ENABLED=false`. The failed-auth 429 is a different budget (10/60 s on 401s). See [Rate-Limit Window](REFERENCE.md#rate-limit-window). |
 | Storage path error      | Dir missing        | Set `JUNIPER_DATA_STORAGE_PATH` to writable path         |
 | Artifact RSS scales with NPZ size | Store inherits base `open_artifact_stream` | Use LocalFS (default API store), or override like LocalFS; do not wrap LocalFS in Cached |
@@ -321,6 +339,15 @@ pre-commit install --hook-type pre-push  # coverage gate (one-time)
 | Equities `total_shares` all zeros | SEC returned no facts under `fundamentals_fill="zero"` (the default is `"nan"` since 2026-09-05) | Check CIK / logs; try `fundamentals_fill="nan"`; do not read 0 as "no shares" |
 | juniper-recurrence refuses an `equities_seq` artifact: `X_train has non-finite values` | Bare defaults: `fundamentals_fill="nan"` leaves NaN in `X` columns 7, 8 and 14 | Send the [recurrence-ready bundle](REFERENCE.md#equities-sequence-recurrence-ready-parameters) |
 | Equities `400` naming `purchase_date`, `start_date` and `fundamentals_fill='drop'` | A purchase after the start under `drop` (W1.8): the rows before it have no cost basis | Set `purchase_date` on or before `start_date`, or use `fundamentals_fill="nan"` to keep those rows |
+| `python-minor` PR: lockfile pins differ from `conf/requirements_ci.txt` | `lockfile-update.yml` runs `uv pip compile --upgrade` on every `dependabot/pip/**` push, even when `pyproject.toml` is untouched | Review `[dependabot skip] Update requirements.lock` as the Docker resolution. No such commit: either the upgraded compile reproduced the committed lockfile, or the Update Lockfile run logged a notice that the Dependabot secret store has no `CROSS_REPO_DISPATCH_TOKEN`. See [Dependency Update Workflow](../notes/DEPENDENCY_UPDATE_WORKFLOW.md) |
+| No OTEL spans or metrics from the API | `create_app` sets FastAPI `telemetry` signals and `auto_configure` false ([#454](https://github.com/pcalnon/juniper-data/pull/454)) | Expected. Use Prometheus and Sentry. Leave the dict in place. See [FastAPI Native Telemetry](REFERENCE.md#fastapi-native-telemetry) |
+| `FastAPI automatic telemetry configuration failed` at startup | `telemetry` was omitted on FastAPI 0.142+ and an `OTEL_EXPORTER_OTLP_*` endpoint is set without `opentelemetry-sdk` | Restore the five-flag opt-out. Startup still continues on that warning |
+| Image publish: import is green, serve step fails | Metadata, `juniper_data.__version__`, and `/v1/health` `version` disagree, or the release tag (minus `v`) disagrees with `pyproject.toml` | The digest may already be in GHCR; the merge job writes no tag. See [Image serve-and-version gate](REFERENCE.md#image-serve-and-version-gate) |
+| Publish run red, package already on PyPI | `notify-consumers` saw a dispatch `204` but no `juniper-data-published` run (or could not list runs) | Fix the listener (`repository_dispatch`, no `run-name:`) or the PAT, then `workflow_dispatch` the same `X.Y.Z`. Do not cut another release. See [Consumer release notification](REFERENCE.md#consumer-release-notification). |
+| `ValueError: Object arrays cannot be loaded when allow_pickle=False` on an arc_agi download | Stored `arc_agi-3.0.0-*`: `task_ids` was `dtype=object` and `np.savez` pickled it | Generate again. The id is now `arc_agi-4.0.0-*`, `task_ids` is `<U`, and `n_classes` is null (`task_type="structured"`). Delete the old id when nothing names it. See [ARC-AGI Artifacts](REFERENCE.md#arc-agi-artifacts). |
+| `equities_seq` meta has `task_type: regression` and `n_classes: null` | Generator 6.0.0 declares regression; `y_*` is still the one-hot direction | Expected. Flat `equities` stays classification at 5.0.0. A cached `equities_seq-5.0.0-…` id still has class meta. See [equities_seq Declared Regression](REFERENCE.md#equities_seq-declared-regression) |
+| HF or Kaggle load has no `X_full`, or two ratio choices share one id | Before #422 (issue #411) the id was `hf-<name>-<rows>` and the arrays included `*_full` | Read the six partition keys. The id now hashes version `3.0.0` and the parameters. See [External Stores](REFERENCE.md#external-stores-decision-11-contract) |
+| `ValueError` on `train_ratio` / `val_ratio` / `test_ratio` before any download | Sum above 1, `train_ratio` of 0, a ratio outside `[0, 1]`, or widened `float32` `0.8 / 0.1 / 0.1` | Pass Python floats that sum to at most 1, with `train_ratio` > 0 |
 
 ---
 

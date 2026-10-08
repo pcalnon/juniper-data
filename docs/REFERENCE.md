@@ -1,8 +1,8 @@
 # Juniper Data Reference
 
-**Version:** 0.4.3
+**Version:** 0.4.4
 **Status:** Active
-**Last Updated:** September 5, 2026
+**Last Updated:** October 8, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -13,6 +13,7 @@
 - [DatasetMeta n_val and Three-Partition Counts](#datasetmeta-n_val-and-three-partition-counts)
 - [Configuration Reference](#configuration-reference)
 - [Rate-Limit Window](#rate-limit-window)
+- [Non-ASCII API Keys](#non-ascii-api-keys)
 - [Storage Backend Notes](#storage-backend-notes)
 - [Postgres Model-Derived Schema](#postgres-model-derived-schema)
 - [Command Reference](#command-reference)
@@ -27,13 +28,19 @@
 - [API Design Reference](#api-design-reference)
 - [Empty-Train Shape Metadata](#empty-train-shape-metadata)
 - [Storage Backend Reference](#storage-backend-reference)
+- [External Stores: Decision-11 Contract](#external-stores-decision-11-contract)
 - [CSV Import Truncation Edges](#csv-import-truncation-edges)
 - [Prometheus Collector Reference](#prometheus-collector-reference)
+- [FastAPI Native Telemetry](#fastapi-native-telemetry)
 - [Artifact Streaming](#artifact-streaming)
 - [Docker Reference](#docker-reference)
 - [Equities Symbol Cap](#equities-symbol-cap)
 - [Equities Sequence: Recurrence-Ready Parameters](#equities-sequence-recurrence-ready-parameters)
+- [equities_seq Declared Regression](#equities_seq-declared-regression)
+- [ARC-AGI Artifacts](#arc-agi-artifacts)
 - [CI/CD Pipeline Reference](#cicd-pipeline-reference)
+  - [Image serve-and-version gate](#image-serve-and-version-gate)
+  - [Consumer release notification](#consumer-release-notification)
 - [Additional Resources](#additional-resources)
 
 ---
@@ -296,7 +303,7 @@ Default `rate_limit_enabled` is **true** (`_JUNIPER_DATA_API_RATELIMIT_ENABLED`)
 
 ### Not this knob
 
-`FailedAuthThrottle` is a separate pre-auth, IP-keyed budget (10 failures / 60 s). It is not wired to `Settings.rate_limit_window_seconds`. It only consumes budget on a **failed** credential. A 429 from the identity-keyed limiter is not recorded as an auth failure.
+`FailedAuthThrottle` is a separate pre-auth, IP-keyed budget (10 failures / 60 s). It is not wired to `Settings.rate_limit_window_seconds`. It only consumes budget on a **failed** credential. A 429 from the identity-keyed limiter is not recorded as an auth failure. A non-ASCII `X-API-Key` is one of those failures: it is a 401, and it consumes this budget. See [Non-ASCII API Keys](#non-ascii-api-keys).
 
 ### Operator usage
 
@@ -330,6 +337,68 @@ In-process only. Multiple uvicorn workers do not share counters. Restarting the 
 | `test_window_property_returns_configured_seconds` | `tests/unit/test_security.py` | Constructor window is readable |
 | `test_check_resets_after_window_expiry` | same | Count resets once `now - window_start >= window` |
 | `test_call_raises_429_when_over_limit` | same | Over-limit path is 429 |
+
+---
+
+## Non-ASCII API Keys
+
+`APIKeyAuth.validate` compares the presented `X-API-Key` with each configured key using `hmac.compare_digest` on UTF-8 bytes, encoded with the `surrogatepass` error handler (#440). Starlette decodes header bytes as latin-1, so a header with any byte above `0x7F` (including a key whose bytes are `b"\xa0"`) is a non-ASCII string. Against ASCII configured keys it is a mismatch: the method returns `False`. It does not raise.
+
+The fix is on `main` after v0.16.0. The 0.16.0 wheel and image still compare `str`, so there a non-ASCII key is the 500 described below.
+
+### Why bytes, and why `surrogatepass`
+
+`hmac.compare_digest` raises `TypeError` when either argument is a `str` that holds a non-ASCII character. Before the byte compare, that exception left `SecurityMiddleware`. The client received **500**. `FailedAuthThrottle.record_failure` never ran, because the middleware records a failure only for an `HTTPException` whose status is 401. With `JUNIPER_DATA_SENTRY_DSN` set, the unhandled error was an event whose stack frame included `candidate`, a configured key: `configure_sentry` does not pass `include_local_variables`, and the SDK default sends locals.
+
+`surrogatepass` is the built-in UTF-8 handler that is both total and injective:
+
+- A lone surrogate (for example `\ud800` from a JSON-decoded `JUNIPER_DATA_API_KEYS` value) encodes. `strict` and `surrogateescape` both raise on it.
+- `surrogateescape` maps `\xe9` and `\udcc3\udca9` to the same bytes, so two unequal strings would compare equal. `surrogatepass` does not.
+
+The compare accepts a presented key exactly when the two strings are equal. A prefix of a configured key does not match. The loop calls `compare_digest` for every configured key.
+
+### What the caller sees
+
+`create_app` installs `SecurityMiddleware` without a custom throttle, so the default `FailedAuthThrottle` is on: 10 failures / 60 seconds, keyed by client IP (`DEFAULT_FAILED_AUTH_MAX_FAILURES`, `DEFAULT_FAILED_AUTH_WINDOW_SECONDS`). `build_failed_auth_throttle` reads no `JUNIPER_DATA_*` setting. There is no operator knob for this budget.
+
+1. Exempt paths skip the throttle and authentication: `/v1/health`, `/v1/health/live`, `/v1/health/ready`, `/metrics`, `/metrics/`.
+2. The throttle is checked first. An IP already at 10 failures in the open window receives **429** with `Retry-After` and does not reach the comparison.
+3. A missing key is **401** `{"detail": "Missing API key. Provide X-API-Key header."}`.
+4. Any other mismatch, including a non-ASCII header, is **401** `{"detail": "Invalid API key."}`.
+5. `SecurityMiddleware` catches that `HTTPException`. Status 401 calls `record_failure`. The eleventh failure inside the window is the 429 in step 2.
+6. A key that matches is not recorded.
+
+```bash
+# Auth on. One non-ASCII byte is a 401. The eleventh such request from the same IP is a 429.
+curl -s -D - -o /dev/null \
+  --header $'X-API-Key: \xa0' \
+  http://127.0.0.1:8100/v1/generators
+```
+
+### Sentry
+
+`lifespan` calls `configure_sentry` from `juniper-observability` 0.4.0 (the pin in `requirements.lock`). That `sentry_sdk.init` sets `send_default_pii` from `JUNIPER_DATA_SENTRY_SEND_PII` (default `false`) and `before_send` to `_strip_sensitive_headers`. The hook rewrites the request headers `X-API-Key`, `Authorization`, and `Cookie` to `[Filtered]`. It leaves other headers, and it does not delete stack-frame locals. The init call does not pass `include_local_variables`.
+
+The non-ASCII path stays out of that event because `validate` returns `False` and `APIKeyAuth.__call__` raises a handled 401. The configured key is not placed on an error frame.
+
+### What not to do
+
+- Do not pass the header to `hmac.compare_digest` as `str`. A non-ASCII value raises `TypeError` again: the client sees 500, the throttle does not count it, and a Sentry event can contain `candidate`.
+- Do not encode with `surrogateescape`. Unequal strings can compare equal (`\xe9` and `\udcc3\udca9`).
+- Do not treat a non-ASCII 401 as a server fault. It is a failed credential, and it counts toward the 10-failure / 60-second IP budget.
+- Do not expect `JUNIPER_DATA_RATE_LIMIT_WINDOW_SECONDS` to move that budget.
+
+### Pins (on `main`)
+
+| Test | File | Guards |
+|------|------|--------|
+| `test_non_ascii_presented_key_is_a_mismatch_not_an_exception` | `tests/unit/test_security.py` | `\xa0`, `\x85`, `\xff`, and mixed values return `False` |
+| `test_validate_matches_exactly_when_the_strings_are_equal` | same | Match iff the strings are equal, including a lone surrogate and the `surrogateescape` collision pair |
+| `test_call_raises_401_on_a_non_ascii_header` | same | A real `Request` (latin-1 header decode) raises 401 `Invalid API key` |
+| `test_http_request_is_401_not_500` | same (`TestNonAsciiApiKeyThroughTheApp`) | `create_app` returns 401 for the raw header bytes |
+| `test_failed_attempts_reach_the_throttle` | same | Ten `\xa0` attempts are 401; the eleventh is 429 |
+| `test_before_send_redacts_sensitive_headers` | `tests/unit/test_phase1d_security.py` | `X-API-Key`, `Authorization`, and `Cookie` become `[Filtered]` |
+| `test_configure_sentry_passes_send_pii_and_before_send` | same | Default init sets `send_default_pii=False` and `before_send=_strip_sensitive_headers` |
 
 ---
 
@@ -522,8 +591,8 @@ pip install -e ".[api]"
 # Install everything
 pip install -e ".[all]"
 
-# Regenerate lockfile for Docker
-uv pip compile pyproject.toml --extra api --extra observability --extra mnist --extra equities -o requirements.lock
+# Regenerate lockfile for Docker (same extras and --upgrade as lockfile-update.yml)
+uv pip compile pyproject.toml --extra api --extra observability --extra mnist --extra equities --upgrade -o requirements.lock
 ```
 
 ---
@@ -819,6 +888,8 @@ juniper-data/
 | `prometheus-client` | >= 0.20.0 | Metrics export |
 | `sentry-sdk[fastapi]` | >= 2.0.0 | Error tracking |
 
+FastAPI 0.142 can pull `opentelemetry-api` into `requirements.lock` (`# via fastapi`). That pin is not this extra and does not export. `create_app` turns FastAPI's own signals off. See [FastAPI Native Telemetry](#fastapi-native-telemetry).
+
 ### ARC-AGI (optional: `pip install -e ".[arc-agi]"`)
 
 | Package | Version | Purpose |
@@ -848,7 +919,7 @@ the README section "MNIST / Fashion-MNIST (optional extra)". The Docker image sh
 | `201 Created` | Resource created | POST /v1/datasets |
 | `204 No Content` | Deleted | DELETE /v1/datasets/{id} |
 | `400 Bad Request` | Invalid parameters | Bad generator params |
-| `401 Unauthorized` | Missing/invalid API key | Auth enabled, no key sent |
+| `401 Unauthorized` | Missing or invalid API key, including a non-ASCII `X-API-Key` | Auth enabled. See [Non-ASCII API Keys](#non-ascii-api-keys). |
 | `404 Not Found` | Resource not found | Unknown generator or dataset ID |
 | `422 Unprocessable Entity` | Validation error, or `csv_import` source over its byte cap | Pydantic schema failure (`detail` is a list), or `InputTooLargeError` (`detail` is a string). See [CSV Import Byte Cap](#csv-import-byte-cap). |
 | `429 Too Many Requests` | Rate limited | Exceeded requests/minute |
@@ -1027,10 +1098,10 @@ juniper-data/
 │   ├── api/                        # API documentation
 │   ├── testing/                    # Testing documentation
 │   └── ci_cd/                      # CI/CD documentation
-├── scripts/                        # CI and coverage scripts
+├── scripts/                        # Coverage gate and systemd service files
 │   ├── check_module_coverage.py    # Per-module coverage enforcement (85% min)
-│   ├── check_doc_links.py          # Internal markdown link validation
-│   └── generate_dep_docs.sh        # Dependency documentation generator
+│   ├── juniper-data-ctl            # systemd user-service management CLI
+│   └── juniper-data.service        # systemd user-service unit
 ├── notes/                          # Development notes, procedures, roadmaps
 ├── conf/                           # Shell and logging configuration files
 ├── util/                           # Bash utility scripts (40+ scripts)
@@ -1229,6 +1300,8 @@ Note this is a stronger requirement than an `OPTIONS` bypass in
 (one carrying `Access-Control-Request-Method`), so a plain `OPTIONS` request
 still authenticates. Pinned by `TestCorsPreflight` in
 `juniper_data/tests/unit/test_api_app.py`.
+
+FastAPI's OpenTelemetry wrapper is not a row in this stack. `create_app` turns it off. See [FastAPI Native Telemetry](#fastapi-native-telemetry).
 
 ### Response Models
 
@@ -1470,8 +1543,10 @@ JuniperData supports 7 storage backend implementations with a composable archite
 | **Cached** | `storage/cached.py` | Composable cache wrapper | None (wraps another store) |
 | **Redis** | `storage/redis_store.py` | Distributed caching | `redis` |
 | **PostgreSQL** | `storage/postgres_store.py` | Persistent metadata with JSONB | `psycopg2` |
-| **HuggingFace** | `storage/hf_store.py` | Read-only HF Hub integration | `datasets` |
-| **Kaggle** | `storage/kaggle_store.py` | Kaggle dataset downloads | `kaggle` |
+| **HuggingFace** | `storage/hf_store.py` | Read-only HF Hub load | `datasets` |
+| **Kaggle** | `storage/kaggle_store.py` | Read-only Kaggle CSV load | `kaggle` |
+
+Hugging Face and Kaggle are library adapters. A load emits the [decision-11 contract](#external-stores-decision-11-contract). The API process does not construct either store.
 
 ### Composable Caching
 
@@ -1482,6 +1557,127 @@ primary = LocalFSDatasetStore(path="./data")
 cache = InMemoryDatasetStore()
 store = CachedDatasetStore(primary=primary, cache=cache)
 ```
+
+---
+
+## External Stores: Decision-11 Contract
+
+`HuggingFaceDatasetStore.load_hf_dataset` and `KaggleDatasetStore.load_kaggle_dataset` are library loaders (`storage/external_partition.py`; issue juniper-data#411, fixed by #422 and first released in 0.16.0). They are not registered generators, and `create_app` does not construct them. `POST /v1/datasets` cannot name `huggingface` or `kaggle`.
+
+They used to cut two ways (`X[:n_train]` / the rest), emit `X_full` / `y_full`, and stamp `generator_version="1.0.0"`. The id was `hf-<name>-<rows>`: no version and no parameters, so two partitionings of one dataset collided, and a cached two-way artifact answered a three-way request. The generator sweep in `test_val_emission_guards.py` still walks only `juniper_data.generators`, which is why `1.0.0` survived decision 11. Each store now publishes a module-level `VERSION = "3.0.0"`. `TestExternalStoresAtTheDecision11Floor` imports that constant and requires a major of at least 3. The same constant is `generator_version`, and it is hashed into the id.
+
+### What a load returns
+
+Exactly six keys, all `float32`: `X_train`, `y_train`, `X_val`, `y_val`, `X_test`, `y_test`. No `*_full`.
+
+| Field | Value |
+|-------|-------|
+| `generator` | `"huggingface"` or `"kaggle"` |
+| `generator_version` | `"3.0.0"` (`EXTERNAL_STORE_VERSION`), hashed into the id |
+| `n_train` / `n_val` / `n_test` | Match the array lengths |
+| `n_samples` | Rows actually emitted (`n_train + n_val + n_test`) |
+| `class_distribution` | Counts those emitted rows only |
+
+`params["n_samples"]` is the row count **after** the caller's `n_samples` limit and **before** the carve. When the ratios sum to less than 1 it is larger than `meta.n_samples`.
+
+### Carve
+
+Defaults are `0.8` / `0.1` / `0.1`, the same carve as `mnist`, `csv_import`, and `arc_agi`. Rows are cut in their current order. The only shuffle is the one a **non-`None` seed** requests, and it happens before the cut. A ratio sum below 1 leaves the tail out of every partition and out of `meta.n_samples`.
+
+A small corpus can leave a partition empty. At the defaults, two rows carve to `2 / 0 / 0` and five to `4 / 0 / 1` (`resolve_partition_counts`, whole-dataset remainder absorbed by test).
+
+`validate_carve_ratios` runs **before** any Hub or Kaggle fetch, and the carve calls it again:
+
+- each ratio is in `[0, 1]` (NaN fails)
+- `train_ratio` is greater than 0
+- the three sum to at most `1.0 + 1e-9`
+
+Ratios are converted with `float()` first, so the early check and the carve see the same numbers. `np.float32(0.8) + np.float32(0.1) + np.float32(0.1)` widens past 1 and is a `ValueError` with no download.
+
+### Identity
+
+`external_dataset_id` builds `<prefix>-<generator>-3.0.0-<hash>` via `generate_dataset_id`.
+
+| Store | Prefix | Example stem |
+|-------|--------|----------------|
+| Hugging Face | `hf-<dataset_name>` plus `-<config_name>` when set | `hf-mnist-huggingface-3.0.0-…` |
+| Kaggle | `kaggle-<ref>` with `/` replaced by `-` | `kaggle-owner-iris-kaggle-3.0.0-…` |
+
+The same parameters hash to the same id. A different ratio, seed, or column list hashes to a different id.
+
+An omitted seed does **not** shuffle, so the load is repeatable. `generate_dataset_id` would otherwise add a per-call nonce when `seed` is `None` (BUG-JD-04: for a generator, no seed means a fresh draw). These stores hash that `None` as the fixed marker `"unshuffled"`. `DatasetMeta.params["seed"]` stays `None`. Without the marker, every identical call would add a full copy to the default in-memory cache, which does not evict.
+
+An `np.int64` seed hashes as a Python `int`. On the Hugging Face path, a non-`str` split is passed through `str()` (so a `NamedSplit` becomes `"train"`) and a column array becomes a list of strings, both before the hash and before the Hub call.
+
+### Scaling (decision 7)
+
+Statistics are fit on **train only** and applied unchanged to val and test. Held-out values may leave `[0, 1]`. Fitting on every row before the cut leaked val and test into the scale.
+
+| Store | Knob | Default | Fit |
+|-------|------|---------|-----|
+| Hugging Face | `normalize` | `True` | Images: constant `/ 255` on every row, not a fit. Tabular: divide by `X_train.max()` when that max is greater than 1; otherwise leave the values. An empty train (`size == 0`) skips the scale. |
+| Kaggle | `normalize_features` | `False` | Per-column min-max on train. A zero range becomes 1. An empty train is left raw (nothing to fit). |
+
+### Where the bytes go
+
+Both loaders `save` into `cache_store`. The default is a new `InMemoryDatasetStore`. `save`, `get_meta`, `get_artifact_bytes`, `exists`, `delete`, and `list_datasets` delegate there. A load writes the cache store directly and then invalidates this store's metadata cache.
+
+Kaggle's `download_dataset` also writes files under `download_path` (default `./data/kaggle`). That directory is the extracted CSV, not the NPZ. Credentials are `~/.kaggle/kaggle.json` or `KAGGLE_USERNAME` and `KAGGLE_KEY`. A missing `kaggle` package raises `ImportError` at init. A download with no API client raises `RuntimeError`. If `file_name` is not in the extract, the first `*.csv` found under it is used; if there is none, `FileNotFoundError`. An empty CSV raises `ValueError` (`No data found in CSV file`). A non-numeric feature cell becomes `0.0`.
+
+A missing `datasets` package raises `ImportError` from `HuggingFaceDatasetStore`. `cache_dir` is the Hub cache, separate from `cache_store`.
+
+```python
+from juniper_data.storage import get_hf_store, get_kaggle_store
+
+dataset_id, meta, arrays = get_hf_store().load_hf_dataset(
+    "mnist",
+    feature_columns=["image"],
+    label_column="label",
+    n_samples=100,
+    seed=7,
+)
+assert set(arrays) == {"X_train", "y_train", "X_val", "y_val", "X_test", "y_test"}
+assert meta.generator == "huggingface" and meta.generator_version == "3.0.0"
+assert "X_full" not in arrays
+
+# Kaggle: credentials required. normalize_features defaults to False.
+dataset_id, meta, arrays = get_kaggle_store().load_kaggle_dataset(
+    "owner/dataset-name",
+    file_name="data.csv",
+    label_column="label",
+    seed=7,
+)
+```
+
+### What not to do
+
+- Do not read `X_full` or `y_full` off a new load. Concatenate `train`, then `val`, then `test` if you need the emitted rows.
+- Do not cache on `hf-<name>-<rows>`. That id no longer exists, and it could not tell two partitionings apart.
+- Do not treat an omitted seed as a fresh draw, and do not write the `"unshuffled"` marker into `params`.
+- Do not fit a scale on all rows before the cut, and do not require val and test to stay inside `[0, 1]`.
+- Do not validate ratios after the download. A `float32` `0.8 / 0.1 / 0.1` already fails the pre-check.
+- Do not equate `params["n_samples"]` with `meta.n_samples`.
+- Do not expect `GET /v1/generators` to list these stores.
+
+### Pins
+
+| Test | Property |
+|------|----------|
+| `test_load_emits_three_partitions_at_the_decision_11_version` | HF: 20 rows at the defaults are `16 / 2 / 2`, version `3.0.0`, no `X_full` |
+| `test_load_csv_dataset` | Kaggle: six keys, `generator_version` `3.0.0`, id contains `-kaggle-3.0.0-` |
+| `test_load_carves_three_partitions` | Kaggle: 20 rows at the defaults are `16 / 2 / 2` |
+| `test_ratios_are_honoured_and_unused_rows_are_left_out` | A `0.5 / 0.2 / 0.1` cut leaves the tail out of meta and arrays (both stores) |
+| `test_invalid_ratios_raise` | HF: over-sum, zero train, and negative val raise `ValueError` |
+| `test_invalid_ratios_fail_before_the_download` | HF over-sum does not call the Hub. Kaggle over-sum and widened `float32` `0.8 / 0.1 / 0.1` do not call `download_dataset` |
+| `test_float32_ratios_are_judged_as_the_carve_sees_them_before_the_download` | HF widened `float32` `0.8 / 0.1 / 0.1` fails before the Hub call |
+| `test_dataset_id_carries_version_and_params` | Same request, same id; a different ratio, a different id |
+| `test_unseeded_loads_reuse_one_id_and_one_cache_entry` | Three unseeded loads share one id; recorded `seed` stays `None` |
+| `test_load_with_normalization` | Train-only scale; HF val/test and Kaggle val/test can exceed 1 |
+| `test_image_normalisation_is_the_constant_not_a_fit` | Image `/ 255` is not a train-fit; the fixture's max stays below 1 |
+| `test_empty_train_partition_is_left_unscaled` | Kaggle empty train stays raw |
+| `test_store_version_is_at_or_above_the_floor` | `hf_store.VERSION` and `kaggle_store.VERSION` have major ≥ 3 |
+
+Hugging Face tests live in `juniper_data/tests/unit/test_hf_store.py`. Kaggle tests live in `juniper_data/tests/unit/test_kaggle_store.py`. The version floor lives in `juniper_data/tests/unit/test_val_emission_guards.py`.
 
 ---
 
@@ -1545,6 +1741,58 @@ For any new `prometheus_client` `Counter` / `Gauge` / `Histogram` / `Summary` / 
 Tests touching these collectors should use `juniper_observability.testing.reset_prometheus_registry`. Existing examples in this repo: `juniper_data/api/observability.py:_ensure_dataset_metrics`. See [the design doc in juniper-ml](https://github.com/pcalnon/juniper-ml/blob/main/notes/observability/JUNIPER_2026-05-05_JUNIPER-ML_REGISTER-OR-REUSE-HELPER-DESIGN.md) for the rationale.
 
 ---
+
+## FastAPI Native Telemetry
+
+FastAPI 0.142 added native OpenTelemetry and a `telemetry` argument on `FastAPI()`. `requirements.lock` pins FastAPI 0.142.2 since the python-minor bump ([#446](https://github.com/pcalnon/juniper-data/pull/446)); the v0.16.0 lock pinned 0.141.1, which has neither. Keys you omit keep the library defaults: `tracing`, `metrics`, `logs`, `operation_spans`, and `auto_configure` are all `True` (`fastapi/applications.py`).
+
+[#454](https://github.com/pcalnon/juniper-data/pull/454) makes `create_app` in `juniper_data/api/app.py` pass an explicit opt-out. On FastAPI 0.141 and earlier the keyword does not raise: `FastAPI.__init__` keeps unknown keywords in `app.extra`, so it is ignored there.
+
+```python
+telemetry={
+    "tracing": False,
+    "metrics": False,
+    "logs": False,
+    "operation_spans": False,
+    "auto_configure": False,
+}
+```
+
+FastAPI merges that dict over its defaults. `tracer_provider`, `meter_provider`, `logger_provider`, and `exclude` stay `None`. There is no `JUNIPER_DATA_` setting that forwards `telemetry`.
+
+| Flag | Effect when `False` |
+|------|---------------------|
+| `tracing`, `metrics`, `logs` | `NativeTelemetry.enabled()` is false, so the ASGI wrapper does not run |
+| `operation_spans` | No child spans for dependencies, the endpoint, serialization, or background tasks |
+| `auto_configure` | Lifespan setup returns before it reads OTLP endpoint variables |
+
+With the three signal flags false, a later real provider does not turn the wrapper back on. Under the library defaults, a provider other than the API proxies (`ProxyTracerProvider`, `_ProxyMeterProvider`, `ProxyLoggerProvider`) does. The logs signal, when it is on, records validation failures and unhandled exceptions, including exception messages and stack traces. HTTP metrics FastAPI would register are `http.server.request.duration` and `http.server.active_requests`.
+
+`operation_spans` is unused on the request path while `tracing` is false. The factory still sets it so turning tracing back on does not also enable child spans.
+
+The opt-out is a pin, not a leak fix. Without it, this service's own configuration still leaves the wrapper off: `sentry-sdk` 2.71.0, initialised the way `configure_sentry` does it, installs no OpenTelemetry provider, so the global providers stay the API proxies and `NativeTelemetry.enabled()` is false. What the opt-out removes today is the startup warning when an OTLP endpoint is set. What it guards against is a later dependency that installs a real global provider, which would otherwise switch on per-request spans and the logs signal silently.
+
+`auto_configure: False` skips `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_ENDPOINT`. FastAPI does not import `opentelemetry-sdk`, does not replace the global providers, and does not log `FastAPI automatic telemetry configuration failed`. `OTEL_SDK_DISABLED` has nothing left to skip. The lifespan wrapper is still installed; its startup hook returns immediately, then the app lifespan runs `configure_logging`, `configure_sentry`, and (when metrics are on) `set_build_info`.
+
+What still observes the process:
+
+| Surface | Switch | Default |
+|---------|--------|---------|
+| Prometheus (`PrometheusMiddleware`, `/metrics`) | `JUNIPER_DATA_METRICS_ENABLED` | `false` |
+| Sentry (`configure_sentry` in the app lifespan) | `JUNIPER_DATA_SENTRY_DSN` | unset (`sentry_traces_sample_rate` default `0.1`) |
+| Logs and `X-Request-ID` | `JUNIPER_DATA_LOG_FORMAT`, `JUNIPER_DATA_LOG_LEVEL` | `text` / `INFO` |
+
+The 0.142 lock records `opentelemetry-api` (`# via fastapi`) and does not install `opentelemetry-sdk` or the `fastapi[opentelemetry]` / `fastapi[standard]` extras. That API package is not an exporter.
+
+### Constraints
+
+- Leave all five flags `False`. The pin below fails if any one flips.
+- Prometheus and Sentry are the export path. An OTLP endpoint in the environment does not start FastAPI export.
+- The warning `FastAPI automatic telemetry configuration failed` is the omitted-argument path (endpoint set, SDK missing). FastAPI 0.142.2 logs it and continues startup. This service does not take that path once the opt-out is in place.
+
+### Pin
+
+`TestCreateApp.test_create_app_disables_fastapi_native_telemetry` in `juniper_data/tests/unit/test_api_app.py` asserts `app._telemetry` for the five keys above.
 
 ---
 
@@ -1612,8 +1860,8 @@ Relocated verbatim from `AGENTS.md` (P3 of the shared-session-memory plan) so it
 - **Build**: Multi-stage (builder -> runtime) using `python:3.14-slim`
 - **User**: Non-root `juniper:juniper` (UID 1000, GID 1000)
 - **Port**: 8100 (exposed)
-- **Health Check**: `curl -f http://localhost:8100/v1/health` (30s interval, 10s timeout, 3 retries)
-- **Entry Point**: `python -m juniper_data`
+- **Health Check**: the image `HEALTHCHECK` is `python -c` plus `urllib` against `http://localhost:8100/v1/health` (30s interval, 10s timeout, 5s start period, 3 retries). The publish workflow's serve-and-version gate is a separate check; see [Image serve-and-version gate](#image-serve-and-version-gate).
+- **Command**: `CMD ["python", "-m", "juniper_data"]`. There is no `ENTRYPOINT`, so `docker run IMG python -c ...` replaces that command. The serve check starts the image with no command override, which is how a deployment runs it.
 
 ### Environment Variables
 
@@ -1818,12 +2066,97 @@ This **applies the plan's recommended R3 pending the owner's ruling** (alternati
   A calendar-day comparison would refuse the defaults themselves, and with them juniper-canopy's two equities registry seeds and the bundle above, all of which send `drop` with the default dates.
 - **Exchange holidays are not modelled.** A start on a weekday holiday with a purchase on the next session (`2008-01-01` → `2008-01-02`) is refused. Set `purchase_date` to `start_date`; the basis is the same.
 - **`nan` and `zero` are unchanged.** A later purchase is accepted and the rows before it are emitted with a NaN `cost_basis`. Zero-fill does not reach `cost_basis`: 0.0 is a price a consumer would divide by.
-- **`generator_version` is unchanged** (`equities` 5.0.0, `equities_seq` 6.0.0). A refused request mints nothing and is refused before the cache lookup.
+- **`generator_version` is unchanged** (`equities` 5.0.0, `equities_seq` 6.0.0). Why `equities_seq` is 6.0.0 is [equities_seq Declared Regression](#equities_seq-declared-regression). A refused request mints nothing and is refused before the cache lookup.
   A request that still mints has no weekday between `start_date` and `purchase_date`, so its frame holds a pre-purchase row only if the provider returns one dated on a weekend or before `start_date`.
   None of the 3,193,942 rows in the 556 OHLCV files of the development host's download cache is either, so every still-mintable request emits the arrays it emitted before, under the id it had before.
 
 Pins: `TestCostBasisUnderDrop` in `tests/unit/test_equities_generator.py`; `test_create_dataset_refuses_drop_with_a_later_purchase_before_the_cache` in `tests/unit/test_api_routes.py`;
 `TestRecurrenceReadyBundle` in `tests/unit/test_equities_seq_generator.py`.
+
+---
+
+## equities_seq Declared Regression
+
+`equities_seq` is `task_type="regression"` at `generator_version` **6.0.0** (X8, #437, owner ruling 2026-09-24). Flat `equities` stays `task_type="classification"` at **5.0.0**.
+
+This is on `main` only: #437 merged after `v0.16.0` was tagged (`CHANGELOG.md` records it under `[Unreleased]`). The 0.16.0 wheel and image still serve `equities_seq` at 5.0.0 with `classification` meta, so a create against them resolves under `equities_seq-5.0.0-`.
+
+Both generators emit two targets. `y_{split}` is a one-hot next-day direction. `y_reg_{split}` is the next-day close, or the return / log return selected by `regression_target`. The registry has no task type that means both. `POST /v1/datasets` copies `GENERATOR_REGISTRY[name]["task_type"]` onto `DatasetMeta` and passes that string to `compute_shape_meta`. Only `"classification"` fills `n_classes` and `class_distribution`.
+
+| Field | `equities` 5.0.0 | `equities_seq` 6.0.0 |
+|-------|------------------|----------------------|
+| `meta.task_type` | `"classification"` | `"regression"` |
+| `meta.n_classes` | `2` | `null` |
+| `meta.class_distribution` | counts from `argmax` over `y` | `null` |
+| Arrays | one-hot `y_*` plus `y_reg_*` | the same targets, with `X` windowed to `(W, L, F)` |
+
+`n_features` stays `X`'s trailing axis. Sequence fields (`sequence`, `lookback`, `time_unit="calendar_days"`) are unchanged.
+
+`GET /v1/generators` does not carry the label. `GeneratorInfo` is `name`, `version`, `description`, `available`, `install_hint`, and `schema`. The listing does show `version`: `6.0.0` on `equities_seq`, `5.0.0` on `equities`.
+
+### Why the id moved
+
+`generate_dataset_id` hashes the generator name, the registry version, and `params.model_dump()`. The id string is `{generator}-{version}-{hash[:16]}`. Meta is not an input. When `store.get_meta` finds that id, the route returns the stored `DatasetMeta` and skips `generate()`.
+
+A current create resolves under the prefix `equities_seq-6.0.0-`. An artifact stored as `equities_seq-5.0.0-…` keeps the classification meta it was written with (`n_classes` 2). That id is a different resource; fetching it still returns the old meta.
+
+`seed` defaults to `DEFAULT_GENERATOR_SEED` (fallback 42, override `JUNIPER_DATA_DEFAULT_GENERATOR_SEED`). The temporal split does not use it, and `model_dump()` still includes it, so an omitted seed produces a stable id. An explicit `"seed": null` mixes in a per-call nonce (`dataset_id.py`), and that request misses the cache.
+
+### What not to do
+
+- Do not read `n_classes: null` as "no direction target". `y_*` is still the one-hot direction. The registry comment records that the LMU reads `y_reg_*`.
+- Do not relabel flat `equities`. The ruling named `equities_seq`. Classification meta is what keeps its `n_classes` at 2.
+- Do not read `task_type` from `GET /v1/generators`. That payload has no such field; the dataset's `meta.task_type` does.
+- Do not change the registry label without a `VERSION` bump. The id does not hash meta, so the previous id keeps serving the previous meta. That is the `arc_agi` #402 / #427 precedent this bump follows.
+
+### Pins
+
+`juniper_data/tests/unit/test_equities_seq_task_type.py` (`TestX8EquitiesSeqIsRegression`, `TestX8MovedTheVersion`).
+
+---
+
+## ARC-AGI Artifacts
+
+A fresh `POST /v1/datasets` with `"generator": "arc_agi"` mints `generator_version` **4.0.0**, so the id starts `arc_agi-4.0.0-`. Two facts about that artifact are easy to misread, and the artifacts it replaced are still on disk.
+
+### `task_ids` loads without pickle
+
+`task_ids` is one fixed-width unicode array (`np.str_`, `dtype.kind == "U"`), never `dtype=object`. `np.savez` pickles an object array. juniper-data-client's `download_artifact_npz` materialises every key with numpy's default `allow_pickle=False`, so one object array used to fail the whole download:
+
+```text
+ValueError: Object arrays cannot be loaded when allow_pickle=False
+```
+
+The array is not split per partition. It is passed through `partition_and_assemble` as an extra, so it takes the same shuffle and the same cut as the rows. `task_ids[i]` names the task of row `i` of `concatenate([X_train, X_val, X_test])`.
+
+| Id at the source | Stored text |
+|------------------|-------------|
+| Local JSON file | The filename stem (`_load_json_dir` overwrites `task_id`) |
+| Hub row with no `task_id` key | `task_{n}`, the index while the split is loaded |
+| Present JSON `null` | `"unknown"`. `str(None)` would be `"None"`, which collides with a task of that name |
+| Any other value | `str(value)` (an int `7` is `"7"`) |
+
+The Hub source is `lordspline/arc-agi`, split `training` (there is no `train` split). When that dataset declares columns and `train` or `test` is absent, generation raises `RuntimeError` instead of emitting an empty artifact. Zero usable grid pairs is the same error; an empty dataset is not persisted.
+
+### `task_type` is `structured`
+
+The registry declares `structured` (`core.meta.TASK_TYPE_STRUCTURED`). `compute_shape_meta` fills `n_classes` and `class_distribution` only for `classification`, so both are **null** on a 4.0.0 artifact. `GET /v1/generators` does not return `task_type` — `GeneratorInfo` carries name, version, description, availability, install hint, and the parameter schema. The stored dataset meta does.
+
+`y_*` is the padded **output grid**, the same shape as `X_*`, not a class label. Defaults are `flatten_pairs=true`, `pad_to=30`, `pad_value=-1`, so both are `(n, 900)`. Cells are ARC colors 0–9, with `-1` in the pad. Declared `classification`, that 900-wide `y` was argmax'd into a fabricated `n_classes = 900` over grid-cell positions. With `flatten_pairs=false` both stay `(n, 30, 30)`, and `n_features` is the trailing axis (30), not 900.
+
+### Why the id moved
+
+The dataset id hashes the generator version. It does not hash the meta or the array dtypes. #402 had already switched `task_type` from `classification` to `structured` without a bump, so a cached artifact kept serving the fabricated class meta under the id a new request resolved to. The same id also kept serving the pickled `task_ids`. **4.0.0** moves the id, the same way the equities `5.0.0` correction did. It stays clear of the minor bump reserved for the first partition-provenance block, so a later `4.1.0` can carry one.
+
+Stored `arc_agi-3.0.0-*` artifacts are not rewritten. A generate on 0.16.0 or later never reuses one. They stay reachable by that id, in listings, and through `GET /v1/datasets/latest?name=` and `/versions` when one is a name's newest version. Loading one still needs pickle. Delete them when nothing still names them.
+
+### A legacy artifact misses the cache, loudly once
+
+`CachedDatasetStore.get_artifact_bytes` reloads the primary bytes with `np.load` (default `allow_pickle=False`) to fill the cache. A `3.0.0` artifact fails that load. The read still returns the primary bytes.
+
+The first failure for an id is a `WARNING` with its traceback; a repeat of that id is `DEBUG`. The store remembers up to **1,024** warned ids (`_POPULATION_WARNING_ID_LIMIT`). The first new id past that bound logs one more `WARNING`, which says later new ids are `DEBUG`, and is not itself remembered. After that announcement, every id not already in the set logs at `DEBUG`. The set is in-process.
+
+Pins: `TestArcAgiTaskIdsLoadWithoutPickle` in `tests/unit/test_arc_agi_generator.py`; `test_artifacts_load_without_pickle.py` (every registered generator, offline, `allow_pickle=False`; the equities pair skips locally when the extra is missing and fails in CI if it is); `TestCachedDatasetStore` population cases in `tests/unit/test_cached_store.py`.
 
 ---
 
@@ -1838,11 +2171,119 @@ Relocated verbatim from `AGENTS.md` (P3 of the shared-session-memory plan) so it
 | **CI** | `ci.yml` | Push, PR, daily schedule | Pre-commit, tests (3.12-3.14), coverage, security, type checking, docs |
 | **CodeQL** | `codeql.yml` | Push, PR, schedule | GitHub code scanning |
 | **Security Scan** | `security-scan.yml` | Push, PR | Gitleaks + Bandit SARIF |
-| **Publish** | `publish.yml` | GitHub release | TestPyPI -> PyPI (Trusted Publishing/OIDC) |
-| **Publish container image** | `publish-image.yml` | GitHub release (`v*`), PR touching image inputs (build-only), manual | GHCR multi-arch image (amd64 + arm64); asserts no torch / CUDA stack inside the image; never a required check |
-| **Lockfile Update** | `lockfile-update.yml` | Schedule, manual | Update `requirements.lock` |
+| **Publish** | `publish.yml` | GitHub release | TestPyPI -> PyPI (Trusted Publishing/OIDC), then [notify consumers](#consumer-release-notification) |
+| **Notify consumers** | `notify-consumers.yml` | Called by `publish.yml` after PyPI; manual re-send | `repository_dispatch` `juniper-data-published`, then wait until the consumer starts a run |
+| **Publish container image** | `publish-image.yml` | GitHub release (`v*`), PR touching image inputs (build-only), manual | GHCR multi-arch image (amd64 + arm64). Before any tag: CPU-only (`EXPECT_TORCH=absent`), credential scan, and the [serve-and-version gate](#image-serve-and-version-gate). Never a required check |
+| **Lockfile Update** | `lockfile-update.yml` | Push to `dependabot/pip/**` by `dependabot[bot]`; PR when `pyproject.toml` changes (same repo, not `release/**`) | `--upgrade` compile of `requirements.lock` (`api`, `observability`, `mnist`, `equities`). Conf-only grouped bumps still qualify. Dependabot secret store must hold `CROSS_REPO_DISPATCH_TOKEN` or the job skips green |
 | **Sequence Safety** | `sequence-safety.yml` | PR | Advisory per-PR symbol-loss + docs-deletion screens via `juniper-ci-tools` (`--scope 'juniper_data/**'`); never required, never blocks a merge |
 | **Main Verify** | `main-verify.yml` | Push (main) | Bypass-proof post-merge compositional-loss net (screens-only, advisory); stable-title failure-issue upsert + catch-up base |
+| **Claude Code** | `claude.yml` | Issue comment, review comment, submitted review, issue opened/assigned | `@claude` assistant. Contract: [Claude Code Workflow](ci_cd/CICD_REFERENCE.md#claude-code-workflow) |
+
+### Image serve-and-version gate
+
+`publish-image.yml` is a separate workflow from `publish.yml`. A green PyPI publish does not run these checks. The image workflow is never a required status check.
+
+An import smoke test used to be the last word on the image. That passes an image that starts and serves nothing, and an image whose package version is not the tag it will be pulled as. `util/check_image_serves.py` runs on the runner (stdlib only; it drives `docker`) and is the check that closes both gaps.
+
+#### When it runs
+
+| Event | Image the check addresses | Registry login | Expected version |
+|-------|---------------------------|----------------|------------------|
+| Pull request whose paths include `Dockerfile`, `requirements.lock`, `pyproject.toml`, `juniper_data/**`, `util/check_image_cpu_only.py`, `util/check_image_no_secrets.py`, `util/check_image_serves.py`, or this workflow | Local load `data-smoke:<arch>` (`amd64` and `arm64`, native runners). Nothing is pushed | None | `pyproject.toml` `project.version` |
+| `workflow_dispatch` with `push` left false (the default) | Same local load | None | `pyproject.toml` `project.version` |
+| GitHub release whose tag starts with `v` | The digest just pushed, `ghcr.io/pcalnon/juniper-data@sha256:…` | `GITHUB_TOKEN` | The tag with the leading `v` removed. That string must equal `pyproject.toml` before the script runs |
+| `workflow_dispatch` with `push` true | The digest just pushed | `GITHUB_TOKEN` | `pyproject.toml` `project.version`. The merge job's tag is `dispatch-<sha>` |
+
+A release whose tag does not start with `v` skips the build job, so it publishes neither the image nor `:latest`.
+
+#### What the script requires
+
+CI invokes it as:
+
+```bash
+python3 util/check_image_serves.py \
+  --image <ref> \
+  --dist juniper-data \
+  --module juniper_data \
+  --port 8100 \
+  --expect-version <X.Y.Z>
+```
+
+The workflow leaves the script defaults in place: `--health-path /v1/health`, `--health-version required`, no `--enveloped-path`, `--timeout 120`. With that invocation the image passes only when all of these hold:
+
+1. The installed distribution `juniper-data` reports metadata version `--expect-version`.
+2. `juniper_data.__version__` equals that metadata. A module with no `__version__` fails. Inside the image, `__version__` is `importlib.metadata.version("juniper-data")`. The literal `"0.16.0"` in `juniper_data/__init__.py` is only the fallback for a source checkout where the distribution is not installed, and that literal can lag `pyproject.toml`.
+3. `docker run -d <image>` starts the image `CMD` (`python -m juniper_data`, no command override) and `GET /v1/health` answers 200 within 120 seconds. The probe is `docker exec` against `127.0.0.1:8100` inside the container, so no host port is published.
+4. The `/v1/health` JSON `version` field equals the metadata version. That route is the combined health check (`health_check`); it returns 200 while the process can respond and it carries `version`. The script does not call `/v1/health/live` or `/v1/health/ready`. A standalone container has no backing store, so a readiness 503 would be the probe working.
+
+`--expect-version` must match `X.Y.Z` (optional prerelease suffix). `v0.16.0`, `0.16`, `latest`, and a trailing space are usage errors (exit 2). The release step strips `v` before the call. Exit 0 is a pass, exit 1 is a failed check, exit 2 is usage or a missing `docker`.
+
+The script can also require `meta.version` on repeatable `--enveloped-path` values. This workflow does not pass that flag, so a juniper-data publish does not check envelope versions.
+
+#### Order relative to the tag
+
+On a publish the arch image is pushed **by digest, with no tag**, and only then scanned. Against that digest, in order: CPU-only (`EXPECT_TORCH=absent`: torch must not import, and no `nvidia-*`, `cuda-*`, or `triton` distribution may be installed), the credential scan (`util/check_image_no_secrets.py`), an import of `juniper_data`, then this serve check. Export of the digest artifact is the next step. The merge job (`needs: [build]`) is the only job that writes a tag. A failed serve check fails the arch job, so the digest is not exported and no tag is written. The untagged digest can already be in GHCR.
+
+Release tags are `X.Y.Z`, `X.Y`, and `latest`. The merge job fails a release that produced no `X.Y.Z` tag, including one that would otherwise publish `:latest` alone. Both `amd64` and `arm64` must appear in the manifest list.
+
+#### What not to do
+
+- Do not read a green import smoke test as "the image serves" or "the tag matches the package".
+- Do not retarget the check at `/v1/health/ready` for this image.
+- Do not pass a `v` prefix, a floating tag, or the source-checkout literal as `--expect-version`.
+- Do not expect a docs-only pull request to run this workflow. The path filter is the list in the table above.
+- Do not treat `publish.yml` (TestPyPI, then PyPI) as the image gate. They share the release event and nothing else.
+
+#### Pins
+
+`TestEvaluate` and `TestPublishWorkflowRunsTheServeCheck` in `juniper_data/tests/unit/test_check_image_serves.py`. The unit tests drive `evaluate()` with synthetic observations and parse the workflow; the pull-request arm is what actually executes the script against a built image.
+
+### Consumer release notification
+
+A consumer CI lane that only watches its own paths cannot see a break that arrives through the `juniper-data` package. After PyPI accepts a release, `publish.yml`'s `notify-consumers` job calls `.github/workflows/notify-consumers.yml` so each consumer starts a run against that version. The `pypi` job is the publish verdict. This job can still turn the **run** red after PyPI has accepted the release.
+
+#### When it runs
+
+| Entry | Version it sends | What it does not do |
+|-------|------------------|---------------------|
+| `workflow_call` from `publish.yml` (`needs: pypi`) | `github.event.release.tag_name`, leading `v` stripped | Does not run unless the production PyPI job succeeded |
+| `workflow_dispatch` | The `version` input, leading `v` stripped | Does not publish. Use it to re-send for a version already on PyPI |
+
+The version must match `X.Y.Z` (`^[0-9]+\.[0-9]+\.[0-9]+$`). `v0.16.0` is accepted as `0.16.0`. `0.16`, `0.16.0rc1`, and a trailing space exit 1 before any request. The matrix is `juniper-recurrence` only, with `fail-fast: false`. The job timeout is 10 minutes. Both the caller job and the reusable workflow set `permissions: {}`; the workflow-level `id-token: write` on `publish.yml` is not granted here.
+
+#### What the dispatch contains
+
+`CROSS_REPO_DISPATCH_TOKEN` must be set. An empty token exits 1 before the POST. `GITHUB_TOKEN` cannot dispatch into another repository. The POST is `curl --fail-with-body --max-time 30` to `https://api.github.com/repos/pcalnon/<repo>/dispatches`, so a 403 or 404 fails the step. The body is built with `jq` and the values reach the shell only through `env:`:
+
+```json
+{"event_type": "juniper-data-published", "client_payload": {"source": "juniper-data", "version": "<X.Y.Z>", "sha": "<github.sha>"}}
+```
+
+`sha` is `github.sha` of the notifying run (the tagged commit on a release). The workflow comment states the token needs Contents: Read and write on the consumer to dispatch.
+
+#### A 204 is not delivery
+
+GitHub returns 204 from `/dispatches` whether or not any workflow listens for `juniper-data-published`. The next step waits for a run.
+
+- `since` is written 30 seconds before the POST, to absorb clock skew. The listing query is `event=repository_dispatch`, `created>=since`, `per_page=20`.
+- Up to 12 listings, 10 seconds apart when another attempt remains (11 sleeps). Each listing uses `curl --fail-with-body --max-time 20`. When requests return promptly the window is about two minutes.
+- A match is the first `workflow_runs` entry whose `display_title` is `juniper-data-published`. The runs API does not expose `client_payload`. A dispatch run's default title is the event type, so the listener must not set `run-name:`. A second dispatch of the same event inside the window also satisfies the check. juniper-data is the only sender into juniper-recurrence today. The request asks for one page of 20 and does not follow `Link` headers, so a matching run past that page is invisible.
+- A listing counts only when the body is a JSON object that has a `workflow_runs` key. An empty body, `{}`, non-JSON, or an error object is a failed listing and is retried. Failure text kept for the final error is capped at 300 characters.
+- If **no** listing succeeds: the step fails because whether a run started is unknown. Check the repo name, and Actions: Read on the token when the consumer is private. Listing a public repo needs no extra permission; grant Actions: Read anyway so confirmation does not depend on that.
+- If **some** listing succeeded and none matched: the step fails. Check that one workflow declares `repository_dispatch: types: [juniper-data-published]`, sets no `run-name:`, and is enabled. When some of the 12 listings failed, that error says how many and quotes the last failure, so an outage after the first good listing is not read as a missing listener.
+
+#### Adding a consumer
+
+Append the repo slug to the matrix. Give that repo a workflow with `repository_dispatch: types: [juniper-data-published]` and no `run-name:`. This workflow confirms only that a run with that title started. It does not read the payload, and it does not wait for the consumer's tests to finish.
+
+#### What not to do
+
+- Do not treat the dispatch POST's 204 as proof a consumer ran.
+- Do not notify before the `pypi` job. A consumer that installs that version would otherwise test the previous release.
+- Do not set `run-name:` on the listener. Confirmation matches the default title, not the payload.
+- Do not pass the token, version, repo, or sha except through `env:`.
+
+The contract is the two workflow files.
 
 ### Pre-Commit Hooks
 
@@ -1939,6 +2380,6 @@ Rollout and rationale: [juniper-ml#434](https://github.com/pcalnon/juniper-ml/is
 
 ---
 
-**Last Updated:** September 5, 2026
-**Version:** 0.4.3
+**Last Updated:** October 8, 2026
+**Version:** 0.4.4
 **Maintainer:** Paul Calnon

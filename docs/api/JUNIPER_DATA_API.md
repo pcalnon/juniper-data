@@ -1,7 +1,7 @@
 # JuniperData API Reference
 
-**Version:** 0.4.3
-**Last Updated:** 2026-09-05
+**Version:** 0.4.4
+**Last Updated:** 2026-10-08
 **Base URL:** `http://localhost:8100`  
 **API Prefix:** `/v1`
 
@@ -390,13 +390,15 @@ metadata representation (APD-DATA-032) and are read from
 **Status Codes:**
 
 - `201 Created` - Dataset created or retrieved
-- `400 Bad Request` - Unknown generator or invalid parameters
+- `400 Bad Request` - Unknown generator or invalid parameters. This includes `equities` and `equities_seq` when `fundamentals_fill` is `"drop"` and `purchase_date` is at least one weekday after `start_date`. See [Equities drop with a later purchase_date](#equities-drop-with-a-later-purchase_date).
 - `422 Unprocessable Content` - Schema-invalid request **or** `csv_import` source over its byte cap without an opt-in. Schema failures carry `detail` as a **list**; the over-cap refusal carries `detail` as a **string** naming the size, the cap, and `allow_truncation`. See [CSV Import Byte Cap](../REFERENCE.md#csv-import-byte-cap).
 - `501 Not Implemented` - Generator's optional dependencies are missing in this deployment (the `detail` carries an actionable install hint, e.g. `pip install datasets` for `mnist`)
 
 **Caching Behavior:**
 
-Datasets are cached by their deterministic ID (hash of generator + version + params). Requesting the same parameters returns the existing dataset.
+Datasets are cached by a deterministic ID. `generate_dataset_id` hashes the generator name, the registry version, and params, and the id is `{generator}-{version}-{hash}`. The same parameters return the stored meta and do not regenerate.
+
+`equities_seq` is version `6.0.0` with `task_type` `regression`, so a current create stores `n_classes` and `class_distribution` as `null`. The NPZ still has a one-hot next-day direction in `y_*` and a next-day close in `y_reg_*`. Flat `equities` stays `classification` at `5.0.0`. An `equities_seq-5.0.0-…` id keeps its old class meta; a current create resolves under `equities_seq-6.0.0-`. `GET /v1/generators` returns `version` and does not return `task_type`. See [equities_seq Declared Regression](../REFERENCE.md#equities_seq-declared-regression).
 
 **Versioning Behavior (named datasets):**
 
@@ -1254,6 +1256,36 @@ Both mean "the caller sent something wrong", and the boundary between them is de
 - **`400`** — the request is schema-valid but **semantically wrong for the generator it
   names**: an unknown generator, or params that the named generator rejects. `params` is
   typed as a free-form object, so only the resolved generator can validate its contents.
+
+#### Equities drop with a later purchase_date
+
+`equities` and `equities_seq` share `EquitiesParams`. `cost_basis` (feature column 9) is NaN on every row before the purchase session. Under `fundamentals_fill="drop"`, a `purchase_date` at least one weekday after `start_date` is refused rather than minting an artifact the caller asked to be complete and then deleting the start of the series.
+
+The create route raises **400** with a string `detail` that begins `Invalid parameters:` and names both dates and `fundamentals_fill='drop'`. The rest of the string is pydantic's rendering of the validation error: the model name (`EquitiesParams` for `equities`, `EquitiesSeqParams` for `equities_seq`), then the message with the weekday count and the remedies (set `purchase_date` on or before `start_date`, move `start_date` to the purchase date, or use `fundamentals_fill="nan"` to keep the earlier rows with a NaN `cost_basis`), then pydantic's `[type=value_error, ...]` suffix. For `equities_seq` with `"symbols": ["AAPL"]`, `"start_date": "2015-01-01"` and `"purchase_date": "2016-01-04"`:
+
+```json
+{"detail": "Invalid parameters: 1 validation error for EquitiesSeqParams\n  Value error, purchase_date 2016-01-04 is after start_date 2015-01-01 under fundamentals_fill='drop' (262 weekday(s) apart). Rows dated before the purchase have no cost basis, so 'drop' would have to delete them and the series would silently start at the purchase instead of at start_date. Set purchase_date on or before start_date, move start_date to the purchase date, or use fundamentals_fill='nan' to keep those rows with a NaN cost_basis. [type=value_error, input_value={'symbols': ['AAPL'], 'fu...ase_date': '2016-01-04'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/value_error"}
+```
+
+Match on the prefix and the named dates, not the whole string: the pydantic wrapper (and the version in its URL) belongs to the installed pydantic.
+
+The check runs in `EquitiesParams` **before** the route hashes `dataset_id` or reads the store, so a previously minted artifact cannot answer the refused request, and the refusal does not download prices.
+
+"After" counts weekdays (`numpy.busday_count` over `[start_date, purchase_date)`), not calendar days. The defaults — `start_date` `2000-01-01` (a Saturday) and `purchase_date` `2000-01-03` (the Monday that opens that window) — are accepted. Exchange holidays are not modelled: a start on a weekday holiday with a purchase on the next session is refused; set `purchase_date` to `start_date`.
+
+`fundamentals_fill` of `"nan"` or `"zero"` still accepts a later purchase and emits those earlier rows with a NaN `cost_basis`.
+
+#### Recurrence-ready equities_seq
+
+Bare `equities_seq` defaults leave NaN in `X` columns 7, 8 and 14 (`total_shares`, `market_cap`, `days_since_report`) before each ticker's first SEC filing. juniper-recurrence refuses that artifact (`X_train has non-finite values`). The dataset half of the documented bundle is:
+
+```json
+{"generator": "equities_seq", "params": {"symbols": ["AAPL"], "fundamentals_fill": "drop", "normalize_features": false, "regression_target": "log_return"}}
+```
+
+`symbols` must be an explicit list of at most 14 names; omitting it asks for the 503 bundled constituents, which the symbol cap refuses. `normalize_features: false` restates the default. The model half (`readout`, `ridge`, `rff_features`, `rff_gamma`) belongs on the juniper-recurrence train or cross-validation body. `EquitiesSeqParams` ignores keys it does not declare, so those four sent to `POST /v1/datasets` do nothing. Under `drop`, keep `purchase_date` on or before `start_date`, or leave both at the defaults above.
+
+The values, why each one is stated, and the pins are in [Equities Sequence: Recurrence-Ready Parameters](../REFERENCE.md#equities-sequence-recurrence-ready-parameters).
 
 ---
 
