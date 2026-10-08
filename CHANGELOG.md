@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-10-08
+
 ### Added
 
 - **The publish path asserts that the image serves, and that it is the version it is tagged**
