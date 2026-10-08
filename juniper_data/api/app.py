@@ -105,6 +105,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # "behind the key" and is in fact "open to everyone".
     explorers_enabled = not settings.api_keys
     app = FastAPI(
+        telemetry={
+            "tracing": False,
+            "metrics": False,
+            "logs": False,
+            "operation_spans": False,
+            "auto_configure": False,
+        },
         title="Juniper Data API",
         description="Dataset generation and management service for the Juniper ecosystem",
         version=__version__,
