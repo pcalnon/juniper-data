@@ -421,6 +421,8 @@ The `required-checks` job in ci.yml acts as the merge quality gate. All of these
 | lockfile-check                           | Yes         | Blocks merge                               |
 | integration-tests                        | Conditional | Failure blocks, skip OK (feature branches) |
 
+The Quality Gate is not the whole merge requirement. The `main` ruleset also requires contexts outside its `needs:`, among them **`Sequence Safety`**, which comes from its own workflow (`sequence-safety.yml`) and so cannot be named there. A green Quality Gate therefore does not mean a PR is mergeable. See [Sequence Safety (required check)](../REFERENCE.md#sequence-safety-required-check) for the ruleset query.
+
 ---
 
 ## Release Process

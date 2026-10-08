@@ -166,6 +166,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     inputs.
   - **Two new scripts beside them** re-derive the harness's coverage counts and show that the
     sweeps catch long-list mutants.
+- **`FailedAuthThrottle` no longer grows its table by one entry per distinct client**
+  (`juniper_data/api/security.py`). `check()` is documented as a read-only probe, but `_failures`
+  was a `defaultdict(lambda: (0, 0.0))`, so `self._failures[client_ip]` inserted an entry for every
+  unseen source IP. `SecurityMiddleware` calls `check()` on every non-exempt request before
+  authentication, while pruning (`_maybe_cleanup`, including the 10,000-entry `_MAX_ENTRIES` cap)
+  runs only from `record_failure()`. Under open auth or valid-key traffic nothing calls
+  `record_failure()`, so the table grew without bound for the life of the process.
+  - **Fix.** `_failures` is a plain `dict`, and `check()` and `record_failure()` both read
+    `self._failures.get(client_ip, (0, 0.0))`, so only a recorded failure allocates. The
+    `defaultdict` import is gone; nothing else in the module used it.
+  - **Pin.** `test_check_never_allocates_an_entry` (`juniper_data/tests/unit/test_middleware.py`)
+    probes 1,000 distinct IPs and requires an empty table, then exactly one entry after one
+    `record_failure()`. Against the old code it fails with `assert 1000 == 0`.
+  - The copies in juniper-service-core and juniper-cascor carry the same defect and get the same
+    fix in their own repos, each pinned by its own test.
+- **`docs/REFERENCE.md` called the `Sequence Safety` check advisory, "never required, never blocks
+  a merge".** The `main` ruleset (`juniper-data-rules`, id `14748749`) requires that context, so a
+  red run blocks merge. `sequence-safety.yml` is a standalone workflow, so its job is absent from
+  `ci.yml`'s Quality Gate `needs:`, and a green Quality Gate does not mean a PR is mergeable. #393
+  corrected the workflow header on 2026-09-11; this corrects what it left:
+  - the workflow-table row, now marked **Required** and linked to a new section, Sequence Safety
+    (required check), with the ruleset query, the Quality Gate distinction, and the waivers. The
+    `Allow-Symbol-Loss:` / `Allow-Docs-Rewrite:` commit trailers are what the post-merge
+    `main-verify.yml` honours. The owner labels `allow-symbol-loss` / `docs-rewrite` demote the
+    matching per-PR screen to WARN-only and do not reach the post-merge net;
+  - the Main Verify row, which called that net advisory. It runs after the merge, so it is not a
+    PR status check and cannot block the merge; a finding turns its run red and upserts a tracking
+    issue;
+  - two leftover "advisory" comments in `sequence-safety.yml` and one in `main-verify.yml`
+    (comments only; the job name stays `Sequence Safety`);
+  - `docs/ci_cd/CICD_MANUAL.md` § Quality Gate, which presented the Quality Gate as the merge gate.
+    It now says the ruleset requires contexts outside the gate's `needs:`.
 
 ### Security
 
