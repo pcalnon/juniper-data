@@ -52,6 +52,18 @@ class TestCreateApp:
         app = create_app(settings=test_settings)
         assert app.version == __version__
 
+    def test_create_app_disables_fastapi_native_telemetry(self, test_settings: Settings) -> None:
+        """FastAPI telemetry must not overlap the service's configured observability."""
+        # FastAPI added native telemetry (and ``app._telemetry``) in 0.142; ``pyproject.toml`` still
+        # admits older releases, where the keyword lands in ``app.extra`` and there is nothing to pin.
+        pytest.importorskip("fastapi.telemetry", reason="FastAPI < 0.142 has no native telemetry to opt out of")
+        app = create_app(settings=test_settings)
+        assert app._telemetry["tracing"] is False
+        assert app._telemetry["metrics"] is False
+        assert app._telemetry["logs"] is False
+        assert app._telemetry["operation_spans"] is False
+        assert app._telemetry["auto_configure"] is False
+
     def test_create_app_stores_settings(self, test_settings: Settings) -> None:
         """Test settings are stored in app state."""
         app = create_app(settings=test_settings)
