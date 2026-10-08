@@ -2,9 +2,9 @@
 
 ## Run juniper-data CI Checks Locally in 5 Minutes
 
-**Version:** 0.4.2
+**Version:** 0.4.3
 **Status:** Active
-**Last Updated:** March 3, 2026
+**Last Updated:** October 8, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -126,7 +126,15 @@ python scripts/check_doc_links.py
 
 **Coverage below 80%**: Run `python scripts/check_module_coverage.py --run-tests` to see per-module breakdown. Add tests for modules below 85%.
 
-**Lockfile check fails in CI**: Regenerate with `uv pip compile pyproject.toml --extra api --extra observability --extra mnist --extra equities -o requirements.lock`.
+**Lockfile check fails in CI**: The pins no longer satisfy `pyproject.toml`. Regenerate with `uv pip compile pyproject.toml --extra api --extra observability --extra mnist --extra equities --upgrade -o requirements.lock`.
+
+**Grouped Dependabot PR, lockfile differs from `conf/requirements_ci.txt`**: `lockfile-update.yml` compiles with `--upgrade` on every `dependabot/pip/**` push by `dependabot[bot]`, including pushes that leave `pyproject.toml` unchanged. Review `[dependabot skip] Update requirements.lock` as that resolution. A missing commit with a green Update Lockfile run usually means `CROSS_REPO_DISPATCH_TOKEN` is absent from the Dependabot secret store. See [Dependency Update Workflow](../../notes/DEPENDENCY_UPDATE_WORKFLOW.md).
+
+**Image publish fails after a green import**: `publish-image.yml` also runs `util/check_image_serves.py`. `GET /v1/health` must return 200, and its `version`, `juniper_data.__version__`, and the installed `juniper-data` metadata must equal one `X.Y.Z`. On a release that value is the tag without a leading `v`, and it must match `pyproject.toml`. A docs-only change does not run the workflow. See [Image serve-and-version gate](../REFERENCE.md#image-serve-and-version-gate).
+
+**Release publish is red after PyPI succeeded**: `notify-consumers.yml` did not see a consumer run. GitHub's dispatch `204` is not delivery. The listener must declare `repository_dispatch: types: [juniper-data-published]` and must not set `run-name:`. Re-send with `workflow_dispatch`; do not republish. See [Consumer release notification](../REFERENCE.md#consumer-release-notification).
+
+**`@claude` in a pull-request title does nothing**: Comment on the PR, or put `@claude` in a submitted review body. The workflow does not subscribe to `pull_request`, so a title or body there never schedules it. The workflow `if` is a case-insensitive substring test, and the action then requires the phrase at a word boundary. A green log line `No trigger found, skipping remaining steps` means the job started and the action declined. See [claude.yml](CICD_MANUAL.md#claudeyml----claude-code).
 
 ---
 
@@ -138,6 +146,6 @@ python scripts/check_doc_links.py
 
 ---
 
-**Last Updated:** March 3, 2026
-**Version:** 0.4.2
+**Last Updated:** October 8, 2026
+**Version:** 0.4.3
 **Status:** Active

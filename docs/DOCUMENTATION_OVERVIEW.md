@@ -2,8 +2,8 @@
 
 ## Complete Navigation Guide to Juniper Data Documentation
 
-**Version:** 0.4.2
-**Last Updated:** March 3, 2026
+**Version:** 0.4.3
+**Last Updated:** October 8, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -50,6 +50,12 @@
 | **See version history** | [CHANGELOG.md](../CHANGELOG.md) | Root |
 | **Quick-reference dev tasks** | [DEVELOPER_CHEATSHEET.md](DEVELOPER_CHEATSHEET.md) | docs/ |
 | **Bound an equities generate (14-symbol cap)** | [REFERENCE.md -- Equities Symbol Cap](REFERENCE.md#equities-symbol-cap) | docs/ |
+| **Request a recurrence-ready `equities_seq` dataset** | [REFERENCE.md -- Equities Sequence: Recurrence-Ready Parameters](REFERENCE.md#equities-sequence-recurrence-ready-parameters) | docs/ |
+| **See why the API does not emit OpenTelemetry** | [REFERENCE.md -- FastAPI Native Telemetry](REFERENCE.md#fastapi-native-telemetry) | docs/ |
+| **See why a non-ASCII API key is a 401** | [REFERENCE.md -- Non-ASCII API Keys](REFERENCE.md#non-ascii-api-keys) | docs/ |
+| **Load an arc_agi artifact without pickle** | [REFERENCE.md -- ARC-AGI Artifacts](REFERENCE.md#arc-agi-artifacts) | docs/ |
+| **Read an `equities_seq` label** | [REFERENCE.md -- equities_seq Declared Regression](REFERENCE.md#equities_seq-declared-regression) | docs/ |
+| **Load a Hugging Face or Kaggle dataset into the six-key contract** | [REFERENCE.md -- External Stores](REFERENCE.md#external-stores-decision-11-contract) | docs/ |
 | **Contribute code** | [AGENTS.md](../AGENTS.md) | Root |
 
 ---
@@ -74,7 +80,7 @@
 
 **What:** Complete environment configuration from scratch
 **Audience:** New developers and CI/CD setup
-**Key contents:** Conda environment, dependency groups, environment variables, verification
+**Key contents:** Conda environment, dependency groups, grouped Dependabot pin surfaces, environment variables, verification
 
 #### 4. [AGENTS.md](../AGENTS.md)
 
@@ -143,6 +149,8 @@ See the [juniper-data-client documentation](https://github.com/pcalnon/juniper-d
 | [CICD_MANUAL.md](ci_cd/CICD_MANUAL.md) | Full CI/CD pipeline guide | ~400 |
 | [CICD_REFERENCE.md](ci_cd/CICD_REFERENCE.md) | Jobs, hooks, environment variables reference | ~250 |
 
+The GHCR publish check — `GET /v1/health` plus one version on metadata, `juniper_data.__version__`, and that body, before any tag — is [Image serve-and-version gate](REFERENCE.md#image-serve-and-version-gate). The manual and the CI reference point at the same section.
+
 ### API Documentation
 
 | Document | Purpose | Lines |
@@ -163,6 +171,7 @@ See the [juniper-data-client documentation](https://github.com/pcalnon/juniper-d
 | `.pre-commit-config.yaml` | Root | Pre-commit hook configuration |
 | `.github/workflows/ci.yml` | Root | GitHub Actions CI pipeline |
 | `.github/workflows/publish.yml` | Root | PyPI publishing workflow |
+| `.github/workflows/notify-consumers.yml` | Root | After PyPI: dispatch `juniper-data-published` and wait for a consumer run. A 204 is not delivery. See [Consumer release notification](REFERENCE.md#consumer-release-notification) |
 
 ### Source Code Map
 
@@ -262,6 +271,6 @@ See [DOCUMENTATION_TEMPLATE_STANDARD.md](../../notes/DOCUMENTATION_TEMPLATE_STAN
 
 ---
 
-**Last Updated:** March 3, 2026
-**Version:** 0.4.2
+**Last Updated:** October 8, 2026
+**Version:** 0.4.3
 **Maintainer:** Paul Calnon

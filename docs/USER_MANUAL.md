@@ -1,8 +1,8 @@
 # Juniper Data User Manual
 
-**Version:** 0.4.3
+**Version:** 0.4.4
 **Status:** Active
-**Last Updated:** September 4, 2026
+**Last Updated:** October 8, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -107,7 +107,9 @@ curl http://localhost:8100/v1/health
 | `checkerboard` | 2D checkerboard pattern | 2 | 2 |
 | `csv_import` | Import from CSV/JSON files | varies | varies |
 | `mnist` | MNIST / Fashion-MNIST | 784 (28x28) | 10 |
-| `arc_agi` | ARC-AGI visual reasoning tasks | varies | varies |
+| `arc_agi` | ARC-AGI grid-to-grid maps | 900 when flattened (default) | none (`structured`; `n_classes` is null) |
+
+`arc_agi` does not emit a class label. `y_*` is the padded output grid, the same shape as `X_*` (default `flatten_pairs` makes both `(n, 900)`). The artifact also carries `task_ids`, a unicode array aligned to `concatenate([X_train, X_val, X_test])`. A download that raises `Object arrays cannot be loaded when allow_pickle=False` is a stored `arc_agi-3.0.0-*` artifact; a new generate mints `arc_agi-4.0.0-*`. See [ARC-AGI Artifacts](REFERENCE.md#arc-agi-artifacts).
 
 ### Using Generators via API
 
@@ -226,6 +228,32 @@ curl -X POST http://localhost:8100/v1/datasets \
 
 The HTTP JSON body is still limited to 10 MB (`RequestBodyLimitMiddleware`). That is a different cap: the CSV is read from disk, not uploaded in the request.
 
+### Equities sequence for juniper-recurrence
+
+`equities` and `equities_seq` need the optional extra (`pip install "juniper-data[equities]"`). A deployment without it answers **501**. Both share one params model. The flat generator is classification (15 features, next-day direction in `y`, next-day regression in `y_reg`). `equities_seq` windows the same columns into `(W, L, 15)` and is declared **regression** (`n_classes` is null) from generator 6.0.0, which is on `main` after v0.16.0. The symbol cap is 14 unless truncation is opted in; see [Equities Symbol Cap](REFERENCE.md#equities-symbol-cap).
+
+Bare `equities_seq` defaults are not trainable by juniper-recurrence. Columns 7, 8 and 14 of `X` (`total_shares`, `market_cap`, `days_since_report`) are NaN before each ticker's first SEC filing, and the consumer refuses non-finite `X_train`. Send the dataset half explicitly:
+
+```bash
+curl -X POST http://localhost:8100/v1/datasets \
+  -H "Content-Type: application/json" \
+  -d '{
+    "generator": "equities_seq",
+    "params": {
+      "symbols": ["AAPL"],
+      "fundamentals_fill": "drop",
+      "normalize_features": false,
+      "regression_target": "log_return"
+    }
+  }'
+```
+
+`normalize_features: false` restates the default. The model fields (`readout`, `ridge`, `rff_features`, `rff_gamma`) go on the juniper-recurrence train or cross-validation request. This service ignores them if they are sent here.
+
+Under `fundamentals_fill="drop"`, `purchase_date` must be on or before `start_date`, or both left at their defaults (`2000-01-01` and `2000-01-03`). A purchase at least one weekday later is **400**, `detail` starting `Invalid parameters:` and naming both dates and the fill mode. The check runs before the dataset id is hashed, so it does not download and it does not return an older cached artifact. `"nan"` and `"zero"` still accept a later purchase and keep a NaN `cost_basis` on the rows before it. The refusal is on `main` after v0.16.0 (`CHANGELOG.md` `[Unreleased]`); a 0.16.0 deployment still mints that request under `drop`, with a NaN `cost_basis` on the rows before the purchase.
+
+The bundle, the weekday rule, and the pins: [Equities Sequence: Recurrence-Ready Parameters](REFERENCE.md#equities-sequence-recurrence-ready-parameters).
+
 ---
 
 ## REST API
@@ -311,8 +339,18 @@ curl -X POST http://localhost:8100/v1/datasets \
 | **CachedDatasetStore** | `storage.cached` | Production (wraps any backend with in-memory cache) |
 | **PostgresDatasetStore** | `storage.postgres_store` | Shared multi-service storage |
 | **RedisDatasetStore** | `storage.redis_store` | Fast caching layer |
-| **HFDatasetStore** | `storage.hf_store` | Public dataset sharing (HuggingFace Hub) |
-| **KaggleDatasetStore** | `storage.kaggle_store` | Kaggle dataset integration |
+| **HuggingFaceDatasetStore** | `storage.hf_store` | Read-only Hugging Face Hub load |
+| **KaggleDatasetStore** | `storage.kaggle_store` | Read-only Kaggle CSV load |
+
+### Hugging Face and Kaggle loads
+
+These two classes are library adapters. The API process does not construct them, and `POST /v1/datasets` cannot name `huggingface` or `kaggle`.
+
+`load_hf_dataset` and `load_kaggle_dataset` return the six partition arrays (`X_train`, `y_train`, `X_val`, `y_val`, `X_test`, `y_test`) at `generator_version` `3.0.0`. They do not emit `X_full` or `y_full`. The default carve is `0.8 / 0.1 / 0.1`. A ratio the carve cannot honour raises `ValueError` before the download. An omitted seed is repeatable and reuses one dataset id. When scaling is on, it is fit on the train partition only, so validation and test values can fall outside `[0, 1]`.
+
+The arrays are stored in the cache store you pass. The default cache is in-memory and does not survive the process. Kaggle also needs API credentials (`~/.kaggle/kaggle.json`, or `KAGGLE_USERNAME` and `KAGGLE_KEY`).
+
+See [External Stores: Decision-11 Contract](REFERENCE.md#external-stores-decision-11-contract).
 
 ### Common Interface
 
@@ -403,6 +441,12 @@ Juniper Data guarantees:
 6. The three partitions ARE the dataset: there is no whole-set array to compare them
    against, and `meta.n_samples` equals `n_train + n_val + n_test`. A consumer that
    wants the whole set concatenates the three, in that order.
+7. `arc_agi` is an exception to 1 and 3. `task_type` is `structured`, so `n_classes`
+   and `class_distribution` are null, and `y_*` is the padded output grid rather than
+   a one-hot. `task_ids` is unicode, not `float32`. See
+   [ARC-AGI Artifacts](REFERENCE.md#arc-agi-artifacts).
+
+`equities_seq` at generator 6.0.0 (on `main` after v0.16.0; the 0.16.0 release still serves 5.0.0 with classification meta) is declared `regression`. `meta.n_classes` and `meta.class_distribution` are null, while `y_*` is still a one-hot next-day direction beside `y_reg_*` (next-day close, or the return selected by `regression_target`). Flat `equities` stays classification at generator 5.0.0. `GET /v1/generators` lists `version` and has no `task_type` field. A stored `equities_seq-5.0.0-…` artifact keeps the class meta it was written with. See [equities_seq Declared Regression](REFERENCE.md#equities_seq-declared-regression).
 
 ### Loading Artifacts
 
@@ -460,6 +504,8 @@ curl -H "X-API-Key: my-secret-key-1" http://localhost:8100/v1/datasets
 
 Health endpoints (`/v1/health`, `/v1/health/live`, `/v1/health/ready`) are always accessible without authentication.
 
+A non-ASCII `X-API-Key` does not match an ASCII configured key. The service answers **401** with `{"detail": "Invalid API key."}`. Ten such failures from one IP inside 60 seconds become **429**. See [Non-ASCII API Keys](REFERENCE.md#non-ascii-api-keys).
+
 ### Rate Limiting
 
 ```bash
@@ -481,7 +527,7 @@ export JUNIPER_DATA_CORS_ORIGINS='["*"]'
 
 ### Input Validation
 
-All request parameters are validated using Pydantic models. Invalid inputs return `400 Bad Request` or `422 Unprocessable Entity` with descriptive error messages. An over-cap `csv_import` source is also **422**, with a **string** `detail` (not the schema-validation list). See [CSV Import Byte Cap](REFERENCE.md#csv-import-byte-cap).
+All request parameters are validated using Pydantic models. Invalid inputs return `400 Bad Request` or `422 Unprocessable Entity` with descriptive error messages. An over-cap `csv_import` source is also **422**, with a **string** `detail` (not the schema-validation list). See [CSV Import Byte Cap](REFERENCE.md#csv-import-byte-cap). `equities` / `equities_seq` with `fundamentals_fill="drop"` and a `purchase_date` at least one weekday after `start_date` is **400** (string `detail`), decided before the cache lookup. See [Equities Sequence: Recurrence-Ready Parameters](REFERENCE.md#equities-sequence-recurrence-ready-parameters).
 
 ---
 
@@ -578,6 +624,14 @@ Check the generator's parameter schema:
 ```bash
 curl http://localhost:8100/v1/generators/spiral/schema
 ```
+
+**`Object arrays cannot be loaded when allow_pickle=False`:**
+
+The id is an `arc_agi-3.0.0-*` artifact. `task_ids` in that generation was pickled. A new generate mints `arc_agi-4.0.0-*`, which loads with `allow_pickle=False`. The old id is not rewritten; delete it when nothing still names it. See [ARC-AGI Artifacts](REFERENCE.md#arc-agi-artifacts).
+
+**`400` naming `purchase_date`, `start_date`, and `fundamentals_fill='drop'`:** under `drop`, the purchase is at least one weekday after the start, so the rows before it have no cost basis. Put `purchase_date` on or before `start_date` (the defaults already satisfy this), or use `fundamentals_fill="nan"` to keep those rows. This is not a download failure: the request is refused before the cache is read.
+
+**juniper-recurrence reports `X_train has non-finite values` on an `equities_seq` artifact:** the dataset was created from the bare defaults (`fundamentals_fill="nan"`). Recreate it with the [recurrence-ready bundle](REFERENCE.md#equities-sequence-recurrence-ready-parameters). Sending `readout` / `ridge` / `rff_features` / `rff_gamma` to `POST /v1/datasets` does not change the artifact.
 
 ### Storage Issues
 
