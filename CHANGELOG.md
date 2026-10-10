@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **The image picks up the two shared security patches**: `requirements.lock` moves
+  `juniper-observability` 0.4.0 -> 0.4.1 and `juniper-service-core` 0.7.0 -> 0.7.1, and nothing
+  else. The 0.17.0 image installs that lock (`Dockerfile:33`), so it shipped observability 0.4.0,
+  whose `configure_sentry` still sends frame-local variables to Sentry. `api/app.py` calls it, and
+  a frame local could hold the real API key. 0.4.1 passes `include_local_variables=False`.
+  service-core 0.7.1 fixes `APIKeyAuth` and `FailedAuthThrottle`; juniper-data's own copies in
+  `api/security.py` already carried both fixes in 0.17.0 (#440, #476), so that pin is consistency
+  with the sibling services. The lock was regenerated with `--upgrade-package` for the two packages
+  only (69 pins; the freshness gate's constraint-mode resolution reproduces them).
+
 ## [0.17.0] - 2026-10-08
 
 ### Added
