@@ -27,7 +27,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "juniper-data"
-version = "0.17.0"
+version = "0.17.1"
 description = "Dataset generation and management service for the Juniper ecosystem"
 readme = "README.md"
 license = { text = "MIT" }
@@ -96,8 +96,10 @@ api = [
     # added optional ``git_sha`` / ``build_date`` passthrough on
     # ``set_build_info`` + the shared ``ReadinessResponse`` model for
     # build provenance (juniper-ml
-    # notes/BUILD_PROVENANCE_DESIGN_2026-06-14.md).
-    "juniper-observability>=0.4.0",
+    # notes/BUILD_PROVENANCE_DESIGN_2026-06-14.md). 0.4.1 (2026-10-10) is
+    # the security patch: ``configure_sentry``, which ``api/app.py`` calls,
+    # no longer sends frame-local variables, which could hold the real key.
+    "juniper-observability>=0.4.1",
     # SEC-F01 / HO-2 (per-service adoption wave): boot-time auth-posture
     # self-check. The API lifespan calls enforce_auth_posture with the
     # resolved api_keys beside the startup banner, so an empty/blank
@@ -107,7 +109,12 @@ api = [
     # surface; 0.5.0 is the release that ships the check. Capped <0.6.0 to
     # match the fleet's service-core pin practice (a deliberate deviation
     # from this file's floor-only style — pre-1.0 minors may break).
-    "juniper-service-core>=0.5.0,<0.8.0",
+    # Floor 0.7.1 (2026-10-10), the security patch (non-ASCII X-API-Key is a
+    # 401; bounded FailedAuthThrottle.check()). juniper-data's own APIKeyAuth
+    # and FailedAuthThrottle are its copies in api/security.py, already fixed
+    # in 0.17.0 (#440, #476), so this floor is consistency with the lock and
+    # the sibling services.
+    "juniper-service-core>=0.7.1,<0.8.0",
 ]
 test = [
     "pytest>=7.0.0",
