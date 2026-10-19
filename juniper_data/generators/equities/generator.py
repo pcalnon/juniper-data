@@ -314,19 +314,7 @@ class EquitiesGenerator:
         symbols, meta_map, truncation = EquitiesGenerator._resolve_symbols(params, constituents)
         end_date = params.end_date or datetime.now(UTC).strftime("%Y-%m-%d")
 
-        conditioned: dict[str, Any] = {}
-        total = len(symbols)
-        for index, ticker in enumerate(symbols, start=1):
-            try:
-                frame = EquitiesGenerator._condition_one(ticker, meta_map.get(ticker, {}), params, end_date)
-            except Exception as exc:  # noqa: BLE001 - one bad ticker must not abort the whole batch
-                _logger.warning("equities: skipping %s (%s)", ticker, exc)
-                continue
-            if frame is not None and not frame.empty:
-                conditioned[ticker] = frame
-                _logger.info("equities: [%d/%d] %s -> %d rows", index, total, ticker, len(frame))
-            else:
-                _logger.info("equities: [%d/%d] %s -> no data", index, total, ticker)
+        conditioned, lost = EquitiesGenerator._condition_universe(symbols, meta_map, params, end_date, log_prefix="equities")
 
         if not conditioned:
             raise ValueError("No data could be retrieved for the requested symbols.")
@@ -334,8 +322,9 @@ class EquitiesGenerator:
         # Classify, refuse or prune, and build the annotation -- BEFORE assembling
         # anything. Shared with ``equities_seq``, which reuses this whole pipeline
         # and went a release without the policy at all (found by the round-38
-        # handoff validation in juniper-ml, 2026-09-08).
-        conditioned, quality_meta = EquitiesGenerator._apply_incomplete_policy(params, conditioned)
+        # handoff validation in juniper-ml, 2026-09-08). `lost` carries the tickers the
+        # loop above could not condition (W5.7, F-P5).
+        conditioned, quality_meta = EquitiesGenerator._apply_incomplete_policy(params, conditioned, lost=lost)
 
         vocab = sorted(conditioned)
         code_of = {ticker: code for code, ticker in enumerate(vocab)}
@@ -346,6 +335,7 @@ class EquitiesGenerator:
         train_frames, val_frames, test_frames, full_frames = [], [], [], []
         for ticker in vocab:
             frame = conditioned[ticker].sort_index()
+            EquitiesGenerator._check_return_target_inputs(ticker, frame, params.regression_target)
             frame["ticker_code"] = code_of[ticker]
             n_rows = len(frame)
             n_train = int(round(n_rows * params.train_ratio))
@@ -548,7 +538,70 @@ class EquitiesGenerator:
         return INCOMPLETE_DROP if choice == INCOMPLETE_DROP else INCOMPLETE_ACCEPT
 
     @staticmethod
-    def _apply_incomplete_policy(params: EquitiesParams, conditioned: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    def _condition_universe(symbols: list[str], meta_map: dict[str, dict[str, Any]], params: EquitiesParams, end_date: str, *, log_prefix: str) -> tuple[dict[str, Any], dict[str, str]]:
+        """Condition every resolved ticker, recording each one that is lost and why (W5.7, F-P5).
+
+        One loop for both generators. Each had its own copy, and both let the universe shrink
+        in silence: a ticker whose download raised was logged at WARNING and skipped, one that
+        returned nothing was logged at INFO and skipped, and neither left a trace in the
+        dataset -- the artifact was indistinguishable from a complete one (F-P5). The reasons
+        are returned so ``_apply_incomplete_policy`` can refuse or annotate.
+
+        Args:
+            symbols: the resolved universe, in order.
+            meta_map: ticker -> constituent metadata (``name`` / ``cik`` / ``sector``).
+            params: the request's params.
+            end_date: the effective end date (``params.end_date`` or today).
+            log_prefix: ``"equities"`` or ``"equities_seq"``, so the log says which pipeline.
+
+        Returns:
+            ``(conditioned, lost)``: ticker -> conditioned frame (sorted by date) for the tickers
+            that yielded data, and ticker -> reason for the ones that did not.
+        """
+        conditioned: dict[str, Any] = {}
+        lost: dict[str, str] = {}
+        total = len(symbols)
+        for index, ticker in enumerate(symbols, start=1):
+            try:
+                frame = EquitiesGenerator._condition_one(ticker, meta_map.get(ticker, {}), params, end_date)
+            except Exception as exc:  # noqa: BLE001 - one bad ticker must not abort the whole batch
+                _logger.warning("%s: skipping %s (%s)", log_prefix, ticker, exc)
+                lost[ticker] = f"conditioning failed: {exc}"
+                continue
+            if frame is not None and not frame.empty:
+                conditioned[ticker] = frame.sort_index()
+                _logger.info("%s: [%d/%d] %s -> %d rows", log_prefix, index, total, ticker, len(frame))
+            else:
+                _logger.info("%s: [%d/%d] %s -> no data", log_prefix, index, total, ticker)
+                lost[ticker] = "no usable price data in range"
+        return conditioned, lost
+
+    @staticmethod
+    def _check_return_target_inputs(ticker: str, frame: Any, mode: str) -> None:
+        """Refuse a return-type target over a non-positive or non-finite price (W5.7, F-P6).
+
+        ``return`` divides by ``close`` and ``log_return`` takes the log of the ratio, so a zero
+        or negative ``close`` (or ``next_close``) yields ±Inf / NaN in ``y_reg``. The reader on
+        the recurrence side refuses a non-finite target -- but only after the artifact has been
+        minted and cached under its ``dataset_id``, where it answers every later identical
+        request. Checked here, per ticker, so the refusal names the symbol, the row count and
+        the first offending session. ``next_close`` (the raw price) is not guarded: a zero price
+        is then a value, not a divisor.
+
+        Raises:
+            ValueError: naming the ticker; the route maps it to 400.
+        """
+        if mode == "next_close" or frame.empty:
+            return
+        close = frame["close"].to_numpy(dtype=np.float64)
+        next_close = frame["next_close"].to_numpy(dtype=np.float64)
+        bad = ~(np.isfinite(close) & np.isfinite(next_close) & (close > 0.0) & (next_close > 0.0))
+        if bad.any():
+            first = pd.Timestamp(frame.index[int(np.argmax(bad))]).date()
+            raise ValueError(f"equities: {ticker} has {int(bad.sum())} row(s) with a non-positive or non-finite close (first {first}); regression_target={mode!r} would be non-finite there. Re-submit with regression_target='next_close', or a date range that excludes those sessions.")
+
+    @staticmethod
+    def _apply_incomplete_policy(params: EquitiesParams, conditioned: dict[str, Any], lost: dict[str, str] | None = None) -> tuple[dict[str, Any], dict[str, Any] | None]:
         """Classify the conditioned frames, apply fail / accept / drop, and build the annotation.
 
         APD-DATA-018 follow-up, extracted from ``generate`` so that BOTH equities
@@ -569,10 +622,25 @@ class EquitiesGenerator:
         for the sequence generator that means before the normaliser fit and the
         windowing, so a dropped ticker never reaches either.
 
+        **Lost symbols (W5.7, F-P5).** ``lost`` names the tickers of the resolved universe
+        that are absent from ``conditioned`` -- their download raised, returned nothing usable,
+        or (``equities_seq``) left too few rows for one window. When the request named its
+        symbols, a lost one is refused under the shut gate exactly as an unrescued fundamental
+        is, and annotated under ``data_quality.dropped_symbols`` when the gate is open. When
+        the request took the default universe nothing was asked for by name, so a lost ticker
+        is annotated but never refused. Either way the record is permanent: a dataset that
+        quietly covers fewer symbols than its request is the failure this area exists to
+        prevent.
+
+        **Action columns (F-P8).** Every frame's ``actions_present`` flag (set by
+        ``_condition_one``) is carried into the annotation, so a mint from a response that
+        lacked ``dividend`` / ``split_ratio`` says so.
+
         Args:
             params: the request's params; supplies the ``allow_truncation`` gate and
                 the ``incomplete_rows`` choice via ``_resolve_incomplete_policy``.
             conditioned: ticker -> conditioned frame, as the conditioning loop built it.
+            lost: ticker -> reason for every resolved ticker that is not in ``conditioned``.
 
         Returns:
             ``(conditioned, quality_meta)``. The mapping is the same one under FAIL /
@@ -583,12 +651,16 @@ class EquitiesGenerator:
 
         Raises:
             IncompleteDataError: under ``INCOMPLETE_FAIL`` (the default: the gate is
-                shut), and under ``INCOMPLETE_DROP`` when dropping empties the dataset.
+                shut) -- for an unrescued fundamental or a lost requested symbol -- and
+                under ``INCOMPLETE_DROP`` when dropping empties the dataset.
                 Subclasses ValueError; the route maps it to 422.
         """
+        lost = dict(lost or {})
         degraded: dict[str, str] = {}
         unrescued: dict[str, str] = {}
+        actions_present: dict[str, bool] = {}
         for ticker, frame in conditioned.items():
+            actions_present[ticker] = bool(frame["actions_present"].iloc[0]) if "actions_present" in frame.columns and len(frame) else True
             quality = str(frame["shares_quality"].iloc[0]) if "shares_quality" in frame.columns and len(frame) else SHARES_QUALITY_UNRESCUED
             if quality == SHARES_QUALITY_UNRESCUED:
                 unrescued[ticker] = "no shares-outstanding concept in companyconcept or companyfacts"
@@ -631,17 +703,29 @@ class EquitiesGenerator:
                     degraded[ticker] = f"{degraded[ticker]}; {note}" if ticker in degraded else note
 
         rows_affected = sum(len(conditioned[ticker]) for ticker in unrescued)
-        policy = EquitiesGenerator._resolve_incomplete_policy(params, bool(unrescued))
+        # A lost symbol opens the question only when the caller asked for it by name.
+        requested_lost = lost if params.symbols else {}
+        policy = EquitiesGenerator._resolve_incomplete_policy(params, bool(unrescued) or bool(requested_lost))
 
         # The messages say "equities:" for both callers deliberately -- this IS the
         # equities pipeline, and the sequence generator is a windowing layer on top of it.
         if unrescued:
             _logger.warning("equities: %d symbol(s) have no shares data after every rescue path: %s", len(unrescued), ", ".join(sorted(unrescued)))
+        if lost:
+            _logger.warning("equities: %d symbol(s) of the resolved universe are absent from the dataset: %s", len(lost), "; ".join(f"{ticker} ({reason})" for ticker, reason in sorted(lost.items())))
         if policy == INCOMPLETE_FAIL:
+            if unrescued:
+                raise IncompleteDataError(
+                    detail="Shares outstanding could not be resolved for part of the requested universe, so total_shares and market_cap would be fabricated for those rows.",
+                    unrescued=sorted(unrescued),
+                    rows_affected=rows_affected,
+                    opt_in_env="JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION",
+                )
+            reasons = "; ".join(f"{ticker}: {reason}" for ticker, reason in sorted(requested_lost.items())[:8])
             raise IncompleteDataError(
-                detail="Shares outstanding could not be resolved for part of the requested universe, so total_shares and market_cap would be fabricated for those rows.",
-                unrescued=sorted(unrescued),
-                rows_affected=rows_affected,
+                detail=f"Requested symbol(s) yielded no usable data and would be missing from the dataset ({reasons}).",
+                unrescued=sorted(requested_lost),
+                rows_affected=0,
                 opt_in_env="JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION",
             )
         if policy == INCOMPLETE_DROP:
@@ -665,6 +749,8 @@ class EquitiesGenerator:
             degraded=degraded,
             rows_affected=0 if policy == INCOMPLETE_DROP else rows_affected,
             policy=policy,
+            dropped=lost,
+            actions_present={ticker: actions_present[ticker] for ticker in conditioned},
         )
         return conditioned, quality_meta
 
@@ -790,13 +876,31 @@ class EquitiesGenerator:
         if frame is None or frame.empty:
             return None
 
-        # yfinance omits the action columns entirely for a ticker with no
-        # dividends or splits in range; absent means "none happened", which is
-        # 0.0, not missing.
-        for action_column in ("dividend", "split_ratio"):
-            if action_column not in frame.columns:
-                frame[action_column] = 0.0
+        # THE F-P8 GUARD (W5.7). This used to read: "yfinance omits the action columns entirely
+        # for a ticker with no dividends or splits in range; absent means none happened". The
+        # 2026-10-05 consensus review refuted the second half by execution: two mints of
+        # ``equities_seq-6.0.0-15505731cba5b86d`` 85 s apart differed, and the second carried an
+        # all-zero ``dividend`` column and no 2020-08-31 AAPL split -- an incomplete upstream
+        # response served as a complete artifact with no log line (juniper-ml
+        # ``notes/JUNIPER_2026-10-04_JUNIPER-RECURRENCE_EQUITIES-CV-BLOWUP-INVESTIGATION.md`` §1.1).
+        # yfinance's ``history`` adds BOTH columns, zero-filled, under ``actions=True``
+        # (``scrapers/history.py``), so an absent column is an anomalous response -- or a cache
+        # file written from one -- not the normal shape of an action-less ticker. The generator
+        # still cannot tell the two apart, so this records and warns rather than refuses:
+        # refusal is a request-level choice. The flag rides the frame as a column (as
+        # ``shares_quality`` does) into ``data_quality.actions_present``; the zero-fill itself
+        # is unchanged, so the arrays are what they were.
+        missing_actions = [column for column in ("dividend", "split_ratio") if column not in frame.columns]
+        if missing_actions:
+            _logger.warning(
+                "equities: %s: the price response carried no %s column(s); zero-filling them. Absent can mean no actions in range OR an incomplete upstream response, and the generator cannot tell which (F-P8). The dataset is annotated actions_present=false; compare the meta checksum across mints of the same dataset_id.",
+                ticker,
+                " / ".join(missing_actions),
+            )
+        for action_column in missing_actions:
+            frame[action_column] = 0.0
         frame[["dividend", "split_ratio"]] = frame[["dividend", "split_ratio"]].fillna(0.0)
+        frame["actions_present"] = not missing_actions
         if "adj_close" not in frame.columns:
             frame["adj_close"] = frame["close"]
 

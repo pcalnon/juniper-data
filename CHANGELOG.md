@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The equities generators record every symbol they lose, refuse a lost requested one by
+  default, guard the return targets, and say whether the price response carried the action
+  columns** (W5.7 of juniper-ml
+  `notes/JUNIPER_2026-10-03_JUNIPER-RECURRENCE_EQUITIES-END-TO-END-AUDIT-AND-DEVELOPMENT-PLAN.md`:
+  F-P5, F-P6, F-P8; the motivating case is
+  `notes/JUNIPER_2026-10-04_JUNIPER-RECURRENCE_EQUITIES-CV-BLOWUP-INVESTIGATION.md` §1.1, two mints
+  of one `dataset_id` 85 s apart, the second lacking the action columns and served as complete).
+  - **Lost symbols (F-P5).** Both generators let the universe shrink in silence: a ticker whose
+    download raised was logged and skipped, one that returned nothing was logged at INFO and
+    skipped, and the artifact was indistinguishable from a complete one. The conditioning loop is
+    now one shared `EquitiesGenerator._condition_universe`, which records each lost ticker with its
+    reason, and `_apply_incomplete_policy` treats a lost **requested** symbol like an unrescued
+    fundamental: **422** `IncompleteDataError` under the shut gate (`rows_affected` 0; the message
+    offers `allow_truncation` only, since no rows exist for `incomplete_rows` to accept or drop),
+    minted without it and recorded under **`data_quality.dropped_symbols`** (symbol → reason) with a
+    WARNING under the open gate. A lost ticker of the default universe is recorded, never refused.
+    For `equities_seq` a ticker that conditions to too few rows for one window is a loss too,
+    classified before the policy; it keeps its `ticker_vocab` slot with zero windows, so the code
+    allocation — and every existing `dataset_id`'s arrays — are unchanged.
+  - **The close guard (F-P6).** `return` / `log_return` over a zero, negative or non-finite
+    `close` / `next_close` produced ±Inf / NaN in `y_reg`, caught only by the recurrence reader
+    after the artifact was minted and cached. `_check_return_target_inputs` refuses per ticker,
+    before the target is computed, with a **400** `ValueError` naming the symbol, the row count
+    and the first offending session. `next_close` is not guarded (a zero price is a value there).
+  - **The action columns (F-P8).** `_condition_one` zero-filled `dividend` / `split_ratio` when the
+    response lacked them, with no log line, under the comment "absent means none happened".
+    yfinance adds both columns, zero-filled, under `actions=True`, so an absent column is an
+    anomalous response (or a cache file written from one). The zero-fill is unchanged; the
+    generator now logs it at WARNING and records **`data_quality.actions_present`** (symbol → bool,
+    every symbol in the arrays). It cannot tell an incomplete response from "no actions in range",
+    so this is recorded, never refused: refusal is a request-level choice. The `equities_seq`
+    module docstring and `docs/REFERENCE.md` § Equities Data Quality Annotation document that
+    **`dataset_id` is request-addressed** and the meta `checksum` is the content fingerprint.
+  - `build_data_quality_meta` gains `dropped` / `actions_present` and returns `None` only when every
+    category is clean; the block gains `dropped_symbols` and `actions_present` (both always present
+    when the block exists). The `symbols` field description states the rule.
+  - **`generator_version` is not bumped** (`equities` 5.0.0, `equities_seq` 6.0.0), as for W1.8: a
+    refused request mints nothing, and every request that still mints emits the arrays it emitted
+    before. An artifact whose `data_quality` has no `actions_present` key predates this change.
+  - Pins: `juniper_data/tests/unit/test_equities_producer_guards.py` (new, 35 tests). The OHLCV
+    fixtures of the equities test modules now carry `Dividends` / `Stock Splits` columns — the
+    real shape of a yfinance response — so a fixture without them is the anomaly under test;
+    `test_absent_action_columns_mean_zero_not_missing` asserts the annotation, and the four
+    skip-branch tests (`test_unknown_symbol_skipped_not_fatal`,
+    `test_generate_skips_ticker_whose_download_raises`, `test_generate_handles_ticker_with_no_data`,
+    `test_generate_skips_ticker_shorter_than_lookback`) open the gate and assert the record.
+  - Applied by juniper-ml `util/ad-hoc/2026-10-19_apply_w5_7_producer_guards.py`.
+
 ## [0.17.1] - 2026-10-10
 
 ### Security

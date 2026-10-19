@@ -49,7 +49,8 @@ def _ohlcv(start: str = "2008-01-01", periods: int = 400, seed: int = 0):
     low = close - np.abs(rng.normal(0.5, 0.2, periods))
     open_ = close + rng.normal(0.0, 0.2, periods)
     volume = rng.integers(1_000_000, 5_000_000, periods).astype(float)
-    return pd.DataFrame({"Open": open_, "High": high, "Low": low, "Close": close, "Adj Close": close, "Volume": volume}, index=index)
+    # W5.7 (F-P8): yfinance adds both action columns, zero-filled, under ``actions=True``; a response without them is the anomaly the generator now annotates.
+    return pd.DataFrame({"Open": open_, "High": high, "Low": low, "Close": close, "Adj Close": close, "Volume": volume, "Dividends": 0.0, "Stock Splits": 0.0}, index=index)
 
 
 def _shares(start: str = "2007-12-31"):
@@ -237,14 +238,18 @@ class TestEquitiesSeqGeneratorBranches:
                 raise RuntimeError("download exploded")
             return good.copy()
 
+        # W5.7 (F-P5): a lost REQUESTED symbol is refused under the shut gate, so these skip
+        # branches are reached with the gate open -- and the loss is recorded.
         with patch.object(eq_gen.yf, "download", side_effect=fake_download), patch.object(eq_gen.EquitiesGenerator, "_fetch_shares", staticmethod(lambda *_a: _shares())):
-            arrays = EquitiesSeqGenerator.generate(EquitiesSeqParams(symbols=["AAPL", "MSFT"], start_date="2008-01-01", end_date="2011-01-01", use_cache=False, lookback=5, fundamentals_fill="zero"))
+            arrays = EquitiesSeqGenerator.generate(EquitiesSeqParams(symbols=["AAPL", "MSFT"], start_date="2008-01-01", end_date="2011-01-01", use_cache=False, lookback=5, fundamentals_fill="zero", allow_truncation=True))
         assert arrays["ticker_vocab"].tolist() == ["AAPL"]
+        assert arrays[esq_gen.DATA_QUALITY_META_KEY]["dropped_symbols"] == {"MSFT": "conditioning failed: download exploded"}
 
     def test_generate_handles_ticker_with_no_data(self) -> None:
         # MSFT is absent from the ohlcv map -> empty frame -> the "no data" else branch.
-        arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=21)}, _shares(), lookback=5)
+        arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=21)}, _shares(), lookback=5, allow_truncation=True)
         assert arrays["ticker_vocab"].tolist() == ["AAPL"]
+        assert arrays[esq_gen.DATA_QUALITY_META_KEY]["dropped_symbols"] == {"MSFT": "no usable price data in range"}
 
     def test_generate_raises_when_no_symbol_has_data(self) -> None:
         with pytest.raises(ValueError, match="No data"):
@@ -257,9 +262,12 @@ class TestEquitiesSeqGeneratorBranches:
     def test_generate_skips_ticker_shorter_than_lookback(self) -> None:
         # MSFT conditions to ~7 rows (<= lookback + 1 = 21) so no window is built for it,
         # while AAPL (400 rows) produces windows -> the per-ticker skip branch fires.
-        arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=24, periods=400), "MSFT": _ohlcv(seed=25, periods=8)}, _shares(), lookback=20)
+        # The gate is open: a requested ticker that cannot contribute a window is lost (W5.7).
+        arrays = _generate(["AAPL", "MSFT"], {"AAPL": _ohlcv(seed=24, periods=400), "MSFT": _ohlcv(seed=25, periods=8)}, _shares(), lookback=20, allow_truncation=True)
         assert "AAPL" in arrays["ticker_vocab"].tolist()
         assert whole(arrays, "X").shape[0] > 0
+        assert list(arrays[esq_gen.DATA_QUALITY_META_KEY]["dropped_symbols"]) == ["MSFT"]
+        assert "lookback+1=21" in arrays[esq_gen.DATA_QUALITY_META_KEY]["dropped_symbols"]["MSFT"]
 
     def test_generate_raises_when_all_tickers_too_short(self) -> None:
         with pytest.raises(ValueError, match="lookback"):
