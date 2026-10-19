@@ -61,6 +61,20 @@ Sources, both in juniper-ml ``notes/``:
 ``JUNIPER_2026-10-03_JUNIPER-RECURRENCE_EQUITIES-END-TO-END-AUDIT-AND-DEVELOPMENT-PLAN.md``
 (W1.1, F-P1, the R4 note) and ``JUNIPER_2026-10-04_JUNIPER-RECURRENCE_EQUITIES-CV-BLOWUP-INVESTIGATION.md``
 (§2.3(b), §3.3). Pinned by ``tests/unit/test_equities_seq_generator.py::TestRecurrenceReadyBundle``.
+
+The ``dataset_id`` is request-addressed (W5.7, F-P8)
+---------------------------------------------------
+``dataset_id`` hashes the generator, its ``VERSION`` and the request params -- not the arrays.
+Two mints of one id can therefore differ in content whenever the upstream response differs:
+the 2026-10-05 review found a second mint of ``equities_seq-6.0.0-15505731cba5b86d`` whose
+price response had no action columns, so its ``dividend`` column was all zero and the
+2020-08-31 AAPL split was absent. The meta ``checksum`` IS the content fingerprint (sha256 over
+the arrays), so a consumer that needs "the same data" compares checksums, not ids. The producer
+guards here record what it can see -- ``data_quality.actions_present`` says whether each
+symbol's response carried the action columns, ``data_quality.dropped_symbols`` names every
+resolved symbol that is absent from the arrays and why -- and refuse a requested symbol that is
+lost unless ``allow_truncation`` opens the gate. Refusing a mint whose actions MAY be missing is
+a request-level choice: the generator cannot know whether a symbol had any actions in range.
 """
 
 # Project:       Juniper
@@ -75,7 +89,6 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
-from typing import Any
 
 import numpy as np
 
@@ -201,22 +214,24 @@ class EquitiesSeqGenerator:
         symbols, meta_map, truncation = EquitiesGenerator._resolve_symbols(params, constituents)
         end_date = params.end_date or datetime.now(UTC).strftime("%Y-%m-%d")
 
-        conditioned: dict[str, Any] = {}
-        total = len(symbols)
-        for index, ticker in enumerate(symbols, start=1):
-            try:
-                frame = EquitiesGenerator._condition_one(ticker, meta_map.get(ticker, {}), params, end_date)
-            except Exception as exc:  # noqa: BLE001 - one bad ticker must not abort the whole batch
-                _logger.warning("equities_seq: skipping %s (%s)", ticker, exc)
-                continue
-            if frame is not None and not frame.empty:
-                conditioned[ticker] = frame.sort_index()
-                _logger.info("equities_seq: [%d/%d] %s -> %d rows", index, total, ticker, len(frame))
-            else:
-                _logger.info("equities_seq: [%d/%d] %s -> no data", index, total, ticker)
+        # The flat generator's conditioning loop (W5.7 made it shared), which records every
+        # ticker it loses and why. Both generators had their own copy, and both lost tickers
+        # in silence.
+        conditioned, lost = EquitiesGenerator._condition_universe(symbols, meta_map, params, end_date, log_prefix="equities_seq")
 
         if not conditioned:
             raise ValueError("No data could be retrieved for the requested symbols.")
+
+        # W5.7 (F-P5): a ticker with too few rows for one window is lost from the arrays
+        # exactly as a ticker with no data is, and was just as silent -- the `continue` in
+        # the windowing loop below logs at INFO and records nothing. Classified HERE, before
+        # the policy, so a requested symbol that cannot contribute a window is refused under
+        # the shut gate like one that returned nothing, and annotated under the open one. It
+        # stays in `ticker_vocab` with zero windows: the code allocation is unchanged, so an
+        # existing dataset_id keeps the arrays it had.
+        for ticker, frame in conditioned.items():
+            if len(frame) <= params.lookback + 1:
+                lost[ticker] = f"{len(frame)} row(s) after conditioning, need more than lookback+1={params.lookback + 1}: no window"
 
         # The incomplete-data policy, the flat generator's own helper (APD-DATA-018).
         # This generator had no copy of it, so an unrescued ticker shipped here with a
@@ -224,7 +239,7 @@ class EquitiesSeqGenerator:
         # the identical request to `equities` was refused. Called HERE, after
         # conditioning and before the normaliser fit and the windowing, so a dropped
         # ticker reaches neither: `vocab` below is derived from the returned mapping.
-        conditioned, quality_meta = EquitiesGenerator._apply_incomplete_policy(params, conditioned)
+        conditioned, quality_meta = EquitiesGenerator._apply_incomplete_policy(params, conditioned, lost=lost)
 
         vocab = sorted(conditioned)
         code_of = {ticker: code for code, ticker in enumerate(vocab)}
@@ -267,6 +282,7 @@ class EquitiesSeqGenerator:
             feats = EquitiesGenerator._features(frame, norm)
             dates = EquitiesGenerator._dates_yyyymmdd(frame)
             y_dir = EquitiesGenerator._direction_onehot(frame)
+            EquitiesGenerator._check_return_target_inputs(ticker, frame, params.regression_target)
             y_reg = EquitiesGenerator._regression_target(frame, params.regression_target)
             ords = _yyyymmdd_to_ordinal(dates)
             # Two chronological cuts per ticker: train | val | test, in time order.

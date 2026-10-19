@@ -177,17 +177,24 @@ class IncompleteDataError(ValueError):
     a missed catch lands on 400, not a 500.
 
     Attributes:
-        unrescued: identifiers that could not be recovered by any rescue path.
-        rows_affected: dataset rows those identifiers account for.
+        unrescued: identifiers that could not be recovered by any rescue path -- or, for a
+            lost REQUESTED symbol (W5.7, F-P5), the symbols that yielded no usable data.
+        rows_affected: dataset rows those identifiers account for; ``0`` for lost symbols,
+            which are not in the dataset to be affected.
     """
 
     def __init__(self, *, detail: str, unrescued: list[str], rows_affected: int, opt_in_env: str) -> None:
         self.unrescued = list(unrescued)
         self.rows_affected = int(rows_affected)
         shown = ", ".join(self.unrescued[:8]) + ("…" if len(self.unrescued) > 8 else "")
-        super().__init__(
-            f"{detail} Affected ({len(self.unrescued)}): {shown}. {rows_affected:,} row(s) would carry fabricated values. Re-submit with allow_truncation=true (or set {opt_in_env}=true) to accept them, or with incomplete_rows='drop' to exclude them. Either choice is recorded permanently in the dataset's metadata."
-        )
+        if self.rows_affected > 0:
+            consequence = f"{rows_affected:,} row(s) would carry fabricated values. Re-submit with allow_truncation=true (or set {opt_in_env}=true) to accept them, or with incomplete_rows='drop' to exclude them. Either choice is recorded permanently in the dataset's metadata."
+        else:
+            # W5.7 (F-P5): the affected symbols are not IN the dataset -- they yielded no usable
+            # data -- so there are no rows to accept or drop, only a partial universe to accept
+            # knowingly. `incomplete_rows` is not offered: it chooses between rows that exist.
+            consequence = f"The dataset would silently cover fewer symbols than were requested. Re-submit with allow_truncation=true (or set {opt_in_env}=true) to accept the partial universe; the lost symbols and their reasons are recorded permanently in the dataset's metadata (data_quality.dropped_symbols)."
+        super().__init__(f"{detail} Affected ({len(self.unrescued)}): {shown}. {consequence}")
 
 
 def build_data_quality_meta(
@@ -196,6 +203,8 @@ def build_data_quality_meta(
     degraded: dict[str, str],
     rows_affected: int,
     policy: str,
+    dropped: dict[str, str] | None = None,
+    actions_present: dict[str, bool] | None = None,
 ) -> dict[str, Any] | None:
     """Build the permanent data-quality descriptor, or None when nothing is wrong.
 
@@ -215,16 +224,37 @@ def build_data_quality_meta(
       ``"zero"`` policy is an impossible number; under ``INCOMPLETE_DROP`` they
       are gone. Either way the dataset says so.
 
-    Returns ``None`` when both are empty, so the field's presence alone answers
-    "is anything wrong with this dataset" -- the same contract
-    ``DatasetMeta.truncation`` keeps.
+    Two more, added by W5.7 (juniper-ml plan rows F-P5 / F-P8) and kept apart for the
+    same reason:
+
+    * ``dropped`` -- symbol -> reason, for a ticker that is ABSENT from the arrays although
+      it was in the resolved universe: its download raised, returned nothing usable, or (the
+      sequence generator) conditioned to too few rows for one window. Distinct from
+      ``unrescued`` under the ``drop`` policy, which names symbols removed for a fabricated
+      fundamental; these were never there to remove. Recorded as ``dropped_symbols``.
+    * ``actions_present`` -- symbol -> bool, for every symbol in the arrays, saying whether
+      the price response carried the ``dividend`` / ``split_ratio`` columns. yfinance adds
+      both (zero-filled) under ``actions=True``, so ``false`` is an ANOMALOUS response -- or
+      a cache file written from one -- that the generator zero-filled; it cannot tell that
+      apart from "no actions in range" (F-P8), which is why this is recorded, not refused.
+      An artifact whose ``data_quality`` has no ``actions_present`` key was minted before
+      this field existed; compare the meta ``checksum`` across mints instead.
+
+    Returns ``None`` when every category is clean (no symbol lost, every response carried
+    its action columns), so the field's presence alone answers "is anything wrong with this
+    dataset" -- the same contract ``DatasetMeta.truncation`` keeps.
     """
-    if not unrescued and not degraded:
+    dropped = dict(dropped or {})
+    actions_present = {symbol: bool(flag) for symbol, flag in (actions_present or {}).items()}
+    actions_missing = not all(actions_present.values())
+    if not unrescued and not degraded and not dropped and not actions_missing:
         return None
     return {
         "complete": False,
         "unrescued": dict(sorted(unrescued.items())),
         "degraded": dict(sorted(degraded.items())),
+        "dropped_symbols": dict(sorted(dropped.items())),
+        "actions_present": dict(sorted(actions_present.items())),
         "rows_affected": int(rows_affected),
         "policy": policy,
     }

@@ -43,8 +43,9 @@ def _sessions(start: str, periods: int, purchase_close: float, purchase_adj: flo
     adj[0] = purchase_close if purchase_adj is None else purchase_adj
     high = np.maximum(close, adj) + 1.0
     low = np.minimum(close, adj) - 1.0
+    # W5.7 (F-P8): the real shape of a yfinance response under ``actions=True``.
     return pd.DataFrame(
-        {"Open": close, "High": high, "Low": low, "Close": close, "Adj Close": adj, "Volume": np.full(periods, 1_000_000.0)},
+        {"Open": close, "High": high, "Low": low, "Close": close, "Adj Close": adj, "Volume": np.full(periods, 1_000_000.0), "Dividends": 0.0, "Stock Splits": 0.0},
         index=index,
     )
 

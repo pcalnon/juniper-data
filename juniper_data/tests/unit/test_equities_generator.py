@@ -56,7 +56,8 @@ def _ohlcv(start: str = "2008-01-01", periods: int = 600, seed: int = 0):
     low = close - np.abs(rng.normal(0.5, 0.2, periods))
     open_ = close + rng.normal(0.0, 0.2, periods)
     volume = rng.integers(1_000_000, 5_000_000, periods).astype(float)
-    return pd.DataFrame({"Open": open_, "High": high, "Low": low, "Close": close, "Adj Close": close, "Volume": volume}, index=index)
+    # W5.7 (F-P8): yfinance adds both action columns, zero-filled, under ``actions=True``; a response without them is the anomaly the generator now annotates.
+    return pd.DataFrame({"Open": open_, "High": high, "Low": low, "Close": close, "Adj Close": close, "Volume": volume, "Dividends": 0.0, "Stock Splits": 0.0}, index=index)
 
 
 def _shares(start: str = "2009-06-30"):
@@ -330,9 +331,13 @@ class TestEquitiesGenerator:
         assert restored["ticker_vocab"].tolist() == arrays["ticker_vocab"].tolist()
 
     def test_unknown_symbol_skipped_not_fatal(self) -> None:
-        # AAPL returns data; NVDA returns an empty frame and is skipped (not fatal).
-        arrays = _generate(["AAPL", "NVDA"], {"AAPL": _ohlcv(seed=17)}, _shares())
+        # AAPL returns data; NVDA returns an empty frame and is skipped (not fatal) -- once the
+        # gate is open. Under the shut gate a lost REQUESTED symbol is refused (W5.7, F-P5;
+        # `TestLostRequestedSymbols` in test_equities_producer_guards.py), and either way it
+        # is recorded.
+        arrays = _generate(["AAPL", "NVDA"], {"AAPL": _ohlcv(seed=17)}, _shares(), allow_truncation=True)
         assert arrays["ticker_vocab"].tolist() == ["AAPL"]
+        assert arrays[DATA_QUALITY_META_KEY]["dropped_symbols"] == {"NVDA": "no usable price data in range"}
 
     def test_all_symbols_empty_raises(self) -> None:
         with pytest.raises(ValueError, match="No data"):
@@ -965,18 +970,23 @@ class TestFreeFields:
             eq_gen.EquitiesGenerator._download_ohlcv("AAPL", "2008-01-01", "2011-01-01", use_cache=False)
         assert captured.get("actions") is True
 
-    def test_absent_action_columns_mean_zero_not_missing(self) -> None:
-        """A ticker with no dividends or splits gets 0.0, never NaN.
+    def test_absent_action_columns_mean_zero_not_missing(self, caplog: pytest.LogCaptureFixture) -> None:
+        """A response without the action columns still gets 0.0, never NaN -- and now says so.
 
-        yfinance omits the columns entirely in that case. Treating absent as
-        missing would put NaN into a float32 feature column for the majority of
-        rows of the majority of tickers.
+        The zero-fill is unchanged: NaN in a float32 feature column would poison every row.
+        What W5.7 (F-P8) adds is the record. yfinance adds both columns, zero-filled, under
+        ``actions=True``, so a response without them is anomalous (the 2026-10-05 review's
+        second mint), and the generator cannot tell that from "no actions in range" -- hence
+        ``actions_present: false`` and a WARNING rather than a refusal.
         """
-        arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=12)}, _shares())
+        with caplog.at_level("WARNING", logger="juniper_data.generators.equities.generator"):
+            arrays = _generate(["AAPL"], {"AAPL": _ohlcv(seed=12).drop(columns=["Dividends", "Stock Splits"])}, _shares())
         for column in ("dividend", "split_ratio"):
             values = whole(arrays, "X")[:, _FEATURES.index(column)]
             assert not np.isnan(values).any()
             assert np.all(values == 0.0)
+        assert arrays[DATA_QUALITY_META_KEY]["actions_present"] == {"AAPL": False}
+        assert any("AAPL" in record.getMessage() and "zero-filling" in record.getMessage() for record in caplog.records)
 
     def test_week52_dates_point_at_the_reported_extreme(self) -> None:
         """The date must identify the row whose value ``week52_high`` reports.
