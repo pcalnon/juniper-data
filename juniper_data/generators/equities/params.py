@@ -110,7 +110,7 @@ class EquitiesParams(BaseModel):
 
     symbols: list[str] | None = Field(
         default=None,
-        description="Tickers to include. None = the bundled S&P 500 constituents.",
+        description="Tickers to include. None = the bundled S&P 500 constituents. A named ticker that yields no usable data (download failed, nothing in range, or -- for equities_seq -- too few rows for one window) is REFUSED with 422 unless allow_truncation opens the gate, in which case the dataset is minted without it and PERMANENTLY annotated under DatasetMeta.data_quality.dropped_symbols (W5.7). A lost ticker of the default universe is annotated but not refused.",
     )
     start_date: str = Field(
         default=EQUITIES_DEFAULT_START_DATE,

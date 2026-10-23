@@ -62,6 +62,9 @@ def _ohlcv(start: str = "2008-01-01", periods: int = 40, seed: int = 0):
             "Close": close,
             "Adj Close": close,
             "Volume": 1_000_000.0,
+            # W5.7 (F-P8): the real shape of a yfinance response under ``actions=True``.
+            "Dividends": 0.0,
+            "Stock Splits": 0.0,
         },
         index=index,
     )

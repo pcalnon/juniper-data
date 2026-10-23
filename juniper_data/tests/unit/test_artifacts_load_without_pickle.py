@@ -147,6 +147,9 @@ def _equities_sources(start: str, periods: int, filed: tuple[str, str]) -> Itera
                 "Close": close,
                 "Adj Close": close,
                 "Volume": rng.integers(1_000_000, 5_000_000, periods).astype(float),
+                # W5.7 (F-P8): the real shape of a yfinance response under ``actions=True``.
+                "Dividends": 0.0,
+                "Stock Splits": 0.0,
             },
             index=index,
         )
