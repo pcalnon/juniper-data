@@ -2,7 +2,7 @@
 
 **Version:** 0.4.4
 **Status:** Active
-**Last Updated:** October 8, 2026
+**Last Updated:** October 19, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -1996,6 +1996,56 @@ Via `POST /v1/datasets`: `"generator": "equities"` / `"equities_seq"` with `"par
 
 ---
 
+## Equities Data Quality Annotation
+
+`DatasetMeta.data_quality` is the permanent record of *what is wrong with what is present* for `equities` / `equities_seq` (APD-DATA-018 follow-up; W5.7 of juniper-ml `notes/JUNIPER_2026-10-03_JUNIPER-RECURRENCE_EQUITIES-END-TO-END-AUDIT-AND-DEVELOPMENT-PLAN.md` added the last two categories). It is **absent when nothing is wrong** — the same contract as `truncation` — so its presence alone answers "is anything degraded here". Built by `EquitiesGenerator._apply_incomplete_policy` through `build_data_quality_meta` (`juniper_data/core/limits.py`), popped from the arrays by the create route before checksum and persist.
+
+| Key | Meaning |
+|-----|---------|
+| `complete` | Always `false` when the block exists. |
+| `unrescued` | symbol → reason: no share count from any rescue path; `total_shares` / `market_cap` would be fabricated. Governs the fail / accept / drop gate. |
+| `degraded` | symbol → source quality: a value WAS recovered, from a weaker source (`period_average`, `issued_includes_treasury`) or one that went `stale`. |
+| `dropped_symbols` | symbol → reason (**W5.7, F-P5**): a resolved symbol that is **absent from the arrays** — its download raised (`conditioning failed: …`), returned nothing usable (`no usable price data in range`), or, for `equities_seq`, conditioned to too few rows for one window (`… need more than lookback+1=N: no window`; it stays in `ticker_vocab` with zero windows, so the code allocation and every existing `dataset_id`'s arrays are unchanged). |
+| `actions_present` | symbol → bool (**W5.7, F-P8**), for every symbol in the arrays: whether the price response carried the `dividend` / `split_ratio` columns. yfinance adds both, zero-filled, under `actions=True`, so `false` is an **anomalous response** — or a cache file written from one — that the generator zero-filled with a WARNING. It cannot tell that from "no actions in range", so this is recorded, never refused. An artifact whose block has no `actions_present` key was minted before the field existed. |
+| `rows_affected` | rows the `unrescued` symbols account for (`0` under `drop`, and for lost symbols, which are not in the dataset to be affected). |
+| `policy` | `fail` / `accept` / `drop`, as resolved for this request. |
+
+### A lost requested symbol is refused by default (W5.7, F-P5)
+
+Both generators used to let the universe shrink in silence: a ticker whose download raised was logged at WARNING and skipped, one that returned nothing was logged at INFO and skipped, and the artifact was indistinguishable from a complete one. Now `EquitiesGenerator._condition_universe` (the one conditioning loop both generators share) records every lost ticker with its reason, and the gate treats it like an unrescued fundamental:
+
+| Request | Gate shut (default) | Gate open (`allow_truncation=true` or `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION`) |
+|---------|---------------------|-----------------------------------------------------------------------------------|
+| `symbols` named | **422** `IncompleteDataError` naming the symbols and reasons; `rows_affected` is 0 and the message offers only `allow_truncation` (there are no rows for `incomplete_rows` to accept or drop) | minted without them; `dropped_symbols` records each with its reason; WARNING |
+| default universe | annotated, never refused — nothing was asked for by name | same |
+
+A request every one of whose symbols is lost still fails with the older `No data could be retrieved` (400) before the policy runs. An unrescued fundamental and a lost symbol under the shut gate raise the fundamentals refusal (its remedy differs); the lost symbol is still in the log.
+
+### The close guard (W5.7, F-P6)
+
+`regression_target` `return` divides by `close` and `log_return` takes the log of the ratio, so a zero, negative or non-finite `close` / `next_close` yields ±Inf / NaN in `y_reg` — which the recurrence reader refuses as non-finite, but only after the artifact is minted and cached under its `dataset_id`. `EquitiesGenerator._check_return_target_inputs` runs per ticker before the target is computed and refuses with a **400** `ValueError` naming the symbol, the row count and the first offending session (`equities: AAPL has 2 row(s) with a non-positive or non-finite close (first 2008-05-21); regression_target='log_return' would be non-finite there`). `next_close` is not guarded: a zero price is then a value, not a divisor. This is a plain `ValueError`, not the 422 `IncompleteDataError` — a bad price is not caller-fixable by opting in.
+
+### `dataset_id` is request-addressed (W5.7, F-P8)
+
+`dataset_id` hashes the generator, its `VERSION` and the request params — never the arrays — so two mints of one id differ whenever the upstream response does. The 2026-10-05 consensus review (juniper-ml `notes/JUNIPER_2026-10-04_JUNIPER-RECURRENCE_EQUITIES-CV-BLOWUP-INVESTIGATION.md` §1.1) found a second mint of `equities_seq-6.0.0-15505731cba5b86d` 85 s after a complete one whose response had no action columns: all-zero `dividend`, no 2020-08-31 AAPL split, served as complete. The meta `checksum` **is** the content fingerprint (sha256 over an uncompressed `np.savez` of the arrays, sorted keys); a consumer that needs "the same data" compares checksums, not ids (see also § Conditional Requests above: the artifact is not content-addressed). Refusing a mint whose actions *may* be missing is a request-level choice the generator cannot make for the caller.
+
+**`generator_version` is not bumped** (`equities` 5.0.0, `equities_seq` 6.0.0), as for W1.8: a refused request mints nothing, and every request that still mints emits the arrays it emitted before — the annotation and the WARNING are the only additions.
+
+### Pins
+
+| Test | File | Guards |
+|------|------|--------|
+| `TestActionColumns` (7) | `juniper_data/tests/unit/test_equities_producer_guards.py` | a mint without the action columns carries `actions_present: false` and a WARNING (both generators); a complete response carries no block and no WARNING; the zero-fill is byte-identical; every symbol is listed; the flag never trips the gate |
+| `TestLostRequestedSymbols` (11) | same | refused by default (both generators; a `ValueError` subclass; `rows_affected` 0; no `fabricated` / `incomplete_rows` in the message); open gate mints, records the reason and warns; a conditioning exception records its text; the seq no-window loss is refused under the shut gate and the ticker keeps its vocab slot; the default universe is recorded, never refused; the deployment gate opens it; the fundamentals refusal takes precedence; all-lost is still `No data` |
+| `TestCloseGuard` (11) | same | zero / negative / inf close under `return` and `log_return` refused naming ticker, count and first session (both generators); `next_close` unguarded; a plain `ValueError`, not the 422 |
+| `TestDescriptorAndError` (6) | same | `build_data_quality_meta` is `None` only when every category is clean; the old callers' shape; `IncompleteDataError` wording follows `rows_affected` |
+| `test_absent_action_columns_mean_zero_not_missing` | `juniper_data/tests/unit/test_equities_generator.py` | the zero-fill stays, now annotated |
+| `test_unknown_symbol_skipped_not_fatal`, `test_generate_skips_ticker_whose_download_raises`, `test_generate_handles_ticker_with_no_data`, `test_generate_skips_ticker_shorter_than_lookback` | `test_equities_generator.py`, `test_equities_seq_generator.py` | the skip branches, reached with the gate open, record the loss |
+
+The OHLCV fixtures in the equities test modules carry `Dividends` / `Stock Splits` (zero) columns — the real shape of a yfinance response under `actions=True` — so a fixture *without* them is the anomaly under test, not the baseline.
+
+---
+
 ## Equities Sequence: Recurrence-Ready Parameters
 
 `equities_seq` at its bare defaults produces windows juniper-recurrence refuses to train on. The request below is the documented **recurrence-ready bundle**:
@@ -2412,6 +2462,6 @@ per red streak.
 
 ---
 
-**Last Updated:** October 8, 2026
+**Last Updated:** October 19, 2026
 **Version:** 0.4.4
 **Maintainer:** Paul Calnon
