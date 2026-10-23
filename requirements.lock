@@ -19,9 +19,9 @@ attrs==26.1.0
     # via aiohttp
 beautifulsoup4==4.15.0
     # via yfinance
-cachetools==7.2.1
+cachetools==7.2.3
     # via juniper-data (pyproject.toml)
-certifi==2026.7.22
+certifi==2026.10.18
     # via
     #   curl-cffi
     #   requests
@@ -42,12 +42,12 @@ dill==0.4.1
     # via
     #   datasets
     #   multiprocess
-fastapi==0.143.0
+fastapi==0.148.0
     # via
     #   juniper-data (pyproject.toml)
     #   juniper-service-core
     #   sentry-sdk
-filelock==4.1.1
+filelock==4.2.4
     # via
     #   datasets
     #   huggingface-hub
@@ -65,11 +65,11 @@ h11==0.16.0
     #   uvicorn
 hf-xet==1.7.0
     # via huggingface-hub
-httpcore2==2.13.1
+httpcore2==2.14.0
     # via httpx2
 httptools==0.9.0
     # via uvicorn
-httpx2==2.13.1
+httpx2==2.14.0
     # via huggingface-hub
 huggingface-hub==2.2.0
     # via datasets
@@ -115,9 +115,9 @@ pandas==3.0.6
     #   yfinance
 peewee==4.5.3
     # via yfinance
-pillow==12.3.0
+pillow==13.0.0
     # via datasets
-platformdirs==4.13.0
+platformdirs==4.13.5
     # via yfinance
 prometheus-client==0.26.0
     # via juniper-data (pyproject.toml)
@@ -140,7 +140,7 @@ pydantic==2.14.1
     #   pydantic-settings
 pydantic-core==2.50.1
     # via pydantic
-pydantic-settings==2.15.0
+pydantic-settings==2.16.0
     # via
     #   juniper-data (pyproject.toml)
     #   juniper-service-core
@@ -166,7 +166,7 @@ six==1.17.0
     # via python-dateutil
 soupsieve==3.0.3
     # via beautifulsoup4
-starlette==1.8.0
+starlette==1.9.0
     # via
     #   juniper-data (pyproject.toml)
     #   fastapi
@@ -188,6 +188,7 @@ typing-extensions==4.16.0
     #   opentelemetry-api
     #   pydantic
     #   pydantic-core
+    #   pydantic-settings
     #   typing-inspection
 typing-inspection==0.4.4
     # via
@@ -208,7 +209,7 @@ websockets==17.2
     # via
     #   uvicorn
     #   yfinance
-xxhash==4.0.1
+xxhash==4.0.2
     # via datasets
 yarl==1.25.1
     # via aiohttp
