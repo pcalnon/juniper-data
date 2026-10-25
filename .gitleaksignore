@@ -18,7 +18,11 @@
 # only; no value was printed). Values are never written here.
 #
 # The config's own [allowlist].commits entry (4bd37a6c, the ARC-AGI identifier)
-# is a separate, older decision and is not repeated here.
+# is a separate, older decision and is not repeated here. Conda build strings in
+# the conda environment files are also covered by the AND-scoped generic-api-key
+# allowlist in .gitleaks.toml, which, unlike an entry here, holds for commits
+# that do not exist yet; the Hash entries below are kept as the record of the
+# historical findings.
 #
 # ============================================================================
 # gitleaks' default ruleset -- every entry below classified as a false positive
