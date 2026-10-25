@@ -57,6 +57,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `test_generate_skips_ticker_shorter_than_lookback`) open the gate and assert the record.
   - Applied by juniper-ml `util/ad-hoc/2026-10-19_apply_w5_7_producer_guards.py`.
 
+### Security
+
+- **CI's Gitleaks step loaded zero rules and could not fail; it now loads gitleaks' built-in
+  ruleset.** `.gitleaks.toml` held an `[allowlist]` and no `[extend]` table, and a gitleaks v8
+  config without `[extend] useDefault = true` loads only its own `[[rules]]`, of which it had none.
+  Every push, pull-request, scheduled and dispatched scan therefore passed vacuously: a fabricated
+  GitHub token went through the config while gitleaks' built-in config flags it (the defect
+  juniper-ml#2203 fixed there). The table is added; the existing commit allowlist is kept.
+  - **History measured.** A `schedule` or `workflow_dispatch` run scans every commit reachable from
+    every remote branch and tag. Measured with gitleaks 8.24.3 over exactly that scope (90 head/tag
+    SHAs, 1140 commits): 27 findings, all false positives -- 22 conda `<package>=<version>=<build>`
+    hashes, 1 documented placeholder API key in `docs/USER_MANUAL.md` and 4 prose matches in
+    `docs/IMPLEMENTATION_PLAN.md`. Each is a commit-scoped entry in the new `.gitleaksignore`, under
+    a comment naming its class; the rescan finds none.
+  - **Conda build strings get a narrow allowlist, because they recur.** Every conda-env refresh
+    rewrites the `<package>=<version>=<build>` lines under a new commit, which no commit-scoped
+    entry can name in advance, so the next refresh would have failed the PR scan and then the push
+    scan of `main`. `.gitleaks.toml` adds an AND-scoped allowlist to `generic-api-key` alone: a
+    finding is dropped only when its file is `conf/conda_environment*.y(a)ml` or
+    `conf/requirements-conda.txt` AND its whole secret is `<version>=<build>` with a conda build
+    string (`h<7 hex>_<n>`, `pyh<7 hex>_<n>` or `py<NNN>h<7 hex>_<n>`). gitleaks 8.24.3 has no
+    top-level `[[allowlists]]` or `targetRules`, which its config loader would drop silently, and its
+    global `[allowlist]` is OR-only. So the allowlist is a rule allowlist, merged into the default
+    `generic-api-key` rule, which keeps its regex, entropy and own allowlists. Without the ignore
+    file the full-history scan now reports 5 findings (the non-conda ones), down from 27: the
+    allowlist alone covers all 22 conda findings. Their commit-scoped entries stay.
+  - **The engine is pinned**: `GITLEAKS_VERSION: "8.24.3"` on the gitleaks-action step, the version
+    its v3.0.0 installs by default, so a bump of the action SHA cannot change it silently.
+  - Pins: `juniper_data/tests/unit/test_gitleaks_config.py` (new, 11 tests):
+    - the config extends the defaults;
+    - the conda allowlist is AND-scoped, on `generic-api-key` only, over exactly those two path
+      patterns;
+    - the real engine fires the built-in `github-pat` rule on a runtime-built fabricated token
+      through the auto-discovered and the explicit config (with a no-config control);
+    - in a conda file the real engine allowlists a build string, but still fires on the same line
+      in any other file and on a real-looking value in a conda file, under `generic-api-key` and
+      `github-pat` alike;
+    - the ignore file is commit-scoped and classed;
+    - CI pins the engine and runs this file.
+
+    Its real-engine cases skip in the unit-test job (no binary) and run in the Security Scans job,
+    after pip-audit, with `GITLEAKS_PARITY_REQUIRED=1`, which turns a missing binary into a failure.
+
 ## [0.17.1] - 2026-10-10
 
 ### Security
