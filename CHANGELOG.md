@@ -87,6 +87,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     that exits 0 and prints nothing, and an emptied lockfile under the real GNU `base64` (skipped
     off Linux where `base64` has no `-w`, like the payload case beside it). All three fail against
     the old step, which exits 0 and prints `Signed lockfile commit`.
+  - On a runner whose `base64` has no `-w` (CI's macOS leg), the encode now stops the step, where
+    the old step went on with an empty payload. So the suite installs a stand-in for exactly
+    `base64 -w0 FILE` there, and the cases about what follows the encode (a GraphQL error, a
+    failing `gh`, a missing target) still reach their path. Without it,
+    `test_graphql_errors_are_not_a_signed_commit` and `test_a_failing_gh_is_not_a_signed_commit`
+    failed on that leg. Linux always runs the real `base64`.
 - **Docs and workflow comments that described behaviour the code does not have** (same record,
   §4):
   - `docs/DEVELOPER_CHEATSHEET.md` linked `../AGENTS.md#adding-new-generators`. The section moved to

@@ -64,10 +64,25 @@ def _base64_has_gnu_w() -> bool:
 
 
 # The commit step runs on ubuntu-latest and encodes the lockfile with GNU ``base64 -w0``. BSD/macOS
-# base64 has no ``-w``, so on CI's required macOS unit-test leg the payload is empty: that measures
-# the runner's userland, not the workflow (it is how this suite's first CI run failed there).
+# base64 has no ``-w``, so on CI's required macOS unit-test leg the encode fails: that measures the
+# runner's userland, not the workflow (it is how this suite's first CI run failed there). The step
+# now stops at that failure; before flood-3 §4 it went on with an empty payload.
 # Never skipped on Linux: there a failing probe is a real problem, so the case runs and says so.
 needs_gnu_base64 = pytest.mark.skipif(not sys.platform.startswith("linux") and not _base64_has_gnu_w(), reason="the commit step runs on ubuntu-latest and encodes the lockfile with GNU `base64 -w0`; this runner's base64 has no -w")
+
+# Stand-in for the one form the commit step runs, ``base64 -w0 FILE``, on a runner whose base64 has
+# no ``-w``. There the encode now stops the step (the guard working, not the case under test), so the
+# cases about what happens AFTER it -- a GraphQL error, a failing ``gh``, a missing target -- would
+# never reach their path on the macOS leg. Any other argv exits non-zero, so a changed invocation is
+# not silently emulated. Linux always runs the real base64, as for ``needs_gnu_base64``.
+_GNU_BASE64_SHIM = "#!/usr/bin/env python3\nimport base64\nimport sys\n\nif len(sys.argv) != 3 or sys.argv[1] != '-w0':\n    sys.exit('base64 stand-in emulates only `base64 -w0 FILE`, got ' + repr(sys.argv[1:]))\nwith open(sys.argv[2], 'rb') as fh:\n    sys.stdout.write(base64.b64encode(fh.read()).decode('ascii'))\n"
+
+
+def _encoder_shim() -> dict[str, str]:
+    """``{"base64": stand-in}`` where this runner's base64 cannot take ``-w0``; empty on Linux."""
+    if sys.platform.startswith("linux") or _base64_has_gnu_w():
+        return {}
+    return {"base64": _GNU_BASE64_SHIM}
 
 
 @pytest.fixture
@@ -262,8 +277,9 @@ class TestSignedCommit:
             encoding="utf-8",
         )
         stub.chmod(0o755)
-        # Extra PATH stubs (name -> script body) that shadow a real tool for one test.
-        for name, body in (stubs or {}).items():
+        # Extra PATH stubs (name -> script body) that shadow a real tool for one test. A test's own
+        # stub wins over the encoder stand-in.
+        for name, body in {**_encoder_shim(), **(stubs or {})}.items():
             extra = bin_dir / name
             extra.write_text(body, encoding="utf-8")
             extra.chmod(0o755)
