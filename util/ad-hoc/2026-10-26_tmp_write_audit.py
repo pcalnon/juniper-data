@@ -40,7 +40,6 @@ Exit: 3 when any write under a prohibited root was attempted; otherwise pytest's
 from __future__ import annotations
 
 import argparse
-import importlib
 import json
 import os
 import re
@@ -142,16 +141,10 @@ class AuditReporter:
         self.show_modules = show_modules
 
     def pytest_report_header(self, config):
-        lines = [
+        return [
             f"tmp-write-audit: blocking writes under {', '.join(PROHIBITED_ROOTS)}",
             f"tmp-write-audit: tempfile.gettempdir() = {tempfile.gettempdir()}",
         ]
-        # Which checkout a package under test came from: a copy run that imports the
-        # primary's editable install would test the wrong tree.
-        for name in self.show_modules:
-            module = importlib.import_module(name)
-            lines.append(f"tmp-write-audit: {name} imported from {os.path.dirname(module.__file__ or '?')}")
-        return lines
 
     def pytest_runtest_logstart(self, nodeid, location):
         CURRENT_TEST[0] = nodeid
@@ -161,6 +154,14 @@ class AuditReporter:
 
     def pytest_terminal_summary(self, terminalreporter):
         terminalreporter.section("tmp-write-audit")
+        # Which checkout each package under test came from, read from sys.modules AFTER the run.
+        # Never import here or earlier: importing before collection inserts the test rootdir pins
+        # whatever the environment resolves first (an installed wheel, a primary's editable
+        # install), which is exactly the mistake this line exists to catch.
+        for name in self.show_modules:
+            module = sys.modules.get(name)
+            where = os.path.dirname(module.__file__ or "?") if module is not None else "NOT IMPORTED by this run"
+            terminalreporter.write_line(f"{name} imported from {where}")
         terminalreporter.write_line(f"blocked write attempts: {len(ATTEMPTS)}")
         for row in ATTEMPTS:
             terminalreporter.write_line(f"  BLOCKED {row['event']:<16} {row['path']}  <- {row['test']}")
@@ -172,7 +173,7 @@ class AuditReporter:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--report", default=None, help="also write the findings as JSON to this file")
-    parser.add_argument("--show-module", action="append", default=[], help="print where this package was imported from (repeatable)")
+    parser.add_argument("--show-module", action="append", default=[], help="after the run, print where this package was imported from (repeatable; never imports it)")
     parser.add_argument("pytest_args", nargs=argparse.REMAINDER, help="arguments for pytest, after --")
     args = parser.parse_args(argv)
     pytest_args = args.pytest_args[1:] if args.pytest_args[:1] == ["--"] else args.pytest_args
