@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Temporary files go in the repo's gitignored `tmp/`, never `/tmp` (owner directive, 2026-10-26), and the
+  owner's rulings on it are applied.** `/tmp/` is ignored, the one test that wrote under `/tmp` uses
+  `tmp_path`, and `AGENTS.md` § Temporary files carries the rule and the rulings, retention included.
+  `juniper-check-doc-links` passes `--exclude tmp` in the pre-commit hook and in CI, and `.dockerignore` lists
+  `tmp/` (beside the `*.tmp` file suffix); nothing keeps pytest or a `grep`/`find` match count out of it.
+
 ### Added
 
 - **The equities generators record every symbol they lose, refuse a lost requested one by
@@ -56,14 +64,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `test_generate_skips_ticker_whose_download_raises`, `test_generate_handles_ticker_with_no_data`,
     `test_generate_skips_ticker_shorter_than_lookback`) open the gate and assert the record.
   - Applied by juniper-ml `util/ad-hoc/2026-10-19_apply_w5_7_producer_guards.py`.
-
-### Changed
-
-- **Temporary files go in the repo's gitignored `tmp/`, never `/tmp` (owner directive, 2026-10-26), and the
-  owner's rulings on it are applied.** `/tmp/` is ignored, the one test that wrote under `/tmp` uses
-  `tmp_path`, and `AGENTS.md` § Temporary files carries the rule and the rulings, retention included.
-  `juniper-check-doc-links` passes `--exclude tmp` in the pre-commit hook and in CI, and `.dockerignore` lists
-  `tmp/` (beside the `*.tmp` file suffix); nothing keeps pytest or a `grep`/`find` match count out of it.
 
 ### Security
 
