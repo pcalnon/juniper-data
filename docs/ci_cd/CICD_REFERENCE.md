@@ -307,7 +307,7 @@ All actions are SHA-pinned for reproducibility:
 | `CODECOV_TOKEN` | ci.yml (unit-tests) | Codecov.io upload token |
 | `GITHUB_TOKEN` | ci.yml (security) | Built-in, used by Gitleaks |
 | `CROSS_REPO_DISPATCH_TOKEN` | lockfile-update.yml; notify-consumers.yml | PAT. The lockfile lane uses it to author the signed lockfile commit so CI re-triggers: Dependabot-triggered runs read the Dependabot secret store, where an empty token is a green skip, and a non-Dependabot run without the token fails. Consumer notification uses it to `repository_dispatch` into another repo (`GITHUB_TOKEN` cannot) and to list that repo's Actions runs |
-| `ANTHROPIC_API_KEY` | claude.yml | Passed as the action's `anthropic_api_key`. The workflow header says this secret is set at the org level and that the repo must be able to read it |
+| `ANTHROPIC_API_KEY` | claude.yml | Passed as the action's `anthropic_api_key`. A repository secret: juniper-data is user-owned, so no organization secret can reach it |
 
 ---
 

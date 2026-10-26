@@ -7,9 +7,12 @@ is green. Two predicates are in the same step, and they are not the same:
 * pre-commit, unit tests, the build, the docs lint, and the lockfile check pass
   only when the result is exactly ``success``. A skip or a cancellation is a
   failed gate — those jobs are not allowed to vanish.
-* dependency docs, security, integration tests, and the Docker build fail the
-  gate only on exactly ``failure``. ``skipped`` is the documented pass for the
-  lanes that do not run on every event, and ``cancelled`` takes that same path.
+* dependency docs, security, integration tests, and the Docker build pass only
+  on exactly ``success`` or ``skipped``. ``skipped`` is the documented pass for
+  the lanes that do not run on every event. ``cancelled`` is a failed gate: a
+  lane cut short never finished. These lanes used to fail only on exactly
+  ``failure``, so a cancellation read as a pass (juniper-ml's flood-3 record,
+  ``notes/JUNIPER_2026-10-08_JUNIPER-ECOSYSTEM_CURSOR-FLOOD-3-DISPOSITION.md`` §4).
 
 GitHub substitutes ``${{ needs.<job>.result }}`` before bash runs, so this test
 does the same substitution and then executes the workflow's own ``run:`` block.
@@ -130,8 +133,18 @@ def test_a_conditional_job_fails_the_gate_on_failure(job: str) -> None:
 
 
 @pytest.mark.parametrize("job", list(_OPTIONAL))
-@pytest.mark.parametrize("result", ["skipped", "cancelled", "success", "Failure"])
-def test_a_conditional_job_stays_green_unless_the_result_is_failure(job: str, result: str) -> None:
+@pytest.mark.parametrize("result", ["cancelled", "", "Failure", "Success"])
+def test_a_conditional_job_fails_the_gate_when_cancelled_or_unrecognised(job: str, result: str) -> None:
+    """A cancelled lane never finished, so it is not a pass; an unexpected value fails closed."""
+    proc = _run(_passing(**{job: result}))
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert _OPTIONAL[job] in proc.stdout
+    assert "Quality Gate PASSED" not in proc.stdout
+
+
+@pytest.mark.parametrize("job", list(_OPTIONAL))
+@pytest.mark.parametrize("result", ["skipped", "success"])
+def test_a_conditional_job_stays_green_on_success_or_skip(job: str, result: str) -> None:
     proc = _run(_passing(**{job: result}))
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "Quality Gate PASSED" in proc.stdout

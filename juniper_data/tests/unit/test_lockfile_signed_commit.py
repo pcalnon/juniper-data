@@ -4,7 +4,11 @@ A local ``git commit`` on the runner is unsigned, and this repo rejects unsigned
 history, so ``lockfile-update.yml`` must land the regen through
 ``createCommitOnBranch`` with ``expectedHeadOid``. A quiet diff must not call
 the API. A GraphQL error, or a failed ``gh``, must not be reported as a signed
-commit. Dependabot with no PAT is a green skip; every other actor without it
+commit. A ``base64`` that fails or prints nothing must stop the step before
+``gh`` runs: passed straight to ``jq`` as ``"$(...)"`` it escaped ``set -e`` and
+would have committed an empty lockfile (juniper-ml's flood-3 record,
+``notes/JUNIPER_2026-10-08_JUNIPER-ECOSYSTEM_CURSOR-FLOOD-3-DISPOSITION.md`` §4).
+Dependabot with no PAT is a green skip; every other actor without it
 fails closed. The freshness check compares resolved pins under ``--constraint``
 and must not treat a comment, a blank line, or a reordered header as drift.
 
@@ -247,6 +251,7 @@ class TestSignedCommit:
         gh_rc: int = 0,
         extra_env: dict[str, str] | None = None,
         omit: tuple[str, ...] = (),
+        stubs: dict[str, str] | None = None,
     ) -> tuple[subprocess.CompletedProcess[str], str | None]:
         bin_dir = scratch.parent / "bin"
         bin_dir.mkdir()
@@ -257,6 +262,11 @@ class TestSignedCommit:
             encoding="utf-8",
         )
         stub.chmod(0o755)
+        # Extra PATH stubs (name -> script body) that shadow a real tool for one test.
+        for name, body in (stubs or {}).items():
+            extra = bin_dir / name
+            extra.write_text(body, encoding="utf-8")
+            extra.chmod(0o755)
         env = _child_env(
             PATH=str(bin_dir) + os.pathsep + os.environ.get("PATH", "/usr/bin:/bin"),
             GH_TOKEN=TOKEN_SENTINEL,
@@ -333,6 +343,43 @@ class TestSignedCommit:
         assert proc.returncode != 0, combined
         assert argv_text is not None
         assert "api" in argv_text
+        assert "Signed lockfile commit" not in combined
+
+    @pytest.mark.parametrize(
+        ("base64_stub", "expected"),
+        [
+            # Exits non-zero: `set -e` stops the step at the standalone assignment.
+            ('#!/usr/bin/env bash\necho "base64: invalid option -- w" >&2\nexit 1\n', "base64: invalid option -- w"),
+            # Exits 0 and prints nothing: the explicit empty-payload check refuses.
+            ("#!/usr/bin/env bash\nexit 0\n", "::error::base64 produced an empty payload -- lockfile NOT committed"),
+        ],
+        ids=["base64-fails", "base64-prints-nothing"],
+    )
+    def test_a_failed_or_empty_encode_never_reaches_the_api(self, tmp_path: Path, scratch: Path, base64_stub: str, expected: str) -> None:
+        """Against the old ``--arg contents "$(base64 ...)"`` form both cases exit 0 and print a signed commit."""
+        repo = _init_repo(tmp_path, "numpy==1.24.0\n")
+        (repo / "requirements.lock").write_text("numpy==9.9.9\n", encoding="utf-8")
+        body = '{"data":{"createCommitOnBranch":{"commit":{"oid":"abc","url":"https://example.test/commit/abc"}}}}'
+        proc, argv_text = self._run_commit(repo, scratch, result_body=body, stubs={"base64": base64_stub})
+        combined = proc.stdout + proc.stderr
+        assert proc.returncode != 0, combined
+        assert expected in combined
+        assert argv_text is None
+        assert not (scratch / "lockfile-commit.json").exists()
+        assert "Signed lockfile commit" not in combined
+
+    @needs_gnu_base64
+    def test_an_emptied_lockfile_is_refused_not_committed(self, tmp_path: Path, scratch: Path) -> None:
+        """The real encoder: GNU ``base64 -w0`` of an empty file exits 0 and prints nothing."""
+        repo = _init_repo(tmp_path, "numpy==1.24.0\n")
+        (repo / "requirements.lock").write_text("", encoding="utf-8")
+        body = '{"data":{"createCommitOnBranch":{"commit":{"oid":"abc","url":"https://example.test/commit/abc"}}}}'
+        proc, argv_text = self._run_commit(repo, scratch, result_body=body)
+        combined = proc.stdout + proc.stderr
+        assert proc.returncode == 1, combined
+        assert "::error::base64 produced an empty payload -- lockfile NOT committed" in combined
+        assert argv_text is None
+        assert not (scratch / "lockfile-commit.json").exists()
         assert "Signed lockfile commit" not in combined
 
     @pytest.mark.parametrize("missing", ["GITHUB_REPOSITORY", "BRANCH"])

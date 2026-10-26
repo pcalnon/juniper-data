@@ -22,12 +22,14 @@
 #    Juniper Slack channel via the owner-provisioned SLACK_WEBHOOK_URL secret.
 #
 #    Report-only by construction: a budget breach is a GREEN run (this is an alarm,
-#    not a merge gate -- it never blocks a PR and never turns the cron red). Only a
-#    hard `gh`/`jq` failure to query the PR set would fail the run, and even that is
-#    downgraded to a `::warning::` annotation + a green run so a transient API blip
-#    cannot page the owner. The Slack step mirrors the strictly-non-blocking
-#    contract of release-train.yml (Q-CHANNEL): a missing secret skips the step and
-#    a POST failure never fails the run (continue-on-error).
+#    not a merge gate -- a breach never blocks a PR and never turns the cron red). A
+#    failed `gh pr list` is downgraded to a `::warning::` annotation + a green run so
+#    a transient API blip cannot page the owner. A `jq` failure is NOT downgraded:
+#    when `gh` exits 0 with a body `jq` cannot parse, `set -euo pipefail` fails the
+#    step, and so the run, before any count is published (pinned by
+#    juniper_data/tests/unit/test_pr_budget_alarm.py). The Slack step mirrors the
+#    strictly-non-blocking contract of release-train.yml (Q-CHANNEL): a missing
+#    secret skips the step and a POST failure never fails the run (continue-on-error).
 #
 # Security Notes:
 #    - Runs on schedule/dispatch only (never on PRs or forks).
