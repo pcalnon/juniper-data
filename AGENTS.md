@@ -5,7 +5,7 @@
 **Author**: Paul Calnon
 **License**: MIT License
 **Version**: 0.17.1
-**Last Updated**: 2026-10-10
+**Last Updated**: 2026-10-26
 
 ---
 
@@ -16,10 +16,10 @@ Directives whose **non-application destroys work**. Everything else in this file
 that already knows to look. Adding a new hazard here is legitimate — ratchet space out of a
 reference section in the same PR rather than waiving the budget gate.
 
-- **`/tmp/` is prohibited** as the home for any script that produces, modifies or analyzes
-  repository content — it is reaped when sessions, sandboxes or containers end, and the scripts are
-  irrecoverable. Scratch *data* there is fine; source files are not. Permanent utilities live in
-  `util/`, single-use ones in `util/ad-hoc/`. Full rule: § Script Placement.
+- **Nothing is ever written under `/tmp`** — no script and, since 2026-10-26, no scratch data
+  either: it is an aged tmpfs that deletes files still in use, and scripts left there are
+  irrecoverable. Temp files go in the gitignored `tmp/`. Permanent utilities live in `util/`,
+  single-use ones in `util/ad-hoc/`. Full rule: § Script Placement.
 - **`csv_import` refuses an over-cap source unless the caller opts in — never silently
   truncate.** Generation runs inside the request. A silent prefix is indistinguishable from a
   complete dataset (the same gap that let `arc_agi` persist zero samples). Default is refusal
@@ -323,34 +323,7 @@ Each storage backend, its configuration, and the durability guarantee it does an
 
 ## Observability
 
-### Prometheus Metrics
-
-Enabled via `JUNIPER_DATA_METRICS_ENABLED=true`. Exposed at `/metrics`.
-
-| Metric | Type | Labels |
-|--------|------|--------|
-| `juniper_data_http_requests_total` | Counter | method, endpoint, status |
-| `juniper_data_http_request_duration_seconds` | Histogram | method, endpoint |
-| `juniper_data_dataset_generations_total` | Counter | generator, status |
-| `juniper_data_dataset_generation_duration_seconds` | Histogram | generator |
-| `juniper_data_datasets_cached` | Gauge | -- |
-| `juniper_data_build` | Info | version, python_version |
-
-### Structured Logging
-
-- `JuniperJsonFormatter` outputs structured JSON (timestamp, level, logger, message, service, request_id)
-- Configurable via `JUNIPER_DATA_LOG_FORMAT` (`text` or `json`)
-- Log levels: TRACE, VERBOSE, DEBUG, INFO, WARNING, ERROR, CRITICAL, FATAL
-
-### Sentry Integration
-
-- Optional via `JUNIPER_DATA_SENTRY_DSN`
-- Automatic release tagging, log capture, and trace collection
-
-### Request ID Propagation
-
-- `RequestIdMiddleware` injects `X-Request-ID` (UUID if not provided by caller)
-- Propagated via `ContextVar` for correlation across log entries
+The metrics this service exports, its structured-log format, Sentry wiring and request-ID propagation. Moved to [`docs/REFERENCE.md` § Observability Reference](docs/REFERENCE.md#observability-reference) — read it when working on this area.
 
 ---
 
@@ -436,9 +409,27 @@ juniper-deploy --> Docker Compose orchestration
 
 **Permanent utilities** live in `util/`. **Single-use / temporary / unfinished scripts** go in `util/ad-hoc/` (create on first use). See [`util/ad-hoc/README.md`](util/ad-hoc/README.md) for the per-script header / lifecycle conventions.
 
-`/tmp/` is **prohibited** as the home for any script that produces, modifies, or analyzes repository content. `/tmp/` is reaped when sessions / sandboxes / containers end, and scripts placed there are lost (irrecoverable). `/tmp/` remains fine as a scratch *workspace* for intermediate artifacts the script itself creates and reads — the prohibition is on script *source files*.
+`/tmp/` is **prohibited** as the home for any script that produces, modifies, or analyzes repository content. `/tmp/` is reaped when sessions / sandboxes / containers end, and scripts placed there are lost (irrecoverable). Since 2026-10-26 it is no scratch *workspace* either: nothing is written there at all (next section).
 
 This is an ecosystem-wide rule restated in the parent `Juniper/AGENTS.md` "Cross-Project Conventions" section. Motivating incident: irrecoverable loss of `phase4_consolidate.py` and `v2_citation_validate.py` from the juniper-ml requirements-snapshot effort.
+
+### Temporary files: `tmp/`, never `/tmp` (mandatory)
+
+**No file is ever written under `/tmp`** (nor `/var/tmp`) by this repo's scripts, tests, tools, services, sessions
+or agents (owner directive, 2026-10-26). On the Linux host `/tmp` is a tmpfs that `systemd-tmpfiles-clean` ages
+daily (`q /tmp 1777 root root 10d`): a file untouched for ten days is deleted while still in use, and a reboot
+erases the rest. In the week to 2026-10-26 it emptied a live test stack's pid files and venv three times. macOS
+ages `/tmp` too.
+
+- This repo's temp root is its gitignored `tmp/`. `TMPDIR` points at the **primary** checkout's (it outlives any
+  worktree); a worktree-isolated session writes its own scratch files into its worktree's `tmp/`.
+- Sessions get `TMPDIR` from the juniper-ml launcher and a user-level SessionStart hook, so `tempfile`, `mktemp` and
+  pytest's `tmp_path` follow it.
+- In code: never a `/tmp/...` literal and never `${TMPDIR:-/tmp}`; tests use `tmp_path`; state another process must
+  find (pid files, run directories) lives at a fixed path under the primary's `tmp/` or `~/.local/state/`, never one
+  derived from `TMPDIR`.
+- Out of scope: GitHub-hosted CI runners and a container's own `/tmp`.
+- Ecosystem rule and rationale: `juniper-ml/notes/JUNIPER_2026-10-26_JUNIPER-ECOSYSTEM_REPO-TMP-DIRECTORY-CONVENTION.md`.
 
 ---
 
@@ -478,36 +469,7 @@ Example: `juniper-data--feature--add-generator--20260225-1430--973ae391`
 
 ### Quick Reference
 
-**Setup** (full procedure in `notes/WORKTREE_SETUP_PROCEDURE.md`):
-
-```bash
-cd /home/pcalnon/Development/python/Juniper/juniper-data
-git fetch origin && git checkout main && git pull origin main
-BRANCH_NAME="feature/my-task"
-git branch "$BRANCH_NAME" main
-REPO_NAME=$(basename "$(pwd)")
-SAFE_BRANCH=$(echo "$BRANCH_NAME" | sed 's|/|--|g')
-WORKTREE_DIR="/home/pcalnon/Development/python/Juniper/worktrees/${REPO_NAME}--${SAFE_BRANCH}--$(date +%Y%m%d-%H%M)--$(git rev-parse --short=8 HEAD)"
-git worktree add "$WORKTREE_DIR" "$BRANCH_NAME"
-cd "$WORKTREE_DIR"
-```
-
-**Cleanup** (full procedure in `notes/WORKTREE_CLEANUP_PROCEDURE_V2.md`):
-
-```bash
-# Phase 1: Push current work
-cd "$OLD_WORKTREE_DIR" && git push origin "$OLD_BRANCH"
-# Phase 2: Create new worktree BEFORE removing old (prevents CWD-trap)
-git fetch origin
-git worktree add "$NEW_WORKTREE_DIR" -b "$NEW_BRANCH" origin/main
-cd "$NEW_WORKTREE_DIR"
-# Phase 3: Create PR (do NOT merge directly to main)
-gh pr create --base main --head "$OLD_BRANCH" --title "<title>" --body "<body>"
-# Phase 4: Cleanup
-git worktree remove "$OLD_WORKTREE_DIR"
-git branch -d "$OLD_BRANCH"
-git worktree prune
-```
+The setup and cleanup command sequences (the two procedure notes above are the full source). Moved to [`docs/REFERENCE.md` § Worktree Quick Reference](docs/REFERENCE.md#worktree-quick-reference) — read it when working on this area.
 
 ### Rules
 

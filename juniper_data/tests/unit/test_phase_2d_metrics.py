@@ -12,6 +12,7 @@ Covers:
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -115,10 +116,12 @@ class TestRecordDatasetGenerationWiring:
             assert isinstance(call_kwargs["duration"], float)
             assert call_kwargs["duration"] >= 0.0
 
-    def test_create_dataset_records_post_metric_when_generation_fails(self, memory_store: InMemoryDatasetStore) -> None:
+    def test_create_dataset_records_post_metric_when_generation_fails(self, memory_store: InMemoryDatasetStore, tmp_path: Path) -> None:
         """A generator failure must still count the POST as an error cache miss."""
+        # ``with TestClient(...)`` below runs the lifespan, whose LocalFSDatasetStore creates
+        # ``storage_path`` -- so it must be ``tmp_path``, never a fixed path under /tmp.
         settings = Settings(
-            storage_path="/tmp/juniper_test_phase2d_error",
+            storage_path=str(tmp_path),
             metrics_enabled=True,
             metrics_trusted_ips=["127.0.0.1", "::1"],
         )
