@@ -141,16 +141,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     fail. `Memory Budget` runs only on pull requests. `Bandit` is posted by code scanning from a
     `continue-on-error` SARIF upload. A `data-client-updated` dispatch cancels an in-flight push run on
     `main` and tests the same commit.
-- **The Codecov upload is documented as it behaves: rejected on every run** (same record, §8, where it
-  was an unverified lead). No `CODECOV_TOKEN` secret exists in the Actions, Dependabot or environment
-  stores, so the Python 3.14 leg uploads with an empty token. Codecov answers
+- **The Codecov upload is documented as it behaves: tokenless, and rejected until 2026-10-27** (same
+  record, §8, where it was an unverified lead). No `CODECOV_TOKEN` secret exists in the Actions,
+  Dependabot or environment stores, so the Python 3.14 leg uploads with an empty token. Codecov answered
   `Token required - not valid tokenless upload` on push, pull-request, Dependabot, scheduled and dispatch
-  runs, back to the oldest log GitHub keeps (2026-07-30), and its public API reports no coverage for the
-  repository.
-  `fail_ci_if_error: false` keeps the step green and it posts no annotation, so it gates nothing and
-  nothing showed the failure. `docs/ci_cd/CICD_MANUAL.md` § Job: `unit-tests` and
-  `docs/ci_cd/CICD_REFERENCE.md` § Secrets Reference described the secret as in use; both now say it is
-  not set. The workflow is unchanged: only the owner can add the secret, or remove the step.
+  runs, from the oldest log GitHub keeps (2026-07-30) to 2026-10-27 22:51 UTC, and held no coverage for
+  the repository. At 23:47 UTC it accepted one, from a pull request in this repository, with nothing
+  changed here (the action's inputs differed only in the commit SHA), so the change is on Codecov's side.
+  `fail_ci_if_error: false` keeps the step green either way and it posts no annotation, so it gates
+  nothing. `docs/ci_cd/CICD_MANUAL.md` § Job: `unit-tests` and `docs/ci_cd/CICD_REFERENCE.md`
+  § Secrets Reference described the secret as in use; both now say it is not set. The workflow is
+  unchanged: only the owner can add the secret, or remove the step.
 
 ### Security
 
