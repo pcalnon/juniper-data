@@ -114,7 +114,7 @@ Core test execution with coverage enforcement across Python 3.12, 3.13, and 3.14
 - **Coverage**: `--cov-fail-under=80` (aggregate), then `check_module_coverage.py` for 85% per-module
 - **Installs juniper-data-client** from `main` branch via git+https
 - **Reports**: JUnit XML, HTML coverage, Cobertura XML, JSON coverage
-- **Codecov upload**: Python 3.14 only, using `CODECOV_TOKEN` secret
+- **Codecov upload**: Python 3.14 only, with `token: ${{ secrets.CODECOV_TOKEN }}`. No such secret is set (checked 2026-10-27), so Codecov rejects every upload with `Token required - not valid tokenless upload`. `fail_ci_if_error: false` keeps the step green, so the rejection gates nothing and no coverage reaches Codecov. See the notes under [`REFERENCE.md` § GitHub Actions Workflows](../REFERENCE.md#github-actions-workflows)
 
 #### Job: `build`
 
