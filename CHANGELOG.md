@@ -66,6 +66,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `test_generate_skips_ticker_shorter_than_lookback`) open the gate and assert the record.
   - Applied by juniper-ml `util/ad-hoc/2026-10-19_apply_w5_7_producer_guards.py`.
 
+### Fixed
+
+- **The Quality Gate no longer reads a cancelled conditional lane as a pass**
+  (`.github/workflows/ci.yml`; juniper-ml
+  `notes/JUNIPER_2026-10-08_JUNIPER-ECOSYSTEM_CURSOR-FLOOD-3-DISPOSITION.md` §4).
+  `dependency-docs`, `security`, `integration-tests` and `docker-build` failed the gate only on
+  exactly `failure`, so a lane cut short by a newer push or a manual cancel, or any result other
+  than `failure`, printed `Quality Gate PASSED`. They now pass on `success` or `skipped` only.
+  `skipped` stays a pass because these lanes do not run on every event: the "failure=error,
+  skipped=OK" design that `5147f6a` recorded. Nothing cancels one of them by design, so accepting
+  `cancelled` was a side effect of the `== "failure"` test, not a choice. Each lane is also its own
+  required context, so a cancelled one already blocked the merge; the gate now agrees.
+  - Pin: `juniper_data/tests/unit/test_quality_gate_results.py` asserts that `cancelled`, `""`,
+    `Failure` and `Success` fail the gate for each of the four lanes (16 new cases, each failing
+    against the old predicate) and that `success` and `skipped` pass. Its earlier assertion that
+    `cancelled` passes is the one this change reverses.
+  - `docs/ci_cd/CICD_MANUAL.md` § Quality Gate and § Job: `required-checks` say the same. The
+    latter also listed `dependency-docs` and `security` as success-only and omitted `docker-build`.
+- **The lockfile regen can no longer commit an empty `requirements.lock`**
+  (`.github/workflows/lockfile-update.yml`). The GraphQL payload was built with
+  `--arg contents "$(base64 -w0 requirements.lock)"`. A failure inside a command substitution that
+  is passed as an argument does not trip `set -e`, so a failed encode would have become a signed
+  commit of an empty lockfile (latent: GNU `base64` does not fail on `ubuntu-latest`). The encode
+  is now its own assignment, which `set -e` does stop, and an empty result is refused with
+  `::error::base64 produced an empty payload -- lockfile NOT committed` before `gh` runs.
+  - Pins: `juniper_data/tests/unit/test_lockfile_signed_commit.py` gains three cases, each
+    asserting a non-zero exit, no `gh` call and no payload file: a `base64` stub that exits 1, one
+    that exits 0 and prints nothing, and an emptied lockfile under the real GNU `base64` (skipped
+    off Linux where `base64` has no `-w`, like the payload case beside it). All three fail against
+    the old step, which exits 0 and prints `Signed lockfile commit`.
+  - On a runner whose `base64` has no `-w` (CI's macOS leg), the encode now stops the step, where
+    the old step went on with an empty payload. So the suite installs a stand-in for exactly
+    `base64 -w0 FILE` there, and the cases about what follows the encode (a GraphQL error, a
+    failing `gh`, a missing target) still reach their path. Without it,
+    `test_graphql_errors_are_not_a_signed_commit` and `test_a_failing_gh_is_not_a_signed_commit`
+    failed on that leg. Linux always runs the real `base64`.
+- **Docs and workflow comments that described behaviour the code does not have** (same record,
+  §4):
+  - `docs/DEVELOPER_CHEATSHEET.md` linked `../AGENTS.md#adding-new-generators`. The section moved to
+    `docs/REFERENCE.md` § Adding New Generators, and the link now points there.
+    `juniper-check-doc-links` checks an anchor only when the link stays in the same file, which is
+    how the dead one survived. No other cross-file anchor in `docs/`, `notes/`, `AGENTS.md` or
+    `README.md` is dead.
+  - The cheatsheet's workflow list named 7 of the 14 files in `.github/workflows/`. It now names all
+    14, and says that `sequence-safety.yml` is a required check and that `main-verify.yml` runs
+    after a merge.
+  - `docs/ci_cd/CICD_MANUAL.md` § Troubleshooting said CodeQL findings "are informational and don't
+    block the merge quality gate". The `main` ruleset (`juniper-data-rules`, id `14748749`) has a
+    `code_scanning` rule for CodeQL and Bandit (alerts at `errors`, security alerts at
+    `high_or_higher`), requires `Analyze (python)`, and requires review threads to be resolved.
+  - `pr-budget-alarm.yml`'s header said a `gh` or `jq` failure is downgraded to a warning and a
+    green run. Only a failed `gh pr list` is. A `jq` failure fails the step under
+    `set -euo pipefail`, as `test_non_json_stdout_is_not_a_quiet_zero` already pins. Comment only.
+  - `claude.yml`'s header said `ANTHROPIC_API_KEY` is set at the org level. juniper-data is
+    user-owned, so no organization secret can reach it; the key is a repository secret.
+    `docs/ci_cd/CICD_MANUAL.md` § claude.yml and `docs/ci_cd/CICD_REFERENCE.md` § Secrets Reference
+    repeated the claim. Comment only in the workflow.
+
 ### Security
 
 - **CI's Gitleaks step loaded zero rules and could not fail; it now loads gitleaks' built-in

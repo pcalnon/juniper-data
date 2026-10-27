@@ -870,20 +870,27 @@ jobs:
             exit 1
           fi
 
-          # Dependency docs: failure = error, skipped = OK
-          if [[ "${{ needs.dependency-docs.result }}" == "failure" ]]; then
+          # The four conditional lanes (dependency docs, security, integration tests, Docker
+          # build) pass on `success` or `skipped` and fail on anything else. `skipped` is the
+          # designed pass for a lane that does not run on every event. `cancelled` is not a
+          # pass: a lane cut short by a newer push or a manual cancel never finished. These
+          # tests used to be `== "failure"`, which let a cancelled lane read as PASSED
+          # (flood-3 §4). Each lane is also its own required context.
+
+          # Dependency docs: skipped = OK, failure or cancelled = error
+          if [[ "${{ needs.dependency-docs.result }}" != "success" && "${{ needs.dependency-docs.result }}" != "skipped" ]]; then
             echo "::error::Dependency documentation generation failed"
             exit 1
           fi
 
-          # Security should pass (but SARIF upload failures are allowed)
-          if [[ "${{ needs.security.result }}" == "failure" ]]; then
+          # Security should pass (but SARIF upload failures are allowed); skipped = OK, cancelled = error
+          if [[ "${{ needs.security.result }}" != "success" && "${{ needs.security.result }}" != "skipped" ]]; then
             echo "::error::Security scans failed"
             exit 1
           fi
 
-          # Integration tests: failure = error, skipped = OK (for feature branches)
-          if [[ "${{ needs.integration-tests.result }}" == "failure" ]]; then
+          # Integration tests: skipped = OK (for feature branches), failure or cancelled = error
+          if [[ "${{ needs.integration-tests.result }}" != "success" && "${{ needs.integration-tests.result }}" != "skipped" ]]; then
             echo "::error::Integration tests failed"
             exit 1
           fi
@@ -900,8 +907,8 @@ jobs:
             exit 1
           fi
 
-          # Docker build: failure = error, skipped = OK (only runs on PRs and main/develop)
-          if [[ "${{ needs.docker-build.result }}" == "failure" ]]; then
+          # Docker build: skipped = OK (only runs on PRs and main/develop), failure or cancelled = error
+          if [[ "${{ needs.docker-build.result }}" != "success" && "${{ needs.docker-build.result }}" != "skipped" ]]; then
             echo "::error::Docker build and smoke test failed"
             exit 1
           fi
