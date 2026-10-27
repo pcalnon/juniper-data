@@ -2,7 +2,7 @@
 
 **Version:** 0.4.4
 **Status:** Active
-**Last Updated:** October 19, 2026
+**Last Updated:** October 26, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -31,6 +31,7 @@
 - [External Stores: Decision-11 Contract](#external-stores-decision-11-contract)
 - [CSV Import Truncation Edges](#csv-import-truncation-edges)
 - [Prometheus Collector Reference](#prometheus-collector-reference)
+- [Observability Reference](#observability-reference)
 - [FastAPI Native Telemetry](#fastapi-native-telemetry)
 - [Artifact Streaming](#artifact-streaming)
 - [Docker Reference](#docker-reference)
@@ -42,6 +43,7 @@
   - [Image serve-and-version gate](#image-serve-and-version-gate)
   - [Consumer release notification](#consumer-release-notification)
   - [Sequence Safety (required check)](#sequence-safety-required-check)
+- [Worktree Quick Reference](#worktree-quick-reference)
 - [Additional Resources](#additional-resources)
 
 ---
@@ -516,7 +518,7 @@ python -m juniper_data --reload
 uvicorn --factory juniper_data.api.app:get_app --host 0.0.0.0 --port 8100
 
 # Start with custom options
-python -m juniper_data --host 0.0.0.0 --port 8101 --log-level DEBUG --storage-path /tmp/datasets
+python -m juniper_data --host 0.0.0.0 --port 8101 --log-level DEBUG --storage-path ./tmp/datasets
 ```
 
 ### Test Commands
@@ -1743,6 +1745,41 @@ Tests touching these collectors should use `juniper_observability.testing.reset_
 
 ---
 
+## Observability Reference
+
+Relocated verbatim from `AGENTS.md` on 2026-10-26, to pay for the resident `/tmp` rule's section, so it is read on demand rather than loaded into every session.
+
+### Prometheus Metrics
+
+Enabled via `JUNIPER_DATA_METRICS_ENABLED=true`. Exposed at `/metrics`.
+
+| Metric | Type | Labels |
+|--------|------|--------|
+| `juniper_data_http_requests_total` | Counter | method, endpoint, status |
+| `juniper_data_http_request_duration_seconds` | Histogram | method, endpoint |
+| `juniper_data_dataset_generations_total` | Counter | generator, status |
+| `juniper_data_dataset_generation_duration_seconds` | Histogram | generator |
+| `juniper_data_datasets_cached` | Gauge | -- |
+| `juniper_data_build` | Info | version, python_version |
+
+### Structured Logging
+
+- `JuniperJsonFormatter` outputs structured JSON (timestamp, level, logger, message, service, request_id)
+- Configurable via `JUNIPER_DATA_LOG_FORMAT` (`text` or `json`)
+- Log levels: TRACE, VERBOSE, DEBUG, INFO, WARNING, ERROR, CRITICAL, FATAL
+
+### Sentry Integration
+
+- Optional via `JUNIPER_DATA_SENTRY_DSN`
+- Automatic release tagging, log capture, and trace collection
+
+### Request ID Propagation
+
+- `RequestIdMiddleware` injects `X-Request-ID` (UUID if not provided by caller)
+- Propagated via `ContextVar` for correlation across log entries
+
+---
+
 ## FastAPI Native Telemetry
 
 FastAPI 0.142 added native OpenTelemetry and a `telemetry` argument on `FastAPI()`. `requirements.lock` pins FastAPI 0.142.2 since the python-minor bump ([#446](https://github.com/pcalnon/juniper-data/pull/446)); the v0.16.0 lock pinned 0.141.1, which has neither. Keys you omit keep the library defaults: `tracing`, `metrics`, `logs`, `operation_spans`, and `auto_configure` are all `True` (`fastapi/applications.py`).
@@ -2428,6 +2465,43 @@ per red streak.
 
 ---
 
+## Worktree Quick Reference
+
+Relocated verbatim from `AGENTS.md` on 2026-10-26, to pay for the resident `/tmp` rule's section, so it is read on demand rather than loaded into every session.
+
+**Setup** (full procedure in `notes/WORKTREE_SETUP_PROCEDURE.md`):
+
+```bash
+cd /home/pcalnon/Development/python/Juniper/juniper-data
+git fetch origin && git checkout main && git pull origin main
+BRANCH_NAME="feature/my-task"
+git branch "$BRANCH_NAME" main
+REPO_NAME=$(basename "$(pwd)")
+SAFE_BRANCH=$(echo "$BRANCH_NAME" | sed 's|/|--|g')
+WORKTREE_DIR="/home/pcalnon/Development/python/Juniper/worktrees/${REPO_NAME}--${SAFE_BRANCH}--$(date +%Y%m%d-%H%M)--$(git rev-parse --short=8 HEAD)"
+git worktree add "$WORKTREE_DIR" "$BRANCH_NAME"
+cd "$WORKTREE_DIR"
+```
+
+**Cleanup** (full procedure in `notes/WORKTREE_CLEANUP_PROCEDURE_V2.md`):
+
+```bash
+# Phase 1: Push current work
+cd "$OLD_WORKTREE_DIR" && git push origin "$OLD_BRANCH"
+# Phase 2: Create new worktree BEFORE removing old (prevents CWD-trap)
+git fetch origin
+git worktree add "$NEW_WORKTREE_DIR" -b "$NEW_BRANCH" origin/main
+cd "$NEW_WORKTREE_DIR"
+# Phase 3: Create PR (do NOT merge directly to main)
+gh pr create --base main --head "$OLD_BRANCH" --title "<title>" --body "<body>"
+# Phase 4: Cleanup
+git worktree remove "$OLD_WORKTREE_DIR"
+git branch -d "$OLD_BRANCH"
+git worktree prune
+```
+
+---
+
 ## Additional Resources
 
 ### Internal Documentation
@@ -2462,6 +2536,6 @@ per red streak.
 
 ---
 
-**Last Updated:** October 19, 2026
+**Last Updated:** October 26, 2026
 **Version:** 0.4.4
 **Maintainer:** Paul Calnon
