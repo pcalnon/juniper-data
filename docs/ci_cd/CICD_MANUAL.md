@@ -187,9 +187,9 @@ Validates `requirements.lock` freshness.
 
 Quality gate aggregator. Runs `if: always()` and checks status of all required jobs.
 
-**Required to pass**: pre-commit, unit-tests, build, dependency-docs, security, docs, lockfile-check
+**Required to pass** (`success` only): pre-commit, unit-tests, build, docs, lockfile-check
 
-**Optional** (failure = error, skip = OK): integration-tests
+**Conditional** (`success` or `skipped` passes; `failure` or `cancelled` fails the gate): dependency-docs, security, integration-tests, docker-build
 
 #### Job: `slow-tests`
 
@@ -287,7 +287,7 @@ GitHub CodeQL semantic analysis for Python.
 
 ### claude.yml -- Claude Code
 
-`.github/workflows/claude.yml` replies when someone writes `@claude` in a place the workflow watches. The job checks out with `fetch-depth: 1` and passes a single action input, `anthropic_api_key`, from `secrets.ANTHROPIC_API_KEY`. The file header says that secret is set at the org level and that the repo must be able to read it.
+`.github/workflows/claude.yml` replies when someone writes `@claude` in a place the workflow watches. The job checks out with `fetch-depth: 1` and passes a single action input, `anthropic_api_key`, from `secrets.ANTHROPIC_API_KEY`. That is a repository secret: juniper-data is user-owned, so no organization secret can reach it.
 
 Write the phrase in one of these:
 
@@ -410,16 +410,19 @@ When Dependabot pushes to `dependabot/pip/**`, `lockfile-update.yml` compiles `r
 
 The `required-checks` job in ci.yml acts as the merge quality gate. All of these must pass:
 
-| Check                                    | Required    | Failure Impact                             |
-|------------------------------------------|-------------|--------------------------------------------|
-| pre-commit (code quality)                | Yes         | Blocks merge                               |
-| unit-tests (all Python versions)         | Yes         | Blocks merge                               |
-| build (package verification)             | Yes         | Blocks merge                               |
-| dependency-docs                          | Soft        | Failure blocks, skip OK                    |
-| security (gitleaks + bandit + pip-audit) | Soft        | Failure blocks, skip OK                    |
-| docs (link validation)                   | Yes         | Blocks merge                               |
-| lockfile-check                           | Yes         | Blocks merge                               |
-| integration-tests                        | Conditional | Failure blocks, skip OK (feature branches) |
+| Check                                    | Required    | Failure Impact                                             |
+|------------------------------------------|-------------|------------------------------------------------------------|
+| pre-commit (code quality)                | Yes         | Blocks merge                                               |
+| unit-tests (all Python versions)         | Yes         | Blocks merge                                               |
+| build (package verification)             | Yes         | Blocks merge                                               |
+| dependency-docs                          | Soft        | Failure or cancellation blocks, skip OK                    |
+| security (gitleaks + bandit + pip-audit) | Soft        | Failure or cancellation blocks, skip OK                    |
+| docs (link validation)                   | Yes         | Blocks merge                                               |
+| lockfile-check                           | Yes         | Blocks merge                                               |
+| integration-tests                        | Conditional | Failure or cancellation blocks, skip OK (feature branches) |
+| docker-build (image build + smoke test)  | Conditional | Failure or cancellation blocks, skip OK (feature branches) |
+
+A Soft or Conditional lane passes the gate only when its result is `success` or `skipped`. `skipped` is the pass for a lane that does not run on every event. `cancelled` fails the gate: a lane cut short by a newer push or a manual cancel never finished.
 
 The Quality Gate is not the whole merge requirement. The `main` ruleset also requires contexts outside its `needs:`, among them **`Sequence Safety`**, which comes from its own workflow (`sequence-safety.yml`) and so cannot be named there. A green Quality Gate therefore does not mean a PR is mergeable. See [Sequence Safety (required check)](../REFERENCE.md#sequence-safety-required-check) for the ruleset query.
 
@@ -455,7 +458,7 @@ uv pip compile pyproject.toml --extra api --extra observability --extra mnist --
 
 **Dependabot PR and `requirements.lock`**: A `python-minor` PR can edit only `conf/requirements*.txt` and still receive `[dependabot skip] Update requirements.lock`. That commit is the `--upgrade` resolution of `pyproject.toml`, so its pins can differ from `conf/requirements_ci.txt`. When the commit is missing, open the Update Lockfile run. A notice that `CROSS_REPO_DISPATCH_TOKEN` is unavailable means the PAT is missing from the Dependabot secret store; the job stays green and `lockfile-check` still enforces freshness. See [Dependency Update Workflow](../../notes/DEPENDENCY_UPDATE_WORKFLOW.md).
 
-**CodeQL findings**: Review in GitHub Security tab. These are informational and don't block the merge quality gate.
+**CodeQL findings**: Review them in the GitHub Security tab. They are not part of the Quality Gate job (`codeql.yml` is its own workflow), but they do block the merge. The `main` ruleset (`juniper-data-rules`) has a `code_scanning` rule for CodeQL and Bandit that blocks a pull request on an alert of severity `error`, or a security alert of severity `high` or `critical` (thresholds `errors` and `high_or_higher`). `Analyze (python)` is a required check, and the ruleset requires review threads to be resolved, so an open code-scanning comment on the diff blocks too. Check the thresholds with `gh api repos/pcalnon/juniper-data/rulesets/14748749 --jq '.rules[] | select(.type == "code_scanning")'`.
 
 **`@claude` produced no reply**: Put the phrase in an issue comment, a pull-request review comment, a submitted review body, or the title or body of an issue when it is opened. Case does not matter (`@Claude` works); a word boundary does. A green run that logs `No trigger found, skipping remaining steps` means the action's word-boundary check rejected the phrase, or the event was an assignment. See [claude.yml](#claudeyml----claude-code).
 

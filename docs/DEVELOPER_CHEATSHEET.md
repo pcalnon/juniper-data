@@ -172,7 +172,7 @@ Generators: `spiral`, `xor`, `gaussian`, `circles`, `checkerboard`, `csv_import`
 5. Output must conform to NPZ contract below
 6. Add tests and schema
 
-> See: `juniper_data/generators/__init__.py` | [AGENTS.md -- Adding New Generators](../AGENTS.md#adding-new-generators)
+> See: `juniper_data/generators/__init__.py` | [REFERENCE.md -- Adding New Generators](REFERENCE.md#adding-new-generators)
 
 ---
 
@@ -310,7 +310,7 @@ Metrics use `juniper_data_` namespace. Pattern: `juniper_data_<subsystem>_<name>
 | Coverage gate        | **pre-push** | 80% aggregate (env `COVERAGE_FAIL_UNDER`), 85% per-module             |
 | SOPS guard           | pre-commit   | Block unencrypted `.env` files                                       |
 
-GitHub Actions: `ci.yml`, `publish.yml`, `notify-consumers.yml`, `publish-image.yml`, `security-scan.yml`, `codeql.yml`, `lockfile-update.yml`. After PyPI succeeds, `notify-consumers.yml` dispatches `juniper-data-published` and waits for a consumer run. A dispatch `204` is not delivery. See [Consumer release notification](REFERENCE.md#consumer-release-notification). `publish-image.yml` is not a required check. Its serve-and-version gate is [Image serve-and-version gate](REFERENCE.md#image-serve-and-version-gate).
+GitHub Actions: `ci.yml`, `publish.yml`, `notify-consumers.yml`, `publish-image.yml`, `security-scan.yml`, `scheduled-tests.yml`, `codeql.yml`, `lockfile-update.yml`, `sequence-safety.yml`, `main-verify.yml`, `pr-base-branch-guard.yml`, `pr-budget-alarm.yml`, `agents-md-touch-up.yml`, `claude.yml`. `sequence-safety.yml` is a required check outside the Quality Gate; see [Sequence Safety (required check)](REFERENCE.md#sequence-safety-required-check). `main-verify.yml` runs after a merge to `main`, so it cannot block one. After PyPI succeeds, `notify-consumers.yml` dispatches `juniper-data-published` and waits for a consumer run. A dispatch `204` is not delivery. See [Consumer release notification](REFERENCE.md#consumer-release-notification). `publish-image.yml` is not a required check. Its serve-and-version gate is [Image serve-and-version gate](REFERENCE.md#image-serve-and-version-gate).
 
 ```bash
 pre-commit install                       # install hooks (one-time)
