@@ -304,7 +304,7 @@ All actions are SHA-pinned for reproducibility:
 
 | Secret | Used By | Purpose |
 |--------|---------|---------|
-| `CODECOV_TOKEN` | ci.yml (unit-tests) | Codecov.io upload token |
+| `CODECOV_TOKEN` | ci.yml (unit-tests, Python 3.14 leg) | Codecov.io upload token. **Not set**: the Actions, Dependabot and environment secret stores held none on 2026-10-27, so the upload is tokenless and Codecov decides whether to take it. It rejected every upload through 2026-10-27 22:51 UTC with `Token required - not valid tokenless upload`, and accepted one at 23:47 UTC. `fail_ci_if_error: false` keeps the step green, so it gates nothing. Only the owner can add it |
 | `GITHUB_TOKEN` | ci.yml (security) | Built-in, used by Gitleaks |
 | `CROSS_REPO_DISPATCH_TOKEN` | lockfile-update.yml; notify-consumers.yml | PAT. The lockfile lane uses it to author the signed lockfile commit so CI re-triggers: Dependabot-triggered runs read the Dependabot secret store, where an empty token is a green skip, and a non-Dependabot run without the token fails. Consumer notification uses it to `repository_dispatch` into another repo (`GITHUB_TOKEN` cannot) and to list that repo's Actions runs |
 | `ANTHROPIC_API_KEY` | claude.yml | Passed as the action's `anthropic_api_key`. A repository secret: juniper-data is user-owned, so no organization secret can reach it |

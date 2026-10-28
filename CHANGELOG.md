@@ -123,6 +123,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     user-owned, so no organization secret can reach it; the key is a repository secret.
     `docs/ci_cd/CICD_MANUAL.md` § claude.yml and `docs/ci_cd/CICD_REFERENCE.md` § Secrets Reference
     repeated the claim. Comment only in the workflow.
+- **`docs/REFERENCE.md` § GitHub Actions Workflows lists all 14 workflows, each grounded in its file and
+  the live ruleset** (juniper-ml `notes/JUNIPER_2026-10-08_JUNIPER-ECOSYSTEM_CURSOR-FLOOD-3-DISPOSITION.md`
+  §4). The table had 10 rows: `agents-md-touch-up.yml`, `pr-base-branch-guard.yml`, `pr-budget-alarm.yml`
+  and `scheduled-tests.yml` were missing. Each row now names the workflow as the Actions tab does, gives
+  its triggers as declared, and names the required contexts it posts. Ruleset `juniper-data-rules` (id
+  `14748749`) requires 22: 18 from `ci.yml`, `Bandit` from code scanning, and one each from
+  `codeql.yml`, `sequence-safety.yml` and `pr-base-branch-guard.yml`.
+  - Wrong rows. `security-scan.yml` was listed as running on push and pull request, with Gitleaks and
+    Bandit SARIF. It runs weekly and on manual dispatch, runs Bandit and pip-audit, keeps its SARIF as a
+    run artifact, and has no Gitleaks step: that row described `ci.yml`'s required `Security Scans` job.
+    `ci.yml`'s triggers omitted the `data-client-updated` dispatch and manual runs, and `codeql.yml`'s
+    did not say its pull-request trigger is `main` only and its schedule weekly. Neither row named a
+    required context.
+  - Notes under the table record what a row cannot hold. `Slow Tests` is required but runs only on
+    scheduled and manual runs, so a pull request reports it skipped, and its `|| echo` means it cannot
+    fail. `Memory Budget` runs only on pull requests. `Bandit` is posted by code scanning from a
+    `continue-on-error` SARIF upload. A `data-client-updated` dispatch cancels an in-flight push run on
+    `main` and tests the same commit.
+- **The Codecov upload is documented as it behaves: tokenless, and rejected until 2026-10-27** (same
+  record, §8, where it was an unverified lead). No `CODECOV_TOKEN` secret exists in the Actions,
+  Dependabot or environment stores, so the Python 3.14 leg uploads with an empty token. Codecov answered
+  `Token required - not valid tokenless upload` on push, pull-request, Dependabot, scheduled and dispatch
+  runs, from the oldest log GitHub keeps (2026-07-30) to 2026-10-27 22:51 UTC, and held no coverage for
+  the repository. At 23:47 UTC it accepted one, from a pull request in this repository, with nothing
+  changed here (the action's inputs differed only in the commit SHA), so the change is on Codecov's side.
+  `fail_ci_if_error: false` keeps the step green either way and it posts no annotation, so it gates
+  nothing. `docs/ci_cd/CICD_MANUAL.md` § Job: `unit-tests` and `docs/ci_cd/CICD_REFERENCE.md`
+  § Secrets Reference described the secret as in use; both now say it is not set. The workflow is
+  unchanged: only the owner can add the secret, or remove the step.
 
 ### Security
 
