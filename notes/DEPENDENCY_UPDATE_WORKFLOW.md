@@ -109,17 +109,20 @@ uv pip compile pyproject.toml \
   --upgrade \
   -o requirements.lock
 
-# 3. Verify the lockfile is fresh (same command CI uses)
+# 3. Verify the lockfile is fresh (same command CI uses). Run from the repo root: scratch goes in
+#    the gitignored tmp/, never /tmp. tmp/ persists between runs, so clear the old output first;
+#    without --upgrade, uv prefers the pins of an existing -o file.
+rm -f tmp/check.lock
 uv pip compile pyproject.toml \
   --extra api \
   --extra observability \
   --extra mnist \
   --extra equities \
   --constraint requirements.lock \
-  -o /tmp/check.lock
-grep '^[^[:space:]#]' requirements.lock | sort > /tmp/lock_pins
-grep '^[^[:space:]#]' /tmp/check.lock | sort > /tmp/check_pins
-diff -u /tmp/lock_pins /tmp/check_pins
+  -o tmp/check.lock
+grep '^[^[:space:]#]' requirements.lock | sort > tmp/lock_pins
+grep '^[^[:space:]#]' tmp/check.lock | sort > tmp/check_pins
+diff -u tmp/lock_pins tmp/check_pins
 
 # 4. Commit both files together
 git add pyproject.toml requirements.lock

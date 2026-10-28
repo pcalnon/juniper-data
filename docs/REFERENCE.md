@@ -2,7 +2,7 @@
 
 **Version:** 0.4.4
 **Status:** Active
-**Last Updated:** October 19, 2026
+**Last Updated:** October 26, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -31,6 +31,7 @@
 - [External Stores: Decision-11 Contract](#external-stores-decision-11-contract)
 - [CSV Import Truncation Edges](#csv-import-truncation-edges)
 - [Prometheus Collector Reference](#prometheus-collector-reference)
+- [Observability Reference](#observability-reference)
 - [FastAPI Native Telemetry](#fastapi-native-telemetry)
 - [Artifact Streaming](#artifact-streaming)
 - [Docker Reference](#docker-reference)
@@ -42,6 +43,7 @@
   - [Image serve-and-version gate](#image-serve-and-version-gate)
   - [Consumer release notification](#consumer-release-notification)
   - [Sequence Safety (required check)](#sequence-safety-required-check)
+- [Worktree Quick Reference](#worktree-quick-reference)
 - [Additional Resources](#additional-resources)
 
 ---
@@ -516,7 +518,7 @@ python -m juniper_data --reload
 uvicorn --factory juniper_data.api.app:get_app --host 0.0.0.0 --port 8100
 
 # Start with custom options
-python -m juniper_data --host 0.0.0.0 --port 8101 --log-level DEBUG --storage-path /tmp/datasets
+python -m juniper_data --host 0.0.0.0 --port 8101 --log-level DEBUG --storage-path ./tmp/datasets
 ```
 
 ### Test Commands
@@ -1743,6 +1745,41 @@ Tests touching these collectors should use `juniper_observability.testing.reset_
 
 ---
 
+## Observability Reference
+
+Relocated verbatim from `AGENTS.md` on 2026-10-26, to pay for the resident `/tmp` rule's section, so it is read on demand rather than loaded into every session.
+
+### Prometheus Metrics
+
+Enabled via `JUNIPER_DATA_METRICS_ENABLED=true`. Exposed at `/metrics`.
+
+| Metric | Type | Labels |
+|--------|------|--------|
+| `juniper_data_http_requests_total` | Counter | method, endpoint, status |
+| `juniper_data_http_request_duration_seconds` | Histogram | method, endpoint |
+| `juniper_data_dataset_generations_total` | Counter | generator, status |
+| `juniper_data_dataset_generation_duration_seconds` | Histogram | generator |
+| `juniper_data_datasets_cached` | Gauge | -- |
+| `juniper_data_build` | Info | version, python_version |
+
+### Structured Logging
+
+- `JuniperJsonFormatter` outputs structured JSON (timestamp, level, logger, message, service, request_id)
+- Configurable via `JUNIPER_DATA_LOG_FORMAT` (`text` or `json`)
+- Log levels: TRACE, VERBOSE, DEBUG, INFO, WARNING, ERROR, CRITICAL, FATAL
+
+### Sentry Integration
+
+- Optional via `JUNIPER_DATA_SENTRY_DSN`
+- Automatic release tagging, log capture, and trace collection
+
+### Request ID Propagation
+
+- `RequestIdMiddleware` injects `X-Request-ID` (UUID if not provided by caller)
+- Propagated via `ContextVar` for correlation across log entries
+
+---
+
 ## FastAPI Native Telemetry
 
 FastAPI 0.142 added native OpenTelemetry and a `telemetry` argument on `FastAPI()`. `requirements.lock` pins FastAPI 0.142.2 since the python-minor bump ([#446](https://github.com/pcalnon/juniper-data/pull/446)); the v0.16.0 lock pinned 0.141.1, which has neither. Keys you omit keep the library defaults: `tracing`, `metrics`, `logs`, `operation_spans`, and `auto_configure` are all `True` (`fastapi/applications.py`).
@@ -2217,18 +2254,40 @@ Relocated verbatim from `AGENTS.md` (P3 of the shared-session-memory plan) so it
 
 ### GitHub Actions Workflows
 
-| Workflow | File | Triggers | Purpose |
-|----------|------|----------|---------|
-| **CI** | `ci.yml` | Push, PR, daily schedule | Pre-commit, tests (3.12-3.14), coverage, security, type checking, docs |
-| **CodeQL** | `codeql.yml` | Push, PR, schedule | GitHub code scanning |
-| **Security Scan** | `security-scan.yml` | Push, PR | Gitleaks + Bandit SARIF |
-| **Publish** | `publish.yml` | GitHub release | TestPyPI -> PyPI (Trusted Publishing/OIDC), then [notify consumers](#consumer-release-notification) |
-| **Notify consumers** | `notify-consumers.yml` | Called by `publish.yml` after PyPI; manual re-send | `repository_dispatch` `juniper-data-published`, then wait until the consumer starts a run |
-| **Publish container image** | `publish-image.yml` | GitHub release (`v*`), PR touching image inputs (build-only), manual | GHCR multi-arch image (amd64 + arm64). Before any tag: CPU-only (`EXPECT_TORCH=absent`), credential scan, and the [serve-and-version gate](#image-serve-and-version-gate). Never a required check |
-| **Lockfile Update** | `lockfile-update.yml` | Push to `dependabot/pip/**` by `dependabot[bot]`; PR when `pyproject.toml` changes (same repo, not `release/**`) | `--upgrade` compile of `requirements.lock` (`api`, `observability`, `mnist`, `equities`). Conf-only grouped bumps still qualify. Dependabot secret store must hold `CROSS_REPO_DISPATCH_TOKEN` or the job skips green |
-| **Sequence Safety** | `sequence-safety.yml` | PR | **Required** check `Sequence Safety` on the default branch (ruleset `juniper-data-rules`). Per-PR symbol-loss + docs-deletion screens via `juniper-ci-tools` (`--scope 'juniper_data/**'`). Absent from the Quality Gate `needs:`, so a green Quality Gate alone does not make a PR mergeable. See [Sequence Safety (required check)](#sequence-safety-required-check) |
-| **Main Verify** | `main-verify.yml` | Push (main), manual | Bypass-proof post-merge compositional-loss net (screens-only) over a catch-up base. Not a PR status check: it runs after the merge, so a finding cannot block it; the run goes red and upserts a stable-title failure issue |
-| **Claude Code** | `claude.yml` | Issue comment, review comment, submitted review, issue opened/assigned | `@claude` assistant. Contract: [Claude Code Workflow](ci_cd/CICD_REFERENCE.md#claude-code-workflow) |
+All 14 files in `.github/workflows/`, counted on `main` at `35658ff3` (2026-10-27). **Workflow** is the `name:` the Actions tab shows. **Required contexts** are the status checks ruleset `juniper-data-rules` (id `14748749`) requires on `~DEFAULT_BRANCH`. Requiring a check is a ruleset property, not a workflow one, so a check that no ruleset names can go red without blocking a merge. Re-read the ruleset with the command under [Sequence Safety (required check)](#sequence-safety-required-check) when it and this table disagree.
+
+| Workflow | File | Triggers | Purpose | Required contexts |
+|----------|------|----------|---------|-------------------|
+| **CI/CD Pipeline** | `ci.yml` | Push to `main` / `develop`; PR into `main` / `develop`; `repository_dispatch` `data-client-updated` (juniper-data-client's CI sends it after a push to its `main`); daily schedule (06:00 UTC); manual | Pre-commit (ruff, mypy, bandit, yamllint and more) on 3.12-3.14; unit tests with the coverage gates on Ubuntu 3.12-3.14 and macOS 3.12; build; dependency docs; integration tests; Gitleaks, Bandit SARIF and pip-audit; lockfile freshness; Docker build and smoke test; doc links; async-route audit; memory budget; Quality Gate; slow tests on scheduled and manual runs. See the notes below the table | 18, plus `Bandit` from code scanning (listed below the table). `Build Notification` is not required |
+| **CodeQL Analysis** | `codeql.yml` | Push to `main` / `develop`; PR into `main`; weekly schedule (Monday 06:00 UTC) | CodeQL for Python with the `+security-and-quality` queries | `Analyze (python)`. The `CodeQL` check run that code scanning posts is not a required context; the ruleset's `code_scanning` rule covers the alerts instead |
+| **Scheduled Security Scan** | `security-scan.yml` | Weekly schedule (Monday 06:00 UTC); manual | Bandit over `juniper_data` (tests excluded): a SARIF report kept only as the `security-reports` run artifact (nothing is uploaded to code scanning), then a second pass at medium severity and confidence that fails the job on any finding; `pip-audit --strict --desc on` over a `.[all]` install. No Gitleaks. The pull-request Gitleaks, Bandit SARIF and pip-audit lane is `ci.yml`'s `Security Scans` | None |
+| **Publish to PyPI** | `publish.yml` | GitHub release `published` | Build and `twine check`; TestPyPI (`testpypi` environment) and an install check; then PyPI (`pypi` environment: the owner's review plus a 5-minute wait). Both by Trusted Publishing (OIDC). Then [notify consumers](#consumer-release-notification) | None |
+| **Notify consumers of a release** | `notify-consumers.yml` | `workflow_call` from `publish.yml` after the `pypi` job; manual re-send (`workflow_dispatch`, `version` input) | `repository_dispatch` `juniper-data-published` to `juniper-recurrence`, then wait until a run starts there | None |
+| **Publish Container Image** | `publish-image.yml` | GitHub release `published` (a tag not starting with `v` skips the build); PR touching image inputs (build-only); manual (`push` input, default false) | GHCR multi-arch image (amd64 + arm64). Before any tag: CPU-only (`EXPECT_TORCH=absent`), credential scan, and the [serve-and-version gate](#image-serve-and-version-gate) | None. Its pull-request `Build linux/amd64` and `Build linux/arm64` runs are not required; the required Docker check is `ci.yml`'s `Docker Build & Smoke Test` |
+| **Update Lockfile (Dependabot)** | `lockfile-update.yml` | Push to `dependabot/pip/**` by `dependabot[bot]`; PR when `pyproject.toml` changes (same repo, head not `release/**`) | `--upgrade` compile of `requirements.lock` (`api`, `observability`, `mnist`, `equities`), committed through the GraphQL API so GitHub signs it. Conf-only grouped bumps still qualify. A Dependabot run without `CROSS_REPO_DISPATCH_TOKEN` in the Dependabot secret store skips green with a notice, and any other run without it fails | None. The required `Lockfile Freshness` is `ci.yml`'s |
+| **Sequence Safety** | `sequence-safety.yml` | PR into `main` / `develop` | Per-PR symbol-loss + docs-deletion screens via `juniper-ci-tools` (`--scope 'juniper_data/**'`). Absent from the Quality Gate `needs:`, so a green Quality Gate alone does not make a PR mergeable. See [Sequence Safety (required check)](#sequence-safety-required-check) | `Sequence Safety` |
+| **PR Base-Branch Guard** | `pr-base-branch-guard.yml` | PR `opened`, `reopened`, `edited`, `synchronize`, `labeled` or `unlabeled`, into any base; `merge_group` | Fails a PR whose base is not the default branch; the `stacked-pr` label turns the failure into a warning. On a PR into a feature branch, which no ruleset governs, it is the one check that always runs. See [PR base-branch guard (required check)](#pr-base-branch-guard-required-check) | `Guard PR base branch` |
+| **AGENTS.md Date Check** | `agents-md-touch-up.yml` | PR `opened`, `reopened` or `synchronize` that changes `AGENTS.md` | Fails when `AGENTS.md`'s `**Last Updated**:` is not a `YYYY-MM-DD` date, is in the future, or was not changed by the PR (unless it already reads today's UTC date). It only verifies; it never commits | None, so a red run does not block a merge |
+| **Post-Merge Main Verification** | `main-verify.yml` | Push to `main`; manual | Bypass-proof post-merge compositional-loss net (screens-only) over a catch-up base. Not a PR status check: it runs after the merge, so a finding cannot block it; the run goes red and upserts a stable-title failure issue | None |
+| **Scheduled Tests** | `scheduled-tests.yml` | Daily schedule (06:00 UTC); manual | `pytest -m "slow or integration"` on 3.12, 3.13 and 3.14 over a `.[all]` install, with JUnit XML artifacts | None. The required `Slow Tests` and `Integration Tests` are `ci.yml`'s jobs |
+| **PR Budget Alarm** | `pr-budget-alarm.yml` | Daily schedule (14:00 UTC); manual | Report-only count of open PRs, in total and on `cursor/` branches, against `PR_BUDGET_WARN` / `PR_BUDGET_ALARM` (defaults 15 / 30; neither repository variable is set). A breach is a green run. No `SLACK_WEBHOOK_URL` secret is set, so a breach is a `::warning::` annotation, not a Slack message | None. It never runs on a PR |
+| **Claude Code** | `claude.yml` | Issue comment, review comment, submitted review, issue opened/assigned; the job runs only when the text mentions `@claude` | `@claude` assistant. Contract: [Claude Code Workflow](ci_cd/CICD_REFERENCE.md#claude-code-workflow) | None |
+
+The 22 required contexts, by source (ruleset read on 2026-10-27):
+
+- `ci.yml` (18): `Pre-commit (Python 3.12)`, `Pre-commit (Python 3.13)`, `Pre-commit (Python 3.14)`, `Unit Tests + Coverage (Python 3.12 on ubuntu-latest)`, `Unit Tests + Coverage (Python 3.13 on ubuntu-latest)`, `Unit Tests + Coverage (Python 3.14 on ubuntu-latest)`, `Unit Tests + Coverage (Python 3.12 on macos-latest)`, `Documentation Links`, `Async-route audit (BUG-JD-10 class)`, `Build Package`, `Dependency Documentation`, `Integration Tests`, `Security Scans`, `Lockfile Freshness`, `Docker Build & Smoke Test`, `Memory Budget`, `Quality Gate`, `Slow Tests`.
+- Code scanning (1): `Bandit`, posted by GitHub Advanced Security, not by an Actions job.
+- `codeql.yml` (1): `Analyze (python)`.
+- `sequence-safety.yml` (1): `Sequence Safety`.
+- `pr-base-branch-guard.yml` (1): `Guard PR base branch`.
+
+Notes on `ci.yml`:
+
+- **Not every required job runs on every event.** `Slow Tests` runs only on `schedule` and `workflow_dispatch`, so a pull request reports it `skipped`, and a skipped required check counts as passing. Its pytest call also ends `|| echo "No slow tests found"`, so it cannot fail where it does run. `Memory Budget` runs only on `pull_request`: its `merge_group` arm cannot fire, because this workflow declares no `merge_group` trigger. `Integration Tests` and `Docker Build & Smoke Test` run on pull requests and on runs whose ref is `main` or `develop`.
+- **The Quality Gate is one required context of 22.** Its `needs:` holds nine jobs. `Async-route audit (BUG-JD-10 class)`, `Memory Budget` and `Slow Tests` sit outside it and are required in their own right, like `Sequence Safety`.
+- **`Bandit` comes from the SARIF upload.** Code scanning posts it after it processes the SARIF that `Security Scans` uploads. That upload step is `continue-on-error: true`, so a green `Security Scans` does not show that the upload landed. The ruleset's `code_scanning` rule covers Bandit and CodeQL alerts (alerts at `errors`, security alerts at `high_or_higher`).
+- **A dispatch cancels a push run on `main`.** Runs of this workflow share one concurrency group per ref (`ci-${{ github.ref }}`, `cancel-in-progress: true`). A `data-client-updated` dispatch runs on `main`'s ref, so it cancels an in-flight push run there, and the dispatch run tests the same `main` commit (measured 2026-10-27 at `35658ff3` and `8499cab0`).
+- **The Codecov upload has no token, so Codecov decides whether to take it.** The Python 3.14 leg uploads `reports/coverage.xml` with `token: ${{ secrets.CODECOV_TOKEN }}`, and no such secret exists: the Actions, Dependabot and environment secret stores held none on 2026-10-27. From 2026-07-30 (the oldest log GitHub keeps) to 2026-10-27 22:51 UTC, Codecov rejected every upload with `Token required - not valid tokenless upload`, on push, pull-request, Dependabot, scheduled and dispatch runs alike, and held no coverage for this repository. At 23:47 UTC the same day it accepted one, from a pull request in this repository. Nothing here had changed: the action's inputs differed only in the commit SHA, and no Codecov CLI had been released. So the change is on Codecov's side. `fail_ci_if_error: false` keeps the step green either way and it posts no annotation, so it gates nothing, and only the step log shows whether an upload landed. The job's own coverage gates do not depend on it. A `CODECOV_TOKEN` secret would make the upload independent of Codecov's tokenless policy (Dependabot pull requests read the Dependabot store); only the owner can add one.
 
 ### Image serve-and-version gate
 
@@ -2428,6 +2487,43 @@ per red streak.
 
 ---
 
+## Worktree Quick Reference
+
+Relocated verbatim from `AGENTS.md` on 2026-10-26, to pay for the resident `/tmp` rule's section, so it is read on demand rather than loaded into every session.
+
+**Setup** (full procedure in `notes/WORKTREE_SETUP_PROCEDURE.md`):
+
+```bash
+cd /home/pcalnon/Development/python/Juniper/juniper-data
+git fetch origin && git checkout main && git pull origin main
+BRANCH_NAME="feature/my-task"
+git branch "$BRANCH_NAME" main
+REPO_NAME=$(basename "$(pwd)")
+SAFE_BRANCH=$(echo "$BRANCH_NAME" | sed 's|/|--|g')
+WORKTREE_DIR="/home/pcalnon/Development/python/Juniper/worktrees/${REPO_NAME}--${SAFE_BRANCH}--$(date +%Y%m%d-%H%M)--$(git rev-parse --short=8 HEAD)"
+git worktree add "$WORKTREE_DIR" "$BRANCH_NAME"
+cd "$WORKTREE_DIR"
+```
+
+**Cleanup** (full procedure in `notes/WORKTREE_CLEANUP_PROCEDURE_V2.md`):
+
+```bash
+# Phase 1: Push current work
+cd "$OLD_WORKTREE_DIR" && git push origin "$OLD_BRANCH"
+# Phase 2: Create new worktree BEFORE removing old (prevents CWD-trap)
+git fetch origin
+git worktree add "$NEW_WORKTREE_DIR" -b "$NEW_BRANCH" origin/main
+cd "$NEW_WORKTREE_DIR"
+# Phase 3: Create PR (do NOT merge directly to main)
+gh pr create --base main --head "$OLD_BRANCH" --title "<title>" --body "<body>"
+# Phase 4: Cleanup
+git worktree remove "$OLD_WORKTREE_DIR"
+git branch -d "$OLD_BRANCH"
+git worktree prune
+```
+
+---
+
 ## Additional Resources
 
 ### Internal Documentation
@@ -2462,6 +2558,6 @@ per red streak.
 
 ---
 
-**Last Updated:** October 19, 2026
+**Last Updated:** October 26, 2026
 **Version:** 0.4.4
 **Maintainer:** Paul Calnon
