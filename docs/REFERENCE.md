@@ -1102,7 +1102,7 @@ juniper-data/
 │   ├── testing/                    # Testing documentation
 │   └── ci_cd/                      # CI/CD documentation
 ├── scripts/                        # Coverage gate and systemd service files
-│   ├── check_module_coverage.py    # Per-module coverage enforcement (85% min)
+│   ├── check_module_coverage.py    # Pre-push coverage hook (80% aggregate; warns below 85% per module)
 │   ├── juniper-data-ctl            # systemd user-service management CLI
 │   └── juniper-data.service        # systemd user-service unit
 ├── notes/                          # Development notes, procedures, roadmaps
@@ -2283,11 +2283,11 @@ The 22 required contexts, by source (ruleset read on 2026-10-27):
 
 Notes on `ci.yml`:
 
-- **Not every required job runs on every event.** `Slow Tests` runs only on `schedule` and `workflow_dispatch`, so a pull request reports it `skipped`, and a skipped required check counts as passing. Its pytest call also ends `|| echo "No slow tests found"`, so it cannot fail where it does run. `Memory Budget` runs only on `pull_request`: its `merge_group` arm cannot fire, because this workflow declares no `merge_group` trigger. `Integration Tests` and `Docker Build & Smoke Test` run on pull requests and on runs whose ref is `main` or `develop`.
+- **Not every required job runs on every event.** `Slow Tests` runs only on `schedule` and `workflow_dispatch`, so a pull request reports it `skipped`, and a skipped required check counts as passing. Where it runs, pytest's exit status is the job's: a failing slow test fails it, and so does a run that selects no test (pytest exit 5, with an `::error` annotation naming it), because a lane that runs nothing must not pass. The call used to end `|| echo "No slow tests found"`, which made the job unable to fail. The 2026-10-29 scheduled run selected 15 of 2,511 tests (`15 passed, 2496 deselected`). `Memory Budget` runs only on `pull_request`: its `merge_group` arm cannot fire, because this workflow declares no `merge_group` trigger. `Integration Tests` and `Docker Build & Smoke Test` run on pull requests and on runs whose ref is `main` or `develop`.
 - **The Quality Gate is one required context of 22.** Its `needs:` holds nine jobs. `Async-route audit (BUG-JD-10 class)`, `Memory Budget` and `Slow Tests` sit outside it and are required in their own right, like `Sequence Safety`.
 - **`Bandit` comes from the SARIF upload.** Code scanning posts it after it processes the SARIF that `Security Scans` uploads. That upload step is `continue-on-error: true`, so a green `Security Scans` does not show that the upload landed. The ruleset's `code_scanning` rule covers Bandit and CodeQL alerts (alerts at `errors`, security alerts at `high_or_higher`).
 - **A dispatch cancels a push run on `main`.** Runs of this workflow share one concurrency group per ref (`ci-${{ github.ref }}`, `cancel-in-progress: true`). A `data-client-updated` dispatch runs on `main`'s ref, so it cancels an in-flight push run there, and the dispatch run tests the same `main` commit (measured 2026-10-27 at `35658ff3` and `8499cab0`).
-- **The Codecov upload has no token, so Codecov decides whether to take it.** The Python 3.14 leg uploads `reports/coverage.xml` with `token: ${{ secrets.CODECOV_TOKEN }}`, and no such secret exists: the Actions, Dependabot and environment secret stores held none on 2026-10-27. From 2026-07-30 (the oldest log GitHub keeps) to 2026-10-27 22:51 UTC, Codecov rejected every upload with `Token required - not valid tokenless upload`, on push, pull-request, Dependabot, scheduled and dispatch runs alike, and held no coverage for this repository. At 23:47 UTC the same day it accepted one, from a pull request in this repository. Nothing here had changed: the action's inputs differed only in the commit SHA, and no Codecov CLI had been released. So the change is on Codecov's side. `fail_ci_if_error: false` keeps the step green either way and it posts no annotation, so it gates nothing, and only the step log shows whether an upload landed. The job's own coverage gates do not depend on it. A `CODECOV_TOKEN` secret would make the upload independent of Codecov's tokenless policy (Dependabot pull requests read the Dependabot store); only the owner can add one.
+- **The Codecov upload carries a token, except on runs Dependabot triggers.** The Python 3.14 leg uploads `reports/coverage.xml` with `token: ${{ secrets.CODECOV_TOKEN }}`. The owner added the `CODECOV_TOKEN` Actions secret on 2026-10-29 (22:15:30 UTC). The Dependabot secret store does not hold it, and a run that Dependabot triggers reads only that store, so its upload stays tokenless and Codecov decides whether to take it. Before the secret existed every upload was tokenless: from 2026-07-30 (the oldest log GitHub keeps) to 2026-10-27 22:51 UTC Codecov rejected each one with `Token required - not valid tokenless upload`, and from 23:47 UTC that day it accepted them, with nothing changed in this repository. `fail_ci_if_error: false` keeps the step green either way and it posts no annotation, so it gates nothing. Only the step log shows what happened: the action logs `Token set from input` when it has a token, and its wrapper logs `Token length: 0` when it does not. The job's own coverage gates do not depend on it.
 
 ### Image serve-and-version gate
 
@@ -2412,9 +2412,18 @@ Configured in `.pre-commit-config.yaml`:
 
 ### Coverage Gates
 
-- **Aggregate**: 80% minimum (pyproject.toml `fail_under`)
-- **Per-module**: 85% minimum (enforced by `scripts/check_module_coverage.py` in CI)
-- **Branch coverage**: Enabled
+CI enforces two gates, on each of the four required `Unit Tests + Coverage` legs (Ubuntu 3.12, 3.13 and 3.14; macOS 3.12). Each leg measures one run of `pytest -m "unit and not slow" juniper_data/tests/unit --cov=juniper_data`. The source is the `juniper_data` package less `pyproject.toml`'s `[tool.coverage.run] omit` list (`*/tests/*`, `*/__pycache__/*`, `*/data/*`, `*/logs/*`), with branch coverage on.
+
+- **Aggregate, 80%.** `python -m coverage report --fail-under=${COVERAGE_FAIL_UNDER}`, with `COVERAGE_FAIL_UNDER: "80"` in the workflow's `env:` (`pyproject.toml`'s `fail_under = 80` agrees). This figure counts branches.
+- **Per file, 90%; per sub-module, 95%.** `juniper-coverage-gap-map --coverage-json reports/coverage.json --enforce`, from `juniper-ci-tools>=0.9.0,<0.10.0`. The step passes no thresholds, so the tool's defaults apply. The leg fails when any measured file's **statement** coverage is below 90%, or any sub-module's **pooled** statement coverage (its files' covered statements over their statements) is below 95%. A sub-module is a directory: `juniper_data/generators/spiral` is one, `juniper_data/api/routes` another. Branches count toward neither. On `main` at `95ce8190` (scheduled run, 2026-10-29) it gated 100 files in 23 directories and printed `Enforcing gate: PASS  (per-file statement >= 90.0%, sub-module pooled >= 95.0%)`. The report above that verdict also lists files below 90% *branch-inclusive* coverage, and that list is advisory: it named `juniper_data/core/meta.py` at 87.88% while the file's statement coverage was 48/52.
+
+No CI job runs `scripts/check_module_coverage.py`: the per-file gate replaced it (per-file rollout C-5). It is the **pre-push** hook (`coverage-check` in `.pre-commit-config.yaml`). It fails the push when aggregate coverage is below `COVERAGE_FAIL_UNDER` (default 80) or a test file is measured; a module below 85% is printed as `WARN` and does not fail it. `make coverage` (`bash util/run_coverage.bash`) runs CI's unit-lane pytest, the aggregate gate and that script, not the per-file gate. To run the per-file gate locally:
+
+```bash
+python -m pytest -m "unit and not slow" juniper_data/tests/unit --cov=juniper_data --cov-report=json:reports/coverage.json
+pip install "juniper-ci-tools>=0.9.0,<0.10.0"
+juniper-coverage-gap-map --coverage-json reports/coverage.json --enforce
+```
 
 ---
 

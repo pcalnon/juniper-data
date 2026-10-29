@@ -246,19 +246,27 @@ From `pyproject.toml`:
 
 ## GitHub Actions Pinned Versions
 
-All actions are SHA-pinned for reproducibility:
+Every third-party action is pinned to a full commit SHA, with its release in a `# vX.Y.Z` comment on the `uses:` line, with one exception: `agents-md-touch-up.yml` checks out with `actions/checkout@v7.0.1`, a tag. The table was re-derived on 2026-10-29 from all 14 files in `.github/workflows/` at `95ce8190`, and each SHA is the commit its commented tag resolves to (`gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`). `publish.yml` also calls `./.github/workflows/notify-consumers.yml`, a reusable workflow in this repository, which takes no pin. `notify-consumers.yml`, `pr-base-branch-guard.yml` and `pr-budget-alarm.yml` use no action.
 
-| Action | Version | SHA |
-|--------|---------|-----|
-| `actions/checkout` | v4.2.2 | `11bd71901bbe5b1630ceea73d27597364c9af683` |
-| `actions/setup-python` | v5.6.0 | `a26af69be951a213d495a4c3e4e4022e16d87065` |
-| `actions/cache` | v4.2.3 | `5a3ec84eff668545956fd18022155c47e93e2684` |
-| `actions/upload-artifact` | v4.6.0 | `65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08` |
-| `codecov/codecov-action` | v5.4.2 | `ad3126e916f78f00edff4ed0317cf185271ccc2d` |
-| `gitleaks/gitleaks-action` | v2.3.9 | `ff98106e4c7b2bc287b24eaf42907196329070c7` |
-| `github/codeql-action/*` | v3.28.0 | `48ab28a6f5dbc2a99bf1e0131198dd8f1df78169` |
-| `pypa/gh-action-pypi-publish` | v1.13.0 | `ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e` |
-| `conda-incubator/setup-miniconda` | v3.3.0 | `fc2d68f6413eb2d87b895e92f8584b5b94a10167` |
+| Action | Version | SHA | Used in |
+|--------|---------|-----|---------|
+| `actions/checkout` | v7.0.1 | `3d3c42e5aac5ba805825da76410c181273ba90b1` | `ci.yml`, `claude.yml`, `codeql.yml`, `lockfile-update.yml`, `main-verify.yml`, `publish-image.yml`, `publish.yml`, `scheduled-tests.yml`, `security-scan.yml`, `sequence-safety.yml`. `agents-md-touch-up.yml` uses the `v7.0.1` tag |
+| `actions/setup-python` | v7.0.0 | `5fda3b95a4ea91299a34e894583c3862153e4b97` | `ci.yml`, `lockfile-update.yml`, `main-verify.yml`, `publish.yml`, `scheduled-tests.yml`, `security-scan.yml`, `sequence-safety.yml` |
+| `actions/cache` | v6.1.0 | `55cc8345863c7cc4c66a329aec7e433d2d1c52a9` | `ci.yml` |
+| `actions/upload-artifact` | v7.0.2 | `cf430e030ddbb5b0abf93d22962f4752f3646cd9` | `ci.yml`, `main-verify.yml`, `publish-image.yml`, `scheduled-tests.yml`, `security-scan.yml`, `sequence-safety.yml` |
+| `actions/download-artifact` | v8.0.2 | `9000827ccba6bdab643e8b6fd33ac0654aef8333` | `publish-image.yml` |
+| `codecov/codecov-action` | v7.1.1 | `303a32d7a59b442fa8d48b6a1cc6825c09c847a5` | `ci.yml` |
+| `gitleaks/gitleaks-action` | v3.0.0 | `e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e` | `ci.yml` |
+| `github/codeql-action/*` (`init`, `autobuild`, `analyze`, `upload-sarif`) | v4.39.1 | `9b3254085494b55a0f7c4c2b3d2d52cc712ce370` | `codeql.yml`; `upload-sarif` in `ci.yml` |
+| `pypa/gh-action-pypi-publish` | v1.14.3 | `7245906fb61fa33a13554f9d5fb856fe61758086` | `publish.yml` |
+| `conda-incubator/setup-miniconda` | v4.1.0 | `be893c923ea9cf1cf7cd510fbdde27c7e18cbdcb` | `ci.yml` |
+| `docker/setup-buildx-action` | v4.4.1 | `f87e5991a6d7451dcb8d9637bfbc97413f497069` | `publish-image.yml` |
+| `docker/login-action` | v4.7.0 | `81c6f93d4bc991e510b342a00b419b3bb4efc5c6` | `publish-image.yml` |
+| `docker/build-push-action` | v7.4.0 | `c3c9e263c25d99ce0380d002d59b67737d91b0dc` | `publish-image.yml` |
+| `docker/metadata-action` | v6.2.0 | `dc802804100637a589fabce1cb79ff13a1411302` | `publish-image.yml` |
+| `anthropics/claude-code-action` | v1.0.255 | `e4a6faad497d33dbc7144135c75e41f82f0bf6c0` | `claude.yml` |
+
+Dependabot's `github-actions` updates move these pins (see [Dependabot Configuration](#dependabot-configuration)). After one lands, re-derive the table from `grep -rn "uses:" .github/workflows/`.
 
 ---
 
@@ -293,10 +301,12 @@ All actions are SHA-pinned for reproducibility:
 
 ## GitHub Environments
 
-| Environment | Wait Timer | Reviewer Required | Purpose |
-|-------------|-----------|-------------------|---------|
-| `testpypi` | 5 minutes | No | TestPyPI publishing |
-| `pypi` | 5 minutes | Yes | Production PyPI publishing |
+| Environment | Wait Timer | Reviewer Required | Deployments From | Purpose |
+|-------------|-----------|-------------------|------------------|---------|
+| `testpypi` | None | No | Tags `v*`, `rc*`, `hf*`, `juniper-*-v*`, `juniper-*-rc*`, `juniper-*-hf*` | TestPyPI publishing |
+| `pypi` | 5 minutes | Yes (the owner) | The same six tag patterns | Production PyPI publishing |
+
+Read on 2026-10-29 with `gh api repos/pcalnon/juniper-data/environments` and each environment's `deployment-branch-policies`. `testpypi`'s only protection rule is the tag policy: no timer and no approval hold the TestPyPI job once a release whose tag matches is published. The one wait in that job is the `sleep 30` in `publish.yml` before the install check, for index lag. The repository also has `copilot` and `dockerhub` environments; no workflow here names either.
 
 ---
 
@@ -304,8 +314,9 @@ All actions are SHA-pinned for reproducibility:
 
 | Secret | Used By | Purpose |
 |--------|---------|---------|
-| `CODECOV_TOKEN` | ci.yml (unit-tests, Python 3.14 leg) | Codecov.io upload token. **Not set**: the Actions, Dependabot and environment secret stores held none on 2026-10-27, so the upload is tokenless and Codecov decides whether to take it. It rejected every upload through 2026-10-27 22:51 UTC with `Token required - not valid tokenless upload`, and accepted one at 23:47 UTC. `fail_ci_if_error: false` keeps the step green, so it gates nothing. Only the owner can add it |
-| `GITHUB_TOKEN` | ci.yml (security) | Built-in, used by Gitleaks |
+| `CODECOV_TOKEN` | ci.yml (unit-tests, Python 3.14 leg) | Codecov.io upload token. **Set** as an Actions secret since 2026-10-29 (22:15:30 UTC). The Dependabot secret store does not hold it, so a run that Dependabot triggers still uploads tokenless and Codecov decides whether to take it. Before 2026-10-29 every upload was tokenless: Codecov rejected each one through 2026-10-27 22:51 UTC with `Token required - not valid tokenless upload`, and accepted them from 23:47 UTC. `fail_ci_if_error: false` keeps the step green either way, so it gates nothing |
+| `GITHUB_TOKEN` | ci.yml (security); publish-image.yml | Built-in. Gitleaks uses it in ci.yml, and `docker/login-action` uses it to log in to `ghcr.io` in publish-image.yml |
+| `SLACK_WEBHOOK_URL` | main-verify.yml (`Notify on Failure` job); pr-budget-alarm.yml | Slack incoming-webhook URL for two notifications: a failed post-merge verification of `main`, and an open-PR budget breach. **Not set** (Actions secrets read 2026-10-29). Without it, main-verify.yml's step logs that it skipped, and pr-budget-alarm.yml's step writes a `::warning::` annotation instead. Both steps are `continue-on-error: true`, so a failed post never fails a run |
 | `CROSS_REPO_DISPATCH_TOKEN` | lockfile-update.yml; notify-consumers.yml | PAT. The lockfile lane uses it to author the signed lockfile commit so CI re-triggers: Dependabot-triggered runs read the Dependabot secret store, where an empty token is a green skip, and a non-Dependabot run without the token fails. Consumer notification uses it to `repository_dispatch` into another repo (`GITHUB_TOKEN` cannot) and to list that repo's Actions runs |
 | `ANTHROPIC_API_KEY` | claude.yml | Passed as the action's `anthropic_api_key`. A repository secret: juniper-data is user-owned, so no organization secret can reach it |
 
@@ -347,7 +358,8 @@ Review steps: [Dependency Update Workflow](../../notes/DEPENDENCY_UPDATE_WORKFLO
 
 | Script | Purpose | Usage |
 |--------|---------|-------|
-| `scripts/check_module_coverage.py` | Per-module coverage enforcement (85% module, 80% aggregate) | `python scripts/check_module_coverage.py [--run-tests]` |
+| `juniper-coverage-gap-map` | CI's per-file coverage gate, in each `unit-tests` leg. With `--enforce` it fails when a file's statement coverage is below 90% or a sub-module's (directory's) pooled statement coverage is below 95%, the tool's defaults. Package `juniper-ci-tools>=0.9.0,<0.10.0`. See [Coverage Gates](../REFERENCE.md#coverage-gates) | `juniper-coverage-gap-map --coverage-json reports/coverage.json --enforce` |
+| `scripts/check_module_coverage.py` | The pre-push `coverage-check` hook. Fails below 80% aggregate (`COVERAGE_FAIL_UNDER`) or when a test file is measured; a module below 85% is printed as `WARN` and does not fail. No CI job runs it | `python scripts/check_module_coverage.py [--run-tests]` |
 | `juniper-check-doc-links` | Markdown link validation. Installed from `juniper-doc-tools>=0.1.0,<0.2.0` in the `docs` job and as a local pre-commit hook; there is no `scripts/check_doc_links.py` | `juniper-check-doc-links --exclude templates ... --cross-repo skip` (the `docs` job's exclude list) |
 | `juniper-generate-dep-docs` | `dependency-docs` capture of `conf/requirements_ci.txt` and `conf/conda_environment_ci.yaml`. Pip body is `python -m pip list --format=freeze`. Conda body is the `dependencies:` block of `conda env export --no-builds` (stops before `prefix:` / `variables:`). Package `juniper-ci-tools>=0.9.0,<0.10.0`. The job uploads the capture and does not commit it; Dependabot may still edit the committed freeze. | CI: `juniper-generate-dep-docs` (no arguments, login shell). Local headers: `--pip-header PIP_DEPENDENCY_FILE_HEADER.md --conda-header CONDA_DEPENDENCY_FILE_HEADER.md` |
 

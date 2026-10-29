@@ -11,13 +11,16 @@
 # Copyright:     Copyright (c) 2024-2026 Paul Calnon
 #
 # Description:
-#    Reproduce the CI coverage gates locally (full suite): aggregate
-#    (--cov-fail-under) AND the per-module floor (scripts/check_module_coverage.py).
-#    Mirrors .github/workflows/ci.yml so a developer can verify both gates before
-#    pushing. Full suite by design; use plain pytest for a subset.
+#    Reproduce CI's unit lane and its aggregate coverage gate locally: the same
+#    `pytest -m "unit and not slow" juniper_data/tests/unit --cov=juniper_data` run,
+#    then `coverage report --fail-under`, then scripts/check_module_coverage.py,
+#    which lists modules below 85% as WARN without failing. It does NOT run CI's
+#    per-file gate (juniper-coverage-gap-map --enforce: 90% statement coverage per
+#    file, 95% pooled per sub-module); docs/REFERENCE.md § Coverage Gates has the
+#    commands for that. Use plain pytest for a subset.
 #
 # Usage:
-#    bash util/run_coverage.bash                          # full suite + both gates
+#    bash util/run_coverage.bash                          # unit lane + aggregate gate
 #    make coverage                                        # equivalent wrapper
 #    COVERAGE_FAIL_UNDER=90 bash util/run_coverage.bash   # override the aggregate gate
 #
@@ -32,9 +35,9 @@ cd "${REPO_ROOT}"
 
 COVERAGE_FAIL_UNDER="${COVERAGE_FAIL_UNDER:-80}"
 
-echo "==> Coverage (reproduces CI gates: ${COVERAGE_FAIL_UNDER}% aggregate + per-module floor) — ${REPO_ROOT}"
+echo "==> Coverage (CI's unit lane + ${COVERAGE_FAIL_UNDER}% aggregate gate; not the per-file gate) — ${REPO_ROOT}"
 
-# ── Reproduce the CI coverage sequence (keep in sync with .github/workflows/ci.yml) ──
+# ── CI's unit-lane pytest and aggregate gate (keep in sync with .github/workflows/ci.yml) ──
 python -m pytest -m "unit and not slow" juniper_data/tests/unit --cov=juniper_data --cov-report=term-missing
 python -m coverage report --fail-under="${COVERAGE_FAIL_UNDER}"
 python scripts/check_module_coverage.py

@@ -233,14 +233,13 @@ jobs:
   unit-tests:
     name: Unit Tests + Coverage (Python ${{ matrix.python-version }} on ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    # METRICS-MON R3.7 / seed-(R1.3 design): macOS leg runs in
-    # continue-on-error mode for the initial 2-week soak (started
-    # 2026-04-30). The Linux legs remain required; the macOS leg
-    # surfaces platform-divergence failures (cross-platform rss_mb
-    # sampling, POSIX-only assumptions) without blocking PRs while
-    # we identify environment-specific issues. After the soak, flip
-    # the include block's ``experimental`` flag to false to make
-    # the macOS leg required.
+    # The macOS leg is REQUIRED, like the three Linux legs. METRICS-MON R3.7 / seed-(R1.3 design)
+    # added it as a continue-on-error soak (juniper-data#61), and juniper-data#63 ended the soak on
+    # 2026-05-01 by setting the include block's ``experimental`` flag to false, so this expression
+    # is false on every leg and a failing macOS leg fails the job. Ruleset 14748749 requires
+    # "Unit Tests + Coverage (Python 3.12 on macos-latest)" with the three Linux contexts (read
+    # 2026-10-29). The leg catches platform divergence: cross-platform rss_mb sampling, POSIX-only
+    # assumptions, and BSD tools (macOS `base64` has no `-w0`; juniper-data#467 and #498 both met it).
     continue-on-error: ${{ matrix.experimental == true }}
     needs: [pre-commit]
     strategy:
@@ -916,7 +915,8 @@ jobs:
           echo "::notice::Quality Gate PASSED ✓"
 
   # ═══════════════════════════════════════════════════════════════════════════════════════════════
-  # Slow Tests: Run tests marked as slow (weekly or on-demand)
+  # Slow Tests: Run tests marked as slow (daily schedule or manual dispatch)
+  # A required context of ruleset 14748749; a pull request reports it skipped, which counts as passing.
   # ═══════════════════════════════════════════════════════════════════════════════════════════════
   slow-tests:
     name: Slow Tests
@@ -940,11 +940,23 @@ jobs:
           pip install ".[all]"
 
       - name: Run Slow Tests
+        # pytest's exit status is the step's. This call used to end `|| echo "No slow tests found"`,
+        # so a failing slow test, a collection error and a run that selected no test all reported
+        # success on a required context (juniper-ml
+        # notes/JUNIPER_2026-10-08_JUNIPER-ECOSYSTEM_CURSOR-FLOOD-3-DISPOSITION.md §4). Exit 5 (no
+        # test selected) fails too, with an annotation naming it: a lane that runs nothing must not
+        # pass. The 2026-10-29 scheduled run selected 15 of 2,511 (`15 passed, 2496 deselected`), so
+        # the schedule stays green. juniper_data/tests/unit/test_slow_tests_step.py rehearses this shell.
         run: |
           echo "╔════════════════════════════════════════════════════════════╗"
           echo "║       JuniperData - Slow Tests                             ║"
           echo "╚════════════════════════════════════════════════════════════╝"
-          python -m pytest -m "slow" --verbose --timeout=600 || echo "No slow tests found"
+          rc=0
+          python -m pytest -m "slow" --verbose --timeout=600 || rc=$?
+          if [ "${rc}" -eq 5 ]; then
+            echo "::error title=Slow Tests::pytest selected no test marked slow (exit 5). A lane that runs nothing must not pass."
+          fi
+          exit "${rc}"
 
   # ═══════════════════════════════════════════════════════════════════════════════════════════════
   # Notify: Build status notification

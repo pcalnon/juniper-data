@@ -42,8 +42,8 @@
 juniper-data uses a multi-layer CI/CD strategy:
 
 - **Pre-commit hooks**: Local code quality enforcement (ruff, mypy, bandit, yamllint, shellcheck)
-- **Pre-push hooks**: Coverage gate (80% aggregate, 85% per-module)
-- **GitHub Actions CI**: Automated testing across Python 3.12/3.13/3.14, security scanning, build verification, documentation validation
+- **Pre-push hooks**: Coverage check (fails below 80% aggregate; lists modules below 85% without failing)
+- **GitHub Actions CI**: Automated testing across Python 3.12/3.13/3.14 on Ubuntu and 3.12 on macOS, coverage gates (80% aggregate, 90% statement coverage per file, 95% pooled per sub-module), security scanning, build verification, documentation validation
 - **GitHub Actions publishing**: Two-stage PyPI publishing (TestPyPI then production PyPI), then a consumer dispatch that waits for a run to start
 - **Dependabot**: Automated dependency updates with lockfile synchronization
 - **CodeQL**: Weekly semantic code analysis
@@ -106,15 +106,15 @@ Validates documentation link integrity using `scripts/check_doc_links.py`.
 
 #### Job: `unit-tests`
 
-Core test execution with coverage enforcement across Python 3.12, 3.13, and 3.14.
+Core test execution with coverage enforcement across Python 3.12, 3.13, and 3.14 on Ubuntu, and 3.12 on macOS. All four legs are required contexts; none is allowed to fail.
 
 - **Depends on**: `pre-commit`
 - **Markers**: `-m "unit and not slow"`
 - **Timeout**: 60 seconds per test, `--maxfail=5`
-- **Coverage**: `--cov-fail-under=80` (aggregate), then `check_module_coverage.py` for 85% per-module
+- **Coverage**: `python -m coverage report --fail-under=80` (aggregate, branches counted), then `juniper-coverage-gap-map --coverage-json reports/coverage.json --enforce`, which fails the leg when a file's statement coverage is below 90% or a sub-module's (directory's) pooled statement coverage is below 95%. See [Coverage Gates](../REFERENCE.md#coverage-gates)
 - **Installs juniper-data-client** from `main` branch via git+https
 - **Reports**: JUnit XML, HTML coverage, Cobertura XML, JSON coverage
-- **Codecov upload**: Python 3.14 only, with `token: ${{ secrets.CODECOV_TOKEN }}`. No such secret is set (checked 2026-10-27), so the upload is tokenless and Codecov decides whether to take it. It rejected every upload through 2026-10-27 22:51 UTC with `Token required - not valid tokenless upload`, and accepted one at 23:47 UTC. `fail_ci_if_error: false` keeps the step green either way, so it gates nothing. See the notes under [`REFERENCE.md` § GitHub Actions Workflows](../REFERENCE.md#github-actions-workflows)
+- **Codecov upload**: Python 3.14 leg only, with `token: ${{ secrets.CODECOV_TOKEN }}`. The `CODECOV_TOKEN` Actions secret exists since 2026-10-29. The Dependabot secret store does not hold it, so a run that Dependabot triggers uploads tokenless and Codecov decides whether to take it. `fail_ci_if_error: false` keeps the step green either way, so it gates nothing. See the notes under [`REFERENCE.md` § GitHub Actions Workflows](../REFERENCE.md#github-actions-workflows)
 
 #### Job: `build`
 
@@ -197,7 +197,8 @@ Long-running test execution.
 
 - **Trigger**: Schedule (daily 6 AM UTC) or manual dispatch only
 - **Markers**: `-m "slow"`
-- **Timeout**: 600 seconds (10 minutes)
+- **Timeout**: 600 seconds (10 minutes) per test
+- **Verdict**: pytest's exit status. A failing slow test fails the job, and so does a run that selects no test (pytest exit 5, with an `::error` annotation naming it): a lane that runs nothing must not pass. `Slow Tests` is a required context; a pull request reports it skipped, which counts as passing
 
 #### Job: `notify`
 
@@ -217,7 +218,7 @@ Two-stage publishing triggered by GitHub Release creation.
 4. Wait 30 seconds for index sync
 5. Install from TestPyPI and verify import
 
-**Environment**: `testpypi` (5-minute wait timer)
+**Environment**: `testpypi` (no wait timer and no reviewer; deployments only from a release tag matching `v*`, `rc*`, `hf*`, `juniper-*-v*`, `juniper-*-rc*` or `juniper-*-hf*`)
 
 #### Stage 2: Production PyPI
 
@@ -371,7 +372,7 @@ Runs on production code only (excludes `tests/`). Skips `B101` (assert) and `B31
 
 ### Coverage Gate (Pre-push)
 
-Runs `scripts/check_module_coverage.py --run-tests` on the pre-push stage. Enforces 80% aggregate and 85% per-module coverage. This means you can commit freely, but cannot push code that drops coverage below thresholds.
+Runs `scripts/check_module_coverage.py --run-tests` on the pre-push stage: the whole suite under coverage, then the checks. It blocks the push when aggregate coverage is below `COVERAGE_FAIL_UNDER` (default 80%) or a test file is measured. A module below 85% is printed as `WARN` and does not block it. CI's per-file gate (90% statement coverage per file, 95% pooled per sub-module) is stricter and does not run here, so a push this hook allows can still fail CI. See [Coverage Gates](../REFERENCE.md#coverage-gates).
 
 ### Shell and YAML Linting
 
@@ -432,7 +433,7 @@ The Quality Gate is not the whole merge requirement. The `main` ruleset also req
 
 1. **Create a GitHub Release** with a tag matching the version (e.g., `v0.4.2`)
 2. `publish.yml` triggers automatically
-3. **TestPyPI stage**: Build, verify, publish, install-test (5-min environment wait)
+3. **TestPyPI stage**: Build, verify, publish, install-test (no environment wait; the job sleeps 30 seconds before the install check)
 4. **PyPI stage**: Same process, requires manual reviewer approval
 5. Approve the PyPI deployment via GitHub environment approval or `gh api`
 6. **Notify consumers**: after PyPI succeeds, `notify-consumers.yml` dispatches `juniper-data-published` and waits until the consumer starts a run. A red notify job means the package is already on PyPI. The `pypi` job is the publish verdict.
@@ -474,7 +475,7 @@ See [Consumer release notification](../REFERENCE.md#consumer-release-notificatio
 
 **Image job fails the serve-and-version step**: The arch was already pushed by digest. No tag is written unless every arch exports its digest. Read the `::error::` from `util/check_image_serves.py`: metadata, `juniper_data.__version__`, and `/v1/health` `version` must all equal the expected `X.Y.Z`. On a release that value is the tag without `v`, and it must equal `pyproject.toml`. See [Image serve-and-version gate](../REFERENCE.md#image-serve-and-version-gate).
 
-**Coverage drops after push**: Run `python scripts/check_module_coverage.py --run-tests` locally to identify modules below the 85% threshold.
+**Per-file coverage gate fails in CI**: The leg's log lists each file below 90% statement coverage and each sub-module below 95% pooled. Reproduce it with the three commands under [Coverage Gates](../REFERENCE.md#coverage-gates). `scripts/check_module_coverage.py` uses another threshold (85%, warning only) on another basis (branches counted), so it can pass where the gate fails.
 
 **`dependency-docs` conda artifact is a YAML list**: the job calls `juniper-generate-dep-docs` with no arguments, so it does not load `notes/CONDA_DEPENDENCY_FILE_HEADER.md`. Pass `--conda-header CONDA_DEPENDENCY_FILE_HEADER.md` and `--pip-header PIP_DEPENDENCY_FILE_HEADER.md` when you want the committed header shape.
 

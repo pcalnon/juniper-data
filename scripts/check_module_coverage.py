@@ -14,18 +14,22 @@
 # Copyright:     Copyright (c) 2024-2026 Paul Calnon
 #
 # Description:
-#    Enforces per-module and aggregate code coverage thresholds.
-#    Reads coverage.py JSON output and verifies that:
-#      - Each source module individually meets the per-module threshold (85%,
-#        hard-coded as MODULE_FAIL_UNDER below)
-#      - Aggregate coverage meets the application threshold (80% by default,
-#        read from the COVERAGE_FAIL_UNDER environment variable; see also
-#        pyproject.toml ``[tool.coverage.report] fail_under = 80`` and the
+#    The pre-push ``coverage-check`` hook (.pre-commit-config.yaml). Reads
+#    coverage.py JSON output and:
+#      - fails when aggregate coverage is below the application threshold (80%
+#        by default, read from the COVERAGE_FAIL_UNDER environment variable; see
+#        also pyproject.toml ``[tool.coverage.report] fail_under = 80`` and the
 #        ``COVERAGE_FAIL_UNDER`` env in ``.github/workflows/ci.yml``)
-#      - No test files are included in coverage metrics
+#      - fails when a test file is included in the coverage metrics
+#      - prints each source module below MODULE_FAIL_UNDER (85%) as WARN, and
+#        does NOT fail on it
+#    No CI job runs this script. CI's per-file gate replaced it (per-file
+#    coverage rollout C-5): ``juniper-coverage-gap-map --enforce`` fails a file
+#    below 90% statement coverage or a sub-module below 95% pooled; see
+#    docs/REFERENCE.md § Coverage Gates.
 #
 # Usage:
-#    # Check coverage from existing .coverage file (CI mode)
+#    # Check coverage from an existing .coverage file
 #    python scripts/check_module_coverage.py
 #
 #    # Run tests first, then check (pre-commit mode)
@@ -83,7 +87,7 @@ def generate_json_from_coverage_data():
 
 
 def check_coverage():
-    """Read coverage JSON and enforce per-module and aggregate thresholds."""
+    """Read coverage JSON; enforce the aggregate threshold and warn on modules below the per-module one."""
     if not COVERAGE_JSON.exists():
         print("ERROR: coverage.json not found")
         sys.exit(1)
