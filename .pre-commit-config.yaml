@@ -237,10 +237,13 @@ repos:
         files: \.md$
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # Code Coverage Gate - Per-module (85%) and Aggregate (80%, env-configurable)
-  # Per-module floor is hard-coded at 85% in scripts/check_module_coverage.py;
-  # aggregate floor is the value of ``COVERAGE_FAIL_UNDER`` (default 80%, set
+  # Code Coverage Check - Aggregate (80%, env-configurable); per-module 85% only warns
+  # The aggregate floor is the value of ``COVERAGE_FAIL_UNDER`` (default 80%, set
   # in ``.github/workflows/ci.yml`` and ``pyproject.toml [tool.coverage.report]``).
+  # scripts/check_module_coverage.py prints a module below its hard-coded 85% as
+  # WARN and does not fail on it. CI does not run this script: its per-file gate
+  # (juniper-coverage-gap-map --enforce: 90% statement coverage per file, 95% pooled
+  # per sub-module) is stricter, so a push this hook allows can still fail CI.
   # Runs on pre-push only (not pre-commit) to keep commits fast.
   # The pre-push hook type is auto-installed via `default_install_hook_types`
   # (top of file), so a plain `pre-commit install` now wires this gate.
@@ -248,7 +251,7 @@ repos:
   - repo: local
     hooks:
       - id: coverage-check
-        name: Check code coverage (80% aggregate default, 85% per-module)
+        name: Check code coverage (80% aggregate default; lists modules below 85%)
         entry: python scripts/check_module_coverage.py --run-tests
         language: system
         pass_filenames: false

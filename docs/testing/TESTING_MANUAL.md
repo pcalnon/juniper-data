@@ -55,7 +55,7 @@ juniper-data uses pytest as its test framework with a structured three-tier test
 Key characteristics:
 
 - **8 pytest markers** for granular test selection
-- **80% aggregate / 85% per-module** coverage enforcement
+- **80% aggregate / 90% per file / 95% per sub-module** coverage enforcement in CI (per file and per sub-module on statement coverage)
 - **60-second default timeout** per test (signal-based)
 - **Golden datasets** for reproducible generator validation
 - **Benchmarks disabled by default** to keep CI fast
@@ -313,7 +313,7 @@ pytest --cov=juniper_data --cov-report=html
 # XML report (for CI/Codecov integration)
 pytest --cov=juniper_data --cov-report=xml:coverage.xml
 
-# JSON report (for check_module_coverage.py)
+# JSON report (the input to CI's per-file gate, juniper-coverage-gap-map)
 pytest --cov=juniper_data --cov-report=json:reports/coverage.json
 
 # All reports at once
@@ -325,15 +325,19 @@ pytest --cov=juniper_data --cov-report=term-missing --cov-report=html --cov-repo
 | Threshold | Value | Enforcement |
 |-----------|-------|-------------|
 | **Aggregate** | 80% | `pyproject.toml` `fail_under`, CI env var `COVERAGE_FAIL_UNDER` |
-| **Per-module** | 85% | `scripts/check_module_coverage.py` |
+| **Per file** | 90% statement coverage | CI: `juniper-coverage-gap-map --enforce` |
+| **Per sub-module** (directory) | 95% pooled statement coverage | CI: `juniper-coverage-gap-map --enforce` |
+| **Per module** | 85% | Not enforced: `scripts/check_module_coverage.py` prints a `WARN` |
 | **Branch coverage** | Enabled | `pyproject.toml` `branch = true` |
+
+CI's gates, and the commands that reproduce the per-file one, are in [Coverage Gates](../REFERENCE.md#coverage-gates).
 
 ### Coverage Script
 
-The `scripts/check_module_coverage.py` script provides fine-grained per-module coverage enforcement:
+`scripts/check_module_coverage.py` is the pre-push `coverage-check` hook. No CI job runs it: CI's per-file gate replaced it.
 
 ```bash
-# Check from existing .coverage file (CI mode)
+# Check from an existing .coverage file
 python scripts/check_module_coverage.py
 
 # Run tests first, then check (pre-push mode)
@@ -342,12 +346,12 @@ python scripts/check_module_coverage.py --run-tests
 
 The script:
 
-1. Runs pytest with coverage (if `--run-tests` is passed)
+1. Runs pytest with coverage (if `--run-tests` is passed), and stops with pytest's status if a test fails
 2. Generates a JSON coverage report
-3. Checks each source module against the 85% threshold
-4. Checks aggregate coverage against 80% (or `COVERAGE_FAIL_UNDER` env var)
-5. Detects test file leakage into the source coverage
-6. Reports pass/fail with detailed per-module breakdown
+3. Lists each source module below 85% as `WARN`, without failing
+4. Fails when aggregate coverage is below 80% (or `COVERAGE_FAIL_UNDER` env var)
+5. Fails when a test file leaks into the source coverage
+6. Reports the aggregate and the modules below 85%
 
 ### Exclusion Patterns
 
@@ -507,7 +511,7 @@ pre-commit install --hook-type pre-push
 pre-commit run coverage-check --all-files --hook-stage pre-push
 ```
 
-The coverage check hook runs `python scripts/check_module_coverage.py --run-tests`, which executes the full test suite and enforces both aggregate and per-module thresholds.
+The coverage check hook runs `python scripts/check_module_coverage.py --run-tests`, which executes the full test suite and enforces the aggregate threshold; modules below 85% are only listed. CI's per-file gate (90% per file, 95% per sub-module) does not run in this hook.
 
 Code quality hooks (ruff, mypy, bandit) run on **pre-commit** stage and validate test code as well.
 
@@ -529,7 +533,7 @@ Code quality hooks (ruff, mypy, bandit) run on **pre-commit** stage and validate
 
 **Benchmark noise**: Run benchmarks in isolation (`pytest juniper_data/tests/performance/ --benchmark-enable`) to minimize interference from other tests.
 
-**Coverage below threshold**: Run `python scripts/check_module_coverage.py --run-tests` to see per-module breakdown and identify which modules need more tests.
+**Coverage below threshold**: Run `python scripts/check_module_coverage.py --run-tests` for the aggregate and the modules below 85%. For a CI per-file failure, the leg's log names each file below 90% and each sub-module below 95%; reproduce it with the commands in [Coverage Gates](../REFERENCE.md#coverage-gates).
 
 **Deprecation warnings from dependencies**: These are filtered by default via `filterwarnings` in pyproject.toml for uvicorn, httpx, and pydantic.
 

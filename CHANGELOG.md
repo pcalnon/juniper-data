@@ -152,6 +152,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   nothing. `docs/ci_cd/CICD_MANUAL.md` § Job: `unit-tests` and `docs/ci_cd/CICD_REFERENCE.md`
   § Secrets Reference described the secret as in use; both now say it is not set. The workflow is
   unchanged: only the owner can add the secret, or remove the step.
+- **The required `Slow Tests` job can fail, and the CI claims juniper-data#499's lane found stale now
+  say what the workflows do** (juniper-ml
+  `notes/JUNIPER_2026-10-08_JUNIPER-ECOSYSTEM_CURSOR-FLOOD-3-DISPOSITION.md` §4: the row of stale
+  claims found by juniper-data#499's lane, and the Codecov row).
+  - **`Slow Tests` (`.github/workflows/ci.yml`).** Its pytest call ended
+    `|| echo "No slow tests found"`, so a failing slow test, a collection error and a run that
+    selected no test all reported success on a context ruleset `14748749` requires. pytest's exit
+    status is now the step's, and exit 5 (no test selected) fails it too, with an
+    `::error title=Slow Tests::` annotation: a lane that runs nothing must not pass. The job still
+    runs only on scheduled and manual runs. The 2026-10-29 06:17 UTC scheduled run selected 15 of
+    2,511 tests (`15 passed, 2496 deselected`), and the same command passes locally, so the schedule
+    stays green. Pin: `juniper_data/tests/unit/test_slow_tests_step.py` (new, 8 tests) runs the
+    step's own shell under `bash -e` with a stand-in `python`. Its five failure cases (pytest exits
+    1 to 5) fail against the old step, which exits 0 for each.
+  - **Coverage thresholds.** `AGENTS.md`, `docs/REFERENCE.md` § Coverage Gates and
+    `docs/ci_cd/CICD_MANUAL.md` said an 85% per-module floor is enforced, all three in CI, and so
+    did `docs/DEVELOPER_CHEATSHEET.md`, `docs/ci_cd/CICD_QUICK_START.md`,
+    `docs/ci_cd/CICD_REFERENCE.md`, the three `docs/testing/` documents, the `coverage-check` hook's
+    comment and name in `.pre-commit-config.yaml`, and `scripts/check_module_coverage.py`'s header.
+    No CI job has run that script since per-file rollout C-5, and it never failed on a module below
+    85%: it prints `WARN`, and fails only below the 80% aggregate or on a measured test file. CI
+    enforces, on all four unit legs, the 80% aggregate (`coverage report --fail-under`, branches
+    counted) and, through `juniper-coverage-gap-map --enforce` at its juniper-ci-tools 0.9.x
+    defaults, 90% statement coverage per file and 95% pooled statement coverage per sub-module
+    (directory). § Coverage Gates now states both gates, their scope and the commands that reproduce
+    the per-file one; `util/run_coverage.bash` and the `Makefile`'s `coverage` help line, which
+    claimed to reproduce CI's gates, say they run only the unit lane and the aggregate gate. No gate
+    changes.
+  - **`docs/ci_cd/CICD_REFERENCE.md`.** The pinned-actions table named 9 actions, several majors old
+    (`actions/checkout` v4.2.2, where v7.0.1 is in use). It is re-derived from all 14 workflows: 15
+    actions, each SHA checked against the tag in its `# vX.Y.Z` comment, and the one tag pin
+    (`agents-md-touch-up.yml`'s `actions/checkout@v7.0.1`) named. The `testpypi` environment has no
+    wait timer and no reviewer, only a tag policy; this file and `CICD_MANUAL.md` said 5 minutes. The
+    Secrets Reference gains `SLACK_WEBHOOK_URL`, which `main-verify.yml` and `pr-budget-alarm.yml`
+    read and which is not set, and its `GITHUB_TOKEN` row names `publish-image.yml` too.
+  - **Workflow comments.** `ci.yml`'s `unit-tests` comment said the macOS leg runs in
+    continue-on-error mode for a soak. juniper-data#63 ended the soak on 2026-05-01, and ruleset
+    `14748749` requires the leg. `pr-base-branch-guard.yml` said `ci.yml` carries a `merge_group`
+    trigger. It does not, and the guard is the only workflow here that declares one. Comments only.
+  - **Codecov (owner ruling, 2026-10-29).** The owner added the `CODECOV_TOKEN` Actions secret on
+    2026-10-29 (22:15:30 UTC), so the upload juniper-data#499 documented as tokenless now carries a
+    token. The Dependabot secret store does not hold it, so a run that Dependabot triggers still
+    uploads without one. `docs/REFERENCE.md`, `docs/ci_cd/CICD_MANUAL.md` and
+    `docs/ci_cd/CICD_REFERENCE.md` say so. The step is unchanged and still cannot fail
+    (`fail_ci_if_error: false`).
 
 ### Security
 

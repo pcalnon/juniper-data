@@ -5,7 +5,7 @@
 **Author**: Paul Calnon
 **License**: MIT License
 **Version**: 0.17.1
-**Last Updated**: 2026-10-26
+**Last Updated**: 2026-10-29
 
 ---
 
@@ -239,18 +239,18 @@ pytest juniper_data/tests/performance/ --benchmark-enable --benchmark-compare
 ### Coverage
 
 - Aggregate minimum: 80% (enforced in `pyproject.toml` and CI)
-- Per-module minimum: 85% (enforced by `scripts/check_module_coverage.py` in CI)
+- Statement coverage per file 90%, per sub-module (directory, pooled) 95%: CI's `juniper-coverage-gap-map --enforce`
 - Source: `juniper_data` package (tests excluded from metrics)
 - Branch coverage enabled
 
-Reproduce the CI coverage gates locally (full suite — aggregate + per-module):
+Reproduce CI's unit lane and aggregate gate locally (`COVERAGE_FAIL_UNDER=<n>` overrides 80):
 
 ```bash
 make coverage                 # convenience wrapper
-bash util/run_coverage.bash   # source of truth (mirrors .github/workflows/ci.yml)
+bash util/run_coverage.bash   # the script it wraps
 ```
 
-Gates: 80% aggregate (override with `COVERAGE_FAIL_UNDER=<n>`) plus the per-module floor enforced by `scripts/check_module_coverage.py`. Full suite by design; for a narrower run use plain `pytest`.
+Neither runs the per-file gate. `scripts/check_module_coverage.py` (also the pre-push hook) only warns below 85% per module. Details: [`docs/REFERENCE.md` § Coverage Gates](docs/REFERENCE.md#coverage-gates).
 
 ---
 

@@ -210,8 +210,12 @@ Moving the LocalFS existence check into `_chunks` fails the eager-absence arms. 
 
 | Threshold | Value | Source | Enforcement |
 |-----------|-------|--------|-------------|
-| Aggregate | 80% | `COVERAGE_FAIL_UNDER` env var / `pyproject.toml` | CI `unit-tests` job, `--cov-fail-under` flag |
-| Per-module | 85% | `scripts/check_module_coverage.py` | CI `unit-tests` job, pre-push hook |
+| Aggregate | 80% | `COVERAGE_FAIL_UNDER` env var / `pyproject.toml` | CI `unit-tests` job (`python -m coverage report --fail-under`), pre-push hook |
+| Per file (statement coverage) | 90% | `juniper-coverage-gap-map` default | CI `unit-tests` job (`--enforce`) |
+| Per sub-module, i.e. directory (pooled statement coverage) | 95% | `juniper-coverage-gap-map` default | CI `unit-tests` job (`--enforce`) |
+| Per module | 85% | `scripts/check_module_coverage.py` | None: the pre-push hook prints `WARN` and does not fail. CI does not run the script |
+
+Details, and the commands that reproduce CI's per-file gate: [Coverage Gates](../REFERENCE.md#coverage-gates).
 
 ---
 
@@ -356,7 +360,7 @@ juniper_data/tests/          # Root test path (testpaths in pyproject.toml)
 | JUnit XML (integration) | `reports/junit-integration.xml` | CI `integration-tests` job |
 | Coverage HTML | `htmlcov/` | `--cov-report=html` |
 | Coverage XML | `coverage.xml` | `--cov-report=xml` |
-| Coverage JSON | `reports/coverage.json` | `check_module_coverage.py` |
+| Coverage JSON | `reports/coverage.json` | CI `unit-tests` job (`--cov-report=json:reports/coverage.json`), read by `juniper-coverage-gap-map`. `check_module_coverage.py` writes its own `coverage.json` at the repo root and deletes it |
 
 ---
 

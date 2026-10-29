@@ -102,9 +102,13 @@ pytest --cov=juniper_data --cov-report=term-missing --cov-fail-under=80
 pytest --cov=juniper_data --cov-report=html
 # open htmlcov/index.html
 
-# Per-module coverage check (CI-level enforcement)
+# Pre-push coverage check (the coverage-check hook; CI does not run it)
 python scripts/check_module_coverage.py --run-tests
-# Enforces: 80% aggregate, 85% per-module
+# Fails below 80% aggregate; lists modules below 85% without failing
+
+# CI's per-file gate: 90% statement coverage per file, 95% pooled per sub-module
+pytest -m "unit and not slow" juniper_data/tests/unit --cov=juniper_data --cov-report=json:reports/coverage.json
+juniper-coverage-gap-map --coverage-json reports/coverage.json --enforce   # pip install "juniper-ci-tools>=0.9.0,<0.10.0"
 ```
 
 ---

@@ -91,8 +91,10 @@ pre-commit run coverage-check --all-files --hook-stage pre-push
 
 # Or run the script directly
 python scripts/check_module_coverage.py --run-tests
-# Enforces: 80% aggregate, 85% per-module
+# Fails below 80% aggregate; lists modules below 85% without failing
 ```
+
+CI's per-file gate is stricter, and this hook does not run it: 90% statement coverage per file and 95% pooled per sub-module (`juniper-coverage-gap-map --enforce`). See [Coverage Gates](../REFERENCE.md#coverage-gates) for the commands that reproduce it.
 
 ---
 
@@ -107,8 +109,9 @@ pre-commit run --all-files
 # 2. Run tests with coverage
 pytest --cov=juniper_data --cov-report=term-missing --cov-fail-under=80
 
-# 3. Check per-module coverage
-python scripts/check_module_coverage.py --run-tests
+# 3. Check coverage the way CI does (90% per file, 95% per sub-module)
+pytest -m "unit and not slow" juniper_data/tests/unit --cov=juniper_data --cov-report=json:reports/coverage.json
+juniper-coverage-gap-map --coverage-json reports/coverage.json --enforce   # pip install "juniper-ci-tools>=0.9.0,<0.10.0"
 
 # 4. Validate documentation links
 python scripts/check_doc_links.py
@@ -124,7 +127,7 @@ python scripts/check_doc_links.py
 
 **MyPy import errors**: MyPy is configured with `--ignore-missing-imports` for third-party packages. If you see persistent errors, ensure `types-redis` is installed.
 
-**Coverage below 80%**: Run `python scripts/check_module_coverage.py --run-tests` to see per-module breakdown. Add tests for modules below 85%.
+**Coverage below 80%**: Run `python scripts/check_module_coverage.py --run-tests` to see the aggregate and the modules below 85%. CI also fails a file below 90% statement coverage or a sub-module below 95% pooled; its log names them.
 
 **Lockfile check fails in CI**: The pins no longer satisfy `pyproject.toml`. Regenerate with `uv pip compile pyproject.toml --extra api --extra observability --extra mnist --extra equities --upgrade -o requirements.lock`.
 

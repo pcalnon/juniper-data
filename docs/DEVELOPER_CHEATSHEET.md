@@ -245,7 +245,7 @@ The dataset id is `equities_seq-6.0.0-<hash>` over generator, version, and param
 | `slow`                                      | Tests > 1 second                  |
 | `spiral` / `api` / `generators` / `storage` | Component-specific                |
 
-Coverage thresholds: **80% aggregate** (default; set in `pyproject.toml` `[tool.coverage.report] fail_under` and CI `COVERAGE_FAIL_UNDER`) + **85% per-module** (pre-push hook, `scripts/check_module_coverage.py`).
+Coverage thresholds: **80% aggregate** (default; set in `pyproject.toml` `[tool.coverage.report] fail_under` and CI `COVERAGE_FAIL_UNDER`) + **90% statement coverage per file and 95% pooled per sub-module** (CI only, `juniper-coverage-gap-map --enforce`; see [Coverage Gates](REFERENCE.md#coverage-gates)). The pre-push hook, `scripts/check_module_coverage.py`, enforces the aggregate and only warns below 85% per module.
 
 > See: [REFERENCE.md -- Test Reference](REFERENCE.md#test-reference)
 
@@ -307,7 +307,7 @@ Metrics use `juniper_data_` namespace. Pattern: `juniper_data_<subsystem>_<name>
 | YAML/TOML validation | pre-commit   | `pre-commit-hooks` (check-yaml, check-toml, end-of-file-fixer, etc.) |
 | YAML lint            | pre-commit   | `yamllint`                                                           |
 | Shell lint           | pre-commit   | `shellcheck`                                                         |
-| Coverage gate        | **pre-push** | 80% aggregate (env `COVERAGE_FAIL_UNDER`), 85% per-module             |
+| Coverage gate        | **pre-push** | 80% aggregate (env `COVERAGE_FAIL_UNDER`); modules below 85% only warn |
 | SOPS guard           | pre-commit   | Block unencrypted `.env` files                                       |
 
 GitHub Actions: `ci.yml`, `publish.yml`, `notify-consumers.yml`, `publish-image.yml`, `security-scan.yml`, `scheduled-tests.yml`, `codeql.yml`, `lockfile-update.yml`, `sequence-safety.yml`, `main-verify.yml`, `pr-base-branch-guard.yml`, `pr-budget-alarm.yml`, `agents-md-touch-up.yml`, `claude.yml`. `sequence-safety.yml` is a required check outside the Quality Gate; see [Sequence Safety (required check)](REFERENCE.md#sequence-safety-required-check). `main-verify.yml` runs after a merge to `main`, so it cannot block one. After PyPI succeeds, `notify-consumers.yml` dispatches `juniper-data-published` and waits for a consumer run. A dispatch `204` is not delivery. See [Consumer release notification](REFERENCE.md#consumer-release-notification). `publish-image.yml` is not a required check. Its serve-and-version gate is [Image serve-and-version gate](REFERENCE.md#image-serve-and-version-gate).
@@ -330,7 +330,8 @@ pre-commit install --hook-type pre-push  # coverage gate (one-time)
 | Artifact RSS scales with NPZ size | Store inherits base `open_artifact_stream` | Use LocalFS (default API store), or override like LocalFS; do not wrap LocalFS in Cached |
 | Artifact 200 with empty body | Existence check moved inside the generator | Return `None` from `open_artifact_stream` before yielding |
 | `ImportError: redis`    | Optional backend   | `pip install redis`                                      |
-| Coverage pre-push fails | Below threshold    | Add tests; see `scripts/check_module_coverage.py`        |
+| Coverage pre-push fails | A failing test, aggregate below 80%, or a measured test file | Fix the test, or add tests; see `scripts/check_module_coverage.py` |
+| CI per-file coverage gate fails | A file below 90% statement coverage, or a sub-module below 95% pooled | Add tests for the files the log names; see [Coverage Gates](REFERENCE.md#coverage-gates) |
 | `ImportError: cannot import name 'VERSION'` collecting a generator test in isolation | `api/__init__.py` eagerly imported `create_app` | Keep `create_app` lazy. Do not pre-import routes. See [API Package Import Graph](REFERENCE.md#api-package-import-graph) |
 | `csv_import` 422 naming MB + `allow_truncation` | Source over the byte cap | Pass `"allow_truncation": true`, or set `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION=true`. A huge request `max_bytes` cannot raise the deployment ceiling. `meta.truncation is None` means complete. See [CSV Import Byte Cap](REFERENCE.md#csv-import-byte-cap). |
 | Path traversal / file not found on `csv_import` | `file_path` outside `JUNIPER_DATA_IMPORT_DIR` | Put the file under the import dir and pass a relative path. This is not the 10 MB HTTP body limit. |

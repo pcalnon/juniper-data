@@ -113,8 +113,11 @@ on:
     #   labeled/unlabeled-- the escape hatch, in both directions
     types: [opened, reopened, edited, synchronize, labeled, unlabeled]
   # merge_group is declared so this context still reports on the queued merge commit if a
-  # merge queue is ever enabled. `ci.yml` carries the same trigger for the same reason: a
-  # required context that never posts in the queue stalls it forever.
+  # merge queue is ever enabled: a required context that never posts in the queue stalls it
+  # forever. In this repo it is the only workflow that declares the trigger (checked
+  # 2026-10-29). `ci.yml` does not: its Memory Budget job's `if:` names `merge_group`, but no
+  # `merge_group` event ever starts that workflow. Enabling a queue therefore also means adding
+  # the trigger to every workflow that posts a required context, `ci.yml` first.
   #
   # NOTE the early-exit in the step body -- it is not optional. A merge_group payload has
   # NO `pull_request` and NO `base_ref`, so without it this job would evaluate BASE_REF=""
