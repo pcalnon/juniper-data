@@ -8,7 +8,7 @@
 # Version:       0.5.0
 #
 # Date Created:  2026-02-24
-# Last Modified: 2026-02-24
+# Last Modified: 2026-10-30
 #
 # License:       MIT License
 # Copyright:     Copyright (c) 2024-2026 Paul Calnon
@@ -125,7 +125,10 @@ def check_coverage():
         for filepath, pct in failures:
             print(f"  {filepath}: {pct:.2f}%")
 
-    if exit_code == 0:
+    if exit_code == 0 and failures:
+        # The per-module threshold only warns, so a PASS must not claim every module met it.
+        print(f"PASS: aggregate >= {AGGREGATE_FAIL_UNDER}%; {len(failures)} of {len(data['files'])} modules below {MODULE_FAIL_UNDER}% (warned above, not enforced)")
+    elif exit_code == 0:
         print(f"PASS: All {len(data['files'])} modules >= {MODULE_FAIL_UNDER}%, aggregate >= {AGGREGATE_FAIL_UNDER}%")
 
     return exit_code

@@ -113,8 +113,8 @@ pytest --cov=juniper_data --cov-report=term-missing --cov-fail-under=80
 pytest -m "unit and not slow" juniper_data/tests/unit --cov=juniper_data --cov-report=json:reports/coverage.json
 juniper-coverage-gap-map --coverage-json reports/coverage.json --enforce   # pip install "juniper-ci-tools>=0.9.0,<0.10.0"
 
-# 4. Validate documentation links
-python scripts/check_doc_links.py
+# 4. Validate documentation links: the CI docs job's command (pip install juniper-doc-tools)
+juniper-check-doc-links --exclude templates --exclude history --exclude legacy --exclude pull_requests --exclude releases --exclude analysis --exclude fixes --exclude development --exclude CHANGELOG.md --exclude tmp --cross-repo skip
 ```
 
 ---
