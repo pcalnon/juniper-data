@@ -34,6 +34,9 @@ PUBLISH = REPO / ".github" / "workflows" / "publish.yml"
 
 EVENT = "juniper-data-published"
 REPO_NAME = "juniper-recurrence"
+# Every repo the matrix dispatches to, in matrix order. juniper-canopy's schema-drift workflow
+# (juniper-canopy#777) listens for the same event; the dispatch simulations use REPO_NAME alone.
+CONSUMERS = [REPO_NAME, "juniper-canopy"]
 TOKEN = "test-dispatch-token"
 SHA = "0123456789abcdef0123456789abcdef01234567"
 RUN_URL = "https://example.test/runs/7"
@@ -435,7 +438,7 @@ class TestWorkflowWiring:
         doc = _notify()
         assert doc["permissions"] == {}
         job = doc["jobs"]["dispatch"]
-        assert job["strategy"]["matrix"]["repo"] == [REPO_NAME]
+        assert job["strategy"]["matrix"]["repo"] == CONSUMERS
         assert "continue-on-error" not in job
         confirm = _step("Confirm the consumer started a run")
         assert "continue-on-error" not in confirm

@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`notify-consumers.yml` tells juniper-canopy about a release too.** The matrix is
+  `[juniper-recurrence, juniper-canopy]`: canopy's `juniper-data Schema Drift` workflow (juniper-canopy#777,
+  merged 2026-10-27) listens for `juniper-data-published`, sets no `run-name:`, and checks the released
+  version's generator schemas against its snapshots. `docs/REFERENCE.md`, `docs/ci_cd/CICD_MANUAL.md` and
+  `docs/ci_cd/CICD_REFERENCE.md` name both consumers, and `test_notify_consumers_dispatch.py` pins the two-repo
+  matrix. Whether `CROSS_REPO_DISPATCH_TOKEN` can dispatch into canopy is settled by a `workflow_dispatch`
+  re-send for 0.17.1 once this merges.
 - **Temporary files go in the repo's gitignored `tmp/`, never `/tmp` (owner directive, 2026-10-26), and the
   owner's rulings on it are applied.** `/tmp/` is ignored, the one test that wrote under `/tmp` uses
   `tmp_path`, and `AGENTS.md` § Temporary files carries the rule and the rulings, retention included.
