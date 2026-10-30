@@ -234,7 +234,7 @@ The `notify-consumers` job runs only after `pypi` succeeds. A failed notificatio
 
 ### notify-consumers.yml -- Consumer release notification
 
-Tells repos that install `juniper-data` from PyPI that a release is on PyPI. Today the matrix is `juniper-recurrence` only.
+Tells repos that install `juniper-data` from PyPI that a release is on PyPI. Today the matrix is `juniper-recurrence` and `juniper-canopy`.
 
 - **From a release:** `publish.yml` calls this workflow with the release tag after the production PyPI job. A leading `v` is stripped. The value must be `X.Y.Z`.
 - **Manual:** `workflow_dispatch` with a `version` input re-sends for a version already on PyPI. It does not publish.

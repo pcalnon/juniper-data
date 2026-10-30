@@ -102,7 +102,7 @@ A run that passes the phrase check and then finds `ANTHROPIC_API_KEY` empty thro
 
 ### Consumer release notification
 
-`notify-consumers.yml` posts `juniper-data-published` to `pcalnon/juniper-recurrence` using `CROSS_REPO_DISPATCH_TOKEN` (`curl --fail-with-body`). The version is `X.Y.Z` after a leading `v` is stripped. A 204 only means GitHub accepted the event.
+`notify-consumers.yml` posts `juniper-data-published` to `pcalnon/juniper-recurrence` and `pcalnon/juniper-canopy` using `CROSS_REPO_DISPATCH_TOKEN` (`curl --fail-with-body`). The version is `X.Y.Z` after a leading `v` is stripped. A 204 only means GitHub accepted the event.
 
 The confirm step then looks for a run titled `juniper-data-published` (no `run-name:` on the listener): 12 listings, 10 seconds apart, `created` at or after 30 seconds before the POST. No successful listing and a listing with no matching run are different failures.
 
