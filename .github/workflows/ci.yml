@@ -121,9 +121,9 @@ jobs:
 
       # Wave 2 of the doc-link migration plan
       # (juniper-ml notes/JUNIPER_DOC_TOOLS_PYPI_MIGRATION_PLAN_2026-05-18.md):
-      # the validator is installed from PyPI instead of run from the
-      # inline scripts/check_doc_links.py copy. The inline copy stays in
-      # place through Wave 4 so this swap remains a one-line revert.
+      # the validator is installed from PyPI instead of run from an
+      # inline copy in scripts/. That copy has since been removed, so
+      # this step is no longer a one-line revert.
       - name: Install juniper-doc-tools
         run: |
           python -m pip install --upgrade "pip>=26.1.1"
@@ -595,15 +595,20 @@ jobs:
           bandit -r juniper_data -x juniper_data/tests --confidence-level medium --severity-level medium
 
       - name: Upload Bandit SARIF to GitHub Security
-        # ``hashFiles`` returns empty when the file is absent; only attempt
-        # the upload when the SARIF actually exists. Combined with
-        # ``continue-on-error`` this keeps the job green even if a
-        # security-tools regression prevents bandit from emitting the file.
-        if: always() && hashFiles('reports/security/bandit.sarif') != ''
+        # The required `Bandit` check run is created by code scanning from
+        # this upload. On a PR the upload always runs, and a failure turns
+        # Security Scans red with the cause in this step's log, instead of
+        # leaving the PR waiting forever for a `Bandit` context that never
+        # posts. A missing SARIF counts as a failure there: it is how
+        # juniper-canopy#780's bandit, which wrote no file, went unnoticed.
+        # Every other event keeps the old tolerance: ``hashFiles`` skips the
+        # step when the file is absent, and a failed upload leaves the job
+        # green.
+        if: always() && (github.event_name == 'pull_request' || hashFiles('reports/security/bandit.sarif') != '')
         uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370  # v4.39.1
         with:
           sarif_file: reports/security/bandit.sarif
-        continue-on-error: true
+        continue-on-error: ${{ github.event_name != 'pull_request' }}
 
       - name: Run pip-audit (Dependency Vulnerabilities)
         run: |

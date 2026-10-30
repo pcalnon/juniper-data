@@ -56,22 +56,24 @@ juniper-data uses a multi-layer CI/CD strategy:
 ### Job Dependency Graph
 
 ```bash
-pre-commit ──┬─→ unit-tests ──┬─→ build ──→ dependency-docs ──┐
-             │                │                               │
-             │                └─→ integration-tests ──────────┤
-             │                                                │
-             ├─→ security ────────────────────────────────────┤
-             ├─→ docs ────────────────────────────────────────┤
-             └─→ lockfile-check ──────────────────────────────┘
-                                                              │
-                                                              └─→ required-checks ──→ notify
+pre-commit ──┬─→ unit-tests ──┬─→ build ──┬─→ dependency-docs ──┐
+             │                │           └─→ docker-build ─────┤
+             │                └─→ integration-tests ────────────┤
+             └─→ security ──────────────────────────────────────┤
+docs ───────────────────────────────────────────────────────────┤
+lockfile-check ─────────────────────────────────────────────────┘
+                                                                │
+                                                                └─→ required-checks ──→ notify
+
+Outside the Quality Gate, with no dependencies:
+  async-route-audit   memory-budget (pull requests)   slow-tests (schedule, dispatch)
 ```
 
 ### Trigger Matrix
 
 | Workflow              | Push to main/develop | Push to feature/fix | Pull Requests | Schedule            | Release | Manual |
 |-----------------------|----------------------|---------------------|---------------|---------------------|---------|--------|
-| `ci.yml`              | Yes                  | Yes                 | Yes           | Daily 6 AM UTC      | No      | Yes    |
+| `ci.yml`              | Yes                  | No (removed 2026-08-13) | Yes       | Daily 6 AM UTC      | No      | Yes    |
 | `publish.yml`         | No                   | No                  | No            | No                  | Yes     | No     |
 | `notify-consumers.yml` | No                  | No                  | No            | No                  | via `publish.yml` | Yes |
 | `lockfile-update.yml` | No                   | `dependabot/pip/**` by `dependabot[bot]` | `pyproject.toml` paths, same repo, not `release/**` | No | No | No |
@@ -86,7 +88,7 @@ pre-commit ──┬─→ unit-tests ──┬─→ build ──→ dependency
 
 ### ci.yml -- Main CI Pipeline
 
-The primary CI workflow runs up to 11 jobs with concurrency control (`ci-${{ github.ref }}`, cancel-in-progress).
+The primary CI workflow has 14 jobs, with concurrency control (`ci-${{ github.ref }}`, cancel-in-progress). Not every job runs on every event: each job's condition is below and in the [jobs table](CICD_REFERENCE.md#ciyml-jobs).
 
 #### Job: `pre-commit`
 
@@ -98,11 +100,18 @@ Multi-version code quality validation across Python 3.12, 3.13, and 3.14 with `f
 
 #### Job: `docs`
 
-Validates documentation link integrity using `scripts/check_doc_links.py`.
+Validates documentation link integrity using `juniper-check-doc-links` (from the `juniper-doc-tools` package), with `--cross-repo skip`.
 
 - Checks all markdown files for broken internal links and anchors
-- Excludes `templates/` and `history/` directories
+- Excludes `templates`, `history`, `legacy`, `pull_requests`, `releases`, `analysis`, `fixes`, `development`, `tmp` and `CHANGELOG.md`
+- Also lints the script paths in `.github/workflows/` and `AGENTS.md`'s version and header (`juniper-ci-tools`)
 - Runs independently (no dependencies)
+
+#### Job: `async-route-audit`
+
+`ruff check --select ASYNC` over `juniper_data/` (Python 3.12), the CI half of the pre-commit async-route audit.
+
+- Runs independently (no dependencies); a required context outside the Quality Gate
 
 #### Job: `unit-tests`
 
@@ -183,6 +192,20 @@ Validates `requirements.lock` freshness.
 - Diffs against committed `requirements.lock`
 - Prints remediation command on failure
 
+#### Job: `docker-build`
+
+Builds the image, starts a container, and checks the package import and `GET /v1/health`.
+
+- **Depends on**: `build`
+- **Condition**: Only on PRs or main/develop branches
+
+#### Job: `memory-budget`
+
+Runs `util/memory_budget_check.py` against the base branch: each always-loaded memory file that `conf/memory_budget.json` governs (`AGENTS.md`) must stay under its character ceiling.
+
+- **Condition**: pull requests only (its `merge_group` arm cannot fire: the workflow declares no `merge_group` trigger)
+- Runs independently (no dependencies); a required context outside the Quality Gate
+
 #### Job: `required-checks`
 
 Quality gate aggregator. Runs `if: always()` and checks status of all required jobs.
@@ -216,17 +239,17 @@ Two-stage publishing triggered by GitHub Release creation.
 2. Validate with `twine check dist/*`
 3. Publish to TestPyPI via `pypa/gh-action-pypi-publish` (OIDC trusted publishing)
 4. Wait 30 seconds for index sync
-5. Install from TestPyPI and verify import
+5. Install from TestPyPI with `--no-deps` and print the installed version from its metadata (an import would need the dependencies `--no-deps` leaves out)
 
 **Environment**: `testpypi` (no wait timer and no reviewer; deployments only from a release tag matching `v*`, `rc*`, `hf*`, `juniper-*-v*`, `juniper-*-rc*` or `juniper-*-hf*`)
 
 #### Stage 2: Production PyPI
 
-Identical to TestPyPI stage but publishes to production.
+Builds and checks the package again, then publishes to production PyPI. There is no install check.
 
 **Environment**: `pypi` (5-minute wait timer + required reviewer approval)
 
-Both stages use `attestations: false` and SHA-pinned actions. Version is extracted from the release tag (strips `v` prefix).
+Both stages use SHA-pinned actions. Neither sets the publish action's `attestations` input, so the pinned `pypa/gh-action-pypi-publish` (v1.14.3) uses its default, `true`: under Trusted Publishing each upload carries PEP 740 attestations. Only the TestPyPI install check reads the version from the release tag (with a leading `v` stripped); the build takes it from `pyproject.toml`.
 
 The `notify-consumers` job runs only after `pypi` succeeds. A failed notification does not unpublish the release. See the next section.
 

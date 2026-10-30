@@ -82,15 +82,20 @@ A run that passes the phrase check and then finds `ANTHROPIC_API_KEY` empty thro
 |-----|-----------|--------|-----------|---------|
 | `pre-commit` | -- | 3.12, 3.13, 3.14 | Always | Code quality (ruff, mypy, bandit) |
 | `docs` | -- | 3.12 | Always | Markdown link validation |
-| `unit-tests` | pre-commit | 3.12, 3.13, 3.14 | Always | Unit tests with coverage |
+| `async-route-audit` | -- | 3.12 | Always | `ruff check --select ASYNC` over `juniper_data/` |
+| `unit-tests` | pre-commit | 3.12, 3.13, 3.14 on Ubuntu; 3.12 on macOS | Always | Unit tests with the coverage gates |
 | `build` | unit-tests | 3.14 | Always | Package build verification |
 | `dependency-docs` | build | 3.14 | Always | Dependency documentation |
 | `integration-tests` | unit-tests | 3.14 | PRs or main/develop | Integration workflow tests |
-| `security` | pre-commit | 3.14 | Always | Gitleaks + Bandit + pip-audit |
+| `security` | pre-commit | 3.12 | Always | Gitleaks + Bandit SARIF + pip-audit |
 | `lockfile-check` | -- | 3.14 | Always | Lockfile freshness validation |
-| `required-checks` | All above | -- | `always()` | Quality gate aggregator |
+| `docker-build` | build | -- | PRs or main/develop | Image build, container start, import and `/v1/health` check |
+| `memory-budget` | -- | 3.14 | PRs | `AGENTS.md` character ceiling (`util/memory_budget_check.py`) |
+| `required-checks` | pre-commit, unit-tests, build, dependency-docs, integration-tests, security, docs, lockfile-check, docker-build | -- | `always()` | Quality gate aggregator |
 | `slow-tests` | -- | 3.14 | Schedule/dispatch | Long-running tests |
 | `notify` | required-checks | -- | `always()` | Build notification |
+
+`async-route-audit`, `memory-budget` and `slow-tests` are not in the Quality Gate's `needs:`. The first two are required contexts in their own right, and so is `Slow Tests`, which a pull request reports as skipped.
 
 ### publish.yml Jobs
 
@@ -123,12 +128,13 @@ Defaults left in place: health path `/v1/health` (version field required), no en
 | Repository | Version | Hooks |
 |-----------|---------|-------|
 | `pre-commit/pre-commit-hooks` | v6.0.0 | File checks (11 hooks) |
-| `astral-sh/ruff-pre-commit` | v0.15.2 | ruff, ruff-format |
+| `astral-sh/ruff-pre-commit` | v0.15.2 | ruff, ruff-format, ruff `--select ASYNC` (alias `ruff-async-audit`) |
 | `pre-commit/mirrors-mypy` | v1.13.0 | mypy (2 hooks) |
-| `PyCQA/bandit` | v1.7.9 | bandit |
+| `PyCQA/bandit` | 1.9.4 | bandit |
 | `adrienverge/yamllint` | v1.35.1 | yamllint |
+| `igorshubovych/markdownlint-cli` | v0.42.0 | markdownlint |
 | `shellcheck-py/shellcheck-py` | v0.10.0.1 | shellcheck |
-| Local | -- | coverage-check, no-unencrypted-env |
+| Local | -- | juniper-check-doc-links, coverage-check (pre-push), no-unencrypted-env, require-requirements-lock |
 
 ### Hook File Patterns
 
@@ -139,6 +145,7 @@ Defaults left in place: health path `/v1/health` (version field required), no en
 | mypy (prod) | `^juniper_data/(?!tests/).*\.py$` | Test files |
 | mypy (test) | `^juniper_data/tests/.*\.py$` | -- |
 | bandit | `^juniper_data/(?!tests).*\.py$` | Test files |
+| markdownlint | `\.(md\|markdown)$` | `CHANGELOG.md`, `notes/`, `docs/`, `history/`, `.serena/` |
 | shellcheck | Shell scripts | `last_mod_update-ORIG.bash$`, `last_mod_update-local.bash$`, `no_canopy.bash$` |
 | no-unencrypted-env | `^\.env(\.secrets)?$` | -- |
 
@@ -159,8 +166,8 @@ From `pyproject.toml`:
 
 | Setting | Value |
 |---------|-------|
-| `line-length` | 120 |
-| `target-version` | `"py311"` |
+| `line-length` | 320 (ruff 0.15 caps it there; the ecosystem's 512 cannot be set, and `E501` is ignored, so it governs only the formatter) |
+| `target-version` | `"py312"` |
 
 ### Lint Rules
 

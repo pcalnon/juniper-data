@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A failed Bandit SARIF upload, or a missing SARIF, now fails `Security Scans` on a pull request (owner ruling
+  2026-10-30).** `.github/workflows/ci.yml`'s upload step is `continue-on-error: ${{ github.event_name != 'pull_request' }}`,
+  as in juniper-cascor#735, and on a PR it runs even when bandit wrote no SARIF. The required `Bandit` check is created
+  by code scanning from that upload, so before this a failed upload, or a bandit that wrote no file
+  (juniper-canopy#780's failure), left the PR waiting for a context that never posted while `Security Scans` stayed
+  green. Every other event keeps the old tolerance: the `hashFiles` guard skips the step when there is no SARIF, and a
+  failed upload leaves the job green. `docs/REFERENCE.md` § GitHub Actions Workflows says so. Found in the 2026-10-08
+  flood-3 disposition (juniper-ml `notes/JUNIPER_2026-10-08_JUNIPER-ECOSYSTEM_CURSOR-FLOOD-3-DISPOSITION.md` §8).
 - **`notify-consumers.yml` tells juniper-canopy about a release too.** The matrix is
   `[juniper-recurrence, juniper-canopy]`: canopy's `juniper-data Schema Drift` workflow (juniper-canopy#777,
   merged 2026-10-27) listens for `juniper-data-published`, sets no `run-name:`, and checks the released
@@ -75,6 +83,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`scripts/check_module_coverage.py` no longer prints `PASS: All N modules >= 85.0%` right after listing modules
+  below 85%.** The per-module threshold only warns, so when any module was warned the closing line now reads
+  `PASS: aggregate >= 80.0%; K of N modules below 85.0% (warned above, not enforced)`. Exit codes are unchanged.
+  Left over from juniper-data#500.
+- **The CI/CD documentation's other stale lines, left over from juniper-data#500.**
+  - `docs/ci_cd/CICD_MANUAL.md`: the trigger matrix no longer says `ci.yml` runs on feature/fix pushes (removed
+    2026-08-13). The job graph and count cover all 14 jobs, with new sections for `async-route-audit`, `docker-build`
+    and `memory-budget`. The `docs` job runs `juniper-check-doc-links`, not the removed `scripts/check_doc_links.py`.
+    The publish stages read as they run: neither sets `attestations`, so the pinned action's default (`true`)
+    applies; the TestPyPI check reads the installed version instead of importing; and the PyPI stage has no install
+    check.
+  - `docs/ci_cd/CICD_REFERENCE.md`: the jobs table adds `async-route-audit`, `docker-build`, `memory-budget` and the
+    macOS leg, gives `security` Python 3.12, and names the Quality Gate's nine `needs:`. The hook table gives bandit
+    1.9.4 and adds markdownlint and the two missing local hooks. Ruff's settings are 320 and `py312`.
+  - `docs/ci_cd/CICD_QUICK_START.md`: step 4 runs the CI docs job's `juniper-check-doc-links` command.
+  - `.github/workflows/ci.yml`: a comment no longer says the removed inline link checker is kept as a revert path.
 - **The Quality Gate no longer reads a cancelled conditional lane as a pass**
   (`.github/workflows/ci.yml`; juniper-ml
   `notes/JUNIPER_2026-10-08_JUNIPER-ECOSYSTEM_CURSOR-FLOOD-3-DISPOSITION.md` §4).
