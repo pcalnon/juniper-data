@@ -253,11 +253,11 @@ From `pyproject.toml`:
 
 ## GitHub Actions Pinned Versions
 
-Every third-party action is pinned to a full commit SHA, with its release in a `# vX.Y.Z` comment on the `uses:` line, with one exception: `agents-md-touch-up.yml` checks out with `actions/checkout@v7.0.1`, a tag. The table was re-derived on 2026-10-29 from all 14 files in `.github/workflows/` at `95ce8190`, and each SHA is the commit its commented tag resolves to (`gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`). `publish.yml` also calls `./.github/workflows/notify-consumers.yml`, a reusable workflow in this repository, which takes no pin. `notify-consumers.yml`, `pr-base-branch-guard.yml` and `pr-budget-alarm.yml` use no action.
+Every third-party action is pinned to a full commit SHA, with its release in a `# vX.Y.Z` comment on the `uses:` line. `agents-md-touch-up.yml` was the one exception, checking out with the `actions/checkout@v7.0.1` tag, until 2026-11-01. The table was re-derived on 2026-10-29 from all 14 files in `.github/workflows/` at `95ce8190`, and each SHA is the commit its commented tag resolves to (`gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`). `publish.yml` also calls `./.github/workflows/notify-consumers.yml`, a reusable workflow in this repository, which takes no pin. `notify-consumers.yml`, `pr-base-branch-guard.yml` and `pr-budget-alarm.yml` use no action.
 
 | Action | Version | SHA | Used in |
 |--------|---------|-----|---------|
-| `actions/checkout` | v7.0.1 | `3d3c42e5aac5ba805825da76410c181273ba90b1` | `ci.yml`, `claude.yml`, `codeql.yml`, `lockfile-update.yml`, `main-verify.yml`, `publish-image.yml`, `publish.yml`, `scheduled-tests.yml`, `security-scan.yml`, `sequence-safety.yml`. `agents-md-touch-up.yml` uses the `v7.0.1` tag |
+| `actions/checkout` | v7.0.1 | `3d3c42e5aac5ba805825da76410c181273ba90b1` | `agents-md-touch-up.yml`, `ci.yml`, `claude.yml`, `codeql.yml`, `lockfile-update.yml`, `main-verify.yml`, `publish-image.yml`, `publish.yml`, `scheduled-tests.yml`, `security-scan.yml`, `sequence-safety.yml` |
 | `actions/setup-python` | v7.0.0 | `5fda3b95a4ea91299a34e894583c3862153e4b97` | `ci.yml`, `lockfile-update.yml`, `main-verify.yml`, `publish.yml`, `scheduled-tests.yml`, `security-scan.yml`, `sequence-safety.yml` |
 | `actions/cache` | v6.1.0 | `55cc8345863c7cc4c66a329aec7e433d2d1c52a9` | `ci.yml` |
 | `actions/upload-artifact` | v7.0.2 | `cf430e030ddbb5b0abf93d22962f4752f3646cd9` | `ci.yml`, `main-verify.yml`, `publish-image.yml`, `scheduled-tests.yml`, `security-scan.yml`, `sequence-safety.yml` |

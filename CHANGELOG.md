@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`make coverage` runs CI's per-file coverage gate too, so it can now fail where it used to pass (owner ruling
+  2026-11-01).** `util/run_coverage.bash` (0.2.0) adds `--cov-report=json:reports/coverage.json` to the unit-lane run.
+  After the aggregate gate and `scripts/check_module_coverage.py`'s advisory listing, it runs
+  `juniper-coverage-gap-map --coverage-json reports/coverage.json --enforce`, the `Unit Tests + Coverage` step: 90%
+  statement coverage per file, 95% pooled per sub-module.
+  - **The tool.** `juniper-ci-tools` is not a project dependency. When `juniper-coverage-gap-map` is not on `PATH`, the
+    script exits 2 before the tests and names CI's pin, `pip install "juniper-ci-tools>=0.9.0,<0.10.0"`.
+  - **The docs.** `Makefile`, `AGENTS.md` and `docs/REFERENCE.md` § Coverage Gates said it skipped the per-file gate,
+    and now say it runs it.
+  - **Measured locally.**
+    - Without the tool on `PATH`, the script exits 2 at once and runs no test.
+    - With `juniper-ci-tools` 0.9.1 on `PATH`, the whole script exits 0 in 114 s. The results: 2,213 tests passed,
+      aggregate 97.82%, and `Enforcing gate: PASS  (per-file statement >= 90.0%, sub-module pooled >= 95.0%)`.
+  - **Where it was found.** juniper-data#500's lane, carried in juniper-ml's flood-3 record
+    (`notes/JUNIPER_2026-10-08_JUNIPER-ECOSYSTEM_CURSOR-FLOOD-3-DISPOSITION.md` §4).
+- **`agents-md-touch-up.yml` pins `actions/checkout` to a commit SHA (owner ruling 2026-11-01).** It checked out with
+  the `v7.0.1` tag, the one exception to the SHA pins in `.github/workflows/`. It now uses
+  `3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1`, the SHA that tag resolves to and the one the other workflows
+  use. `docs/ci_cd/CICD_REFERENCE.md` drops the exception and lists the workflow in the pin table. The same tag pin
+  stands in the other seven repositories' copies of this workflow, juniper-ml's included; this change is
+  juniper-data's alone.
 - **A failed Bandit SARIF upload, or a missing SARIF, now fails `Security Scans` on a pull request (owner ruling
   2026-10-30).** `.github/workflows/ci.yml`'s upload step is `continue-on-error: ${{ github.event_name != 'pull_request' }}`,
   as in juniper-cascor#735, and on a PR it runs even when bandit wrote no SARIF. The required `Bandit` check is created
