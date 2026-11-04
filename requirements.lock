@@ -47,7 +47,7 @@ fastapi==0.162.0
     #   juniper-data (pyproject.toml)
     #   juniper-service-core
     #   sentry-sdk
-filelock==4.2.6
+filelock==4.2.8
     # via
     #   datasets
     #   huggingface-hub
@@ -93,8 +93,6 @@ multidict==7.2.1
     #   yarl
 multiprocess==0.70.19
     # via datasets
-multitasking==0.0.13
-    # via yfinance
 numpy==2.5.4
     # via
     #   juniper-data (pyproject.toml)
@@ -117,7 +115,7 @@ peewee==4.5.3
     # via yfinance
 pillow==13.0.0
     # via datasets
-platformdirs==4.14.3
+platformdirs==4.14.4
     # via yfinance
 prometheus-client==0.26.0
     # via juniper-data (pyproject.toml)
@@ -127,7 +125,7 @@ propcache==0.5.4
     #   yarl
 protobuf==7.36.2
     # via yfinance
-pyarrow==26.0.0
+pyarrow==26.0.1
     # via datasets
 pycparser==3.12
     # via cffi
@@ -162,7 +160,7 @@ requests==2.34.2
     # via yfinance
 sentry-sdk==2.73.0
     # via juniper-data (pyproject.toml)
-soupsieve==3.0.4
+soupsieve==4.0
     # via beautifulsoup4
 starlette==1.10.0
     # via
@@ -213,5 +211,5 @@ xxhash==4.0.2
     # via datasets
 yarl==1.25.1
     # via aiohttp
-yfinance==1.7.0
+yfinance==1.8.0
     # via juniper-data (pyproject.toml)
