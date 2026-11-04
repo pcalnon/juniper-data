@@ -2,9 +2,9 @@
 
 ## juniper-data CI/CD Jobs, Hooks, and Configuration
 
-**Version:** 0.4.3
+**Version:** 0.4.8
 **Status:** Active
-**Last Updated:** October 8, 2026
+**Last Updated:** November 4, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -275,6 +275,12 @@ Every third-party action is pinned to a full commit SHA, with its release in a `
 
 Dependabot's `github-actions` updates move these pins (see [Dependabot Configuration](#dependabot-configuration)). After one lands, re-derive the table from `grep -rn "uses:" .github/workflows/`.
 
+### Gitleaks engine
+
+The `gitleaks/gitleaks-action` row is the action SHA (v3.0.0). The engine is a separate pin on that step, `GITLEAKS_VERSION: "8.24.3"`, which is also the version the action installs when the variable is unset. Scan ranges, the `[extend] useDefault = true` requirement, the AND-scoped conda `generic-api-key` allowlist, and the commit-scoped `.gitleaksignore` entries are in the [CI/CD manual](CICD_MANUAL.md#gitleaks-ruleset).
+
+`security-scan.yml` does not run Gitleaks. On `repository_dispatch`, `ci.yml` skips the step: the action exits on that event. The job's self-test runs `juniper_data/tests/unit/test_gitleaks_config.py` with `GITLEAKS_PARITY_REQUIRED=1` after the action has put the binary on `PATH`.
+
 ---
 
 ## Environment Variables
@@ -386,6 +392,6 @@ The `dependency-docs` job runs that command after `conda-incubator/setup-minicon
 
 ---
 
-**Last Updated:** October 8, 2026
-**Version:** 0.4.3
+**Last Updated:** November 4, 2026
+**Version:** 0.4.8
 **Maintainer:** Paul Calnon
