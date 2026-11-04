@@ -139,6 +139,8 @@ juniper-check-doc-links --exclude templates --exclude history --exclude legacy -
 
 **`@claude` in a pull-request title does nothing**: Comment on the PR, or put `@claude` in a submitted review body. The workflow does not subscribe to `pull_request`, so a title or body there never schedules it. The workflow `if` is a case-insensitive substring test, and the action then requires the phrase at a word boundary. A green log line `No trigger found, skipping remaining steps` means the job started and the action declined. See [claude.yml](CICD_MANUAL.md#claudeyml----claude-code).
 
+**`@claude` on a pull request fails with `was updated after the trigger`**: The head branch moved at or after the comment or submitted review. Mention `@claude` again once the commit you want is the tip, and leave the branch still while the job checks out. See [claude.yml](CICD_MANUAL.md#claudeyml----claude-code).
+
 ---
 
 ## Next Steps

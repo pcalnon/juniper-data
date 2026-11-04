@@ -337,7 +337,15 @@ This workflow does not set the OAuth token or the federation inputs, and it leav
 
 A phrase in a pull-request title or body never schedules the job: `on:` does not include `pull_request`. The action's default `label_trigger` is `claude`, and this workflow does not subscribe to `labeled`. The action accepts an edited review body; this workflow subscribes only to `submitted`.
 
-The action version is the `# vX.Y.Z` comment on the `uses:` line. Dependabot groups only `github/codeql-action*`, so a bump of `anthropics/claude-code-action` arrives as its own pull request.
+The action version is the `# vX.Y.Z` comment on the `uses:` line. Dependabot groups only `github/codeql-action*`, so a bump of `anthropics/claude-code-action` arrives as its own pull request. The pin in this tree is v1.0.265.
+
+On an open pull request that release checks out the head SHA the action loaded (`headRefOid`). The newest repository-activity timestamp on the head branch must be strictly earlier than the mention: `comment.created_at` for a comment, `review.submitted_at` for a submitted review. A push at or after that time fails the job, and the tracking comment is replaced with:
+
+```text
+PR #<n> was updated after the trigger (<pushedAt> >= <triggerTime>). Mention Claude again to run on the latest version.
+```
+
+Push the commit you want, then mention `@claude`, and leave the branch still until the job checks out. A fork pull request is checked out as the local branch `pr-<number>`; the activity read uses the head repository. Checkout, activity lookup, and the other error strings: [Open pull request checkout](CICD_REFERENCE.md#open-pull-request-checkout).
 
 Tables for events, permissions, and the secret are in [Claude Code Workflow](CICD_REFERENCE.md#claude-code-workflow).
 
@@ -487,6 +495,8 @@ uv pip compile pyproject.toml --extra api --extra observability --extra mnist --
 **`@claude` produced no reply**: Put the phrase in an issue comment, a pull-request review comment, a submitted review body, or the title or body of an issue when it is opened. Case does not matter (`@Claude` works); a word boundary does. A green run that logs `No trigger found, skipping remaining steps` means the action's word-boundary check rejected the phrase, or the event was an assignment. See [claude.yml](#claudeyml----claude-code).
 
 **`@claude` failed before a reply**: `Actor does not have write permissions to the repository` means the commenter lacks write. `Workflow initiated by non-human actor` means a bot; `allowed_bots` is unset. `Environment variable validation failed` naming `ANTHROPIC_API_KEY` means the secret was empty for this repo.
+
+**`@claude` on a pull request stops with `was updated after the trigger`**: The head commit's push time is at or after the mention. The tracking comment is that error. Push the commit you want, mention `@claude` again, and leave the branch still until the job checks out. `Could not determine when <sha> was pushed` means the newest activity on the head branch did not end at that SHA. See [Open pull request checkout](CICD_REFERENCE.md#open-pull-request-checkout).
 
 **TestPyPI publish fails**: Check that the release tag matches the version in `pyproject.toml`. Version is extracted by stripping the `v` prefix from the tag.
 
