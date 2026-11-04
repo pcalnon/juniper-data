@@ -2,9 +2,9 @@
 
 ## Comprehensive CI/CD Pipeline Guide for juniper-data
 
-**Version:** 0.4.3
+**Version:** 0.4.8
 **Status:** Active
-**Last Updated:** October 8, 2026
+**Last Updated:** November 4, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -173,15 +173,70 @@ Full workflow integration tests.
 
 #### Job: `security`
 
-Multi-tool security scanning.
+Multi-tool security scanning. Depends on `pre-commit`. Python 3.12.
 
-1. **Gitleaks**: Secret detection in repository history
+1. **Gitleaks**: Secret detection. The ruleset, the engine pin, and which commits each event scans are in [Gitleaks ruleset](#gitleaks-ruleset).
 2. **Bandit SAST**: Static security analysis with SARIF report
    - Blocking check: fails on medium+ severity and confidence
    - SARIF uploaded to GitHub Security tab
 3. **pip-audit**: Dependency vulnerability scanning
    - Filters out `juniper-data` packages (self-referencing)
    - Runs in `--strict` mode
+4. **Gitleaks config self-test**: `pytest juniper_data/tests/unit/test_gitleaks_config.py` with `GITLEAKS_PARITY_REQUIRED=1`, after pip-audit. Skipped on `repository_dispatch`.
+
+#### Gitleaks ruleset
+
+Secret detection inside the `security` job. The weekly `security-scan.yml` workflow does not run Gitleaks.
+
+The step is `gitleaks/gitleaks-action` at `e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e` (v3.0.0). `GITLEAKS_VERSION` is `8.24.3`, which is also the version that action uses when the variable is unset (`src/index.js` at that SHA). The variable is set so a later action SHA cannot change the engine on its own. `juniper_data/tests/unit/test_gitleaks_config.py` reads the pin from `ci.yml`.
+
+The action accepts `push`, `pull_request`, `workflow_dispatch`, and `schedule`, and exits on any other event. `ci.yml` also runs on `repository_dispatch`, so this step and the self-test are both skipped when `github.event_name` is `repository_dispatch`.
+
+The job checks out with `fetch-depth: 0`. In `actions/checkout` v7.0.1 that input fetches all history for all branches and tags. The range the action then passes to gitleaks depends on the event (`src/index.js` and `src/gitleaks.js` at the pinned SHA; gitleaks 8.24.3 `sources/git.go` when `--log-opts` is absent):
+
+| Event | What is scanned |
+|-------|-----------------|
+| `push` with an empty `commits` array | Nothing. The action exits 0. |
+| `push` of one commit | `git log -1` on the checked-out tip. |
+| `push` of several commits | `--no-merges --first-parent <first>^..<last>`, where `<first>` and `<last>` are the first and last SHAs in the push payload. |
+| `pull_request` | The same `--no-merges --first-parent` range across the pull request's commit list, first SHA through last. A finding is posted as a review comment unless `GITLEAKS_ENABLE_COMMENTS` is `false`. The fingerprint in that comment is `<commit>:<file>:<rule>:<line>`. |
+| `schedule`, `workflow_dispatch` | No `--log-opts`. Gitleaks 8.24.3 then runs `git log -p -U0 --full-history --all`: every commit in that full checkout. |
+
+`BASE_REF`, when set, replaces the start commit of a `push` or `pull_request` range.
+
+The action passes no `--config` and sets neither config variable. Precedence in 8.24.3 (`cmd/root.go`) is `--config`, then `GITLEAKS_CONFIG` (a path), then `GITLEAKS_CONFIG_TOML` (the TOML text itself), then `<source>/.gitleaks.toml`. The real-engine tests unset both variables so they exercise that last file. A missing `.gitleaks.toml` loads the built-in ruleset. A file that is present replaces it.
+
+The action looks up the repository owner. An organization owner has to set `GITLEAKS_LICENSE` or the step exits 1. A user owner skips that check. This workflow does not set the secret; juniper-data is user-owned.
+
+**Default ruleset.** `[extend] useDefault = true` is what loads gitleaks' built-in rules. A v8 file with no `[extend]` table loads only the `[[rules]]` written in it. Until 2026-10-25 this file had an `[allowlist]` and no `[[rules]]`, so the step ran with zero rules and a planted token could not fail it. The file now also has a `generic-api-key` entry with no regex of its own. Removing `[extend]` while that entry remains makes gitleaks refuse the config (`generic-api-key: both regex and path are empty`) and the step fails. The zero-rule pass returns when the file is still present and both the table and that rule are gone. The real-engine test builds a `github-pat`-shaped value at runtime and requires that rule to fire through the auto-discovered config.
+
+**Allowlists stay narrow.** In gitleaks 8.24.3 the global `[allowlist]` is OR-only (`condition` is not read there), so a path on it exempts every rule in that file. A top-level `[[allowlists]]` table and a `targetRules` key are both dropped by the loader. The global list in this repo names one historical commit, `4bd37a6c7057e7380cd4470fcc717a76289fa193`, an ARC-AGI public identifier that was later removed.
+
+Conda build strings are the class that comes back on every environment refresh. A spec line is `<package>=<version>=<build>`. `generic-api-key` treats `api` or `key` inside the package name as a key name, and the secret it captures is `<version>=<build>`. A commit-scoped ignore entry cannot name the commit a future refresh will create. `.gitleaks.toml` therefore adds one `[[rules]]` entry with `id = "generic-api-key"` and no `regex` of its own. `extend()` merges that entry into the default rule and keeps the default regex, entropy, keywords, and allowlists. The added allowlist has `condition = "AND"`, so a finding is dropped only when both halves match:
+
+- the path matches one of the two regexes in the file: `conf/conda_environment*.yaml` or `.yml`, or `conf/requirements-conda.txt`
+- the whole secret matches the file's regex: a version that starts with a digit, `=`, then a conda build string of the form `h<7 hex>_<n>`, `pyh<7 hex>_<n>`, or `py<digits>h<7 hex>_<n>`
+
+A secret of any other shape in those files still fires. The same spec line outside those paths still fires. Every other rule, including `github-pat`, still fires inside a conda file. The real-engine cases in `test_gitleaks_config.py` pin all three.
+
+**Ignore file.** Each `.gitleaksignore` entry is `<40-hex commit>:<file>:<rule>:<line>`. The nearest non-entry line above a group is a comment that names the class. A file-scoped entry (`<file>:<rule>:<line>`) would also hide a later secret on that line, and the test rejects it. A pull-request fingerprint from the action already includes the commit; keep that prefix when you append the line.
+
+**Self-test.** pip-audit's `.[all]` install is what puts pytest on the runner. After that install, on every event except `repository_dispatch`, the job runs:
+
+```bash
+GITLEAKS_PARITY_REQUIRED=1 python -m pytest juniper_data/tests/unit/test_gitleaks_config.py -v
+```
+
+The binary is the one the action placed on `PATH`. With `GITLEAKS_PARITY_REQUIRED=1`, a missing binary fails the step. The unit-test job runs the same file and skips the real-engine cases when `gitleaks` is absent.
+
+Local commands, both of which discover the two files at the repo root:
+
+```bash
+gitleaks git --redact .
+gitleaks dir --redact .
+```
+
+`git` scans history. `dir` scans the working tree, including gitignored files. The action still invokes the deprecated `detect` subcommand; on 8.24.3 that subcommand uses the same `git log` path as `git`.
 
 #### Job: `lockfile-check`
 
@@ -481,6 +536,12 @@ uv pip compile pyproject.toml --extra api --extra observability --extra mnist --
 ```
 
 **Dependabot PR and `requirements.lock`**: A `python-minor` PR can edit only `conf/requirements*.txt` and still receive `[dependabot skip] Update requirements.lock`. That commit is the `--upgrade` resolution of `pyproject.toml`, so its pins can differ from `conf/requirements_ci.txt`. When the commit is missing, open the Update Lockfile run. A notice that `CROSS_REPO_DISPATCH_TOKEN` is unavailable means the PAT is missing from the Dependabot secret store; the job stays green and `lockfile-check` still enforces freshness. See [Dependency Update Workflow](../../notes/DEPENDENCY_UPDATE_WORKFLOW.md).
+
+**Gitleaks stays green on a token you planted**: The step did not load the built-in ruleset, or the event's range did not include that commit. `.gitleaks.toml` has to keep `[extend] useDefault = true`. `GITLEAKS_CONFIG` (a path) and `GITLEAKS_CONFIG_TOML` (TOML text) are used instead of the file in the tree when either is set. A `push` whose payload has an empty `commits` array exits 0 without scanning. A `repository_dispatch` run skips the step. A present config with no `[extend]` table and no `[[rules]]` is the zero-rule pass; removing only `[extend]` from the current file fails the step, because the conda `generic-api-key` entry has no regex. See [Gitleaks ruleset](#gitleaks-ruleset).
+
+**A conda environment refresh fails `generic-api-key`**: The new line sits outside the two path regexes, or the captured secret is not `<version>=<build>` in the three build-string shapes in [Gitleaks ruleset](#gitleaks-ruleset). Leave those paths off the global `[allowlist]`; a path there would exempt every rule in the file. A one-off historical finding is a commit-scoped `.gitleaksignore` line under a class comment. The AND allowlist is what covers the next refresh of a matching build string.
+
+**Gitleaks config self-test fails before collection**: `GITLEAKS_PARITY_REQUIRED=1` is set and no `gitleaks` binary is on `PATH`. The action step is what installs the pinned 8.24.3 binary. The unit-test job is allowed to skip the real-engine cases when the binary is absent.
 
 **CodeQL findings**: Review them in the GitHub Security tab. They are not part of the Quality Gate job (`codeql.yml` is its own workflow), but they do block the merge. The `main` ruleset (`juniper-data-rules`) has a `code_scanning` rule for CodeQL and Bandit that blocks a pull request on an alert of severity `error`, or a security alert of severity `high` or `critical` (thresholds `errors` and `high_or_higher`). `Analyze (python)` is a required check, and the ruleset requires review threads to be resolved, so an open code-scanning comment on the diff blocks too. Check the thresholds with `gh api repos/pcalnon/juniper-data/rulesets/14748749 --jq '.rules[] | select(.type == "code_scanning")'`.
 
