@@ -1,32 +1,22 @@
-"""Rehearse the publish-manifest checks in ``publish-image.yml``.
+"""Rehearse the tag gates in the Publish manifest job, not the digest-identity shell.
 
-The merge job is the only place a tag is written. Four fail-closed edges in its
-own shell are what keep a tag from pointing at something other than the images
-the build jobs verified:
+``publish-image.yml``'s merge job is the only place a tag is written. The
+identity shell — an index digest resolves to the linux image it carries — is
+pinned on its own. Three neighboring gates in the same job are not, and each
+one used to be able to publish the wrong thing while the job stayed green:
 
-* an empty metadata tag set is refused before ``imagetools create``
-* the published list must contain linux/amd64 and linux/arm64, and nothing else
-  counts toward that pair
-* a release must produce an ``X.Y.Z`` tag; ``latest`` alone is not one
-* the list's linux digests must be exactly the image manifests the pushed
-  digests resolve to
+* metadata-action produced no tags, and ``imagetools create`` with no ``-t``
+  failed with docker's error instead of naming the event
+* the manifest list existed but did not contain both linux/amd64 and
+  linux/arm64 (a windows entry must not count as the missing arch)
+* a release whose semver rules matched nothing still applied ``:latest``, and
+  metadata-action only warns when a tag does not parse
 
-That last comparison is the one that used to fail every publish. With
-provenance attestations on (the build-push-action default) the digest a build
-job pushes is a per-arch OCI index, and ``imagetools create`` flattens it, so
-the tag's list cites the image manifests inside those indexes. Comparing the
-list to the pushed index digests directly does not match (worker dispatch run
-34292278641, 2026-09-08). A pushed digest that is already an image manifest has
-no ``.manifests`` and stands for itself. An index that carries more than one
-linux image, or a linux image for the other arch, is not "the image this build
-verified".
-
-The tests execute the workflow's own ``run:`` blocks under ``bash -eo pipefail``,
-which is how GitHub runs a ``run:`` step that names no ``shell:``. ``docker`` is
-a stub that prints fixture manifests; ``jq`` is the real binary, so the filters
-are the workflow's. Scratch paths the workflow hardcodes under ``/tmp`` are
-relocated into the test's temporary directory. This repo does not write fixtures
-under ``/tmp``.
+The tests execute those ``run:`` blocks under ``bash -eo pipefail``, which is
+how GitHub runs a ``run:`` step that names no ``shell:``. ``docker`` is a stub;
+``jq`` is the real binary. Scratch paths the workflow hardcodes under ``/tmp``
+are relocated into the test's temporary directory. This repo does not write
+fixtures under ``/tmp``.
 """
 
 from __future__ import annotations
@@ -45,15 +35,8 @@ pytestmark = [pytest.mark.unit]
 REPO = Path(__file__).resolve().parents[3]
 _WORKFLOW = REPO / ".github" / "workflows" / "publish-image.yml"
 _IMAGE = "ghcr.io/pcalnon/juniper-data"
-
-# Chosen so filename order (amd64, then arm64) is the opposite of digest sort
-# order (aaa, then fff). Dropping either sort then fails the identity check.
-_AMD_IMAGE = "sha256:fff"
-_ARM_IMAGE = "sha256:aaa"
 _AMD_INDEX = "sha256:111"
 _ARM_INDEX = "sha256:222"
-_WINDOWS = "sha256:eee"
-_ATTESTATION = "sha256:ddd"
 
 _EXPRESSIONS = {
     "${{ github.event_name }}": "workflow_dispatch",
@@ -91,25 +74,6 @@ def _script(name: str) -> str:
     return script
 
 
-def _linux(digest: str, arch: str) -> dict[str, Any]:
-    return {"digest": digest, "platform": {"architecture": arch, "os": "linux"}}
-
-
-def _published(*digests: tuple[str, str], windows: bool = True) -> dict[str, Any]:
-    manifests = [_linux(digest, arch) for digest, arch in digests]
-    if windows:
-        manifests.append({"digest": _WINDOWS, "platform": {"architecture": "amd64", "os": "windows"}})
-    return {"manifests": manifests}
-
-
-def _index(arch: str, image: str, *, attest: bool = False) -> dict[str, Any]:
-    manifests: list[dict[str, Any]] = []
-    if attest:
-        manifests.append({"digest": _ATTESTATION, "platform": {"architecture": "unknown", "os": "unknown"}})
-    manifests.append(_linux(image, arch))
-    return {"manifests": manifests}
-
-
 def _write_digest_files(root: Path, digests: dict[str, str]) -> None:
     directory = root / "digests"
     directory.mkdir(parents=True, exist_ok=True)
@@ -117,14 +81,12 @@ def _write_digest_files(root: Path, digests: dict[str, str]) -> None:
         (directory / arch).write_text(digest + "\n", encoding="utf-8")
 
 
-def _docker_stub(root: Path, inspect_by_digest: dict[str, Any], tag_manifest: dict[str, Any] | None) -> Path:
-    """A ``docker`` that prints fixture JSON for ``imagetools inspect`` and records every argv."""
+def _docker_stub(root: Path, tag_manifest: dict[str, Any] | None) -> Path:
+    """A ``docker`` that prints one fixture for a tag inspect and records every argv."""
     bindir = root / "bin"
     bindir.mkdir()
     fixdir = root / "fixtures"
     fixdir.mkdir()
-    for digest, body in inspect_by_digest.items():
-        (fixdir / digest).write_text(json.dumps(body), encoding="utf-8")
     if tag_manifest is not None:
         (fixdir / "TAG").write_text(json.dumps(tag_manifest), encoding="utf-8")
     log = root / "docker.log"
@@ -135,22 +97,10 @@ printf '%s\\n' "$*" >> {json.dumps(str(log))}
 if [ "$1" = "buildx" ] && [ "$2" = "imagetools" ] && [ "$3" = "create" ]; then
   exit 0
 fi
-if [ "$1" = "run" ]; then
-  exit 0
-fi
 if [ "$1" = "buildx" ] && [ "$2" = "imagetools" ] && [ "$3" = "inspect" ]; then
-  ref="$4"
-  case "$ref" in
-    *@*)
-      digest="${{ref##*@}}"
-      fixture={json.dumps(str(fixdir))}/"$digest"
-      ;;
-    *)
-      fixture={json.dumps(str(fixdir))}/TAG
-      ;;
-  esac
+  fixture={json.dumps(str(fixdir))}/TAG
   if [ ! -f "$fixture" ]; then
-    printf 'no fixture for %s\\n' "$ref" >&2
+    printf 'no tag fixture\\n' >&2
     exit 1
   fi
   cat "$fixture"
@@ -183,15 +133,11 @@ def _run(
     *,
     tags: list[str],
     digests: dict[str, str] | None = None,
-    manifest: dict[str, Any] | None = None,
-    inspect_by_digest: dict[str, Any] | None = None,
     tag_manifest: dict[str, Any] | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
     if digests is not None:
         _write_digest_files(tmp_path, digests)
-    if manifest is not None:
-        (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    log = _docker_stub(tmp_path, inspect_by_digest or {}, tag_manifest)
+    log = _docker_stub(tmp_path, tag_manifest)
     env = {
         "PATH": f"{tmp_path / 'bin'}{os.pathsep}/usr/bin:/bin",
         "HOME": str(tmp_path),
@@ -212,107 +158,6 @@ def _run(
     )
     lines = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
     return proc, lines
-
-
-def _index_world() -> tuple[dict[str, str], dict[str, Any], dict[str, Any]]:
-    """Pushed indexes that flatten to image digests, plus the tag's manifest list."""
-    digests = {"amd64": _AMD_INDEX, "arm64": _ARM_INDEX}
-    inspect = {
-        _AMD_INDEX: _index("amd64", _AMD_IMAGE, attest=True),
-        _ARM_INDEX: _index("arm64", _ARM_IMAGE),
-    }
-    # fff before aaa: the array order is not the sorted order.
-    manifest = _published((_AMD_IMAGE, "amd64"), (_ARM_IMAGE, "arm64"))
-    return digests, inspect, manifest
-
-
-class TestDigestIdentity:
-    """The tag's linux digests are the image manifests inside the pushed indexes."""
-
-    def test_an_index_matches_the_image_it_carries_not_itself(self, tmp_path: Path) -> None:
-        digests, inspect, manifest = _index_world()
-        # Vacuity: the pushed digests and the listed image digests are different sets.
-        assert {_AMD_INDEX, _ARM_INDEX}.isdisjoint({_AMD_IMAGE, _ARM_IMAGE})
-        proc, docker = _run(
-            tmp_path,
-            _script("Verify published image is CPU-only"),
-            tags=[f"{_IMAGE}:1.2.3"],
-            digests=digests,
-            manifest=manifest,
-            inspect_by_digest=inspect,
-        )
-        assert proc.returncode == 0, proc.stdout + proc.stderr
-        assert "references exactly the verified images" in proc.stdout
-        assert any("imagetools inspect" in line and _AMD_INDEX in line for line in docker)
-        assert any(line.startswith("run ") and "EXPECT_TORCH=absent" in line for line in docker)
-
-    def test_a_bare_image_manifest_stands_for_itself(self, tmp_path: Path) -> None:
-        """Provenance off: inspect returns no ``.manifests``, so the pushed digest is the image."""
-        bare = {"schemaVersion": 2}
-        assert "manifests" not in bare
-        proc, docker = _run(
-            tmp_path,
-            _script("Verify published image is CPU-only"),
-            tags=[f"{_IMAGE}:1.2.3"],
-            digests={"amd64": _AMD_IMAGE, "arm64": _ARM_IMAGE},
-            manifest=_published((_AMD_IMAGE, "amd64"), (_ARM_IMAGE, "arm64")),
-            inspect_by_digest={_AMD_IMAGE: bare, _ARM_IMAGE: bare},
-        )
-        assert proc.returncode == 0, proc.stdout + proc.stderr
-        assert any("imagetools inspect" in line and _AMD_IMAGE in line for line in docker)
-
-    def test_two_linux_images_in_one_index_fail(self, tmp_path: Path) -> None:
-        digests, inspect, manifest = _index_world()
-        inspect[_AMD_INDEX] = {"manifests": [_linux(_AMD_IMAGE, "amd64"), _linux("sha256:ccc", "amd64")]}
-        proc, docker = _run(
-            tmp_path,
-            _script("Verify published image is CPU-only"),
-            tags=[f"{_IMAGE}:1.2.3"],
-            digests=digests,
-            manifest=manifest,
-            inspect_by_digest=inspect,
-        )
-        assert proc.returncode == 1, proc.stdout + proc.stderr
-        assert "expected exactly one" in proc.stdout
-        assert "amd64" in proc.stdout
-        assert not any(line.startswith("run ") for line in docker)
-
-    def test_an_index_for_the_wrong_architecture_fails(self, tmp_path: Path) -> None:
-        digests, inspect, manifest = _index_world()
-        inspect[_AMD_INDEX] = _index("arm64", _AMD_IMAGE)
-        proc, _docker = _run(
-            tmp_path,
-            _script("Verify published image is CPU-only"),
-            tags=[f"{_IMAGE}:1.2.3"],
-            digests=digests,
-            manifest=manifest,
-            inspect_by_digest=inspect,
-        )
-        assert proc.returncode == 1, proc.stdout + proc.stderr
-        assert "expected exactly one" in proc.stdout
-        assert "arm64" in proc.stdout
-
-    @pytest.mark.parametrize(
-        "listed",
-        [
-            [(_AMD_IMAGE, "amd64"), (_ARM_IMAGE, "arm64"), ("sha256:abc", "amd64")],
-            [(_ARM_IMAGE, "arm64")],
-        ],
-        ids=["extra", "missing"],
-    )
-    def test_a_list_that_is_not_the_resolved_set_fails(self, tmp_path: Path, listed: list[tuple[str, str]]) -> None:
-        digests, inspect, _manifest = _index_world()
-        proc, _docker = _run(
-            tmp_path,
-            _script("Verify published image is CPU-only"),
-            tags=[f"{_IMAGE}:1.2.3"],
-            digests=digests,
-            manifest=_published(*listed),
-            inspect_by_digest=inspect,
-        )
-        assert proc.returncode == 1, proc.stdout + proc.stderr
-        assert "manifest list references" in proc.stdout
-        assert _AMD_IMAGE in proc.stdout and _ARM_IMAGE in proc.stdout
 
 
 class TestArchitectures:
