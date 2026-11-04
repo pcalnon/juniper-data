@@ -1,8 +1,8 @@
 # Juniper Data Reference
 
-**Version:** 0.4.4
+**Version:** 0.4.5
 **Status:** Active
-**Last Updated:** October 26, 2026
+**Last Updated:** November 4, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -2258,7 +2258,7 @@ All 14 files in `.github/workflows/`, counted on `main` at `35658ff3` (2026-10-2
 
 | Workflow | File | Triggers | Purpose | Required contexts |
 |----------|------|----------|---------|-------------------|
-| **CI/CD Pipeline** | `ci.yml` | Push to `main` / `develop`; PR into `main` / `develop`; `repository_dispatch` `data-client-updated` (juniper-data-client's CI sends it after a push to its `main`); daily schedule (06:00 UTC); manual | Pre-commit (ruff, mypy, bandit, yamllint and more) on 3.12-3.14; unit tests with the coverage gates on Ubuntu 3.12-3.14 and macOS 3.12; build; dependency docs; integration tests; Gitleaks, Bandit SARIF and pip-audit; lockfile freshness; Docker build and smoke test; doc links; async-route audit; memory budget; Quality Gate; slow tests on scheduled and manual runs. See the notes below the table | 18, plus `Bandit` from code scanning (listed below the table). `Build Notification` is not required |
+| **CI/CD Pipeline** | `ci.yml` | Push to `main` / `develop`; PR into `main` / `develop`; `repository_dispatch` `data-client-updated` (juniper-data-client's CI sends it after a push to its `main`); daily schedule (06:00 UTC); manual | Pre-commit (ruff, mypy, bandit, yamllint and more) on 3.12-3.14; unit tests with the coverage gates on Ubuntu 3.12-3.14 and macOS 3.12; build; dependency docs; integration tests; Gitleaks, Bandit SARIF and pip-audit; lockfile freshness; Docker build and smoke test; Documentation Links (link check, workflow script paths, AGENTS.md version and header); async-route audit; memory budget; Quality Gate; slow tests on scheduled and manual runs. See the notes below the table | 18, plus `Bandit` from code scanning (listed below the table). `Build Notification` is not required |
 | **CodeQL Analysis** | `codeql.yml` | Push to `main` / `develop`; PR into `main`; weekly schedule (Monday 06:00 UTC) | CodeQL for Python with the `+security-and-quality` queries | `Analyze (python)`. The `CodeQL` check run that code scanning posts is not a required context; the ruleset's `code_scanning` rule covers the alerts instead |
 | **Scheduled Security Scan** | `security-scan.yml` | Weekly schedule (Monday 06:00 UTC); manual | Bandit over `juniper_data` (tests excluded): a SARIF report kept only as the `security-reports` run artifact (nothing is uploaded to code scanning), then a second pass at medium severity and confidence that fails the job on any finding; `pip-audit --strict --desc on` over a `.[all]` install. No Gitleaks. The pull-request Gitleaks, Bandit SARIF and pip-audit lane is `ci.yml`'s `Security Scans` | None |
 | **Publish to PyPI** | `publish.yml` | GitHub release `published` | Build and `twine check`; TestPyPI (`testpypi` environment) and an install check; then PyPI (`pypi` environment: the owner's review plus a 5-minute wait). Both by Trusted Publishing (OIDC). Then [notify consumers](#consumer-release-notification) | None |
@@ -2283,6 +2283,7 @@ The 22 required contexts, by source (ruleset read on 2026-10-27):
 
 Notes on `ci.yml`:
 
+- **`Documentation Links` is four commands.** `juniper-check-doc-links` (with the exclude list), then `juniper-lint-workflow-paths`, `juniper-lint-agents-md-version`, and `juniper-lint-agents-md-header` with no arguments. Pre-commit runs only the link check. The header lint checks that `**Last Updated**:` matches `YYYY-MM-DD`. Comparing that date with today, and refusing a pull request that edits `AGENTS.md` without changing the line, is `agents-md-touch-up.yml`. That workflow verifies and never commits, and it is not a required context. Contract: [Job: docs](ci_cd/CICD_MANUAL.md#job-docs).
 - **Not every required job runs on every event.** `Slow Tests` runs only on `schedule` and `workflow_dispatch`, so a pull request reports it `skipped`, and a skipped required check counts as passing. Where it runs, pytest's exit status is the job's: a failing slow test fails it, and so does a run that selects no test (pytest exit 5, with an `::error` annotation naming it), because a lane that runs nothing must not pass. The call used to end `|| echo "No slow tests found"`, which made the job unable to fail. The 2026-10-29 scheduled run selected 15 of 2,511 tests (`15 passed, 2496 deselected`). `Memory Budget` runs only on `pull_request`: its `merge_group` arm cannot fire, because this workflow declares no `merge_group` trigger. `Integration Tests` and `Docker Build & Smoke Test` run on pull requests and on runs whose ref is `main` or `develop`.
 - **The Quality Gate is one required context of 22.** Its `needs:` holds nine jobs. `Async-route audit (BUG-JD-10 class)`, `Memory Budget` and `Slow Tests` sit outside it and are required in their own right, like `Sequence Safety`.
 - **`Bandit` comes from the SARIF upload.** Code scanning posts it after it processes the SARIF that `Security Scans` uploads. On a pull request the upload step always runs and is not `continue-on-error`, so a failed upload, or a missing SARIF, turns `Security Scans` red with the cause in the step log, instead of leaving the PR waiting for a `Bandit` context that never posts (owner ruling 2026-10-30, after juniper-cascor#735). On every other event the step keeps its old tolerance: it is skipped when there is no SARIF, and a failed upload leaves the job green, so there a green `Security Scans` does not show that the upload landed. The ruleset's `code_scanning` rule covers Bandit and CodeQL alerts (alerts at `errors`, security alerts at `high_or_higher`).
@@ -2567,6 +2568,6 @@ git worktree prune
 
 ---
 
-**Last Updated:** October 26, 2026
-**Version:** 0.4.4
+**Last Updated:** November 4, 2026
+**Version:** 0.4.5
 **Maintainer:** Paul Calnon

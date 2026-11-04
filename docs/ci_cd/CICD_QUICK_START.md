@@ -2,9 +2,9 @@
 
 ## Run juniper-data CI Checks Locally in 5 Minutes
 
-**Version:** 0.4.3
+**Version:** 0.4.4
 **Status:** Active
-**Last Updated:** October 8, 2026
+**Last Updated:** November 4, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -115,6 +115,12 @@ juniper-coverage-gap-map --coverage-json reports/coverage.json --enforce   # pip
 
 # 4. Validate documentation links: the CI docs job's command (pip install juniper-doc-tools)
 juniper-check-doc-links --exclude templates --exclude history --exclude legacy --exclude pull_requests --exclude releases --exclude analysis --exclude fixes --exclude development --exclude CHANGELOG.md --exclude tmp --cross-repo skip
+
+# 5. The rest of Documentation Links. Pre-commit does not run these.
+pip install "juniper-ci-tools>=0.9.0,<0.10.0"
+juniper-lint-workflow-paths
+juniper-lint-agents-md-version
+juniper-lint-agents-md-header
 ```
 
 ---
@@ -128,6 +134,8 @@ juniper-check-doc-links --exclude templates --exclude history --exclude legacy -
 **MyPy import errors**: MyPy is configured with `--ignore-missing-imports` for third-party packages. If you see persistent errors, ensure `types-redis` is installed.
 
 **Coverage below 80%**: Run `python scripts/check_module_coverage.py --run-tests` to see the aggregate and the modules below 85%. CI also fails a file below 90% statement coverage or a sub-module below 95% pooled; its log names them.
+
+**`Documentation Links` fails after pre-commit passed**: The hook stops at `juniper-check-doc-links`. Run the three commands in step 5. A date-check failure on `AGENTS.md` is `agents-md-touch-up.yml`, which verifies `**Last Updated**:` and does not rewrite it. See [Job: docs](CICD_MANUAL.md#job-docs).
 
 **Lockfile check fails in CI**: The pins no longer satisfy `pyproject.toml`. Regenerate with `uv pip compile pyproject.toml --extra api --extra observability --extra mnist --extra equities --upgrade -o requirements.lock`.
 
@@ -149,6 +157,6 @@ juniper-check-doc-links --exclude templates --exclude history --exclude legacy -
 
 ---
 
-**Last Updated:** October 8, 2026
-**Version:** 0.4.3
+**Last Updated:** November 4, 2026
+**Version:** 0.4.4
 **Status:** Active

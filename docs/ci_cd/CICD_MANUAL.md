@@ -2,9 +2,9 @@
 
 ## Comprehensive CI/CD Pipeline Guide for juniper-data
 
-**Version:** 0.4.3
+**Version:** 0.4.4
 **Status:** Active
-**Last Updated:** October 8, 2026
+**Last Updated:** November 4, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -100,12 +100,37 @@ Multi-version code quality validation across Python 3.12, 3.13, and 3.14 with `f
 
 #### Job: `docs`
 
-Validates documentation link integrity using `juniper-check-doc-links` (from the `juniper-doc-tools` package), with `--cross-repo skip`.
+Required context name: **Documentation Links**. Python 3.12, no `needs:`, on every `ci.yml` event. The job runs four commands. The first failure turns the job red. Pre-commit runs only the link check, with the same arguments.
 
-- Checks all markdown files for broken internal links and anchors
-- Excludes `templates`, `history`, `legacy`, `pull_requests`, `releases`, `analysis`, `fixes`, `development`, `tmp` and `CHANGELOG.md`
-- Also lints the script paths in `.github/workflows/` and `AGENTS.md`'s version and header (`juniper-ci-tools`)
-- Runs independently (no dependencies)
+1. **Link check.** `juniper-check-doc-links` from `juniper-doc-tools>=0.1.0,<0.2.0`, with `--cross-repo skip`. Excludes `templates`, `history`, `legacy`, `pull_requests`, `releases`, `analysis`, `fixes`, `development`, `tmp`, and `CHANGELOG.md`. The local hook installs `juniper-doc-tools>=0.1.1,<0.2.0` and passes that same list.
+
+2. **Workflow script paths.** `juniper-lint-workflow-paths` with no arguments, from `juniper-ci-tools>=0.9.0,<0.10.0`. The 0.9.1 release leaves this lint unchanged. It parses every `*.yml` and `*.yaml` under `.github/workflows/` and scans every YAML string for a token that contains a `/` and ends in `.py`, `.sh`, or `.bash`. A YAML comment is not a string, so a comment that names a deleted script does not fail. `python -m` is not a path. A token is skipped when it has no `/`, starts with `/` or `-`, contains `${` or `$(`, or starts with one of `juniper-canopy/`, `juniper-cascor/`, `juniper-cascor-client/`, `juniper-cascor-worker/`, `juniper-data/`, `juniper-data-client/`, `juniper-deploy/`, `juniper-ml/`. A path is missing only when it is absent both from the step's working directory and from the repo root. Working directory, highest precedence first: the step's `working-directory`, the job's `defaults.run.working-directory`, the workflow's `defaults.run.working-directory`, then the repo root. A workflow that does not parse as YAML contributes no paths (yamllint owns that failure). Exit 0 when nothing is missing, 1 when a path is missing, 2 when the repo root or the workflows directory cannot be found. When the report names a working directory, leave the path in the workflow as written: the step already runs in that directory, and prefixing the path applies the directory twice.
+
+3. **AGENTS.md version.** `juniper-lint-agents-md-version` with no arguments. The one line `**Version**: <value>` must equal `pyproject.toml`'s `[project].version` as a string (both are `0.17.1` on this release). The walk-up looks for a directory that contains both files. A file with no such line exits 0 (`SKIP`). Two or more such lines exit 2, and the search is the whole file, so a second line after the header rule still fails. A `pyproject.toml` with no `[project].version` exits 2. Drift exits 1.
+
+4. **AGENTS.md header.** `juniper-lint-agents-md-header` with no arguments. The header is everything before the first line that is `---` or starts with `## `. It must contain these six bullets in this relative order, each with a non-empty value. Extra bullets may sit between them:
+
+   - `**Project**:`
+   - `**Repository**:`
+   - `**Author**:`
+   - `**License**:`
+   - `**Version**:`
+   - `**Last Updated**:` matching `YYYY-MM-DD` (that pattern; the lint does not check that the day exists)
+
+   A missing field is named in the report, which also prints the required fields that were present, because that list no longer matches the six. Exit 0 when the header conforms, 1 on a schema miss, 2 when `AGENTS.md` or a repo root (`AGENTS.md` beside `.github/`) cannot be found. This lint does not read `pyproject.toml`. Deleting `**Version**:` to take the version lint's skip still fails here.
+
+The header lint accepts any `**Last Updated**:` value that matches `YYYY-MM-DD`. It does not compare that date with today, and it does not edit the file. A pull request that changes `AGENTS.md` is also checked by `agents-md-touch-up.yml` (workflow name **AGENTS.md Date Check**, job **Verify AGENTS.md Last Updated**). That workflow is not a required context, and it never commits. It warns and passes when the field is absent, fails a value that is not `YYYY-MM-DD` or is later than today's UTC date, passes when the value already equals today's UTC date, and otherwise passes only when this pull request's diff adds a `**Last Updated**:` line. The `juniper-ci-tools` 0.9.1 module text still describes that workflow as rewriting the date on every push. This repository's workflow verifies.
+
+Reproduce the three lints from a checkout:
+
+```bash
+pip install "juniper-ci-tools>=0.9.0,<0.10.0"
+juniper-lint-workflow-paths
+juniper-lint-agents-md-version
+juniper-lint-agents-md-header
+```
+
+The job calls those console scripts. `scripts/check_doc_links.py`, `util/test_workflow_script_paths.py`, and `util/test_agents_md_version_drift.py` are not in this repository.
 
 #### Job: `async-route-audit`
 
@@ -499,6 +524,10 @@ See [Consumer release notification](../REFERENCE.md#consumer-release-notificatio
 **Image job fails the serve-and-version step**: The arch was already pushed by digest. No tag is written unless every arch exports its digest. Read the `::error::` from `util/check_image_serves.py`: metadata, `juniper_data.__version__`, and `/v1/health` `version` must all equal the expected `X.Y.Z`. On a release that value is the tag without `v`, and it must equal `pyproject.toml`. See [Image serve-and-version gate](../REFERENCE.md#image-serve-and-version-gate).
 
 **Per-file coverage gate fails in CI**: The leg's log lists each file below 90% statement coverage and each sub-module below 95% pooled. Reproduce it with the three commands under [Coverage Gates](../REFERENCE.md#coverage-gates). `scripts/check_module_coverage.py` uses another threshold (85%, warning only) on another basis (branches counted), so it can pass where the gate fails.
+
+**`Documentation Links` is red and pre-commit was green**: The hook runs `juniper-check-doc-links` only. The failed step name is one of workflow script paths, AGENTS.md version, or AGENTS.md header. Commands and exit codes: [Job: docs](#job-docs).
+
+**The date check failed after `Documentation Links` passed**: `agents-md-touch-up.yml` is a different workflow. It runs when the pull request changes `AGENTS.md`, it is not a required context, and it never rewrites the date. Set `**Last Updated**:` to today's UTC date, or to another `YYYY-MM-DD` that this pull request's diff adds. A value that already equals today's UTC date passes without appearing in the diff.
 
 **`dependency-docs` conda artifact is a YAML list**: the job calls `juniper-generate-dep-docs` with no arguments, so it does not load `notes/CONDA_DEPENDENCY_FILE_HEADER.md`. Pass `--conda-header CONDA_DEPENDENCY_FILE_HEADER.md` and `--pip-header PIP_DEPENDENCY_FILE_HEADER.md` when you want the committed header shape.
 

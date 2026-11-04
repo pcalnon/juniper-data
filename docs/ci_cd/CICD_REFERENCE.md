@@ -2,9 +2,9 @@
 
 ## juniper-data CI/CD Jobs, Hooks, and Configuration
 
-**Version:** 0.4.3
+**Version:** 0.4.4
 **Status:** Active
-**Last Updated:** October 8, 2026
+**Last Updated:** November 4, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -81,7 +81,7 @@ A run that passes the phrase check and then finds `ANTHROPIC_API_KEY` empty thro
 | Job | Depends On | Python | Condition | Purpose |
 |-----|-----------|--------|-----------|---------|
 | `pre-commit` | -- | 3.12, 3.13, 3.14 | Always | Code quality (ruff, mypy, bandit) |
-| `docs` | -- | 3.12 | Always | Markdown link validation |
+| `docs` | -- | 3.12 | Always | Link check, workflow script paths, AGENTS.md version and header. Required context name: `Documentation Links`. Pre-commit runs only the link check. See [Job: docs](CICD_MANUAL.md#job-docs) |
 | `async-route-audit` | -- | 3.12 | Always | `ruff check --select ASYNC` over `juniper_data/` |
 | `unit-tests` | pre-commit | 3.12, 3.13, 3.14 on Ubuntu; 3.12 on macOS | Always | Unit tests with the coverage gates |
 | `build` | unit-tests | 3.14 | Always | Package build verification |
@@ -367,7 +367,10 @@ Review steps: [Dependency Update Workflow](../../notes/DEPENDENCY_UPDATE_WORKFLO
 |--------|---------|-------|
 | `juniper-coverage-gap-map` | CI's per-file coverage gate, in each `unit-tests` leg. With `--enforce` it fails when a file's statement coverage is below 90% or a sub-module's (directory's) pooled statement coverage is below 95%, the tool's defaults. Package `juniper-ci-tools>=0.9.0,<0.10.0`. See [Coverage Gates](../REFERENCE.md#coverage-gates) | `juniper-coverage-gap-map --coverage-json reports/coverage.json --enforce` |
 | `scripts/check_module_coverage.py` | The pre-push `coverage-check` hook. Fails below 80% aggregate (`COVERAGE_FAIL_UNDER`) or when a test file is measured; a module below 85% is printed as `WARN` and does not fail. No CI job runs it | `python scripts/check_module_coverage.py [--run-tests]` |
-| `juniper-check-doc-links` | Markdown link validation. Installed from `juniper-doc-tools>=0.1.0,<0.2.0` in the `docs` job and as a local pre-commit hook; there is no `scripts/check_doc_links.py` | `juniper-check-doc-links --exclude templates ... --cross-repo skip` (the `docs` job's exclude list) |
+| `juniper-check-doc-links` | Markdown link validation. Installed from `juniper-doc-tools>=0.1.0,<0.2.0` in the `docs` job and as a local pre-commit hook (`>=0.1.1,<0.2.0`); there is no `scripts/check_doc_links.py` | `juniper-check-doc-links --exclude templates ... --cross-repo skip` (the `docs` job's exclude list, which the hook repeats) |
+| `juniper-lint-workflow-paths` | `docs` job, no arguments. Every `*.yml` / `*.yaml` under `.github/workflows/`: a YAML string token with a `/` ending in `.py`, `.sh`, or `.bash` must exist under the step's working directory or at the repo root. Skips `python -m`, absolute paths, `${` / `$(`, and the eight sibling-repo prefixes. A workflow that does not parse contributes no paths. Exit 1 when a path is missing, 2 when the workflows directory cannot be found. Package `juniper-ci-tools>=0.9.0,<0.10.0` | `juniper-lint-workflow-paths` |
+| `juniper-lint-agents-md-version` | `docs` job, no arguments. The `**Version**:` line in `AGENTS.md` equals `[project].version` as a string. No such line exits 0. A second line, anywhere in the file, exits 2. Drift exits 1 | `juniper-lint-agents-md-version` |
+| `juniper-lint-agents-md-header` | `docs` job, no arguments. Six header bullets, in relative order, before the first `---` or `## `: Project, Repository, Author, License, Version, Last Updated (`YYYY-MM-DD`). Extra bullets may sit between them. Accepts any date that matches the pattern. Currency of that date is `agents-md-touch-up.yml`, which verifies and does not commit | `juniper-lint-agents-md-header` |
 | `juniper-generate-dep-docs` | `dependency-docs` capture of `conf/requirements_ci.txt` and `conf/conda_environment_ci.yaml`. Pip body is `python -m pip list --format=freeze`. Conda body is the `dependencies:` block of `conda env export --no-builds` (stops before `prefix:` / `variables:`). Package `juniper-ci-tools>=0.9.0,<0.10.0`. The job uploads the capture and does not commit it; Dependabot may still edit the committed freeze. | CI: `juniper-generate-dep-docs` (no arguments, login shell). Local headers: `--pip-header PIP_DEPENDENCY_FILE_HEADER.md --conda-header CONDA_DEPENDENCY_FILE_HEADER.md` |
 
 The `dependency-docs` job runs that command after `conda-incubator/setup-miniconda` (`miniforge-version: latest`, `auto-activate-base: true`, `python-version` = `PYTHON_TEST_VERSION`) in `shell: bash -l {0}`. No-argument mode looks for `notes/JUNIPER_2026-03-11_JUNIPER-ML_PIP-DEPENDENCY-FILE-HEADER.md` and `notes/JUNIPER_2026-03-15_JUNIPER-ML_CONDA-DEPENDENCY-FILE-HEADER.md`. This repo's templates are `notes/PIP_DEPENDENCY_FILE_HEADER.md` and `notes/CONDA_DEPENDENCY_FILE_HEADER.md`, so the upload uses the two-line fallback header. The conda template ends with `dependencies:`; the fallback does not, and the uploaded conda document is a YAML list. If `conda` is absent from `PATH`, the yaml is skipped and the command still exits 0. A YAML parse failure exits 1. Timestamped backups of the previous files are included in the 90-day artifact. The job does not commit the files. Full steps: [CI/CD manual](CICD_MANUAL.md#job-dependency-docs).
@@ -386,6 +389,6 @@ The `dependency-docs` job runs that command after `conda-incubator/setup-minicon
 
 ---
 
-**Last Updated:** October 8, 2026
-**Version:** 0.4.3
+**Last Updated:** November 4, 2026
+**Version:** 0.4.4
 **Maintainer:** Paul Calnon
