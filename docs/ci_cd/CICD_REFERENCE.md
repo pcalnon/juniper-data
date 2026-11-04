@@ -72,6 +72,26 @@ An `issues` `assigned` delivery never satisfies step 2: `assignee_trigger` is un
 
 A run that passes the phrase check and then finds `ANTHROPIC_API_KEY` empty throws `Environment variable validation failed` with: `Either ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN, or workload identity federation (ANTHROPIC_FEDERATION_RULE_ID and ANTHROPIC_ORGANIZATION_ID) is required when using direct Anthropic API.` This workflow sets none of the alternatives. `use_bedrock`, `use_vertex`, and `use_foundry` stay at their default `false`.
 
+### Open pull request checkout
+
+After the workflow step checks out with `fetch-depth: 1`, an open pull request is checked out again by the action. `prepareTagMode` (`src/modes/tag/index.ts`) calls `setupBranch` (`src/github/operations/branch.ts`) with the trigger time. `setupBranch` loads `headRefOid` from the PR query, requires a 40-hex SHA, fetches that object from `origin`, and runs `git checkout -B <local> <sha>`. The step fails with `PR #<n>: checked out <actual>, expected <sha>` when `HEAD` disagrees. The local branch name is the head branch on a same-repo pull request and `pr-<n>` on a fork. The activity request below uses the head repository in both cases. A closed or merged pull request skips the pin and creates a new branch from the base, the same path an issue uses.
+
+The pin accepts the SHA only when its push time is strictly earlier than the mention. `headPushedAt` calls `GET /repos/{owner}/{repo}/activity` with `ref=refs/heads/<head branch>` and `per_page=1`. It sets no `direction` and no `activity_type`. GitHub's default `direction` is `desc`, so the first item is the newest activity on that ref: a push, force-push, branch creation, branch deletion, pull-request merge, or merge-queue merge. That item's `after` must equal the head SHA, and its `timestamp` must be earlier than the trigger time. `extractTriggerTimestamp` uses `comment.created_at` for `issue_comment` and `pull_request_review_comment`, and `review.submitted_at` for `pull_request_review`. This workflow subscribes to comment `created` and review `submitted`. An edited comment would pass `comment.updated_at` instead; that delivery is outside this workflow.
+
+When the timestamp is greater than or equal to the mention, the tracking comment posted at the start of tag mode is replaced with the error text and the step throws:
+
+```text
+PR #<n> was updated after the trigger (<pushedAt> >= <triggerTime>). Mention Claude again to run on the latest version.
+```
+
+When the newest activity's `after` is missing or is a different SHA, the same replacement uses `Could not determine when <sha> was pushed to <owner>/<repo>:<branch>`. A missing head repository uses `PR #<n>: head repository is not available, cannot pin the PR version`.
+
+Leave the branch still from the moment of the mention through that checkout. A push recorded at the same time as the mention fails the comparison. Mention `@claude` again once the commit you want is the tip.
+
+A `pull_request` delivery compares the webhook head SHA to the loaded SHA and fails with `PR #<n> was updated after the trigger (<eventSha> -> <headSha>). Push again or mention Claude to run on the latest version.` This workflow's `on:` lists `issue_comment`, `pull_request_review_comment`, `pull_request_review`, and `issues`, so the timestamp form above is the one a run here produces.
+
+Read from `anthropics/claude-code-action` v1.0.265 (`6d5ae526d25ce88daa2200be073e1a373167f064`) on 2026-11-04. The pin is the row in [GitHub Actions Pinned Versions](#github-actions-pinned-versions).
+
 ---
 
 ## CI Jobs Reference
@@ -253,7 +273,7 @@ From `pyproject.toml`:
 
 ## GitHub Actions Pinned Versions
 
-Every third-party action is pinned to a full commit SHA, with its release in a `# vX.Y.Z` comment on the `uses:` line. `agents-md-touch-up.yml` was the one exception, checking out with the `actions/checkout@v7.0.1` tag, until 2026-11-01. The table was re-derived on 2026-10-29 from all 14 files in `.github/workflows/` at `95ce8190`, and each SHA is the commit its commented tag resolves to (`gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`). `publish.yml` also calls `./.github/workflows/notify-consumers.yml`, a reusable workflow in this repository, which takes no pin. `notify-consumers.yml`, `pr-base-branch-guard.yml` and `pr-budget-alarm.yml` use no action.
+Every third-party action is pinned to a full commit SHA, with its release in a `# vX.Y.Z` comment on the `uses:` line. `agents-md-touch-up.yml` was the one exception, checking out with the `actions/checkout@v7.0.1` tag, until 2026-11-01. The table was re-derived on 2026-10-29 from all 14 files in `.github/workflows/` at `95ce8190`, and each SHA is the commit its commented tag resolves to (`gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`). On 2026-11-04 the `anthropics/claude-code-action` row was set to the v1.0.265 pin in `claude.yml` (`6d5ae526d25ce88daa2200be073e1a373167f064`). The other rows are unchanged from that 2026-10-29 derivation. `publish.yml` also calls `./.github/workflows/notify-consumers.yml`, a reusable workflow in this repository, which takes no pin. `notify-consumers.yml`, `pr-base-branch-guard.yml` and `pr-budget-alarm.yml` use no action.
 
 | Action | Version | SHA | Used in |
 |--------|---------|-----|---------|
@@ -271,7 +291,7 @@ Every third-party action is pinned to a full commit SHA, with its release in a `
 | `docker/login-action` | v4.7.0 | `81c6f93d4bc991e510b342a00b419b3bb4efc5c6` | `publish-image.yml` |
 | `docker/build-push-action` | v7.4.0 | `c3c9e263c25d99ce0380d002d59b67737d91b0dc` | `publish-image.yml` |
 | `docker/metadata-action` | v6.2.0 | `dc802804100637a589fabce1cb79ff13a1411302` | `publish-image.yml` |
-| `anthropics/claude-code-action` | v1.0.255 | `e4a6faad497d33dbc7144135c75e41f82f0bf6c0` | `claude.yml` |
+| `anthropics/claude-code-action` | v1.0.265 | `6d5ae526d25ce88daa2200be073e1a373167f064` | `claude.yml` |
 
 Dependabot's `github-actions` updates move these pins (see [Dependabot Configuration](#dependabot-configuration)). After one lands, re-derive the table from `grep -rn "uses:" .github/workflows/`.
 
