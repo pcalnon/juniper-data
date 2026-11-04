@@ -2,9 +2,9 @@
 
 ## Get juniper-data Running in 5 Minutes
 
-**Version:** 0.4.4
+**Version:** 0.4.5
 **Status:** Active
-**Last Updated:** October 8, 2026
+**Last Updated:** November 4, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -112,12 +112,17 @@ The NPZ artifact contains keys: `X_train`, `y_train`, `X_val`, `y_val`, `X_test`
 | `xor` | XOR classification (4 quadrants) |
 | `gaussian` | Mixture of Gaussians |
 | `circles` | Concentric circles |
+| `moon` | Two interleaving half-moons |
 | `checkerboard` | 2D checkerboard pattern |
 | `csv_import` | CSV/JSON file import |
 | `mnist` | MNIST / Fashion-MNIST |
 | `arc_agi` | ARC-AGI visual reasoning tasks |
 | `equities` | S&P 500 daily OHLCV + SEC shares (default cap **14** symbols; oversized universe is 422 unless `allow_truncation`) |
 | `equities_seq` | Windowed equities; same cap and annotation. Bare defaults leave NaN in `X` (columns 7, 8, 14). The recurrence-ready request, and the `400` when `drop` meets a later `purchase_date`, are in [Equities Sequence: Recurrence-Ready Parameters](REFERENCE.md#equities-sequence-recurrence-ready-parameters) |
+| `multi_sine`, `mackey_glass`, `ar_p` | Numpy-only regular-Δt sequences (regression). `X` is `(W, lookback, 1)` |
+| `irregular_sine`, `delay_product` | Numpy-only irregular-Δt sequences. `delay_product`'s target is an in-window product |
+
+Sequence windows are one series at a time, split by target time. Short series (`W < 3`) are **400**. Contract: [Sequence Windowing](REFERENCE.md#sequence-windowing).
 
 List all generators and their parameter schemas:
 
