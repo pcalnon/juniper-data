@@ -54,6 +54,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Tests pin the lost-symbol gate when a caller refuses truncation the deployment allows.**
+  `test_equities_lost_symbol_gate.py`: an explicit `allow_truncation=false` still raises
+  `IncompleteDataError` for a lost requested symbol on `equities` and `equities_seq`, even with
+  `incomplete_rows='drop'` and `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION` on. The 422 body names at
+  most eight symbols; `IncompleteDataError.unrescued` keeps the rest. The symbol-cap and
+  unrescued-shares explicit-false tests do not enter this raise.
 - **The equities generators record every symbol they lose, refuse a lost requested one by
   default, guard the return targets, and say whether the price response carried the action
   columns** (W5.7 of juniper-ml
