@@ -2,9 +2,9 @@
 
 ## Run juniper-data CI Checks Locally in 5 Minutes
 
-**Version:** 0.4.3
+**Version:** 0.4.4
 **Status:** Active
-**Last Updated:** October 8, 2026
+**Last Updated:** November 7, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -115,6 +115,12 @@ juniper-coverage-gap-map --coverage-json reports/coverage.json --enforce   # pip
 
 # 4. Validate documentation links: the CI docs job's command (pip install juniper-doc-tools)
 juniper-check-doc-links --exclude templates --exclude history --exclude legacy --exclude pull_requests --exclude releases --exclude analysis --exclude fixes --exclude development --exclude CHANGELOG.md --exclude tmp --cross-repo skip
+
+# 5. The rest of Documentation Links. Pre-commit does not run these.
+pip install "juniper-ci-tools>=0.9.0,<0.10.0"
+juniper-lint-workflow-paths
+juniper-lint-agents-md-version
+juniper-lint-agents-md-header
 ```
 
 ---
@@ -129,6 +135,8 @@ juniper-check-doc-links --exclude templates --exclude history --exclude legacy -
 
 **Coverage below 80%**: Run `python scripts/check_module_coverage.py --run-tests` to see the aggregate and the modules below 85%. CI also fails a file below 90% statement coverage or a sub-module below 95% pooled; its log names them.
 
+**`Documentation Links` fails after pre-commit passed**: Pre-commit runs only the link check: locally only when the commit includes a `.md` file, and in CI's `Pre-commit` job on every push. Run the three commands in step 5, and step 4's link check when that is the failed step. A date-check failure on `AGENTS.md` is `agents-md-touch-up.yml`, which verifies `**Last Updated**:` and does not rewrite it. See [Job: docs](CICD_MANUAL.md#job-docs).
+
 **Lockfile check fails in CI**: The pins no longer satisfy `pyproject.toml`. Regenerate with `uv pip compile pyproject.toml --extra api --extra observability --extra mnist --extra equities --upgrade -o requirements.lock`.
 
 **Grouped Dependabot PR, lockfile differs from `conf/requirements_ci.txt`**: `lockfile-update.yml` compiles with `--upgrade` on every `dependabot/pip/**` push by `dependabot[bot]`, including pushes that leave `pyproject.toml` unchanged. Review `[dependabot skip] Update requirements.lock` as that resolution. A missing commit with a green Update Lockfile run usually means `CROSS_REPO_DISPATCH_TOKEN` is absent from the Dependabot secret store. See [Dependency Update Workflow](../../notes/DEPENDENCY_UPDATE_WORKFLOW.md).
@@ -138,6 +146,8 @@ juniper-check-doc-links --exclude templates --exclude history --exclude legacy -
 **Release publish is red after PyPI succeeded**: `notify-consumers.yml` did not see a consumer run. GitHub's dispatch `204` is not delivery. The listener must declare `repository_dispatch: types: [juniper-data-published]` and must not set `run-name:`. Re-send with `workflow_dispatch`; do not republish. See [Consumer release notification](../REFERENCE.md#consumer-release-notification).
 
 **`@claude` in a pull-request title does nothing**: Comment on the PR, or put `@claude` in a submitted review body. The workflow does not subscribe to `pull_request`, so a title or body there never schedules it. The workflow `if` is a case-insensitive substring test, and the action then requires the phrase at a word boundary. A green log line `No trigger found, skipping remaining steps` means the job started and the action declined. See [claude.yml](CICD_MANUAL.md#claudeyml----claude-code).
+
+**`@claude` on a pull request fails with `was updated after the trigger`**: The head branch moved at or after the comment or submitted review. Mention `@claude` again once the commit you want is the tip, and leave the branch still while the job checks out. See [claude.yml](CICD_MANUAL.md#claudeyml----claude-code).
 
 ---
 
@@ -149,6 +159,6 @@ juniper-check-doc-links --exclude templates --exclude history --exclude legacy -
 
 ---
 
-**Last Updated:** October 8, 2026
-**Version:** 0.4.3
+**Last Updated:** November 7, 2026
+**Version:** 0.4.4
 **Status:** Active

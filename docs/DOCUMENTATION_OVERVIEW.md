@@ -2,8 +2,8 @@
 
 ## Complete Navigation Guide to Juniper Data Documentation
 
-**Version:** 0.4.3
-**Last Updated:** October 8, 2026
+**Version:** 0.4.4
+**Last Updated:** November 7, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -114,7 +114,7 @@ juniper-canopy (8050) ──REST──> JuniperData (8100) <──REST── jun
 
 **Key components:**
 
-- **8 generators** -- spiral, xor, gaussian, circles, checkerboard, csv_import, mnist, arc_agi
+- **16 generators** -- tabular (`spiral`, `xor`, `gaussian`, `circles`, `moon`, `checkerboard`, `csv_import`, `mnist`), sequence (`equities_seq`, `multi_sine`, `mackey_glass`, `ar_p`, `irregular_sine`, `delay_product`; windowing contract in [Sequence Windowing](REFERENCE.md#sequence-windowing)), plus `equities` and `arc_agi`
 - **8 storage backends** -- local filesystem, PostgreSQL, Redis, HuggingFace, Kaggle, in-memory, cached
 - **FastAPI REST service** -- Full CRUD operations on port 8100
 - **NPZ data contract** -- `X_train`, `y_train`, `X_val`, `y_val`, `X_test`, `y_test` (all `float32`)
@@ -271,6 +271,6 @@ See [DOCUMENTATION_TEMPLATE_STANDARD.md](../../notes/DOCUMENTATION_TEMPLATE_STAN
 
 ---
 
-**Last Updated:** October 8, 2026
-**Version:** 0.4.3
+**Last Updated:** November 7, 2026
+**Version:** 0.4.4
 **Maintainer:** Paul Calnon
