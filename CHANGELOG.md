@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The CI/CD and product docs record the `@claude` checkout pin, what `Documentation Links` runs, the Gitleaks
+  ruleset, and all 16 generators with their sequence windowing.** Four Cursor fleet drafts (juniper-data#509, #510,
+  #511, #515) from juniper-ml's 2026-11-06 flood-4 census, carried as one change on `main` at `28078558`, with 70 of
+  their claims re-checked against `main` and the pinned upstream sources. Each touched doc's stamp is bumped once.
+  - `@claude` on an open pull request (#509): claude-code-action v1.0.265 checks out the head SHA it loaded, and fails
+    with `was updated after the trigger` when the branch moved at or after the mention.
+    `docs/ci_cd/CICD_REFERENCE.md` § Open pull request checkout, plus troubleshooting in the manual and quick start.
+  - `Documentation Links` is four commands, and pre-commit runs only the first (#510): the link check, then
+    `juniper-lint-workflow-paths`, `juniper-lint-agents-md-version` and `juniper-lint-agents-md-header`
+    (`juniper-ci-tools` 0.9.1). `agents-md-touch-up.yml` verifies the date and never commits.
+  - The Gitleaks ruleset, the 8.24.3 engine pin and each event's scan range (#511): `CICD_MANUAL.md` § Gitleaks
+    ruleset and `CICD_REFERENCE.md` § Gitleaks engine.
+  - All 16 registered generators, and a new `docs/REFERENCE.md` § Sequence Windowing (#515), linked from
+    `DEVELOPER_CHEATSHEET.md`, `DOCUMENTATION_OVERVIEW.md`, `QUICK_START.md` and `USER_MANUAL.md`.
+  - **Corrected on the way in.**
+    - `CICD_REFERENCE.md`'s pin table still had `actions/setup-python` at v7.0.0 (`5fda3b95…`), although #507 moved
+      all seven workflows that use it to v7.1.0 (`6d4fd22b…`). #509 also called the other rows unchanged since
+      2026-10-29, but #503 had added `agents-md-touch-up.yml` to the `actions/checkout` row. The table was re-derived
+      from all 14 workflows: 15 rows (18 pinned actions), and no other row disagrees.
+    - #511 quoted gitleaks' refusal of a rule with no regex as `both regex and path are empty`. 8.24.3 prints
+      `both |regex| and |path| are empty, this rule will have no effect` (`config/rule.go`), which the manual now
+      quotes. Its troubleshooting entry said the self-test fails before collection; with parity required and no
+      binary, collection succeeds and the tests that need the binary error at setup.
+    - The claude-code-action version and the `0.17.1` versions are dated rather than stated as the current pins. A
+      closed pull request's branch comes from the default branch, not its base. Locally the link-check hook runs only
+      when the commit includes a `.md` file; CI's `Pre-commit` job runs it on every push, so there a red link check
+      beside a green `Pre-commit` points at the two resolving different `juniper-doc-tools` releases.
 - **`make coverage` runs CI's per-file coverage gate too, so it can now fail where it used to pass (owner ruling
   2026-11-01).** `util/run_coverage.bash` (0.2.0) adds `--cov-report=json:reports/coverage.json` to the unit-lane run.
   After the aggregate gate and `scripts/check_module_coverage.py`'s advisory listing, it runs

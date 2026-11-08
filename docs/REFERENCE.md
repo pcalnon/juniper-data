@@ -1,8 +1,8 @@
 # Juniper Data Reference
 
-**Version:** 0.4.4
+**Version:** 0.4.5
 **Status:** Active
-**Last Updated:** October 26, 2026
+**Last Updated:** November 7, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -38,6 +38,7 @@
 - [Equities Symbol Cap](#equities-symbol-cap)
 - [Equities Sequence: Recurrence-Ready Parameters](#equities-sequence-recurrence-ready-parameters)
 - [equities_seq Declared Regression](#equities_seq-declared-regression)
+- [Sequence Windowing](#sequence-windowing)
 - [ARC-AGI Artifacts](#arc-agi-artifacts)
 - [CI/CD Pipeline Reference](#cicd-pipeline-reference)
   - [Image serve-and-version gate](#image-serve-and-version-gate)
@@ -2203,6 +2204,55 @@ A current create resolves under the prefix `equities_seq-6.0.0-`. An artifact st
 
 ---
 
+## Sequence Windowing
+
+Six generators emit 3-D windows from `juniper_data/generators/_sequence.py`. Each window is built from **one series**, and the split follows the **target time**. Together those two choices keep a window from splicing two entities, and keep a train target from landing on or after the validation cut. `juniper_data/tests/unit/test_sequence_windowing_leakage.py` pins both, plus monotone Δt, optional embargo, and a strictly positive horizon (I1–I5).
+
+| Generator | Windower | Time | Target `y` |
+|-----------|----------|------|------------|
+| `multi_sine`, `mackey_glass`, `ar_p` | `window_regular_series` via `build_sequence_arrays` | constant `sample_dt` (`time_unit` `"steps"`) | the series value `horizon` steps after the window end |
+| `irregular_sine` | `window_timed_series` | gaps of `sample_dt * U[1 - jitter, 1 + jitter]` | the same forecast step; `target_dt` varies |
+| `delay_product` | `window_timed_series`, then `y` is replaced | same jitter as `irregular_sine` | in-window product `x(t−τ₁)·x(t−τ₂)`. `lag1` and `lag2` must be `< lookback`. `horizon` only places the window |
+| `equities_seq` | `window_one_ticker`, one ticker at a time | calendar days between trading sessions (`time_unit` `"calendar_days"`) | next session's one-hot direction, with the regression target in `y_reg`. Lookback default **64** |
+
+The five synthetics are numpy-only (`task_type` `"regression"`, generator **3.0.0**). `equities_seq` needs the `equities` extra and is generator **6.0.0**. Flat `equities` does not window.
+
+### Arrays
+
+Synthetic keys, each with `_train`, `_val`, and `_test`: `X` `(W, L, F)` float32, `y` `(W, F)` float32, `dt` `(W, L)` float32, `target_dt` `(W,)` float32, `observed_mask` `(W, L)` uint8. There is no `*_full` key. `dt[:, 0]` is 0; every later step is the elapsed time since the previous step (`sample_dt` on a regular series, the within-window gap on an irregular one). `observed_mask` is all ones: irregularity is in `dt`. `scaling` (`"identity"` or `"standardize"`, default `"identity"`) is advisory metadata popped before the NPZ is written. `"standardize"` is fit on the train split only. The stored arrays stay raw.
+
+`equities_seq` adds `y_reg`, `date`, `window_end_date`, and `ticker_code` on each split, plus a `ticker_vocab` array of symbol strings. `F` is 15 (`EQUITIES_FEATURE_COLUMNS`).
+
+### How a window is assigned
+
+A window ending at index `i` uses steps `[i - lookback + 1 .. i]`.
+
+Synthetics predict index `i + horizon`. `horizon` is at least 1. The window count is `W = n_steps - lookback - horizon + 1`. `SyntheticSequenceParams` refuses `W < 3` and refuses `train_ratio + val_ratio >= 1`, so train, validation, and test each receive windows. `POST /v1/datasets` turns that rejection into **400** with `detail` `Invalid parameters: …` (the message names `n_steps`, `lookback`, and `horizon`, or the two ratios). Defaults are `n_steps` 2000, `lookback` 32, `horizon` 1, `sample_dt` 1, `train_ratio` 0.8, `val_ratio` 0.1, `seed` 0. `temporal_split_indices` cuts that window list in time order: the earliest `train_ratio` are train, the next `val_ratio` are validation, and the remainder is test. Every train target precedes every validation target, which precedes every test target. Adjacent windows still share steps; the regular and timed windowers have no embargo flag.
+
+`equities_seq` cuts each ticker's **rows** with the same helper, then assigns each window by its **target date**: train when that date's ordinal is strictly before the train/val cut, validation until the val/test cut, otherwise test. The call leaves `embargo` at its default, `false`. Passing `embargo=True` to `window_one_ticker` drops a validation or test window whose first step falls before the cut in front of that split. The registered generator does not pass it. A ticker with `n_rows <= lookback + 1` contributes no windows; under the shut gate a **requested** symbol in that state is **422** `IncompleteDataError`, and under the open gate it is recorded on `data_quality.dropped_symbols`. See [Equities Data Quality Annotation](#equities-data-quality-annotation).
+
+```bash
+curl -X POST http://localhost:8100/v1/datasets \
+  -H "Content-Type: application/json" \
+  -d '{"generator":"multi_sine","params":{"n_steps":64,"lookback":8,"horizon":1,"seed":0}}'
+```
+
+`W = 64 - 8 - 1 + 1 = 56`.
+
+### Constraints
+
+- Window one series, then assign the window by its target time. A concat-then-slide across entities both splices series and can put a train target on the wrong side of the cut.
+- Keep `horizon >= 1`. The synthetic field is `ge=1`, and `window_regular_series` / `window_timed_series` raise `ValueError` below that.
+- Keep `delay_product` lags inside the window (`lag < lookback`). A lag on the window edge is **400** `Invalid parameters: lag1=… must be < lookback=…`.
+- Read `delay_product`'s `y` as the in-window product. The forecast value `window_timed_series` wrote is overwritten from that split's own `X`.
+- Take `n_features` from `X.shape[-1]`, including an empty train split. See [Empty-Train Shape Metadata](#empty-train-shape-metadata).
+
+### Pins
+
+`juniper_data/tests/unit/test_sequence_windowing_leakage.py` (I1–I5 on `window_one_ticker`; the regular and timed siblings beside it). Shape pins: `test_multi_sine_generator.py`, `test_ar_p_generator.py`, `test_delay_product_generator.py`.
+
+---
+
 ## ARC-AGI Artifacts
 
 A fresh `POST /v1/datasets` with `"generator": "arc_agi"` mints `generator_version` **4.0.0**, so the id starts `arc_agi-4.0.0-`. Two facts about that artifact are easy to misread, and the artifacts it replaced are still on disk.
@@ -2258,7 +2308,7 @@ All 14 files in `.github/workflows/`, counted on `main` at `35658ff3` (2026-10-2
 
 | Workflow | File | Triggers | Purpose | Required contexts |
 |----------|------|----------|---------|-------------------|
-| **CI/CD Pipeline** | `ci.yml` | Push to `main` / `develop`; PR into `main` / `develop`; `repository_dispatch` `data-client-updated` (juniper-data-client's CI sends it after a push to its `main`); daily schedule (06:00 UTC); manual | Pre-commit (ruff, mypy, bandit, yamllint and more) on 3.12-3.14; unit tests with the coverage gates on Ubuntu 3.12-3.14 and macOS 3.12; build; dependency docs; integration tests; Gitleaks, Bandit SARIF and pip-audit; lockfile freshness; Docker build and smoke test; doc links; async-route audit; memory budget; Quality Gate; slow tests on scheduled and manual runs. See the notes below the table | 18, plus `Bandit` from code scanning (listed below the table). `Build Notification` is not required |
+| **CI/CD Pipeline** | `ci.yml` | Push to `main` / `develop`; PR into `main` / `develop`; `repository_dispatch` `data-client-updated` (juniper-data-client's CI sends it after a push to its `main`); daily schedule (06:00 UTC); manual | Pre-commit (ruff, mypy, bandit, yamllint and more) on 3.12-3.14; unit tests with the coverage gates on Ubuntu 3.12-3.14 and macOS 3.12; build; dependency docs; integration tests; Gitleaks, Bandit SARIF and pip-audit; lockfile freshness; Docker build and smoke test; Documentation Links (link check, workflow script paths, AGENTS.md version and header); async-route audit; memory budget; Quality Gate; slow tests on scheduled and manual runs. See the notes below the table | 18, plus `Bandit` from code scanning (listed below the table). `Build Notification` is not required |
 | **CodeQL Analysis** | `codeql.yml` | Push to `main` / `develop`; PR into `main`; weekly schedule (Monday 06:00 UTC) | CodeQL for Python with the `+security-and-quality` queries | `Analyze (python)`. The `CodeQL` check run that code scanning posts is not a required context; the ruleset's `code_scanning` rule covers the alerts instead |
 | **Scheduled Security Scan** | `security-scan.yml` | Weekly schedule (Monday 06:00 UTC); manual | Bandit over `juniper_data` (tests excluded): a SARIF report kept only as the `security-reports` run artifact (nothing is uploaded to code scanning), then a second pass at medium severity and confidence that fails the job on any finding; `pip-audit --strict --desc on` over a `.[all]` install. No Gitleaks. The pull-request Gitleaks, Bandit SARIF and pip-audit lane is `ci.yml`'s `Security Scans` | None |
 | **Publish to PyPI** | `publish.yml` | GitHub release `published` | Build and `twine check`; TestPyPI (`testpypi` environment) and an install check; then PyPI (`pypi` environment: the owner's review plus a 5-minute wait). Both by Trusted Publishing (OIDC). Then [notify consumers](#consumer-release-notification) | None |
@@ -2283,6 +2333,7 @@ The 22 required contexts, by source (ruleset read on 2026-10-27):
 
 Notes on `ci.yml`:
 
+- **`Documentation Links` is four commands.** `juniper-check-doc-links` (with the exclude list), then `juniper-lint-workflow-paths`, `juniper-lint-agents-md-version`, and `juniper-lint-agents-md-header` with no arguments. Pre-commit runs only the link check. The header lint checks that `**Last Updated**:` matches `YYYY-MM-DD`. Comparing that date with today, and refusing a pull request that edits `AGENTS.md` without changing the line, is `agents-md-touch-up.yml`. That workflow verifies and never commits, and it is not a required context. Contract: [Job: docs](ci_cd/CICD_MANUAL.md#job-docs).
 - **Not every required job runs on every event.** `Slow Tests` runs only on `schedule` and `workflow_dispatch`, so a pull request reports it `skipped`, and a skipped required check counts as passing. Where it runs, pytest's exit status is the job's: a failing slow test fails it, and so does a run that selects no test (pytest exit 5, with an `::error` annotation naming it), because a lane that runs nothing must not pass. The call used to end `|| echo "No slow tests found"`, which made the job unable to fail. The 2026-10-29 scheduled run selected 15 of 2,511 tests (`15 passed, 2496 deselected`). `Memory Budget` runs only on `pull_request`: its `merge_group` arm cannot fire, because this workflow declares no `merge_group` trigger. `Integration Tests` and `Docker Build & Smoke Test` run on pull requests and on runs whose ref is `main` or `develop`.
 - **The Quality Gate is one required context of 22.** Its `needs:` holds nine jobs. `Async-route audit (BUG-JD-10 class)`, `Memory Budget` and `Slow Tests` sit outside it and are required in their own right, like `Sequence Safety`.
 - **`Bandit` comes from the SARIF upload.** Code scanning posts it after it processes the SARIF that `Security Scans` uploads. On a pull request the upload step always runs and is not `continue-on-error`, so a failed upload, or a missing SARIF, turns `Security Scans` red with the cause in the step log, instead of leaving the PR waiting for a `Bandit` context that never posts (owner ruling 2026-10-30, after juniper-cascor#735). On every other event the step keeps its old tolerance: it is skipped when there is no SARIF, and a failed upload leaves the job green, so there a green `Security Scans` does not show that the upload landed. The ruleset's `code_scanning` rule covers Bandit and CodeQL alerts (alerts at `errors`, security alerts at `high_or_higher`).
@@ -2567,6 +2618,6 @@ git worktree prune
 
 ---
 
-**Last Updated:** October 26, 2026
-**Version:** 0.4.4
+**Last Updated:** November 7, 2026
+**Version:** 0.4.5
 **Maintainer:** Paul Calnon
