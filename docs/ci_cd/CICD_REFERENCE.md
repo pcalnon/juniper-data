@@ -72,6 +72,26 @@ An `issues` `assigned` delivery never satisfies step 2: `assignee_trigger` is un
 
 A run that passes the phrase check and then finds `ANTHROPIC_API_KEY` empty throws `Environment variable validation failed` with: `Either ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN, or workload identity federation (ANTHROPIC_FEDERATION_RULE_ID and ANTHROPIC_ORGANIZATION_ID) is required when using direct Anthropic API.` This workflow sets none of the alternatives. `use_bedrock`, `use_vertex`, and `use_foundry` stay at their default `false`.
 
+### Open pull request checkout
+
+After the workflow step checks out with `fetch-depth: 1`, an open pull request is checked out again by the action. `prepareTagMode` (`src/modes/tag/index.ts`) calls `setupBranch` (`src/github/operations/branch.ts`) with the trigger time. `setupBranch` loads `headRefOid` from the PR query, requires a 40-hex SHA, fetches that object from `origin`, and runs `git checkout -B <local> <sha>`. The step fails with `PR #<n>: checked out <actual>, expected <sha>` when `HEAD` disagrees. The local branch name is the head branch on a same-repo pull request and `pr-<n>` on a fork. The activity request below uses the head repository in both cases. A closed or merged pull request skips the pin and creates a new branch from the repository's default branch (this workflow sets no `base_branch` input), the same path an issue uses.
+
+The pin accepts the SHA only when its push time is strictly earlier than the mention. `headPushedAt` calls `GET /repos/{owner}/{repo}/activity` with `ref=refs/heads/<head branch>` and `per_page=1`. It sets no `direction` and no `activity_type`. GitHub's default `direction` is `desc`, so the first item is the newest activity on that ref: a push, force-push, branch creation, branch deletion, pull-request merge, or merge-queue merge. That item's `after` must equal the head SHA, and its `timestamp` must be earlier than the trigger time. `extractTriggerTimestamp` uses `comment.created_at` for `issue_comment` and `pull_request_review_comment`, and `review.submitted_at` for `pull_request_review`. This workflow subscribes to comment `created` and review `submitted`. An edited comment would pass `comment.updated_at` instead; that delivery is outside this workflow.
+
+When the timestamp is greater than or equal to the mention, the tracking comment posted at the start of tag mode is replaced with the error text and the step throws:
+
+```text
+PR #<n> was updated after the trigger (<pushedAt> >= <triggerTime>). Mention Claude again to run on the latest version.
+```
+
+When the newest activity's `after` is missing or is a different SHA, the same replacement uses `Could not determine when <sha> was pushed to <owner>/<repo>:<branch>`. A missing head repository uses `PR #<n>: head repository is not available, cannot pin the PR version`.
+
+Leave the branch still from the moment of the mention through that checkout. A push recorded at the same time as the mention fails the comparison. Mention `@claude` again once the commit you want is the tip.
+
+A `pull_request` delivery compares the webhook head SHA to the loaded SHA and fails with `PR #<n> was updated after the trigger (<eventSha> -> <headSha>). Push again or mention Claude to run on the latest version.` This workflow's `on:` lists `issue_comment`, `pull_request_review_comment`, `pull_request_review`, and `issues`, so the timestamp form above is the one a run here produces.
+
+Read from `anthropics/claude-code-action` v1.0.265 (`6d5ae526d25ce88daa2200be073e1a373167f064`) on 2026-11-04. The pin is the row in [GitHub Actions Pinned Versions](#github-actions-pinned-versions).
+
 ---
 
 ## CI Jobs Reference
@@ -81,7 +101,7 @@ A run that passes the phrase check and then finds `ANTHROPIC_API_KEY` empty thro
 | Job | Depends On | Python | Condition | Purpose |
 |-----|-----------|--------|-----------|---------|
 | `pre-commit` | -- | 3.12, 3.13, 3.14 | Always | Code quality (ruff, mypy, bandit) |
-| `docs` | -- | 3.12 | Always | Markdown link validation |
+| `docs` | -- | 3.12 | Always | Link check, workflow script paths, AGENTS.md version and header. Required context name: `Documentation Links`. Pre-commit runs only the link check. See [Job: docs](CICD_MANUAL.md#job-docs) |
 | `async-route-audit` | -- | 3.12 | Always | `ruff check --select ASYNC` over `juniper_data/` |
 | `unit-tests` | pre-commit | 3.12, 3.13, 3.14 on Ubuntu; 3.12 on macOS | Always | Unit tests with the coverage gates |
 | `build` | unit-tests | 3.14 | Always | Package build verification |
@@ -253,12 +273,12 @@ From `pyproject.toml`:
 
 ## GitHub Actions Pinned Versions
 
-Every third-party action is pinned to a full commit SHA, with its release in a `# vX.Y.Z` comment on the `uses:` line. `agents-md-touch-up.yml` was the one exception, checking out with the `actions/checkout@v7.0.1` tag, until 2026-11-01. The table was re-derived on 2026-10-29 from all 14 files in `.github/workflows/` at `95ce8190`, and each SHA is the commit its commented tag resolves to (`gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`). `publish.yml` also calls `./.github/workflows/notify-consumers.yml`, a reusable workflow in this repository, which takes no pin. `notify-consumers.yml`, `pr-base-branch-guard.yml` and `pr-budget-alarm.yml` use no action.
+Every third-party action is pinned to a full commit SHA, with its release in a `# vX.Y.Z` comment on the `uses:` line. `agents-md-touch-up.yml` was the one exception, checking out with the `actions/checkout@v7.0.1` tag, until 2026-11-01. The table was re-derived on 2026-10-29 from all 14 files in `.github/workflows/` at `95ce8190`, and each SHA is the commit its commented tag resolves to (`gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`). Three rows changed after that derivation: `actions/checkout` gained `agents-md-touch-up.yml` on 2026-11-01 (juniper-data#503), `actions/setup-python` moved to v7.1.0 (`6d4fd22b20465ccc0f7354476588e8df7c9ca0e0`) in the seven workflows that use it (juniper-data#507), and `anthropics/claude-code-action` moved to v1.0.265 (`6d5ae526d25ce88daa2200be073e1a373167f064`, juniper-data#508). On 2026-11-07 every row was re-checked against the same 14 files at `28078558`, and the other rows are unchanged since 2026-10-29. `publish.yml` also calls `./.github/workflows/notify-consumers.yml`, a reusable workflow in this repository, which takes no pin. `notify-consumers.yml`, `pr-base-branch-guard.yml` and `pr-budget-alarm.yml` use no action.
 
 | Action | Version | SHA | Used in |
 |--------|---------|-----|---------|
 | `actions/checkout` | v7.0.1 | `3d3c42e5aac5ba805825da76410c181273ba90b1` | `agents-md-touch-up.yml`, `ci.yml`, `claude.yml`, `codeql.yml`, `lockfile-update.yml`, `main-verify.yml`, `publish-image.yml`, `publish.yml`, `scheduled-tests.yml`, `security-scan.yml`, `sequence-safety.yml` |
-| `actions/setup-python` | v7.0.0 | `5fda3b95a4ea91299a34e894583c3862153e4b97` | `ci.yml`, `lockfile-update.yml`, `main-verify.yml`, `publish.yml`, `scheduled-tests.yml`, `security-scan.yml`, `sequence-safety.yml` |
+| `actions/setup-python` | v7.1.0 | `6d4fd22b20465ccc0f7354476588e8df7c9ca0e0` | `ci.yml`, `lockfile-update.yml`, `main-verify.yml`, `publish.yml`, `scheduled-tests.yml`, `security-scan.yml`, `sequence-safety.yml` |
 | `actions/cache` | v6.1.0 | `55cc8345863c7cc4c66a329aec7e433d2d1c52a9` | `ci.yml` |
 | `actions/upload-artifact` | v7.0.2 | `cf430e030ddbb5b0abf93d22962f4752f3646cd9` | `ci.yml`, `main-verify.yml`, `publish-image.yml`, `scheduled-tests.yml`, `security-scan.yml`, `sequence-safety.yml` |
 | `actions/download-artifact` | v8.0.2 | `9000827ccba6bdab643e8b6fd33ac0654aef8333` | `publish-image.yml` |
@@ -271,9 +291,15 @@ Every third-party action is pinned to a full commit SHA, with its release in a `
 | `docker/login-action` | v4.7.0 | `81c6f93d4bc991e510b342a00b419b3bb4efc5c6` | `publish-image.yml` |
 | `docker/build-push-action` | v7.4.0 | `c3c9e263c25d99ce0380d002d59b67737d91b0dc` | `publish-image.yml` |
 | `docker/metadata-action` | v6.2.0 | `dc802804100637a589fabce1cb79ff13a1411302` | `publish-image.yml` |
-| `anthropics/claude-code-action` | v1.0.255 | `e4a6faad497d33dbc7144135c75e41f82f0bf6c0` | `claude.yml` |
+| `anthropics/claude-code-action` | v1.0.265 | `6d5ae526d25ce88daa2200be073e1a373167f064` | `claude.yml` |
 
 Dependabot's `github-actions` updates move these pins (see [Dependabot Configuration](#dependabot-configuration)). After one lands, re-derive the table from `grep -rn "uses:" .github/workflows/`.
+
+### Gitleaks engine
+
+The `gitleaks/gitleaks-action` row is the action SHA (v3.0.0). The engine is a separate pin on that step, `GITLEAKS_VERSION: "8.24.3"`, which is also the version the action installs when the variable is unset. Scan ranges, the `[extend] useDefault = true` requirement, the AND-scoped conda `generic-api-key` allowlist, and the commit-scoped `.gitleaksignore` entries are in the [CI/CD manual](CICD_MANUAL.md#gitleaks-ruleset).
+
+`security-scan.yml` does not run Gitleaks. On `repository_dispatch`, `ci.yml` skips the step: the action exits on that event. The job's self-test runs `juniper_data/tests/unit/test_gitleaks_config.py` with `GITLEAKS_PARITY_REQUIRED=1` after the action has put the binary on `PATH`.
 
 ---
 
@@ -367,7 +393,10 @@ Review steps: [Dependency Update Workflow](../../notes/DEPENDENCY_UPDATE_WORKFLO
 |--------|---------|-------|
 | `juniper-coverage-gap-map` | CI's per-file coverage gate, in each `unit-tests` leg. With `--enforce` it fails when a file's statement coverage is below 90% or a sub-module's (directory's) pooled statement coverage is below 95%, the tool's defaults. Package `juniper-ci-tools>=0.9.0,<0.10.0`. See [Coverage Gates](../REFERENCE.md#coverage-gates) | `juniper-coverage-gap-map --coverage-json reports/coverage.json --enforce` |
 | `scripts/check_module_coverage.py` | The pre-push `coverage-check` hook. Fails below 80% aggregate (`COVERAGE_FAIL_UNDER`) or when a test file is measured; a module below 85% is printed as `WARN` and does not fail. A pass with warnings does not print `PASS: All`. No CI job runs it | `python scripts/check_module_coverage.py [--run-tests]` |
-| `juniper-check-doc-links` | Markdown link validation. Installed from `juniper-doc-tools>=0.1.0,<0.2.0` in the `docs` job and as a local pre-commit hook; there is no `scripts/check_doc_links.py` | `juniper-check-doc-links --exclude templates ... --cross-repo skip` (the `docs` job's exclude list) |
+| `juniper-check-doc-links` | Markdown link validation. Installed from `juniper-doc-tools>=0.1.0,<0.2.0` in the `docs` job and as a local pre-commit hook (`>=0.1.1,<0.2.0`); there is no `scripts/check_doc_links.py` | `juniper-check-doc-links --exclude templates ... --cross-repo skip` (the `docs` job's exclude list, which the hook repeats) |
+| `juniper-lint-workflow-paths` | `docs` job, no arguments. Every `*.yml` / `*.yaml` under `.github/workflows/`: a YAML string token with a `/` ending in `.py`, `.sh`, or `.bash` must exist under the step's working directory or at the repo root. Skips `python -m`, absolute paths, `${` / `$(`, and the eight sibling-repo prefixes. A workflow that does not parse contributes no paths. Exit 1 when a path is missing, 2 when the workflows directory cannot be found. Package `juniper-ci-tools>=0.9.0,<0.10.0` | `juniper-lint-workflow-paths` |
+| `juniper-lint-agents-md-version` | `docs` job, no arguments. The `**Version**:` line in `AGENTS.md` equals `[project].version` as a string. No such line exits 0. A second line, anywhere in the file, exits 2. Drift exits 1 | `juniper-lint-agents-md-version` |
+| `juniper-lint-agents-md-header` | `docs` job, no arguments. Six header bullets, in relative order, before the first `---` or `## `: Project, Repository, Author, License, Version, Last Updated (`YYYY-MM-DD`). Extra bullets may sit between them. Accepts any date that matches the pattern. Currency of that date is `agents-md-touch-up.yml`, which verifies and does not commit | `juniper-lint-agents-md-header` |
 | `juniper-generate-dep-docs` | `dependency-docs` capture of `conf/requirements_ci.txt` and `conf/conda_environment_ci.yaml`. Pip body is `python -m pip list --format=freeze`. Conda body is the `dependencies:` block of `conda env export --no-builds` (stops before `prefix:` / `variables:`). Package `juniper-ci-tools>=0.9.0,<0.10.0`. The job uploads the capture and does not commit it; Dependabot may still edit the committed freeze. | CI: `juniper-generate-dep-docs` (no arguments, login shell). Local headers: `--pip-header PIP_DEPENDENCY_FILE_HEADER.md --conda-header CONDA_DEPENDENCY_FILE_HEADER.md` |
 
 The `dependency-docs` job runs that command after `conda-incubator/setup-miniconda` (`miniforge-version: latest`, `auto-activate-base: true`, `python-version` = `PYTHON_TEST_VERSION`) in `shell: bash -l {0}`. No-argument mode looks for `notes/JUNIPER_2026-03-11_JUNIPER-ML_PIP-DEPENDENCY-FILE-HEADER.md` and `notes/JUNIPER_2026-03-15_JUNIPER-ML_CONDA-DEPENDENCY-FILE-HEADER.md`. This repo's templates are `notes/PIP_DEPENDENCY_FILE_HEADER.md` and `notes/CONDA_DEPENDENCY_FILE_HEADER.md`, so the upload uses the two-line fallback header. The conda template ends with `dependencies:`; the fallback does not, and the uploaded conda document is a YAML list. If `conda` is absent from `PATH`, the yaml is skipped and the command still exits 0. A YAML parse failure exits 1. Timestamped backups of the previous files are included in the 90-day artifact. The job does not commit the files. Full steps: [CI/CD manual](CICD_MANUAL.md#job-dependency-docs).

@@ -1,8 +1,8 @@
 # Juniper Data User Manual
 
-**Version:** 0.4.4
+**Version:** 0.4.5
 **Status:** Active
-**Last Updated:** October 8, 2026
+**Last Updated:** November 7, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -104,10 +104,20 @@ curl http://localhost:8100/v1/health
 | `xor` | XOR classification (4 quadrants) | 2 | 2 |
 | `gaussian` | Mixture of Gaussians | 2 | configurable |
 | `circles` | Concentric circles | 2 | 2 |
+| `moon` | Two interleaving half-moons | 2 | 2 |
 | `checkerboard` | 2D checkerboard pattern | 2 | 2 |
 | `csv_import` | Import from CSV/JSON files | varies | varies |
+| `equities` | Daily OHLCV plus SEC shares (optional extra; default cap 14 symbols) | 15 | 2 |
+| `equities_seq` | Per-ticker windows of the equities columns | 15 | none (`regression`; `n_classes` is null from 6.0.0) |
+| `multi_sine` | Sum of sinusoids, regular Δt | 1 | none (regression) |
+| `mackey_glass` | Mackey–Glass delay equation, regular Δt | 1 | none (regression) |
+| `ar_p` | Autoregressive AR(p), regular Δt | 1 | none (regression) |
+| `irregular_sine` | Sinusoids sampled at jittered times | 1 | none (regression) |
+| `delay_product` | Irregular sine whose target is an in-window product | 1 | none (regression) |
 | `mnist` | MNIST / Fashion-MNIST | 784 (28x28) | 10 |
 | `arc_agi` | ARC-AGI grid-to-grid maps | 900 when flattened (default) | none (`structured`; `n_classes` is null) |
+
+The six sequence generators (`equities_seq` and the five synthetics) store `X_*` as `(n, lookback, n_features)`. Each window comes from one series, and the split follows the target time. Parameter defaults, the extra NPZ keys (`dt`, `target_dt`, `observed_mask`), and the 400 on a series too short for three windows are in [Sequence Windowing](REFERENCE.md#sequence-windowing).
 
 `arc_agi` does not emit a class label. `y_*` is the padded output grid, the same shape as `X_*` (default `flatten_pairs` makes both `(n, 900)`). The artifact also carries `task_ids`, a unicode array aligned to `concatenate([X_train, X_val, X_test])`. A download that raises `Object arrays cannot be loaded when allow_pickle=False` is a stored `arc_agi-3.0.0-*` artifact; a new generate mints `arc_agi-4.0.0-*`. See [ARC-AGI Artifacts](REFERENCE.md#arc-agi-artifacts).
 

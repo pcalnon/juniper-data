@@ -161,7 +161,9 @@ Authorised truncation has three silent failure modes on the #326 path (#372):
 
 ## Generator Registration
 
-Generators: `spiral`, `xor`, `gaussian`, `circles`, `checkerboard`, `csv_import`, `mnist`, `arc_agi`.
+Registered generators (16): `spiral`, `xor`, `gaussian`, `circles`, `moon`, `checkerboard`, `csv_import`, `equities`, `equities_seq`, `multi_sine`, `mackey_glass`, `ar_p`, `irregular_sine`, `delay_product`, `mnist`, `arc_agi`.
+
+Sequence windows (`equities_seq` and the five synthetics) are built one series at a time and split by target time. A concat-then-slide reintroduces both leaks the construction rules out. Contract and the 400 on `W < 3`: [Sequence Windowing](REFERENCE.md#sequence-windowing).
 
 **Add a new generator:**
 
