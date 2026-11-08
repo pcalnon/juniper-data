@@ -54,6 +54,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Tests pin the coverage gates, the Bandit SARIF upload, the image `Publish manifest` job, the TestPyPI install
+  check and the failed-auth throttle.** Five Cursor fleet drafts (juniper-data#512, #513, #514, #516, #517) from
+  juniper-ml's 2026-11-06 flood-4 census, carried as one change on `main` at `28078558`.
+  - `test_bandit_sarif_upload.py`, `test_check_module_coverage.py` and `test_run_coverage_gates.py` (#512) pin the
+    upload step's `if` and `continue-on-error`, `scripts/check_module_coverage.py`'s pass-with-warnings summary, and
+    `util/run_coverage.bash` behind `make coverage` (#502, #503).
+  - `test_publish_image_manifest_identity.py` (#513) and `test_publish_manifest_tag_gates.py` (#514) run
+    `publish-image.yml`'s own shell under `bash -e`, as the runner does, with a stub `docker`: the digest-identity
+    check, then the tag gates (no tags, both linux arches, a release's `X.Y.Z` tag) and the job's `if` and `needs`.
+  - `test_testpypi_install_verify.py` (#516) runs `publish.yml`'s `Verify TestPyPI install` step with stub `sleep`,
+    `pip` and `python`: TestPyPI only, `--no-deps`, and a failed install or version check fails the step.
+  - `test_middleware.py` gains three `FailedAuthThrottle` tests (#517): the cap drops the oldest rows, cleanup keeps a
+    row until two windows have passed, and a rolled-over window counts the next failure as 1.
+  - **Fixed on the way in.**
+    - #514 ran `/usr/bin/bash`, which macOS does not have, so the required `Python 3.12 on macos-latest` lane failed
+      it. It now resolves `bash` from the `/usr/bin:/bin` its shell sees, as #513 does, and fails rather than skips
+      when there is none there.
+    - #513 and #514 ran the steps under `bash -eo pipefail` and called that GitHub's default. A step that names no
+      `shell:` runs as `bash -e {0}` (the v0.17.1 `Publish manifest` log shows `/usr/bin/bash -e {0}`); naming
+      `shell: bash` is what adds pipefail. Both now run `bash -e`, and their docstrings say so.
+    - #516's docstrings said the step compares the installed version with the tag. It only reads the installed
+      metadata; pip's `juniper-data==<version>` pin is what matches the tag. Its assert message said a named shell
+      drops `-e`: `shell: bash` and `shell: sh` keep it, and only a custom template such as `bash {0}` drops it.
 - **The equities generators record every symbol they lose, refuse a lost requested one by
   default, guard the return targets, and say whether the price response carried the action
   columns** (W5.7 of juniper-ml
