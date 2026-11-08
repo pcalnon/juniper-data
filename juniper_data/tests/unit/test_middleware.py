@@ -374,6 +374,85 @@ class TestFailedAuthThrottle:
         assert len(throttle._failures) == 1
         assert throttle.check(ips[0])[0] is True
 
+    def test_the_entry_cap_drops_the_oldest_recorded_failures(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A rotating-IP flood is bounded by dropping the oldest failures, not the newest.
+
+        ``test_prunes_expired_entries`` inserts ``_CLEANUP_INTERVAL + 10`` rows and asserts
+        the length is at most ``_MAX_ENTRIES`` (10,000). That is true when cleanup never
+        runs. Cleanup trims down to the cap and only then stores the new failure, so the
+        table that just survived a flood sits at the cap plus that one new row, and the
+        rows that remain are the most recently recorded ones.
+        """
+        cap = 3
+        monkeypatch.setattr(FailedAuthThrottle, "_MAX_ENTRIES", cap)
+        monkeypatch.setattr(FailedAuthThrottle, "_CLEANUP_INTERVAL", 1)
+        now = {"t": 1_700_000_000.0}
+        monkeypatch.setattr("juniper_data.api.security.time.time", lambda: now["t"])
+        throttle = FailedAuthThrottle(max_failures=1, window_seconds=3600)
+        ips = [f"10.9.0.{i}" for i in range(cap + 3)]
+        for ip in ips:
+            throttle.record_failure(ip)
+            now["t"] += 1.0
+
+        assert list(throttle._failures) == ips[-(cap + 1) :]
+        assert throttle.check(ips[-1])[0] is True
+        assert throttle.check(ips[0]) == (False, 0)
+        assert ips[0] not in throttle._failures  # a probe of an evicted address still does not insert
+
+    def test_cleanup_keeps_a_failure_until_two_windows_have_passed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """An in-window block survives cleanup; a row older than two windows does not.
+
+        The cutoff is ``now - 2 * window``. Pruning at ``now`` would drop a counter
+        ``check()`` still has to honour and hand that source a fresh budget. Pruning at
+        one window would drop the grace row, which is already ignored by ``check()`` but
+        is not yet eligible for deletion. ``check()`` itself never deletes.
+        """
+        monkeypatch.setattr(FailedAuthThrottle, "_CLEANUP_INTERVAL", 1)
+        window = 60
+        now = 1_700_000_000.0
+        monkeypatch.setattr("juniper_data.api.security.time.time", lambda: now)
+        throttle = FailedAuthThrottle(max_failures=2, window_seconds=window)
+        throttle._failures["live"] = (2, now - (window - 1))
+        throttle._failures["grace"] = (2, now - (2 * window - 1))
+        throttle._failures["dead"] = (2, now - (2 * window + 1))
+
+        throttle.record_failure("trigger")
+
+        assert throttle._failures["live"] == (2, now - (window - 1))
+        assert throttle._failures["grace"] == (2, now - (2 * window - 1))
+        assert "dead" not in throttle._failures
+        assert throttle._failures["trigger"] == (1, now)
+        assert throttle.check("live") == (True, 1)
+        assert throttle.check("grace") == (False, 0)
+        assert "grace" in throttle._failures
+        assert throttle.check("dead") == (False, 0)
+        assert "dead" not in throttle._failures
+
+    def test_a_rolled_over_window_records_the_next_failure_as_one(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Once the window has elapsed the next failure starts at 1, and a fractional second still retries for 1.
+
+        ``window_seconds=0`` cannot see this: both the check and the record treat every
+        instant as a new window, so a rollover that kept the old count and only moved the
+        timestamp would still look unblocked.
+        """
+        now = 1_700_000_000.0
+        monkeypatch.setattr("juniper_data.api.security.time.time", lambda: now)
+        throttle = FailedAuthThrottle(max_failures=2, window_seconds=60)
+        throttle.record_failure("1.2.3.4")
+        throttle.record_failure("1.2.3.4")
+        assert throttle._failures["1.2.3.4"] == (2, now)
+        assert throttle.check("1.2.3.4") == (True, 60)
+
+        throttle._failures["1.2.3.4"] = (2, now - 59.5)
+        assert throttle.check("1.2.3.4") == (True, 1)
+
+        throttle._failures["1.2.3.4"] = (2, now - 60)
+        assert throttle.check("1.2.3.4") == (False, 0)
+        assert throttle._failures["1.2.3.4"] == (2, now - 60)
+        throttle.record_failure("1.2.3.4")
+        assert throttle._failures["1.2.3.4"] == (1, now)
+        assert throttle.check("1.2.3.4") == (False, 0)
+
     def test_build_factory_defaults_match_the_documented_budget(self):
         throttle = build_failed_auth_throttle()
         assert throttle.enabled is True
