@@ -1,8 +1,8 @@
 # Juniper Data Reference
 
-**Version:** 0.4.4
+**Version:** 0.4.6
 **Status:** Active
-**Last Updated:** October 26, 2026
+**Last Updated:** November 8, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -13,6 +13,7 @@
 - [DatasetMeta n_val and Three-Partition Counts](#datasetmeta-n_val-and-three-partition-counts)
 - [Configuration Reference](#configuration-reference)
 - [Rate-Limit Window](#rate-limit-window)
+- [Failed-Auth Throttle Retention](#failed-auth-throttle-retention)
 - [Non-ASCII API Keys](#non-ascii-api-keys)
 - [Storage Backend Notes](#storage-backend-notes)
 - [Postgres Model-Derived Schema](#postgres-model-derived-schema)
@@ -40,7 +41,9 @@
 - [equities_seq Declared Regression](#equities_seq-declared-regression)
 - [ARC-AGI Artifacts](#arc-agi-artifacts)
 - [CI/CD Pipeline Reference](#cicd-pipeline-reference)
+  - [TestPyPI install check](#testpypi-install-check)
   - [Image serve-and-version gate](#image-serve-and-version-gate)
+    - [Publish manifest gates](#publish-manifest-gates)
   - [Consumer release notification](#consumer-release-notification)
   - [Sequence Safety (required check)](#sequence-safety-required-check)
 - [Worktree Quick Reference](#worktree-quick-reference)
@@ -306,7 +309,7 @@ Default `rate_limit_enabled` is **true** (`_JUNIPER_DATA_API_RATELIMIT_ENABLED`)
 
 ### Not this knob
 
-`FailedAuthThrottle` is a separate pre-auth, IP-keyed budget (10 failures / 60 s). It is not wired to `Settings.rate_limit_window_seconds`. It only consumes budget on a **failed** credential. A 429 from the identity-keyed limiter is not recorded as an auth failure. A non-ASCII `X-API-Key` is one of those failures: it is a 401, and it consumes this budget. See [Non-ASCII API Keys](#non-ascii-api-keys).
+`FailedAuthThrottle` is a separate pre-auth, IP-keyed budget (10 failures / 60 s). It is not wired to `Settings.rate_limit_window_seconds`. It only consumes budget on a **failed** credential. A 429 from the identity-keyed limiter is not recorded as an auth failure. A non-ASCII `X-API-Key` is one of those failures: it is a 401, and it consumes this budget. Retention, the 10,000-row cap, and what a rolled-over window does to the next failure are [Failed-Auth Throttle Retention](#failed-auth-throttle-retention). The 401 itself is [Non-ASCII API Keys](#non-ascii-api-keys).
 
 ### Operator usage
 
@@ -340,6 +343,53 @@ In-process only. Multiple uvicorn workers do not share counters. Restarting the 
 | `test_window_property_returns_configured_seconds` | `tests/unit/test_security.py` | Constructor window is readable |
 | `test_check_resets_after_window_expiry` | same | Count resets once `now - window_start >= window` |
 | `test_call_raises_429_when_over_limit` | same | Over-limit path is 429 |
+
+---
+
+## Failed-Auth Throttle Retention
+
+`FailedAuthThrottle` (`juniper_data/api/security.py`) is the pre-auth budget under [Rate-Limit Window](#rate-limit-window). It is a fixed window, in one process, under one lock. `create_app` installs the default: 10 failures / 60 seconds, keyed by client IP (`DEFAULT_FAILED_AUTH_MAX_FAILURES`, `DEFAULT_FAILED_AUTH_WINDOW_SECONDS`). `build_failed_auth_throttle` reads no `JUNIPER_DATA_*` setting. Each process keeps its own table, so the budget multiplies by the replica count. Restarting the process clears it.
+
+`check()` does not consume budget and does not insert a row. An address with no row reads as not blocked. `record_failure` is what stores a failure. `SecurityMiddleware` calls it only for a 401. `reset()` clears the table; production does not call it. An instance built with `enabled=False` neither blocks nor records. Production does not pass that flag.
+
+### When a window ends
+
+`check()` treats the window as closed when `now - window_start >= window_seconds`. It returns not blocked and leaves the stored count in place. The next `record_failure` for that address writes count **1** and a new `window_start`. A time still inside the window, including half a second before the boundary, stays blocked. `Retry-After` is `max(1, int(window_seconds - elapsed))`, so a fraction of a second left is still 1 second. At exactly 60 seconds the check is not blocked, and the old count stays in the table until that next failure replaces it.
+
+A constructor `window_seconds` of `0` makes every check and every record a new window. It cannot show a rollover that kept the old count.
+
+### What cleanup keeps
+
+Cleanup runs from `record_failure`, every `_CLEANUP_INTERVAL` recorded failures (100), and never from `check()`. The cutoff is `now - 2 * window_seconds`. A row is deleted only when its `window_start` is strictly older than that cutoff (`window_start < now - 2 * window_seconds`).
+
+| Age of `window_start` | `check()` | Cleanup |
+|-----------------------|-----------|---------|
+| Younger than one window | Blocked once the count has reached 10 | Kept |
+| From one window old through exactly two windows | Not blocked. The stored count is ignored | Kept (the grace row) |
+| Strictly older than two windows | Not blocked | Deleted |
+
+Deleting at one window would drop the grace row. Deleting every row older than `now` would drop a counter `check()` still has to honour.
+
+### The 10,000-row cap
+
+`_MAX_ENTRIES` is 10,000. The trim runs only on that 100-failure cadence, after the expiry prune. Between cleanups the table can grow past 10,000. When a cleanup finds more than 10,000 rows, it deletes the oldest by `window_start` until 10,000 remain. The failure being recorded is stored after that trim. Recording an address that is not already among those rows inserts it, so the length is 10,001, and the rows left are the most recently recorded. An address whose row was dropped is gone: its next failure starts at 1, and a `check()` of that address does not recreate the row.
+
+A rotating-IP flood can therefore evict a source that was over its budget. The cap stops an attacker-supplied address from growing the dict without bound. It does not keep a blocked address blocked for the rest of its window once the row has been dropped.
+
+### What not to do
+
+- Do not expect `JUNIPER_DATA_RATE_LIMIT_WINDOW_SECONDS` to move this window.
+- Do not read a 429 from the identity-keyed limiter as a failed login. It is not recorded here.
+- Do not treat the 10,000-row cap as "the oldest attackers stay blocked". Past the cap, the oldest rows are the ones removed.
+- Do not assume a second replica, or a restarted process, still has the first process's failures.
+
+### Pins (on `main`)
+
+| Test | File | Guards |
+|------|------|--------|
+| `test_check_never_allocates_an_entry` | `tests/unit/test_middleware.py` | A thousand distinct `check()` calls insert nothing; `record_failure` still records |
+| `test_check_does_not_consume_budget` | same | Repeated `check()` does not block; one recorded failure does, with `Retry-After` at least 1 |
+| `test_prunes_expired_entries` | same | After `_CLEANUP_INTERVAL + 10` records the table length is at most `_MAX_ENTRIES`. With the default cap of 10,000 that bound holds without evicting a live row |
 
 ---
 
@@ -2289,6 +2339,24 @@ Notes on `ci.yml`:
 - **A dispatch cancels a push run on `main`.** Runs of this workflow share one concurrency group per ref (`ci-${{ github.ref }}`, `cancel-in-progress: true`). A `data-client-updated` dispatch runs on `main`'s ref, so it cancels an in-flight push run there, and the dispatch run tests the same `main` commit (measured 2026-10-27 at `35658ff3` and `8499cab0`).
 - **The Codecov upload carries a token, except on runs Dependabot triggers.** The Python 3.14 leg uploads `reports/coverage.xml` with `token: ${{ secrets.CODECOV_TOKEN }}`. The owner added the `CODECOV_TOKEN` Actions secret on 2026-10-29 (22:15:30 UTC). The Dependabot secret store does not hold it, and a run that Dependabot triggers reads only that store, so its upload stays tokenless and Codecov decides whether to take it. Before the secret existed every upload was tokenless: from 2026-07-30 (the oldest log GitHub keeps) to 2026-10-27 22:51 UTC Codecov rejected each one with `Token required - not valid tokenless upload`, and from 23:47 UTC that day it accepted them, with nothing changed in this repository. `fail_ci_if_error: false` keeps the step green either way and it posts no annotation, so it gates nothing. Only the step log shows what happened: the action logs `Token set from input` when it has a token, and its wrapper logs `Token length: 0` when it does not. The job's own coverage gates do not depend on it.
 
+### TestPyPI install check
+
+`publish.yml`'s `testpypi` job ends with `Verify TestPyPI install`. The production `pypi` job waits on that job. The step names no `shell:` and no `continue-on-error`.
+
+The release tag is stripped of one leading `v`, then:
+
+```bash
+sleep 30
+pip install --no-deps --index-url https://test.pypi.org/simple/ juniper-data==${VERSION}
+python -c "import importlib.metadata as m; print('TestPyPI OK: v' + m.version('juniper-data'))"
+```
+
+`sleep 30` is the wait for TestPyPI index lag. The pip requirement is what selects the released version. The Python line only reads the installed distribution's metadata and prints it. It does not compare that string with the tag. `import juniper_data` would fail a good publish: `juniper_data/__init__.py` imports `dotenv` at import time (`python-dotenv`), and `--no-deps` does not install it.
+
+The index is `https://test.pypi.org/simple/` only. There is no `--extra-index-url` and no production-PyPI fallback. With `--no-deps` a second index fetches no dependencies. It only widens which `juniper-data` pip will accept, including a different project of the same name. A non-zero `pip` or `python` fails the step, so `pypi` does not start. A `|| true` on either command, or `continue-on-error` on the step, would let production publish after a verify that did not succeed.
+
+The `pypi` job builds and publishes again. It does not install the package.
+
 ### Image serve-and-version gate
 
 `publish-image.yml` is a separate workflow from `publish.yml`. A green PyPI publish does not run these checks. The image workflow is never a required status check.
@@ -2334,7 +2402,18 @@ The script can also require `meta.version` on repeatable `--enveloped-path` valu
 
 On a publish the arch image is pushed **by digest, with no tag**, and only then scanned. Against that digest, in order: CPU-only (`EXPECT_TORCH=absent`: torch must not import, and no `nvidia-*`, `cuda-*`, or `triton` distribution may be installed), the credential scan (`util/check_image_no_secrets.py`), an import of `juniper_data`, then this serve check. Export of the digest artifact is the next step. The merge job (`needs: [build]`) is the only job that writes a tag. A failed serve check fails the arch job, so the digest is not exported and no tag is written. The untagged digest can already be in GHCR.
 
-Release tags are `X.Y.Z`, `X.Y`, and `latest`. The merge job fails a release that produced no `X.Y.Z` tag, including one that would otherwise publish `:latest` alone. Both `amd64` and `arm64` must appear in the manifest list.
+Release tags from `docker/metadata-action` are `X.Y.Z`, `X.Y`, and `latest` (latest only when the event is a release). A manual run with `push` true adds `dispatch-<sha>` instead, because the semver rules match nothing on that event.
+
+#### Publish manifest gates
+
+`Publish manifest` (`jobs.merge`) is the only job that writes a tag. Four checks in that job fail the run for a reason the job used to be able to miss. Each `run:` step names no `shell:`, so the runner uses `bash -e`.
+
+1. **No tags.** `Create manifest list` counts `.tags` in `DOCKER_METADATA_OUTPUT_JSON`. Zero tags exit 1 with `metadata-action produced no tags for event '<event>' -- nothing to publish`, before `docker buildx imagetools create`. An empty `-t` list is docker's error, and that error does not name the event.
+2. **Both linux arches.** `Verify both architectures are present` inspects the first tag (not `steps.meta.outputs.version`, which is empty for some rule combinations) and reads linux platforms only. The sorted architectures must be exactly `amd64,arm64`. A windows entry does not count. Anything else exits 1 with `expected 'amd64,arm64' in the manifest list`.
+3. **A release's `X.Y.Z` tag.** On `github.event_name == 'release'`, `Verify the release produced a version tag` requires at least one tag matching `:[0-9]+\.[0-9]+\.[0-9]+$`. `latest` alone is not enough. metadata-action only warns when a semver rule does not parse, and `latest` still applies on a release, so without this step a release whose tag the rules missed would publish `:latest`, pass the zero-tag guard with that one tag, and finish green.
+4. **Digest identity**, inside `Verify published image is CPU-only`, before the CPU-only `docker run`. Provenance attestations are the build-push-action default, so each arch is pushed by digest as a per-arch OCI index: the linux image plus an attestation. `imagetools create` flattens that index. The published list's linux entries are the image-manifest digests, not the pushed index digests. Comparing the two directly fails every publish (worker dispatch run 34292278641, 2026-09-08). The step inspects each pushed digest. When that inspect lists linux images, there must be exactly one, and its architecture must equal the digest file's name (`amd64` or `arm64`); that image digest is what is compared. When it lists none, including an image manifest that has no `.manifests` array, the pushed digest stands for itself. The sorted linux digests in `/tmp/manifest.json` must equal the sorted resolved digests. A mismatch exits 1 with `manifest list references [<listed>] but the verified build digests resolve to [<verified>]`.
+
+The digest files and the manifest inspect that this job writes live under `/tmp` on the GitHub-hosted runner. That path is the runner's, which the repository's `/tmp` rule does not govern.
 
 #### What not to do
 
@@ -2343,6 +2422,9 @@ Release tags are `X.Y.Z`, `X.Y`, and `latest`. The merge job fails a release tha
 - Do not pass a `v` prefix, a floating tag, or the source-checkout literal as `--expect-version`.
 - Do not expect a docs-only pull request to run this workflow. The path filter is the list in the table above.
 - Do not treat `publish.yml` (TestPyPI, then PyPI) as the image gate. They share the release event and nothing else.
+- Do not compare a pushed index digest with the published list. Resolve the index to its one linux image first. See [Publish manifest gates](#publish-manifest-gates).
+- Do not treat a non-linux manifest entry as `linux/amd64` or `linux/arm64`.
+- Do not read a green merge job that applied only `:latest` as a versioned image. A release has to produce an `X.Y.Z` tag.
 
 #### Pins
 
@@ -2417,7 +2499,7 @@ CI enforces two gates, on each of the four required `Unit Tests + Coverage` legs
 - **Aggregate, 80%.** `python -m coverage report --fail-under=${COVERAGE_FAIL_UNDER}`, with `COVERAGE_FAIL_UNDER: "80"` in the workflow's `env:` (`pyproject.toml`'s `fail_under = 80` agrees). This figure counts branches.
 - **Per file, 90%; per sub-module, 95%.** `juniper-coverage-gap-map --coverage-json reports/coverage.json --enforce`, from `juniper-ci-tools>=0.9.0,<0.10.0`. The step passes no thresholds, so the tool's defaults apply. The leg fails when any measured file's **statement** coverage is below 90%, or any sub-module's **pooled** statement coverage (its files' covered statements over their statements) is below 95%. A sub-module is a directory: `juniper_data/generators/spiral` is one, `juniper_data/api/routes` another. Branches count toward neither. On `main` at `95ce8190` (scheduled run, 2026-10-29) it gated 100 files in 23 directories and printed `Enforcing gate: PASS  (per-file statement >= 90.0%, sub-module pooled >= 95.0%)`. The report above that verdict also lists files below 90% *branch-inclusive* coverage, and that list is advisory: it named `juniper_data/core/meta.py` at 87.88% while the file's statement coverage was 48/52.
 
-No CI job runs `scripts/check_module_coverage.py`: the per-file gate replaced it (per-file rollout C-5). It is the **pre-push** hook (`coverage-check` in `.pre-commit-config.yaml`). It fails the push when aggregate coverage is below `COVERAGE_FAIL_UNDER` (default 80) or a test file is measured; a module below 85% is printed as `WARN` and does not fail it. `make coverage` (`bash util/run_coverage.bash`) runs CI's unit-lane pytest, the aggregate gate, that script and then the per-file gate. It needs `juniper-ci-tools` installed, and without it stops before the tests (from 2026-11-01; before then it skipped the per-file gate). To run the per-file gate on its own:
+No CI job runs `scripts/check_module_coverage.py`: the per-file gate replaced it (per-file rollout C-5). It is the **pre-push** hook (`coverage-check` in `.pre-commit-config.yaml`). It fails the push when aggregate coverage is below `COVERAGE_FAIL_UNDER` (default 80) or a test file is measured (`/tests/` in the path is `ERROR` and exit 1). A module below 85% is printed as `WARN` and does not fail it. Both comparisons are `<`, so 80.0 aggregate and 85.0 on a module are passes. The success line depends on the warnings. With none, it prints `PASS: All N modules >= 85.0%, aggregate >= 80.0%`. With warnings and an aggregate at or above 80, it prints `PASS: aggregate >= 80.0%; K of N modules below 85.0% (warned above, not enforced)` and does not print `PASS: All`. An aggregate miss prints `FAIL: Aggregate coverage` and no `PASS` line, even when modules were also warned. `make coverage` (`bash util/run_coverage.bash`) runs CI's unit-lane pytest, the aggregate gate, that script, and then the per-file gate, so the advisory listing still prints when the per-file gate fails. It needs `juniper-ci-tools` installed, and without `juniper-coverage-gap-map` on `PATH` it exits 2 before the tests (from 2026-11-01; before then it skipped the per-file gate). To run the per-file gate on its own:
 
 ```bash
 python -m pytest -m "unit and not slow" juniper_data/tests/unit --cov=juniper_data --cov-report=json:reports/coverage.json
@@ -2567,6 +2649,6 @@ git worktree prune
 
 ---
 
-**Last Updated:** October 26, 2026
-**Version:** 0.4.4
+**Last Updated:** November 8, 2026
+**Version:** 0.4.6
 **Maintainer:** Paul Calnon
