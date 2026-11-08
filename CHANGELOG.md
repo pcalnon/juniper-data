@@ -54,6 +54,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Tests pin the sequence-window cut equalities the property suite cannot see.**
+  `window_one_ticker` trains on `target_time < cut_ordinal` and validates on
+  `target_time < val_cut_ordinal`. Embargo drops a window only when its first
+  step is strictly before the cut in front of that split.
+  `test_sequence_windowing_leakage.py` checks that train targets precede
+  validation targets, and that an embargoed window starts at or after its cut.
+  Both stay green if those `<` comparisons become `<=`, which would put a train
+  target on the validation cut and drop a window that starts on the cut.
+  `test_sequence_windowing_cut_boundary.py` pins the equalities. Production
+  behavior is unchanged.
 - **The equities generators record every symbol they lose, refuse a lost requested one by
   default, guard the return targets, and say whether the price response carried the action
   columns** (W5.7 of juniper-ml
