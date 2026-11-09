@@ -19,7 +19,7 @@ attrs==26.1.0
     # via aiohttp
 beautifulsoup4==4.15.0
     # via yfinance
-cachetools==7.2.8
+cachetools==8.0.0
     # via juniper-data (pyproject.toml)
 certifi==2026.10.23
     # via
@@ -30,7 +30,7 @@ cffi==2.1.1
     # via curl-cffi
 charset-normalizer==3.5.2
     # via requests
-click==8.5.0
+click==8.5.1
     # via
     #   huggingface-hub
     #   uvicorn
@@ -42,12 +42,12 @@ dill==0.4.1
     # via
     #   datasets
     #   multiprocess
-fastapi==0.162.0
+fastapi==0.162.2
     # via
     #   juniper-data (pyproject.toml)
     #   juniper-service-core
     #   sentry-sdk
-filelock==4.2.8
+filelock==4.2.9
     # via
     #   datasets
     #   huggingface-hub
@@ -106,7 +106,7 @@ packaging==26.3
     # via
     #   datasets
     #   huggingface-hub
-pandas==3.1.0
+pandas==3.1.1
     # via
     #   juniper-data (pyproject.toml)
     #   datasets
@@ -115,7 +115,7 @@ peewee==4.5.3
     # via yfinance
 pillow==13.0.0
     # via datasets
-platformdirs==4.14.4
+platformdirs==4.14.5
     # via yfinance
 prometheus-client==0.26.0
     # via juniper-data (pyproject.toml)
@@ -129,14 +129,14 @@ pyarrow==26.0.1
     # via datasets
 pycparser==3.12
     # via cffi
-pydantic==2.14.2
+pydantic==2.14.3
     # via
     #   juniper-data (pyproject.toml)
     #   fastapi
     #   juniper-observability
     #   juniper-service-core
     #   pydantic-settings
-pydantic-core==2.50.2
+pydantic-core==2.50.4
     # via pydantic
 pydantic-settings==2.16.2
     # via
@@ -158,9 +158,9 @@ pyyaml==6.0.3
     #   uvicorn
 requests==2.34.2
     # via yfinance
-sentry-sdk==2.73.0
+sentry-sdk==2.74.0
     # via juniper-data (pyproject.toml)
-soupsieve==4.0
+soupsieve==4.0.1
     # via beautifulsoup4
 starlette==1.10.0
     # via
@@ -186,7 +186,7 @@ typing-extensions==4.16.0
     #   pydantic-core
     #   pydantic-settings
     #   typing-inspection
-typing-inspection==0.4.4
+typing-inspection==0.4.5
     # via
     #   fastapi
     #   pydantic
@@ -207,7 +207,7 @@ websockets==17.4
     # via
     #   uvicorn
     #   yfinance
-xxhash==4.0.2
+xxhash==4.1.0
     # via datasets
 yarl==1.25.1
     # via aiohttp
