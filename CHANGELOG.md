@@ -186,6 +186,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `cancelled` passes is the one this change reverses.
   - `docs/ci_cd/CICD_MANUAL.md` § Quality Gate and § Job: `required-checks` say the same. The
     latter also listed `dependency-docs` and `security` as success-only and omitted `docker-build`.
+- **44 of `test_security.py`'s 116 tests never ran in CI; the module is now marked `unit`**
+  (`juniper_data/tests/unit/test_security.py`; the owner's ruling 17 of 2026-11-09 in juniper-ml's Cursor flood-4
+  arc, which that record's next update adds to §8 of
+  `notes/JUNIPER_2026-11-06_JUNIPER-ECOSYSTEM_CURSOR-FLOOD-4-DISPOSITION.md`). CI's unit lane runs
+  `pytest -m "unit and not slow" juniper_data/tests/unit` and no conftest auto-marks, so the four classes that
+  carried no `unit` mark -- `TestAPIKeyAuth` (18 tests), `TestRateLimiter` (15), `TestSecurityModuleFunctions` (5)
+  and `TestApiKeysSettingsValidator` (6) -- were collected, deselected and never run there; only a local `pytest`
+  ran them. The module now sets `pytestmark = pytest.mark.unit` (62 of the 103 unit modules carry a module-level `pytestmark` that includes `unit`), so a class
+  added later cannot repeat the gap. The three class decorators it makes redundant are gone, and the two
+  docstrings that described the gap are corrected.
+  - Selection, collected on main `272ff615`: the unit lane took 2,271 of the unit directory's 2,411 tests and now
+    takes 2,315. The 44 it adds are exactly the module's deselected tests; no other lane's selection moves.
+  - The 44 pass on Python 3.12, 3.13 and 3.14 under the unit lane's marker selection (the whole lane on a local free-threaded 3.14), and
+    in 20 repeated runs. Two of the 44 sleep 1.1 s each. Each of three one-line breaks of the code they pin fails at least one of them: `APIKeyAuth`
+    keeping blank keys (APD-DATA-003), `RateLimiter._get_key`'s `ip:unknown` fallback, and
+    `Settings._parse_api_keys`' list-branch filter. With each break in place, the unit lane as main selected it
+    still passed (all 2,271 selected; 2,264 passed, 7 skipped locally): only the 44 caught any of the three.
+  - Not changed here: 178 more tests in 9 other files run in no CI lane (an unmarked class or module, or a
+    class marked only `api` or `performance`, which no lane selects). They are reported for a follow-up.
 - **The lockfile regen can no longer commit an empty `requirements.lock`**
   (`.github/workflows/lockfile-update.yml`). The GraphQL payload was built with
   `--arg contents "$(base64 -w0 requirements.lock)"`. A failure inside a command substitution that
