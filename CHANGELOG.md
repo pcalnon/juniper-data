@@ -381,6 +381,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
     Its real-engine cases skip in the unit-test job (no binary) and run in the Security Scans job,
     after pip-audit, with `GITLEAKS_PARITY_REQUIRED=1`, which turns a missing binary into a failure.
+- **A pull request's Gitleaks scan now covers every commit in its `base..head` range; gitleaks-action stopped at the
+  30th, and dropped what merges brought in (juniper-ml's Cursor flood-4
+  record, `notes/JUNIPER_2026-11-06_JUNIPER-ECOSYSTEM_CURSOR-FLOOD-4-DISPOSITION.md` §4, the juniper-data row; owner ruling
+  "Fix now", 2026-11-08).** gitleaks-action v3.0.0 lists a pull
+  request's commits with one unpaginated `GET /repos/{owner}/{repo}/pulls/{pull_number}/commits`, which returns 30
+  per page by default, oldest first, and at most 250 in all. It then scans
+  `--no-merges --first-parent <page[0]>^..<page[-1]>` (`src/gitleaks.js` at `e0c47f4f…`; the bundled
+  `dist/index.js` it runs has no `paginate` call). Commit 31 onwards was never scanned, and on a pull request of any length `--first-parent` from the page's last
+  commit dropped every commit a merge had brought into the branch. On juniper-ml#1797 (88 commits) the action logged `12 commits scanned.`: one commit
+  of the pull request and 11 already on `main`. No juniper-data pull request has had more than 18 commits (507 of
+  them, to 2026-11-08), so the 30-commit page never cut a scan short here, but `--first-parent` did: on #370 (18
+  commits, nine of them merges) the action logged `14 commits scanned.`, one of its nine non-merge commits and 13
+  already on `main`. Each of the other eight headed its own single-commit pull request (#337, #338, #341, #344, #346,
+  #352, #356 and #360), but those pull requests' scans, like #370's own, ran before 2026-10-25, when `.gitleaks.toml`
+  loaded no rules (the entry above), so none of them could have found anything.
+  - **The fix.** `.github/workflows/ci.yml` skips the action on `pull_request`. `Install Gitleaks (pull request)`
+    downloads the same 8.24.3 release tarball and checks it with `sha256sum --check --strict` against
+    `GITLEAKS_SHA256` (`9991e0b2…`, the release's `linux_x64` checksum) before unpacking it. `Run Gitleaks over the
+    pull request` scans `<base>..<head>` from the event payload with the action's detect flags (not its
+    `--no-merges --first-parent`) and the auto-discovered `.gitleaks.toml` and `.gitleaksignore`. With
+    `--remerge-diff` it also scans what each two-parent merge commit in the range changed itself, such as a conflict
+    resolution: until now a pull request's scan never saw that, a squash merge's `push` scan saw it only after the
+    merge, and after a merge-commit merge no event did. A clean merge prints nothing, so merging `main` into a pull
+    request does not scan `main`'s side again. git prints no such patch for an octopus merge
+    (`diff: warning: Skipping remerge-diff for octopus merges.`), so the step refuses a range that holds one. The
+    engine reads `git log` through a filter that deletes the notes `--remerge-diff` writes into a merge's file
+    headers (`remerge CONFLICT ...`): gitleaks 8.24.3's patch parser otherwise names a finding in the conflicted file
+    `b/<path>`, and when a note holds the word `commit` (the path `.pre-commit-config.yaml`, or a parent subject such
+    as `pre-commit autoupdate`) drops the merge's SHA from that finding and every later one in the merge, leaving
+    file-scoped fingerprints that no `.gitleaksignore` entry can match. It fails the way the action does: a leak with
+    1, any other gitleaks failure with its own code. It refuses a base or head the checkout does not hold, logs the
+    range's commit count beside the payload's, and leaves the redacted SARIF in the `security-reports` artifact.
+    `push`, `schedule` and `workflow_dispatch` still run the action, unchanged; none of them lists commits through
+    the API. Not covered on a pull request, as before: a commit a force-push removed before any run scanned it, and
+    whatever the pull request's own `.gitleaks.toml` or `.gitleaksignore` allows.
+  - **Reproduced** on a scratch clone with no remote, with gitleaks 8.24.3 and fabricated tokens built at runtime
+    (`util/ad-hoc/2026-11-08_reproduce_gitleaks_pr_commit_window.py`). Over 35 commits with a token in commit 1 and
+    in commit 35, the action's argv over its first page finds only commit 1, the same argv over the newest 30
+    commits finds only commit 35, and the new step finds both. A token on a side branch merged into a five-commit
+    pull request passes the action's argv and fails the new step.
+  - **Pins**, in `juniper_data/tests/unit/test_gitleaks_config.py` (35 tests, from 11):
+    - the action skips pull requests; the install's version and digest; the scan's event range, its step order
+      and the job's `fetch-depth: 0`;
+    - the scan step's own shell under `bash -e` with a stand-in engine: its argv, `--remerge-diff` included, the
+      action's exit mapping, a refused range, the count warning, a refused octopus merge, and the engine's `git`,
+      which drops the `remerge` notes and nothing else;
+    - the same shell with the real engine: a token in the 1st and the 35th commit, one a merge brought in, one that
+      only a merge commit's own changes hold (added during the merge, or written into a conflict resolution), the
+      same under the merge's SHA and the file's own path when the conflict note says `commit`, whose `Fingerprint:`
+      lines, appended to `.gitleaksignore`, clear the next run, a clean range whose base commit holds a token, and a
+      clean merge of a base branch that holds one.
+
+    `util/ad-hoc/2026-11-08_verify_gitleaks_pr_scan_tests_are_not_vacuous.py` makes fourteen edits of `ci.yml`, one
+    at a time, each undoing one property of the fix (among them the 30-commit cap, `--first-parent`,
+    `--remerge-diff` dropped or replaced by a first-parent patch, the octopus refusal, the `git` filter and the exit
+    status it passes on), and the tests catch each.
+  - **The same action runs the same way on `pull_request`** in seven other repositories' CI: juniper-ml,
+    juniper-canopy, juniper-cascor, juniper-data-client, juniper-cascor-client, juniper-cascor-worker and
+    juniper-deploy. This change is juniper-data's alone.
+  - Docs: `docs/ci_cd/CICD_MANUAL.md` § Gitleaks ruleset (the event table, what each event does with a merge commit's
+    own changes, **Pull requests** and its force-push limit, the self-test, three new troubleshooting entries) and
+    `docs/ci_cd/CICD_REFERENCE.md` § Gitleaks engine, its `GITHUB_TOKEN` row and the artifact-retention rows.
 
 ## [0.17.1] - 2026-10-10
 
