@@ -14,6 +14,12 @@ from juniper_data.api.security import (
     RateLimiter,
 )
 
+# CI's unit lane runs ``pytest -m "unit and not slow" juniper_data/tests/unit`` with ``--strict-markers``
+# and no auto-marking conftest, so an UNMARKED class here is silently DESELECTED -- collected, green
+# locally, and never run in CI. Four classes (44 tests) were, until 2026-11-09. The mark is on the
+# module, not on each class, so a class added later cannot repeat it.
+pytestmark = pytest.mark.unit
+
 # ``hmac.compare_digest`` raises ``TypeError`` on a ``str`` holding any non-ASCII character.
 # Starlette decodes header bytes as latin-1, so every byte above 0x7f reaches ``validate`` as
 # one: an anonymous ``X-API-Key: \xa0`` was a 500 whose Sentry event carried the comparison
@@ -202,14 +208,8 @@ class TestAPIKeyAuth:
         assert all(probe == b"probe-key" and candidate == b"valid-key" for probe, candidate in calls)
 
 
-@pytest.mark.unit
 class TestNonAsciiApiKey:
-    """A non-ASCII ``X-API-Key`` is a mismatch, never a ``TypeError``.
-
-    Marked ``unit`` because CI runs ``-m "unit and not slow"``: ``TestAPIKeyAuth`` above is
-    unmarked, so a test added there would run locally and never in CI (see
-    ``TestSecurityGateCoverage``).
-    """
+    """A non-ASCII ``X-API-Key`` is a mismatch, never a ``TypeError``."""
 
     @pytest.mark.parametrize("presented", _NON_ASCII_PRESENTED)
     def test_non_ascii_presented_key_is_a_mismatch_not_an_exception(self, presented: str) -> None:
@@ -234,7 +234,6 @@ class TestNonAsciiApiKey:
         assert "Invalid API key" in exc_info.value.detail
 
 
-@pytest.mark.unit
 class TestNonAsciiApiKeyThroughTheApp:
     """The whole stack, from ``create_app`` with auth on, for a raw non-ASCII ``X-API-Key``.
 
@@ -494,17 +493,15 @@ class TestSecurityModuleFunctions:
         assert limiter1 is not limiter2
 
 
-@pytest.mark.unit
 class TestSecurityGateCoverage:
     """Deterministic (no-sleep) coverage of the security module's remaining branches.
 
-    The comprehensive ``TestAPIKeyAuth`` / ``TestRateLimiter`` /
-    ``TestSecurityModuleFunctions`` classes above are unmarked (and two of their
-    rate-limiter tests use ``time.sleep``), so they are excluded from the CI
-    ``unit and not slow`` lane. This class re-covers the same code paths for the
-    per-file coverage gate deterministically: the window-expiry reset uses a
-    seeded ``window_start`` and the capacity warning monkeypatches the module
-    ceiling instead of sleeping / allocating 8k entries.
+    Written while ``TestAPIKeyAuth`` / ``TestRateLimiter`` / ``TestSecurityModuleFunctions``
+    carried no ``unit`` mark, so CI's ``unit and not slow`` lane deselected them. The
+    module's ``pytestmark`` now runs them in that lane as well. This class still covers
+    a subset of their code paths without sleeping (two of ``TestRateLimiter``'s tests sleep
+    1.1 s): the window-expiry reset uses a seeded ``window_start`` and the capacity
+    warning monkeypatches the module ceiling instead of sleeping / allocating 8k entries.
     """
 
     def test_validate_true_when_disabled(self) -> None:
