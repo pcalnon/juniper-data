@@ -2,9 +2,9 @@
 
 ## juniper-data CI/CD Jobs, Hooks, and Configuration
 
-**Version:** 0.4.4
+**Version:** 0.4.5
 **Status:** Active
-**Last Updated:** November 7, 2026
+**Last Updated:** November 9, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -299,7 +299,9 @@ Dependabot's `github-actions` updates move these pins (see [Dependabot Configura
 
 The `gitleaks/gitleaks-action` row is the action SHA (v3.0.0). The engine is a separate pin on that step, `GITLEAKS_VERSION: "8.24.3"`, which is also the version the action installs when the variable is unset. Scan ranges, the `[extend] useDefault = true` requirement, the AND-scoped conda `generic-api-key` allowlist, and the commit-scoped `.gitleaksignore` entries are in the [CI/CD manual](CICD_MANUAL.md#gitleaks-ruleset).
 
-`security-scan.yml` does not run Gitleaks. On `repository_dispatch`, `ci.yml` skips the step: the action exits on that event. The job's self-test runs `juniper_data/tests/unit/test_gitleaks_config.py` with `GITLEAKS_PARITY_REQUIRED=1` after the action has put the binary on `PATH`.
+A pull request skips the action, whose `pull_request` path never scans past a pull request's 30th commit and, through `--first-parent`, drops every commit a merge brought into the branch. `Install Gitleaks (pull request)` downloads the same 8.24.3 release tarball, `gitleaks_8.24.3_linux_x64.tar.gz`, and checks it against the step's `GITLEAKS_SHA256` (`9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c`, the `linux_x64` line of the release's `gitleaks_8.24.3_checksums.txt`) before unpacking it. `Run Gitleaks over the pull request` then scans every commit in `base..head` from the event payload, and with `--remerge-diff` what each two-parent merge commit in it changed itself; it refuses a range that holds an octopus merge, for which git prints no such patch, and hands the engine a `git` that drops the `remerge` notes git writes into a merge's file headers, so a finding there keeps the merge's SHA. The download is not an action, so it has no row in the table above. The install step's version and digest are pinned in `juniper_data/tests/unit/test_gitleaks_config.py`, beside the action's version. The scan step has no version of its own: it runs the binary the install put on `PATH`.
+
+`security-scan.yml` does not run Gitleaks. On `repository_dispatch`, `ci.yml` skips the action step: the action exits on that event. The job's self-test runs `juniper_data/tests/unit/test_gitleaks_config.py` with `GITLEAKS_PARITY_REQUIRED=1` after the action, or on a pull request the install step, has put the binary on `PATH`.
 
 ---
 
@@ -348,7 +350,7 @@ Read on 2026-10-29 with `gh api repos/pcalnon/juniper-data/environments` and eac
 | Secret | Used By | Purpose |
 |--------|---------|---------|
 | `CODECOV_TOKEN` | ci.yml (unit-tests, Python 3.14 leg) | Codecov.io upload token. **Set** as an Actions secret since 2026-10-29 (22:15:30 UTC). The Dependabot secret store does not hold it, so a run that Dependabot triggers still uploads tokenless and Codecov decides whether to take it. Before 2026-10-29 every upload was tokenless: Codecov rejected each one through 2026-10-27 22:51 UTC with `Token required - not valid tokenless upload`, and accepted them from 23:47 UTC. `fail_ci_if_error: false` keeps the step green either way, so it gates nothing |
-| `GITHUB_TOKEN` | ci.yml (security); publish-image.yml | Built-in. Gitleaks uses it in ci.yml, and `docker/login-action` uses it to log in to `ghcr.io` in publish-image.yml |
+| `GITHUB_TOKEN` | ci.yml (security); publish-image.yml | Built-in. The Gitleaks action uses it in ci.yml on `push`, `schedule` and `workflow_dispatch`; the pull-request Gitleaks scan makes no API call and reads no token. `docker/login-action` uses it to log in to `ghcr.io` in publish-image.yml |
 | `SLACK_WEBHOOK_URL` | main-verify.yml (`Notify on Failure` job); pr-budget-alarm.yml | Slack incoming-webhook URL for two notifications: a failed post-merge verification of `main`, and an open-PR budget breach. **Not set** (Actions secrets read 2026-10-29). Without it, main-verify.yml's step logs that it skipped, and pr-budget-alarm.yml's step writes a `::warning::` annotation instead. Both steps are `continue-on-error: true`, so a failed post never fails a run |
 | `CROSS_REPO_DISPATCH_TOKEN` | lockfile-update.yml; notify-consumers.yml | PAT. The lockfile lane uses it to author the signed lockfile commit so CI re-triggers: Dependabot-triggered runs read the Dependabot secret store, where an empty token is a green skip, and a non-Dependabot run without the token fails. Consumer notification uses it to `repository_dispatch` into another repo (`GITHUB_TOKEN` cannot) and to list that repo's Actions runs |
 | `ANTHROPIC_API_KEY` | claude.yml | Passed as the action's `anthropic_api_key`. A repository secret: juniper-data is user-owned, so no organization secret can reach it |
@@ -410,11 +412,12 @@ The `dependency-docs` job runs that command after `conda-incubator/setup-minicon
 | Coverage reports (`coverage-report-py*`) | 30 days | unit-tests |
 | Build artifacts (`dist/`) | 30 days | build |
 | Dependency docs (`conf/requirements_ci*`, `conf/conda_environment_ci*`) | 90 days | dependency-docs |
-| Security reports (`reports/security/`) | 30 days | security |
+| Security reports (`reports/security/`: Bandit's SARIF, pip-audit's requirements, and on a pull request the Gitleaks report, `gitleaks.sarif`) | 30 days | security |
+| Gitleaks report from the action (`gitleaks-results.sarif`, on `push`, `schedule` and `workflow_dispatch`) | 90 days, the repository default; the action sets none | security |
 | Integration test reports | 30 days | integration-tests |
 
 ---
 
-**Last Updated:** November 7, 2026
-**Version:** 0.4.4
+**Last Updated:** November 9, 2026
+**Version:** 0.4.5
 **Maintainer:** Paul Calnon

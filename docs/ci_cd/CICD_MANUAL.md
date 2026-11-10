@@ -2,9 +2,9 @@
 
 ## Comprehensive CI/CD Pipeline Guide for juniper-data
 
-**Version:** 0.4.4
+**Version:** 0.4.5
 **Status:** Active
-**Last Updated:** November 7, 2026
+**Last Updated:** November 9, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -200,7 +200,7 @@ Full workflow integration tests.
 
 Multi-tool security scanning. Depends on `pre-commit`. Python 3.12.
 
-1. **Gitleaks**: Secret detection. The ruleset, the engine pin, and which commits each event scans are in [Gitleaks ruleset](#gitleaks-ruleset).
+1. **Gitleaks**: Secret detection. `gitleaks/gitleaks-action` on `push`, `schedule` and `workflow_dispatch`. A pull request runs two steps of the job's own instead, `Install Gitleaks (pull request)` and `Run Gitleaks over the pull request`. The ruleset, the engine pin, and which commits each event scans are in [Gitleaks ruleset](#gitleaks-ruleset).
 2. **Bandit SAST**: Static security analysis with SARIF report
    - Blocking check: fails on medium+ severity and confidence
    - SARIF uploaded to GitHub Security tab
@@ -213,25 +213,42 @@ Multi-tool security scanning. Depends on `pre-commit`. Python 3.12.
 
 Secret detection inside the `security` job. The weekly `security-scan.yml` workflow does not run Gitleaks.
 
-The step is `gitleaks/gitleaks-action` at `e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e` (v3.0.0). `GITLEAKS_VERSION` is `8.24.3`, which is also the version that action uses when the variable is unset (`src/index.js` at that SHA). The variable is set so a later action SHA cannot change the engine on its own. `juniper_data/tests/unit/test_gitleaks_config.py` reads the pin from `ci.yml`.
+On `push`, `schedule` and `workflow_dispatch` the step is `gitleaks/gitleaks-action` at `e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e` (v3.0.0). `GITLEAKS_VERSION` is `8.24.3`, which is also the version that action uses when the variable is unset (`src/index.js` at that SHA). The variable is set so a later action SHA cannot change the engine on its own. A pull request runs the same engine through two steps of the job's own; see **Pull requests** below. `juniper_data/tests/unit/test_gitleaks_config.py` reads the version on both paths from `ci.yml`, and the pull-request install's SHA-256 too.
 
-The action accepts `push`, `pull_request`, `workflow_dispatch`, and `schedule`, and exits on any other event. `ci.yml` also runs on `repository_dispatch`, so this step and the self-test are both skipped when `github.event_name` is `repository_dispatch`.
+The action accepts `push`, `pull_request`, `workflow_dispatch`, and `schedule`, and exits on any other event. `ci.yml` also runs on `repository_dispatch`, so the action step and the self-test are both skipped when `github.event_name` is `repository_dispatch`. The action step is skipped on `pull_request` as well.
 
-The job checks out with `fetch-depth: 0`. In `actions/checkout` v7.0.1 that input fetches all history for all branches and tags. The range the action then passes to gitleaks depends on the event (`src/index.js` and `src/gitleaks.js` at the pinned SHA; gitleaks 8.24.3 `sources/git.go` when `--log-opts` is absent):
+The job checks out with `fetch-depth: 0`. In `actions/checkout` v7.0.1 that input fetches all history for all branches and tags. The range passed to gitleaks depends on the event. The sources are `src/index.js` and `src/gitleaks.js` at the pinned SHA for the action, the pull-request scan step in `ci.yml`, and gitleaks 8.24.3 `sources/git.go`, which runs `git log -p -U0` followed by the log options, or by `--full-history --all` when there are none:
 
 | Event | What is scanned |
 |-------|-----------------|
 | `push` with an empty `commits` array | Nothing. The action exits 0. |
 | `push` of one commit | `git log -1` on the checked-out tip. |
-| `push` of several commits | `--no-merges --first-parent <first>^..<last>`, where `<first>` and `<last>` are the first and last SHAs in the push payload. |
-| `pull_request` | The same `--no-merges --first-parent` range across the pull request's commit list, first SHA through last. A finding is posted as a review comment unless `GITLEAKS_ENABLE_COMMENTS` is `false`. The fingerprint in that comment is `<commit>:<file>:<rule>:<line>`. |
+| `push` of several commits | `--no-merges --first-parent <first>^..<last>`, where `<first>` and `<last>` are the first and last SHAs in the push payload. GitHub caps that array at 2048 commits. |
+| `pull_request` | Every commit in `<base>..<head>`, from the event payload's `pull_request.base.sha` and `pull_request.head.sha`, with no `--first-parent`, and with `--remerge-diff`, which adds each two-parent merge commit's own changes. A range that holds an octopus merge fails instead. This is the job's own step, not the action. |
 | `schedule`, `workflow_dispatch` | No `--log-opts`. Gitleaks 8.24.3 then runs `git log -p -U0 --full-history --all`: every commit in that full checkout. |
 
-`BASE_REF`, when set, replaces the start commit of a `push` or `pull_request` range.
+The pull-request scan passes `--remerge-diff` (git 2.36 or later), so `git log -p` also prints, for each two-parent merge commit in `<base>..<head>`, what the merge changed beyond a plain re-merge of its parents: a conflict resolution, or a file added during the merge. A finding in that patch is reported under the merge commit's SHA, with the file's own path, because gitleaks reads the log through a `git` that deletes the notes `--remerge-diff` writes into the merge's file headers (`remerge CONFLICT ...`, `remerge warning: ...`). gitleaks 8.24.3 parses the log with go-gitdiff v0.9.1, which ends a file header at the first line it does not know and re-reads any preamble that holds the word `commit` as a commit header. With the notes left in, a finding in the conflicted file was named `b/<path>`, and a note that named a path such as `.pre-commit-config.yaml`, or quoted a parent subject such as `pre-commit autoupdate`, dropped the merge's SHA from that finding and from every later one in the merge, whose fingerprints were then file-scoped. The filter cannot help a conflicted path that holds a newline: gitleaks' parser skips that file's header, so a finding there can still come back as b/<path>, or without its commit. git prints no such patch for an octopus merge (`diff: warning: Skipping remerge-diff for octopus merges.`), so the step refuses a range that holds one. A clean merge prints nothing, so merging `main` into a pull request does not scan `main`'s side again. No other event scans a merge commit's own patch: `schedule` and `workflow_dispatch` pass none of `--diff-merges`, `-m`, `-c`, `--cc`, `--remerge-diff` or `--first-parent`, so `git log -p` prints none, and the action's `push` range pairs `--first-parent` (which alone would print a merge's first-parent diff) with `--no-merges`, which drops the merge commit. A change made in a merge commit on a pull request's branch is therefore caught by the pull-request scan, before the merge. When the pull request is squash-merged, the change also reaches `main` inside the squash commit, which the `push` of that commit and every later `schedule` scan; when it is merged with a merge commit, the pull-request scan is the only one that sees it. A known value inside a conflict region can surface again under the merge's SHA, and then needs a `.gitleaksignore` entry for that commit. On a `push` of a merge commit, `--first-parent` also leaves out the commits the merge brought in. When those commits came through a pull request, its scan covered them.
 
-The action passes no `--config` and sets neither config variable. Precedence in 8.24.3 (`cmd/root.go`) is `--config`, then `GITLEAKS_CONFIG` (a path), then `GITLEAKS_CONFIG_TOML` (the TOML text itself), then `<source>/.gitleaks.toml`. The real-engine tests unset both variables so they exercise that last file. A missing `.gitleaks.toml` loads the built-in ruleset. A file that is present replaces it.
+`BASE_REF`, when set, replaces the start commit of a `push` range. The pull-request scan does not read it.
+
+Neither the action nor the pull-request scan passes `--config`, and neither sets a config variable. Precedence in 8.24.3 (`cmd/root.go`) is `--config`, then `GITLEAKS_CONFIG` (a path), then `GITLEAKS_CONFIG_TOML` (the TOML text itself), then `<source>/.gitleaks.toml`. The real-engine tests unset both variables so they exercise that last file. A missing `.gitleaks.toml` loads the built-in ruleset. A file that is present replaces it.
 
 The action looks up the repository owner. An organization owner has to set `GITLEAKS_LICENSE` or the step exits 1. A user owner skips that check. This workflow does not set the secret; juniper-data is user-owned.
+
+**Pull requests.** gitleaks-action v3.0.0 lists a pull request's commits with a single unpaginated request, `GET /repos/{owner}/{repo}/pulls/{pull_number}/commits` (`src/gitleaks.js` at the pinned SHA; its bundled `dist/index.js`, the file the action runs, has no `paginate` call). That endpoint returns 30 commits per page by default, oldest first, and lists at most 250 in total. The action scanned `--no-merges --first-parent <page[0]>^..<page[-1]>`. A pull request of more than 30 commits was therefore never scanned past its 30th commit. On a pull request of any length, `--first-parent` from the page's last commit also dropped every commit a merge had brought into the branch, and could walk into `main` instead. On juniper-ml#1797 (88 commits, 39 of them merges) the action's log reads `12 commits scanned.`: one commit of the pull request, plus 11 that were already on `main`. Of juniper-data's 507 pull requests to 2026-11-08, the largest had 18 commits, so the page never cut a scan short here; `--first-parent` did. On #370 (18 commits, nine of them merges) the action logged `14 commits scanned.`: one of the pull request's nine non-merge commits, plus 13 already on `main`. Each of the other eight was the head of its own single-commit pull request (#337, #338, #341, #344, #346, #352, #356 and #360), but those pull requests' scans, like #370's own, ran before 2026-10-25, when `.gitleaks.toml` loaded no rules (**Default ruleset** below), so none of them could have found anything. `BASE_REF` cannot repair the window, because it moves only the start.
+
+A pull request therefore skips the action. `Install Gitleaks (pull request)` downloads `gitleaks_8.24.3_linux_x64.tar.gz` from the gitleaks release and checks it with `sha256sum --check --strict` against `GITLEAKS_SHA256`, the `linux_x64` line of the release's `gitleaks_8.24.3_checksums.txt`. Only then does it unpack the binary into `$RUNNER_TEMP` and put it on `PATH`. `Run Gitleaks over the pull request` then:
+
+- checks that `pull_request.base.sha` and `pull_request.head.sha` are 40-hex commits in the checkout, and fails before it scans when either is not
+- logs the commit count of `<base>..<head>` (`git rev-list --count`) next to the payload's `pull_request.commits`, and warns when the two differ
+- fails before it scans when `<base>..<head>` holds an octopus merge (`git rev-list --count --min-parents=3`), whose own changes `--remerge-diff` cannot print
+- puts a `git` filter, written into `$RUNNER_TEMP`, first on the engine's `PATH`: it runs the runner's `git`, deletes the lines of its output that start with `remerge `, and exits with `git`'s status
+- runs the action's own arguments, `detect --redact -v --exit-code=2 --report-format=sarif --log-level=debug`, with `--log-opts=--remerge-diff <base>..<head>` and the report at `reports/security/gitleaks.sarif`, which the `security-reports` artifact uploads
+- fails the way the action does: a leak (gitleaks exit 2) fails the step with 1, and any other non-zero gitleaks exit fails it with that code
+
+The scan makes no API call and needs no token. It posts no review comment. The action's comments needed `pull-requests: write`, which this job does not grant, so they could not post either. A finding is in the step log, with its `Fingerprint:` line, and in the report. The job summary carries only the commit count and gitleaks' exit code, not the action's findings table. `util/ad-hoc/2026-11-08_reproduce_gitleaks_pr_commit_window.py` rebuilds the old window and the new range on a scratch clone, and `util/ad-hoc/2026-11-08_verify_gitleaks_pr_scan_tests_are_not_vacuous.py` shows the tests below fail when the old window comes back, or when `--remerge-diff`, the octopus refusal or the `git` filter goes.
+
+**Known limit: force-pushes.** A commit that a force-push removes from the branch is scanned only by a run started while the branch still held it, and `cancel-in-progress` (the workflow's `concurrency` group) cancels such a run when the next push lands before its scan step; no later `<base>..<head>`, branch or daily scan then reaches the commit, although GitHub still serves it by SHA. The action had the same gap, and scanning the previous head as well (`^<base> <head> <before>`, from the `synchronize` payload) is a follow-up.
 
 **Default ruleset.** `[extend] useDefault = true` is what loads gitleaks' built-in rules. A v8 file with no `[extend]` table loads only the `[[rules]]` written in it. Until 2026-10-25 this file had an `[allowlist]` and no `[[rules]]`, so the step ran with zero rules and a planted token could not fail it. The file now also has a `generic-api-key` entry with no regex of its own. Removing `[extend]` while that entry remains makes gitleaks refuse the config (`generic-api-key: both |regex| and |path| are empty, this rule will have no effect`, from `config/rule.go` in 8.24.3) and the step fails. The zero-rule pass returns when the file is still present and both the table and that rule are gone. The real-engine test builds a `github-pat`-shaped value at runtime and requires that rule to fire through the auto-discovered config.
 
@@ -244,7 +261,7 @@ Conda build strings are the class that comes back on every environment refresh. 
 
 A secret of any other shape in those files still fires. The same spec line outside those paths still fires. Every other rule, including `github-pat`, still fires inside a conda file. The real-engine cases in `test_gitleaks_config.py` pin all three.
 
-**Ignore file.** Each `.gitleaksignore` entry is `<40-hex commit>:<file>:<rule>:<line>`. The nearest non-entry line above a group is a comment that names the class. A file-scoped entry (`<file>:<rule>:<line>`) would also hide a later secret on that line, and the test rejects it. A pull-request fingerprint from the action already includes the commit; keep that prefix when you append the line.
+**Ignore file.** Each `.gitleaksignore` entry is `<40-hex commit>:<file>:<rule>:<line>`. The nearest non-entry line above a group is a comment that names the class. A file-scoped entry (`<file>:<rule>:<line>`) would also hide a later secret on that line, and the test rejects it. The `Fingerprint:` line that `-v` prints for each finding, on every event and for a finding in a merge commit's own changes too, is already in the entry form, commit first; append it as it stands. A fingerprint that does not start with a commit is file-scoped: never append one.
 
 **Self-test.** pip-audit's `.[all]` install is what puts pytest on the runner. After that install, on every event except `repository_dispatch`, the job runs:
 
@@ -252,16 +269,17 @@ A secret of any other shape in those files still fires. The same spec line outsi
 GITLEAKS_PARITY_REQUIRED=1 python -m pytest juniper_data/tests/unit/test_gitleaks_config.py -v
 ```
 
-The binary is the one the action placed on `PATH`. With `GITLEAKS_PARITY_REQUIRED=1`, a missing binary fails the step. The unit-test job runs the same file and skips the real-engine cases when `gitleaks` is absent.
+The binary is the one the action placed on `PATH`, or on a pull request the one `Install Gitleaks (pull request)` placed there. With `GITLEAKS_PARITY_REQUIRED=1`, a missing binary fails the step. The unit-test job runs the same file and skips the real-engine cases when `gitleaks` is absent. Its other cases run everywhere: they pin the pull-request wiring in `ci.yml`, and they run `Run Gitleaks over the pull request`'s own shell under `bash -e` with a stand-in `gitleaks` that records its arguments and exits with the status under test, or that runs `git log` the way gitleaks does, to show that the engine's `git` drops the `remerge` notes and nothing else. One of them has the step refuse an octopus merge. The real-engine run adds the same shell against the engine, in a scratch repository: it has to report a token in the 1st and the 35th commit of a 35-commit range, one on a side branch merged into the range, and one that only a merge commit's own changes hold, added during the merge or written into a conflict resolution. Such a finding has to carry the merge's SHA and the file's own path even when the conflict note says `commit`, and its `Fingerprint:` lines, appended to `.gitleaksignore`, have to clear the next run. It has to pass a clean range whose base commit holds a token, and a clean merge of a base branch that holds one.
 
-Local commands, both of which discover the two files at the repo root:
+Local commands, all of which discover the two files at the repo root:
 
 ```bash
 gitleaks git --redact .
 gitleaks dir --redact .
+gitleaks git --redact --log-opts="--remerge-diff origin/main..HEAD" .
 ```
 
-`git` scans history. `dir` scans the working tree, including gitignored files. The action still invokes the deprecated `detect` subcommand; on 8.24.3 that subcommand uses the same `git log` path as `git`.
+`git` scans history. `dir` scans the working tree, including gitignored files. The third scans what a pull request from the current branch into an up-to-date `main` would, but without the step's `git` filter, so a finding in a merge's own changes can come back as `b/<path>`, or without its commit. The action and the pull-request scan both invoke the deprecated `detect` subcommand; on 8.24.3 that subcommand uses the same `git log` path as `git`.
 
 #### Job: `lockfile-check`
 
@@ -570,11 +588,17 @@ uv pip compile pyproject.toml --extra api --extra observability --extra mnist --
 
 **Dependabot PR and `requirements.lock`**: A `python-minor` PR can edit only `conf/requirements*.txt` and still receive `[dependabot skip] Update requirements.lock`. That commit is the `--upgrade` resolution of `pyproject.toml`, so its pins can differ from `conf/requirements_ci.txt`. When the commit is missing, open the Update Lockfile run. A notice that `CROSS_REPO_DISPATCH_TOKEN` is unavailable means the PAT is missing from the Dependabot secret store; the job stays green and `lockfile-check` still enforces freshness. See [Dependency Update Workflow](../../notes/DEPENDENCY_UPDATE_WORKFLOW.md).
 
-**Gitleaks stays green on a token you planted**: The step did not load the built-in ruleset, or the event's range did not include that commit. `.gitleaks.toml` has to keep `[extend] useDefault = true`. `GITLEAKS_CONFIG` (a path) and `GITLEAKS_CONFIG_TOML` (TOML text) are used instead of the file in the tree when either is set. A `push` whose payload has an empty `commits` array exits 0 without scanning. A `repository_dispatch` run skips the step. A present config with no `[extend]` table and no `[[rules]]` is the zero-rule pass; removing only `[extend]` from the current file fails the step, because the conda `generic-api-key` entry has no regex. See [Gitleaks ruleset](#gitleaks-ruleset).
+**Gitleaks stays green on a token you planted**: The step did not load the built-in ruleset, or the event's range did not include that commit. `.gitleaks.toml` has to keep `[extend] useDefault = true`. `GITLEAKS_CONFIG` (a path) and `GITLEAKS_CONFIG_TOML` (TOML text) are used instead of the file in the tree when either is set. A `push` whose payload has an empty `commits` array exits 0 without scanning. A `repository_dispatch` run skips the step. On a pull request the range is `<base>..<head>`, so a token in a commit that is already on the base branch is outside it, even when the pull request has merged that branch in. A present config with no `[extend]` table and no `[[rules]]` is the zero-rule pass; removing only `[extend]` from the current file fails the step, because the conda `generic-api-key` entry has no regex. See [Gitleaks ruleset](#gitleaks-ruleset).
 
 **A conda environment refresh fails `generic-api-key`**: The new line sits outside the two path regexes, or the captured secret is not `<version>=<build>` in the three build-string shapes in [Gitleaks ruleset](#gitleaks-ruleset). Leave those paths off the global `[allowlist]`; a path there would exempt every rule in the file. A one-off historical finding is a commit-scoped `.gitleaksignore` line under a class comment. The AND allowlist is what covers the next refresh of a matching build string.
 
-**Gitleaks config self-test errors at setup**: `GITLEAKS_PARITY_REQUIRED=1` is set and the fixture finds no binary: `GITLEAKS_BIN` is unset and no `gitleaks` is on `PATH`. Collection succeeds and the static tests pass. Each test that needs the binary reports `ERROR at setup` with `GITLEAKS_PARITY_REQUIRED=1 but no gitleaks binary`, and pytest exits 1, so the step fails. The action step is what installs the pinned 8.24.3 binary. The unit-test job is allowed to skip the real-engine cases when the binary is absent.
+**Gitleaks config self-test errors at setup**: `GITLEAKS_PARITY_REQUIRED=1` is set and the fixture finds no binary: `GITLEAKS_BIN` is unset and no `gitleaks` is on `PATH`. Collection succeeds and the static tests pass. Each test that needs the binary reports `ERROR at setup` with `GITLEAKS_PARITY_REQUIRED=1 but no gitleaks binary`, and pytest exits 1, so the step fails. The action step is what installs the pinned 8.24.3 binary on `push`, `schedule` and `workflow_dispatch`, and `Install Gitleaks (pull request)` installs it on a pull request. The unit-test job is allowed to skip the real-engine cases when the binary is absent.
+
+**`Install Gitleaks (pull request)` fails at `sha256sum`**: The tarball the runner downloaded does not match `GITLEAKS_SHA256`. After an engine bump, set `GITLEAKS_VERSION` on this step and on the action step, and take the digest from the `linux_x64` line of the new release's `gitleaks_<version>_checksums.txt`, never from the file the runner downloaded. `test_gitleaks_config.py` pins the version and the digest, so it has to move in the same change. The step also refuses a runner that is not `Linux/X64`, because the digest is for that build.
+
+**`Run Gitleaks over the pull request` fails with `is not a commit in this checkout`**: `pull_request.base.sha` or `pull_request.head.sha` is not a 40-hex commit the checkout holds. The step fails before it scans rather than scan a different range. Check that the job's checkout still sets `fetch-depth: 0`.
+
+**`Run Gitleaks over the pull request` fails with `octopus merge(s)`**: `<base>..<head>` holds a merge of three or more parents. `--remerge-diff` prints no patch for such a merge, so what the merge changed itself could not be scanned, and the step fails rather than pass it unscanned. Redo it as two-parent merges, one branch at a time, and push.
 
 **CodeQL findings**: Review them in the GitHub Security tab. They are not part of the Quality Gate job (`codeql.yml` is its own workflow), but they do block the merge. The `main` ruleset (`juniper-data-rules`) has a `code_scanning` rule for CodeQL and Bandit that blocks a pull request on an alert of severity `error`, or a security alert of severity `high` or `critical` (thresholds `errors` and `high_or_higher`). `Analyze (python)` is a required check, and the ruleset requires review threads to be resolved, so an open code-scanning comment on the diff blocks too. Check the thresholds with `gh api repos/pcalnon/juniper-data/rulesets/14748749 --jq '.rules[] | select(.type == "code_scanning")'`.
 
