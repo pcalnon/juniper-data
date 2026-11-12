@@ -16,7 +16,9 @@ impossible:
 
 The companion property test ``tests/unit/test_sequence_windowing_leakage.py``
 pins the invariants (I1-I5) so a future vectorized rewrite cannot silently
-reintroduce either leak. See the design note
+reintroduce either leak. I2 and I4 do not pin the equalities: a target whose
+ordinal equals the cut, and a window whose first step lands on the cut, are
+pinned by ``tests/unit/test_sequence_windowing_cut_boundary.py``. See the design note
 ``juniper-ml/notes/JUNIPER_2026-06-05_JUNIPER-RECURRENCE_RECURSE-DELTA-T-HANDLING.md`` -- §6.3 (this
 implementation), §6.1 (the key contract), and §7 (leakage analysis + invariants).
 
