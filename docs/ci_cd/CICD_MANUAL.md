@@ -2,9 +2,9 @@
 
 ## Comprehensive CI/CD Pipeline Guide for juniper-data
 
-**Version:** 0.4.5
+**Version:** 0.4.6
 **Status:** Active
-**Last Updated:** November 9, 2026
+**Last Updated:** November 12, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -337,7 +337,7 @@ Two-stage publishing triggered by GitHub Release creation.
 2. Validate with `twine check dist/*`
 3. Publish to TestPyPI via `pypa/gh-action-pypi-publish` (OIDC trusted publishing)
 4. Wait 30 seconds for index sync
-5. Install from TestPyPI with `--no-deps` and print the installed version from its metadata (an import would need the dependencies `--no-deps` leaves out)
+5. Install from TestPyPI only (`--index-url https://test.pypi.org/simple/`, `--no-deps`, `juniper-data==<version>` with one leading `v` stripped from the tag) and print the installed version from its metadata. The print does not compare that version with the tag; the pip pin does. `import juniper_data` would fail a good publish, because `dotenv` is imported at import time and `--no-deps` does not install it. A second index does not fetch dependencies under `--no-deps`; it only widens which `juniper-data` pip will accept. A non-zero `pip` or `python` fails the step. See [TestPyPI install check](../REFERENCE.md#testpypi-install-check).
 
 **Environment**: `testpypi` (no wait timer and no reviewer; deployments only from a release tag matching `v*`, `rc*`, `hf*`, `juniper-*-v*`, `juniper-*-rc*` or `juniper-*-hf*`)
 
@@ -394,6 +394,8 @@ Publishes `ghcr.io/pcalnon/juniper-data` as one manifest for linux/amd64 and lin
 - **Publish** (a `v*` release, or a manual run with `push` true): push each arch by digest with no tag, run the same content checks plus the serve check against that digest, then let the merge job write tags. A release's expected version is the tag minus the leading `v`, and the job stops when that string disagrees with `pyproject.toml`.
 
 The serve check is `util/check_image_serves.py --dist juniper-data --module juniper_data --port 8100`. It starts the image `CMD` and requires `GET /v1/health` to return 200 with a `version` equal to the installed package metadata and to `juniper_data.__version__`. Full contract, including what a failed check leaves in GHCR: [Image serve-and-version gate](../REFERENCE.md#image-serve-and-version-gate).
+
+The merge job (`Publish manifest`) is the only tag writer. It refuses an empty tag list, requires the published list's linux entries to be exactly `amd64` and `arm64` (a non-linux entry does not count), and on a release requires an `X.Y.Z` tag so `:latest` alone cannot go green. Before the CPU-only pull of the tag, it resolves each pushed digest to the one linux image inside it. With provenance attestations on, that digest is an OCI index, and the published list names the image manifests; comparing the two directly fails the job. No step in this job names a `shell:`, so each runs under `bash -e`. See [Publish manifest gates](../REFERENCE.md#publish-manifest-gates).
 
 ---
 
@@ -501,7 +503,7 @@ Runs on production code only (excludes `tests/`). Skips `B101` (assert) and `B31
 
 ### Coverage Gate (Pre-push)
 
-Runs `scripts/check_module_coverage.py --run-tests` on the pre-push stage: the whole suite under coverage, then the checks. It blocks the push when aggregate coverage is below `COVERAGE_FAIL_UNDER` (default 80%) or a test file is measured. A module below 85% is printed as `WARN` and does not block it. CI's per-file gate (90% statement coverage per file, 95% pooled per sub-module) is stricter and does not run here, so a push this hook allows can still fail CI. See [Coverage Gates](../REFERENCE.md#coverage-gates).
+Runs `scripts/check_module_coverage.py --run-tests` on the pre-push stage: the whole suite under coverage, then the checks. It blocks the push when aggregate coverage is below `COVERAGE_FAIL_UNDER` (default 80%) or a test file is measured. A module below 85% is printed as `WARN` and does not block it. A pass with those warnings prints `PASS: aggregate >= 80.0%; K of N modules below 85.0% (warned above, not enforced)`, not `PASS: All`. CI's per-file gate (90% statement coverage per file, 95% pooled per sub-module) is stricter and does not run here, so a push this hook allows can still fail CI. See [Coverage Gates](../REFERENCE.md#coverage-gates).
 
 ### Shell and YAML Linting
 
@@ -608,7 +610,11 @@ uv pip compile pyproject.toml --extra api --extra observability --extra mnist --
 
 **`@claude` on a pull request stops with `was updated after the trigger`**: The head commit's push time is at or after the mention. The tracking comment is that error. Push the commit you want, mention `@claude` again, and leave the branch still until the job checks out. `Could not determine when <sha> was pushed` means the newest activity on the head branch did not end at that SHA. See [Open pull request checkout](CICD_REFERENCE.md#open-pull-request-checkout).
 
-**TestPyPI publish fails**: Check that the release tag matches the version in `pyproject.toml`. Version is extracted by stripping the `v` prefix from the tag.
+**TestPyPI publish fails**: Check that the release tag matches the version in `pyproject.toml`. Version is extracted by stripping one leading `v` from the tag. The install check uses only `https://test.pypi.org/simple/` and `--no-deps`. Do not add a second index. The following Python line prints installed metadata; it does not compare it with the tag, and `import juniper_data` is the wrong check (`dotenv` is not installed). See [TestPyPI install check](../REFERENCE.md#testpypi-install-check).
+
+**Image merge job: `manifest list references` vs `verified build digests`**: The arch digest is an OCI index when provenance attestations are on, and the published list names the linux image inside it. The job resolves each pushed digest to that image before it compares, so this error means the list does not name exactly the images the build jobs verified: one is missing, or another is listed. See [Publish manifest gates](../REFERENCE.md#publish-manifest-gates).
+
+**Image merge job: `produced no X.Y.Z image tag`**: The release still applied `:latest`. The semver rules did not match the tag. `:latest` alone is not a successful versioned publish.
 
 **Publish run red after PyPI succeeded**: The `notify-consumers` job failed. PyPI already has the release. A 204 from the dispatch API is only acceptance.
 

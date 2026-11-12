@@ -2,9 +2,9 @@
 
 ## Run juniper-data CI Checks Locally in 5 Minutes
 
-**Version:** 0.4.4
+**Version:** 0.4.5
 **Status:** Active
-**Last Updated:** November 7, 2026
+**Last Updated:** November 12, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -133,7 +133,7 @@ juniper-lint-agents-md-header
 
 **MyPy import errors**: MyPy is configured with `--ignore-missing-imports` for third-party packages. If you see persistent errors, ensure `types-redis` is installed.
 
-**Coverage below 80%**: Run `python scripts/check_module_coverage.py --run-tests` to see the aggregate and the modules below 85%. CI also fails a file below 90% statement coverage or a sub-module below 95% pooled; its log names them.
+**Coverage below 80%**: Run `python scripts/check_module_coverage.py --run-tests` to see the aggregate and the modules below 85%. A pass that still printed `WARN` says `PASS: aggregate >= 80.0%; K of N modules below 85.0% (warned above, not enforced)`. `PASS: All` means no module was under 85%. CI also fails a file below 90% statement coverage or a sub-module below 95% pooled; its log names them.
 
 **`Documentation Links` fails after pre-commit passed**: Pre-commit runs only the link check: locally only when the commit includes a `.md` file, and in CI's `Pre-commit` job on every push. Run the three commands in step 5, and step 4's link check when that is the failed step. A date-check failure on `AGENTS.md` is `agents-md-touch-up.yml`, which verifies `**Last Updated**:` and does not rewrite it. See [Job: docs](CICD_MANUAL.md#job-docs).
 
@@ -142,6 +142,8 @@ juniper-lint-agents-md-header
 **Grouped Dependabot PR, lockfile differs from `conf/requirements_ci.txt`**: `lockfile-update.yml` compiles with `--upgrade` on every `dependabot/pip/**` push by `dependabot[bot]`, including pushes that leave `pyproject.toml` unchanged. Review `[dependabot skip] Update requirements.lock` as that resolution. A missing commit with a green Update Lockfile run usually means `CROSS_REPO_DISPATCH_TOKEN` is absent from the Dependabot secret store. See [Dependency Update Workflow](../../notes/DEPENDENCY_UPDATE_WORKFLOW.md).
 
 **Image publish fails after a green import**: `publish-image.yml` also runs `util/check_image_serves.py`. `GET /v1/health` must return 200, and its `version`, `juniper_data.__version__`, and the installed `juniper-data` metadata must equal one `X.Y.Z`. On a release that value is the tag without a leading `v`, and it must match `pyproject.toml`. A docs-only change does not run the workflow. See [Image serve-and-version gate](../REFERENCE.md#image-serve-and-version-gate).
+
+**Image publish: `manifest list references` vs `verified build digests`**: The merge job resolves each pushed digest (an OCI index when provenance attestations are on) to its one linux image before comparing it with the published list, so the error means the list does not name exactly the images the build jobs verified. A release that only applied `:latest` fails `produced no X.Y.Z image tag`. See [Publish manifest gates](../REFERENCE.md#publish-manifest-gates).
 
 **Release publish is red after PyPI succeeded**: `notify-consumers.yml` did not see a consumer run. GitHub's dispatch `204` is not delivery. The listener must declare `repository_dispatch: types: [juniper-data-published]` and must not set `run-name:`. Re-send with `workflow_dispatch`; do not republish. See [Consumer release notification](../REFERENCE.md#consumer-release-notification).
 
@@ -159,6 +161,6 @@ juniper-lint-agents-md-header
 
 ---
 
-**Last Updated:** November 7, 2026
-**Version:** 0.4.4
+**Last Updated:** November 12, 2026
+**Version:** 0.4.5
 **Status:** Active
