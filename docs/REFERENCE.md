@@ -1,8 +1,8 @@
 # Juniper Data Reference
 
-**Version:** 0.4.5
+**Version:** 0.4.6
 **Status:** Active
-**Last Updated:** November 7, 2026
+**Last Updated:** November 12, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -2059,6 +2059,8 @@ Both generators used to let the universe shrink in silence: a ticker whose downl
 
 A request every one of whose symbols is lost still fails with the older `No data could be retrieved` (400) before the policy runs. An unrescued fundamental and a lost symbol under the shut gate raise the fundamentals refusal (its remedy differs); the lost symbol is still in the log.
 
+An explicit `allow_truncation=false` shuts this gate even where `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION` is on. `incomplete_rows='drop'` does not reopen it: drop runs only after the gate is open, and a lost symbol has no rows to drop. The 422 body (`str(IncompleteDataError)`, which is what the create route echoes) names at most eight symbols — alphabetically, with reasons in the detail and an ellipsis on the `Affected` list. `IncompleteDataError.unrescued` still lists every one.
+
 ### The close guard (W5.7, F-P6)
 
 `regression_target` `return` divides by `close` and `log_return` takes the log of the ratio, so a zero, negative or non-finite `close` / `next_close` yields ±Inf / NaN in `y_reg` — which the recurrence reader refuses as non-finite, but only after the artifact is minted and cached under its `dataset_id`. `EquitiesGenerator._check_return_target_inputs` runs per ticker before the target is computed and refuses with a **400** `ValueError` naming the symbol, the row count and the first offending session (`equities: AAPL has 2 row(s) with a non-positive or non-finite close (first 2008-05-21); regression_target='log_return' would be non-finite there`). `next_close` is not guarded: a zero price is then a value, not a divisor. This is a plain `ValueError`, not the 422 `IncompleteDataError` — a bad price is not caller-fixable by opting in.
@@ -2077,6 +2079,7 @@ A request every one of whose symbols is lost still fails with the older `No data
 | `TestLostRequestedSymbols` (11) | same | refused by default (both generators; a `ValueError` subclass; `rows_affected` 0; no `fabricated` / `incomplete_rows` in the message); open gate mints, records the reason and warns; a conditioning exception records its text; the seq no-window loss is refused under the shut gate and the ticker keeps its vocab slot; the default universe is recorded, never refused; the deployment gate opens it; the fundamentals refusal takes precedence; all-lost is still `No data` |
 | `TestCloseGuard` (11) | same | zero / negative / inf close under `return` and `log_return` refused naming ticker, count and first session (both generators); `next_close` unguarded; a plain `ValueError`, not the 422 |
 | `TestDescriptorAndError` (6) | same | `build_data_quality_meta` is `None` only when every category is clean; the old callers' shape; `IncompleteDataError` wording follows `rows_affected` |
+| `TestLostSymbolGate` (4) | `juniper_data/tests/unit/test_equities_lost_symbol_gate.py` | explicit `false` refuses a lost requested symbol on both generators when the deployment opted in, including with `incomplete_rows='drop'`; eight names fit in the 422 body and the ninth stays only on `unrescued` |
 | `test_absent_action_columns_mean_zero_not_missing` | `juniper_data/tests/unit/test_equities_generator.py` | the zero-fill stays, now annotated |
 | `test_unknown_symbol_skipped_not_fatal`, `test_generate_skips_ticker_whose_download_raises`, `test_generate_handles_ticker_with_no_data`, `test_generate_skips_ticker_shorter_than_lookback` | `test_equities_generator.py`, `test_equities_seq_generator.py` | the skip branches, reached with the gate open, record the loss |
 
@@ -2618,6 +2621,6 @@ git worktree prune
 
 ---
 
-**Last Updated:** November 7, 2026
-**Version:** 0.4.5
+**Last Updated:** November 12, 2026
+**Version:** 0.4.6
 **Maintainer:** Paul Calnon

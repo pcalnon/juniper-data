@@ -104,6 +104,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - #516's docstrings said the step compares the installed version with the tag. It only reads the installed
       metadata; pip's `juniper-data==<version>` pin is what matches the tag. Its assert message said a named shell
       drops `-e`: `shell: bash` and `shell: sh` keep it, and only a custom template such as `bash {0}` drops it.
+- **Tests pin the request-body cap at exactly `max_bytes`, the lost-symbol refusal under an explicit `false`, the
+  sequence-window cut equalities and the three-way temporal clamp.** Four Cursor fleet drafts (juniper-data#520, #522,
+  #523, #524) from round 2 of juniper-ml's flood-4 disposition, carried as one change on `main` at `4f04fc8d`.
+  Production behaviour is unchanged.
+  - `test_request_body_exact_cap.py` (#520): `RequestBodyLimitMiddleware` delivers a body of exactly `max_bytes`,
+    declared or chunked with no `Content-Length`, and answers 413 one byte later without running the route; a cap of
+    0 still accepts an empty body. `test_middleware.py` sends no body at the cap or one byte over it, so it stays
+    green when either comparison becomes `>=`.
+  - `test_equities_lost_symbol_gate.py` (#522): an explicit `allow_truncation=false` still refuses a lost requested
+    symbol with `IncompleteDataError` on `equities` and `equities_seq` while `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION`
+    is on, `incomplete_rows='drop'` included. The 422 body names the alphabetically first eight symbols, and
+    `IncompleteDataError.unrescued` keeps every one. `docs/REFERENCE.md` § Equities Data Quality Annotation says so
+    under "A lost requested symbol is refused by default", and its Pins table lists the class.
+  - `test_sequence_windowing_cut_boundary.py` (#523): `window_one_ticker` puts a target that lands on a cut in the
+    later split, and the embargo keeps a window whose first step is on the cut. `test_sequence_windowing_leakage.py`
+    stays green when those `<` comparisons become `<=`; the `_sequence.py` module docstring now says so.
+  - `test_temporal_split_indices.py` (#524): `temporal_split_indices` keeps a row in each partition from three rows
+    up (and not below), rounds half to even, and refuses ratios that sum to 1.0.
+  - **Fixed on the way in.**
+    - #520's chunked-body docstring said checking each chunk on its own, or using `>=`, "accepts the cross and rejects
+      the exact landing". Each mistake does one of the two: a per-chunk check accepts the cross, and `>=` rejects the
+      exact landing. The docstring now says which.
+    - #522 put its pin row above `TestCloseGuard` and `TestDescriptorAndError`, whose File cell reads "same", so both
+      would have named the new file. The row now follows them.
+    - #522's docstring said the explicit-`false` tests stay green if the lost-symbol site ORs an explicit `false`
+      with the deployment opt-in. The gate is shared: an `or` in `_resolve_incomplete_policy` already fails
+      `test_equities_seq_deployment_policy.py`. What they miss is the lost-symbol branch itself, and the docstring
+      now says that.
+    - #524's docstring said the leakage property test stays green if this helper stops reserving a row for each
+      partition. It asserts a non-empty validation split, and failed when the validation row was dropped. It misses
+      the train and test rows, which is what the docstring now says.
 - **The equities generators record every symbol they lose, refuse a lost requested one by
   default, guard the return targets, and say whether the price response carried the action
   columns** (W5.7 of juniper-ml
