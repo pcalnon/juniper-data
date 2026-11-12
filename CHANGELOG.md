@@ -36,6 +36,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
       closed pull request's branch comes from the default branch, not its base. Locally the link-check hook runs only
       when the commit includes a `.md` file; CI's `Pre-commit` job runs it on every push, so there a red link check
       beside a green `Pre-commit` points at the two resolving different `juniper-doc-tools` releases.
+- **The docs record how the failed-auth throttle keeps and drops rows, the image `Publish manifest` gates, the
+  TestPyPI install check and `scripts/check_module_coverage.py`'s two `PASS` lines.** One Cursor fleet draft
+  (juniper-data#521) from round 2 of juniper-ml's flood-4 disposition, carried on `main` at `4f04fc8d`, with its
+  claims re-checked against `main`'s code and workflows. Each touched doc's stamp is bumped once.
+  - `docs/REFERENCE.md` § Failed-Auth Throttle Retention: when a window ends, what cleanup keeps, the 10,000-row cap,
+    and the six `test_middleware.py` tests that pin them. `DEVELOPER_CHEATSHEET.md` links it from two rows.
+  - `docs/REFERENCE.md` § TestPyPI install check and § Publish manifest gates, linked from `CICD_MANUAL.md`,
+    `CICD_REFERENCE.md` and `DEVELOPER_CHEATSHEET.md` (`CICD_QUICK_START.md` links the manifest gates only).
+  - The pre-push coverage hook's `PASS` lines, in `docs/REFERENCE.md` § Coverage Gates, the three CI/CD docs and
+    the cheat sheet.
+  - **Corrected on the way in.**
+    - #521's pin table missed the three `FailedAuthThrottle` tests juniper-data#518 added, which pin the section's
+      rollover, cleanup and cap claims. All six are listed.
+    - It said the cap keeps "the most recently recorded" rows. The trim keys on `window_start`, the first failure
+      of a window, so a source that keeps failing inside one window can be dropped before sources that failed
+      less recently.
+    - A cheat-sheet row's symptom was `PASS: All` printed with a module under 85%, which the script never prints.
+      The symptom is now a push that passes with a module under 85%.
+    - Three troubleshooting entries explained `manifest list references ... verified build digests` by the pushed
+      digest being an OCI index. The merge job already resolves that, so they now say the error means the list
+      does not name exactly the images the build jobs verified.
+    - "Four checks ... fail the run for a reason the job used to be able to miss" now reads "Five checks ... can fail
+      the run": the workflow's history does not show the four listed as fixes, and the CPU-only `docker run` that ends
+      `Verify published image is CPU-only` is a fifth.
+    - It said `latest` is added only on a release, and that a manual run adds only `dispatch-<sha>` because the semver
+      rules match nothing on that event. metadata-action's semver rules read the ref, not the event, and its default
+      `latest=auto` flavor adds `latest` to a non-prerelease match, so a manual run from a `vX.Y.Z` tag re-points
+      `X.Y.Z`, `X.Y` and `latest`.
+    - A release whose tag the semver rules missed has already pushed `:latest` when the version-tag check fails it.
+      `docs/REFERENCE.md` says so, in place of a "Do not" about a green merge job that applied only `:latest`,
+      which that check makes impossible.
 - **`make coverage` runs CI's per-file coverage gate too, so it can now fail where it used to pass (owner ruling
   2026-11-01).** `util/run_coverage.bash` (0.2.0) adds `--cov-report=json:reports/coverage.json` to the unit-lane run.
   After the aggregate gate and `scripts/check_module_coverage.py`'s advisory listing, it runs

@@ -2,9 +2,9 @@
 
 ## juniper-data CI/CD Jobs, Hooks, and Configuration
 
-**Version:** 0.4.5
+**Version:** 0.4.6
 **Status:** Active
-**Last Updated:** November 9, 2026
+**Last Updated:** November 12, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -121,7 +121,7 @@ Read from `anthropics/claude-code-action` v1.0.265 (`6d5ae526d25ce88daa2200be073
 
 | Job | Depends On | Environment | Purpose |
 |-----|-----------|-------------|---------|
-| `testpypi` | -- | `testpypi` | Publish to TestPyPI, verify install |
+| `testpypi` | -- | `testpypi` | Publish to TestPyPI, then install `juniper-data==<version>` from `https://test.pypi.org/simple/` only (`--no-deps`). The next line prints installed metadata; it does not compare it with the tag. See [TestPyPI install check](../REFERENCE.md#testpypi-install-check) |
 | `pypi` | testpypi | `pypi` | Publish to production PyPI |
 | `notify-consumers` | pypi | -- (`permissions: {}`) | Call `notify-consumers.yml` with the release tag |
 
@@ -137,7 +137,7 @@ Contract: [Consumer release notification](../REFERENCE.md#consumer-release-notif
 
 `util/check_image_serves.py` is invoked from the build job with `--dist juniper-data --module juniper_data --port 8100`. Build-only runs address `data-smoke:<arch>` and pass `pyproject.toml`'s version. Publish runs address `ghcr.io/pcalnon/juniper-data@<digest>`. On a release, `--expect-version` is the tag with the leading `v` removed, and the step exits before the script when that string disagrees with `pyproject.toml`.
 
-Defaults left in place: health path `/v1/health` (version field required), no enveloped path, 120s timeout. The merge job is the only tag writer. Contract: [Image serve-and-version gate](../REFERENCE.md#image-serve-and-version-gate).
+Defaults left in place: health path `/v1/health` (version field required), no enveloped path, 120s timeout. The merge job is the only tag writer. It refuses an empty tag list, requires linux `amd64` and `arm64`, requires an `X.Y.Z` tag on a release, and resolves each pushed digest to its linux image before comparing it with the published list. A provenance attestation makes the pushed digest an OCI index; the list names the image manifest. Contract: [Image serve-and-version gate](../REFERENCE.md#image-serve-and-version-gate) and [Publish manifest gates](../REFERENCE.md#publish-manifest-gates).
 
 ---
 
@@ -394,7 +394,7 @@ Review steps: [Dependency Update Workflow](../../notes/DEPENDENCY_UPDATE_WORKFLO
 | Script | Purpose | Usage |
 |--------|---------|-------|
 | `juniper-coverage-gap-map` | CI's per-file coverage gate, in each `unit-tests` leg. With `--enforce` it fails when a file's statement coverage is below 90% or a sub-module's (directory's) pooled statement coverage is below 95%, the tool's defaults. Package `juniper-ci-tools>=0.9.0,<0.10.0`. See [Coverage Gates](../REFERENCE.md#coverage-gates) | `juniper-coverage-gap-map --coverage-json reports/coverage.json --enforce` |
-| `scripts/check_module_coverage.py` | The pre-push `coverage-check` hook. Fails below 80% aggregate (`COVERAGE_FAIL_UNDER`) or when a test file is measured; a module below 85% is printed as `WARN` and does not fail. No CI job runs it | `python scripts/check_module_coverage.py [--run-tests]` |
+| `scripts/check_module_coverage.py` | The pre-push `coverage-check` hook. Fails below 80% aggregate (`COVERAGE_FAIL_UNDER`) or when a test file is measured; a module below 85% is printed as `WARN` and does not fail. A pass with warnings does not print `PASS: All`. No CI job runs it | `python scripts/check_module_coverage.py [--run-tests]` |
 | `juniper-check-doc-links` | Markdown link validation. Installed from `juniper-doc-tools>=0.1.0,<0.2.0` in the `docs` job and as a local pre-commit hook (`>=0.1.1,<0.2.0`); there is no `scripts/check_doc_links.py` | `juniper-check-doc-links --exclude templates ... --cross-repo skip` (the `docs` job's exclude list, which the hook repeats) |
 | `juniper-lint-workflow-paths` | `docs` job, no arguments. Every `*.yml` / `*.yaml` under `.github/workflows/`: a YAML string token with a `/` ending in `.py`, `.sh`, or `.bash` must exist under the step's working directory or at the repo root. Skips `python -m`, absolute paths, `${` / `$(`, and the eight sibling-repo prefixes. A workflow that does not parse contributes no paths. Exit 1 when a path is missing, 2 when the workflows directory cannot be found. Package `juniper-ci-tools>=0.9.0,<0.10.0` | `juniper-lint-workflow-paths` |
 | `juniper-lint-agents-md-version` | `docs` job, no arguments. The `**Version**:` line in `AGENTS.md` equals `[project].version` as a string. No such line exits 0. A second line, anywhere in the file, exits 2. Drift exits 1 | `juniper-lint-agents-md-version` |
@@ -418,6 +418,6 @@ The `dependency-docs` job runs that command after `conda-incubator/setup-minicon
 
 ---
 
-**Last Updated:** November 9, 2026
-**Version:** 0.4.5
+**Last Updated:** November 12, 2026
+**Version:** 0.4.6
 **Maintainer:** Paul Calnon
