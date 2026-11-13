@@ -1,6 +1,6 @@
 # Developer Cheatsheet -- juniper-data
 
-**Version**: 0.4.6 | **Date**: 2026-11-12 | **Project**: juniper-data -- Dataset Generation REST Service (FastAPI)
+**Version**: 0.4.7 | **Date**: 2026-11-13 | **Project**: juniper-data -- Dataset Generation REST Service (FastAPI)
 
 ---
 
@@ -111,7 +111,7 @@ export JUNIPER_DATA_RATE_LIMIT_REQUESTS_PER_MINUTE=7
 export JUNIPER_DATA_RATE_LIMIT_WINDOW_SECONDS=300   # 7 requests / 5 minutes
 ```
 
-429 responses carry `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, and `Retry-After`.
+429 responses carry `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, and `Retry-After`. The reset values are the seconds left in the window, rounded up and never 0: 9.4 s left is `10`, the last fraction of a second is `1`. The failed-auth throttle's 429 carries `Retry-After` alone, rounded the same way.
 
 > See: [REFERENCE.md -- Rate-Limit Window](REFERENCE.md#rate-limit-window)
 

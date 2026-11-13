@@ -2,6 +2,7 @@
 
 import hmac
 import logging
+import math
 import time
 from threading import Lock
 
@@ -216,6 +217,31 @@ class RateLimiter:
         client_ip = request.client.host if request.client else "unknown"
         return f"ip:{client_ip}"
 
+    def _seconds_until_reset(self, now: float, window_start: float) -> int:
+        """Whole seconds until the window rolls over: rounded UP, never below 1.
+
+        This was ``int(...)``, which truncates toward zero, so a sub-second remainder
+        became ``0`` and the 429 went out with ``Retry-After: 0``: an instruction to retry
+        *immediately*, into a limiter that is certain to reject again. A client obeying
+        the header spins for the whole tail of every window. Any other remainder with a
+        fractional part was under-reported by up to a second, so the caller woke while the
+        window was still closed.
+
+        Rounding up is the only safe direction for this header: waiting a fraction of a
+        second too long costs the caller nothing, while waking a fraction too early
+        reproduces the defect. :meth:`check` returns on a rolled-over window before either
+        call, so the remainder here is always positive and ``ceil`` is already at least 1.
+        The floor of 1 is defensive, and keeps this formula the same as
+        :meth:`FailedAuthThrottle.check`'s.
+
+        The allowed path uses it too, because it feeds ``X-RateLimit-Reset``: the two
+        headers describe the same instant and should not disagree by a second.
+
+        juniper-service-core's ``RateLimiter._seconds_until_reset`` (APD-SVCCORE-004) is
+        the same formula; juniper-data keeps its own copy of the service-tier security code.
+        """
+        return max(1, math.ceil(self._window - (now - window_start)))
+
     def check(self, key: str) -> tuple[bool, int, int]:
         """Check if a request is allowed under rate limit.
 
@@ -247,11 +273,10 @@ class RateLimiter:
                 return (True, self._limit - 1, self._window)
 
             if count >= self._limit:
-                reset_in = int(self._window - (now - window_start))
-                return (False, 0, reset_in)
+                return (False, 0, self._seconds_until_reset(now, window_start))
 
             self._counters[key] = (count + 1, window_start)
-            return (True, self._limit - count - 1, int(self._window - (now - window_start)))
+            return (True, self._limit - count - 1, self._seconds_until_reset(now, window_start))
 
     def _warn_on_capacity_locked(self) -> None:
         """Log a one-shot warning when the rate-limiter cache nears capacity.
@@ -424,7 +449,13 @@ class FailedAuthThrottle:
             if now - window_start >= self._window:
                 return (False, 0)  # Window rolled over; the old count no longer applies.
             if count >= self._max_failures:
-                return (True, max(1, int(self._window - (now - window_start))))
+                # Same direction as RateLimiter._seconds_until_reset. int() truncates, so
+                # 9.4s left would say 9 and a client obeying Retry-After would wake while
+                # this window is still closed. ``remaining`` is positive here (the roll-over
+                # check above returned for anything else), so ceil is already at least 1;
+                # the floor of 1 only keeps the two methods' formulas the same.
+                remaining = self._window - (now - window_start)
+                return (True, max(1, math.ceil(remaining)))
             return (False, 0)
 
     def record_failure(self, client_ip: str) -> None:
