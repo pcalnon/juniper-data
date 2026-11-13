@@ -220,6 +220,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   below 85%.** The per-module threshold only warns, so when any module was warned the closing line now reads
   `PASS: aggregate >= 80.0%; K of N modules below 85.0% (warned above, not enforced)`. Exit codes are unchanged.
   Left over from juniper-data#500.
+- **A rate-limited or throttled caller is told to wait until the window actually rolls over: `Retry-After` and
+  `X-RateLimit-Reset` round up and are never 0 (the owner's flood-4 round-2 ruling, "Both in round 2").**
+  `juniper_data/api/security.py`:
+  - `RateLimiter.check` returned `int(window - elapsed)` on the rejected and the allowed path, with no floor. A
+    sub-second remainder became `0`, so the 429 in the last second of every window said `Retry-After: 0`, telling the
+    client to retry at once into the same rejection; any other fractional remainder was under-reported (9.4 s left
+    said 9). Both paths now return `RateLimiter._seconds_until_reset`, `max(1, math.ceil(window - elapsed))`.
+  - `FailedAuthThrottle.check` floored its wait at 1, so it never said 0, but it truncated too: 9.4 s left said 9,
+    and a client obeying `Retry-After` woke while the window was still closed. It now rounds up with the same floor.
+    A caller who is not blocked still gets `retry_after` 0.
+  - This is juniper-service-core's formula (APD-SVCCORE-004 for its `RateLimiter`, juniper-ml#2524 in 0.7.2 for its
+    `FailedAuthThrottle`); juniper-data keeps its own copy of that code. For every window a float holds exactly, a
+    remainder is never 0 at either call, so the floor is defensive.
+  - `test_retry_after_rounds_up.py` pins it with a frozen clock, through `SecurityMiddleware`'s headers too. 31 of its
+    47 tests fail on the old code. `docs/REFERENCE.md` (§ Rate-Limit Window, § Failed-Auth Throttle Retention,
+    § Non-ASCII API Keys) and `docs/DEVELOPER_CHEATSHEET.md` say how the wait is rounded.
 - **The CI/CD documentation's other stale lines, left over from juniper-data#500.**
   - `docs/ci_cd/CICD_MANUAL.md`: the trigger matrix no longer says `ci.yml` runs on feature/fix pushes (removed
     2026-08-13). The job graph and count cover all 14 jobs, with new sections for `async-route-audit`, `docker-build`

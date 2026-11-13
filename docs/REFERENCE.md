@@ -1,8 +1,8 @@
 # Juniper Data Reference
 
-**Version:** 0.4.7
+**Version:** 0.4.8
 **Status:** Active
-**Last Updated:** November 12, 2026
+**Last Updated:** November 13, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -303,7 +303,7 @@ There is no `Field(gt=0)` on the window (unlike `csv_import_max_bytes`). Keep it
 1. Exempt paths (`EXEMPT_PATHS`: `/v1/health`, `/v1/health/live`, `/v1/health/ready`, `/metrics`, `/metrics/`) skip **both** this limiter and the failed-auth throttle. `/docs` / `/redoc` are not mounted when keys are configured; `/openapi.json` is mounted and authenticated like any other route (APD-DATA-024) — it consumes quota.
 2. Key: `key:{api_key}` when a key authenticated the request, else `ip:{client_ip}`.
 3. First hit in a window: count 1, remaining `limit - 1`, reset `window` seconds.
-4. Over the count: HTTP **429** with `X-RateLimit-Limit`, `X-RateLimit-Remaining: 0`, `X-RateLimit-Reset`, and `Retry-After`. Allowed responses get the same three `X-RateLimit-*` headers.
+4. Over the count: HTTP **429** with `X-RateLimit-Limit`, `X-RateLimit-Remaining: 0`, `X-RateLimit-Reset`, and `Retry-After`. Allowed responses get the same three `X-RateLimit-*` headers. After the first hit, `X-RateLimit-Reset` and `Retry-After` are the seconds left in the window, rounded **up** and never below 1 (`RateLimiter._seconds_until_reset`, `max(1, math.ceil(window - elapsed))`): 9.4 s left is `10`, and the last fraction of a second is `1`. They used to truncate (`int(...)`), so the 429 in a window's last second said `Retry-After: 0`, which tells a client to retry at once into the same rejection.
 5. Cache: `TTLCache(maxsize=10_000, ttl=window_seconds)`. A one-shot warning fires at 80% occupancy.
 
 Default `rate_limit_enabled` is **true** (`_JUNIPER_DATA_API_RATELIMIT_ENABLED`). Disable with `JUNIPER_DATA_RATE_LIMIT_ENABLED=false`.
@@ -344,6 +344,7 @@ In-process only. Multiple uvicorn workers do not share counters. Restarting the 
 | `test_window_property_returns_configured_seconds` | `tests/unit/test_security.py` | Constructor window is readable |
 | `test_check_resets_after_window_expiry` | same | Count resets once `now - window_start >= window` |
 | `test_call_raises_429_when_over_limit` | same | Over-limit path is 429 |
+| `TestRateLimiterResetRoundsUp`, `TestRateLimiterHeaders` | `tests/unit/test_retry_after_rounds_up.py` | With a frozen clock: a sub-second remainder is `1`, not `0`; 9.6 s and 9.4 s left are `10`; 6.0 s stays `6`; the allowed path rounds the same way; the 429's `Retry-After` and `X-RateLimit-Reset` carry the rounded value |
 
 ---
 
@@ -355,7 +356,7 @@ In-process only. Multiple uvicorn workers do not share counters. Restarting the 
 
 ### When a window ends
 
-`check()` treats the window as closed when `now - window_start >= window_seconds`. It returns not blocked and leaves the stored count in place. The next `record_failure` for that address writes count **1** and a new `window_start`. A time still inside the window, including half a second before the boundary, stays blocked. `Retry-After` is `max(1, int(window_seconds - elapsed))`: truncated, with a floor of 1. A fraction of a second left is still 1 second, and 9.4 seconds left is 9. At exactly 60 seconds the check is not blocked, and the old count stays in the table until that next failure replaces it or cleanup removes the row (below).
+`check()` treats the window as closed when `now - window_start >= window_seconds`. It returns not blocked and leaves the stored count in place. The next `record_failure` for that address writes count **1** and a new `window_start`. A time still inside the window, including half a second before the boundary, stays blocked. `Retry-After` is `max(1, math.ceil(window_seconds - elapsed))`: rounded up, with a floor of 1. A fraction of a second left is 1 second, and 9.4 seconds left is 10. At exactly 60 seconds the check is not blocked, and the old count stays in the table until that next failure replaces it or cleanup removes the row (below).
 
 A constructor `window_seconds` of `0` makes every check and every record a new window. It cannot show a rollover that kept the old count.
 
@@ -419,7 +420,7 @@ The compare accepts a presented key exactly when the two strings are equal. A pr
 `create_app` installs `SecurityMiddleware` without a custom throttle, so the default `FailedAuthThrottle` is on: 10 failures / 60 seconds, keyed by client IP (`DEFAULT_FAILED_AUTH_MAX_FAILURES`, `DEFAULT_FAILED_AUTH_WINDOW_SECONDS`). `build_failed_auth_throttle` reads no `JUNIPER_DATA_*` setting. There is no operator knob for this budget.
 
 1. Exempt paths skip the throttle and authentication: `/v1/health`, `/v1/health/live`, `/v1/health/ready`, `/metrics`, `/metrics/`.
-2. The throttle is checked first. An IP already at 10 failures in the open window receives **429** with `Retry-After` and does not reach the comparison.
+2. The throttle is checked first. An IP already at 10 failures in the open window receives **429** with `Retry-After` and does not reach the comparison. `Retry-After` is the rest of the window in seconds, rounded up (9.4 s left is `10`) and never below 1; `TestFailedAuthThrottleRoundsUp` in `tests/unit/test_retry_after_rounds_up.py` pins it. It used to truncate, so 9.4 s left said 9 and a client obeying it retried while the window was still closed.
 3. A missing key is **401** `{"detail": "Missing API key. Provide X-API-Key header."}`.
 4. Any other mismatch, including a non-ASCII header, is **401** `{"detail": "Invalid API key."}`.
 5. `SecurityMiddleware` catches that `HTTPException`. Status 401 calls `record_failure`. The eleventh failure inside the window is the 429 in step 2.
@@ -2706,6 +2707,6 @@ git worktree prune
 
 ---
 
-**Last Updated:** November 12, 2026
-**Version:** 0.4.7
+**Last Updated:** November 13, 2026
+**Version:** 0.4.8
 **Maintainer:** Paul Calnon
