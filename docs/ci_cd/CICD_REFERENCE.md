@@ -2,9 +2,9 @@
 
 ## juniper-data CI/CD Jobs, Hooks, and Configuration
 
-**Version:** 0.4.6
+**Version:** 0.4.7
 **Status:** Active
-**Last Updated:** November 12, 2026
+**Last Updated:** November 14, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -103,7 +103,7 @@ Read from `anthropics/claude-code-action` v1.0.265 (`6d5ae526d25ce88daa2200be073
 | `pre-commit` | -- | 3.12, 3.13, 3.14 | Always | Code quality (ruff, mypy, bandit) |
 | `docs` | -- | 3.12 | Always | Link check, workflow script paths, AGENTS.md version and header. Required context name: `Documentation Links`. Pre-commit runs only the link check. See [Job: docs](CICD_MANUAL.md#job-docs) |
 | `async-route-audit` | -- | 3.12 | Always | `ruff check --select ASYNC` over `juniper_data/` |
-| `unit-tests` | pre-commit | 3.12, 3.13, 3.14 on Ubuntu; 3.12 on macOS | Always | Unit tests with the coverage gates |
+| `unit-tests` | pre-commit | 3.12, 3.13, 3.14 on Ubuntu; 3.12 on macOS; 3.15 on Ubuntu (informational, never blocks) | Always | Unit tests with the coverage gates |
 | `build` | unit-tests | 3.14 | Always | Package build verification |
 | `dependency-docs` | build | 3.14 | Always | Dependency documentation |
 | `integration-tests` | unit-tests | 3.14 | PRs or main/develop | Integration workflow tests |
@@ -418,6 +418,6 @@ The `dependency-docs` job runs that command after `conda-incubator/setup-minicon
 
 ---
 
-**Last Updated:** November 12, 2026
-**Version:** 0.4.6
+**Last Updated:** November 14, 2026
+**Version:** 0.4.7
 **Maintainer:** Paul Calnon

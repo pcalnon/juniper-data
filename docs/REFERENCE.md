@@ -1,8 +1,8 @@
 # Juniper Data Reference
 
-**Version:** 0.4.8
+**Version:** 0.4.9
 **Status:** Active
-**Last Updated:** November 13, 2026
+**Last Updated:** November 14, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -2365,7 +2365,7 @@ All 14 files in `.github/workflows/`, counted on `main` at `35658ff3` (2026-10-2
 
 | Workflow | File | Triggers | Purpose | Required contexts |
 |----------|------|----------|---------|-------------------|
-| **CI/CD Pipeline** | `ci.yml` | Push to `main` / `develop`; PR into `main` / `develop`; `repository_dispatch` `data-client-updated` (juniper-data-client's CI sends it after a push to its `main`); daily schedule (06:00 UTC); manual | Pre-commit (ruff, mypy, bandit, yamllint and more) on 3.12-3.14; unit tests with the coverage gates on Ubuntu 3.12-3.14 and macOS 3.12; build; dependency docs; integration tests; Gitleaks, Bandit SARIF and pip-audit; lockfile freshness; Docker build and smoke test; Documentation Links (link check, workflow script paths, AGENTS.md version and header); async-route audit; memory budget; Quality Gate; slow tests on scheduled and manual runs. See the notes below the table | 18, plus `Bandit` from code scanning (listed below the table). `Build Notification` is not required |
+| **CI/CD Pipeline** | `ci.yml` | Push to `main` / `develop`; PR into `main` / `develop`; `repository_dispatch` `data-client-updated` (juniper-data-client's CI sends it after a push to its `main`); daily schedule (06:00 UTC); manual | Pre-commit (ruff, mypy, bandit, yamllint and more) on 3.12-3.14; unit tests with the coverage gates on Ubuntu 3.12-3.14 and macOS 3.12, plus an informational Ubuntu 3.15 leg that is not required; build; dependency docs; integration tests; Gitleaks, Bandit SARIF and pip-audit; lockfile freshness; Docker build and smoke test; Documentation Links (link check, workflow script paths, AGENTS.md version and header); async-route audit; memory budget; Quality Gate; slow tests on scheduled and manual runs. See the notes below the table | 18, plus `Bandit` from code scanning (listed below the table). `Build Notification` is not required |
 | **CodeQL Analysis** | `codeql.yml` | Push to `main` / `develop`; PR into `main`; weekly schedule (Monday 06:00 UTC) | CodeQL for Python with the `+security-and-quality` queries | `Analyze (python)`. The `CodeQL` check run that code scanning posts is not a required context; the ruleset's `code_scanning` rule covers the alerts instead |
 | **Scheduled Security Scan** | `security-scan.yml` | Weekly schedule (Monday 06:00 UTC); manual | Bandit over `juniper_data` (tests excluded): a SARIF report kept only as the `security-reports` run artifact (nothing is uploaded to code scanning), then a second pass at medium severity and confidence that fails the job on any finding; `pip-audit --strict --desc on` over a `.[all]` install. No Gitleaks. The pull-request Gitleaks, Bandit SARIF and pip-audit lane is `ci.yml`'s `Security Scans` | None |
 | **Publish to PyPI** | `publish.yml` | GitHub release `published` | Build and `twine check`; TestPyPI (`testpypi` environment) and an install check; then PyPI (`pypi` environment: the owner's review plus a 5-minute wait). Both by Trusted Publishing (OIDC). Then [notify consumers](#consumer-release-notification) | None |
@@ -2387,6 +2387,8 @@ The 22 required contexts, by source (ruleset read on 2026-10-27):
 - `codeql.yml` (1): `Analyze (python)`.
 - `sequence-safety.yml` (1): `Sequence Safety`.
 - `pr-base-branch-guard.yml` (1): `Guard PR base branch`.
+
+`Unit Tests + Coverage (Python 3.15 on ubuntu-latest)` is deliberately not among them. The Python 3.15 leg is informational until 3.15 becomes a required version: its `include` entry sets `experimental: true`, so the job's `continue-on-error` keeps a failure there from failing `unit-tests` or the Quality Gate.
 
 Notes on `ci.yml`:
 
@@ -2552,7 +2554,7 @@ Configured in `.pre-commit-config.yaml`:
 
 ### Coverage Gates
 
-CI enforces two gates, on each of the four required `Unit Tests + Coverage` legs (Ubuntu 3.12, 3.13 and 3.14; macOS 3.12). Each leg measures one run of `pytest -m "unit and not slow" juniper_data/tests/unit --cov=juniper_data`. The source is the `juniper_data` package less `pyproject.toml`'s `[tool.coverage.run] omit` list (`*/tests/*`, `*/__pycache__/*`, `*/data/*`, `*/logs/*`), with branch coverage on.
+CI enforces two gates, on each of the four required `Unit Tests + Coverage` legs (Ubuntu 3.12, 3.13 and 3.14; macOS 3.12). The informational Ubuntu 3.15 leg runs the same gates, but a failure there blocks nothing. Each leg measures one run of `pytest -m "unit and not slow" juniper_data/tests/unit --cov=juniper_data`. The source is the `juniper_data` package less `pyproject.toml`'s `[tool.coverage.run] omit` list (`*/tests/*`, `*/__pycache__/*`, `*/data/*`, `*/logs/*`), with branch coverage on.
 
 - **Aggregate, 80%.** `python -m coverage report --fail-under=${COVERAGE_FAIL_UNDER}`, with `COVERAGE_FAIL_UNDER: "80"` in the workflow's `env:` (`pyproject.toml`'s `fail_under = 80` agrees). This figure counts branches.
 - **Per file, 90%; per sub-module, 95%.** `juniper-coverage-gap-map --coverage-json reports/coverage.json --enforce`, from `juniper-ci-tools>=0.9.0,<0.10.0`. The step passes no thresholds, so the tool's defaults apply. The leg fails when any measured file's **statement** coverage is below 90%, or any sub-module's **pooled** statement coverage (its files' covered statements over their statements) is below 95%. A sub-module is a directory: `juniper_data/generators/spiral` is one, `juniper_data/api/routes` another. Branches count toward neither. On `main` at `95ce8190` (scheduled run, 2026-10-29) it gated 100 files in 23 directories and printed `Enforcing gate: PASS  (per-file statement >= 90.0%, sub-module pooled >= 95.0%)`. The report above that verdict also lists files below 90% *branch-inclusive* coverage, and that list is advisory: it named `juniper_data/core/meta.py` at 87.88% while the file's statement coverage was 48/52.
@@ -2707,6 +2709,6 @@ git worktree prune
 
 ---
 
-**Last Updated:** November 13, 2026
-**Version:** 0.4.8
+**Last Updated:** November 14, 2026
+**Version:** 0.4.9
 **Maintainer:** Paul Calnon

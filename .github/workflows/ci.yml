@@ -235,11 +235,18 @@ jobs:
     runs-on: ${{ matrix.os }}
     # The macOS leg is REQUIRED, like the three Linux legs. METRICS-MON R3.7 / seed-(R1.3 design)
     # added it as a continue-on-error soak (juniper-data#61), and juniper-data#63 ended the soak on
-    # 2026-05-01 by setting the include block's ``experimental`` flag to false, so this expression
-    # is false on every leg and a failing macOS leg fails the job. Ruleset 14748749 requires
+    # 2026-05-01 by setting the include block's ``experimental`` flag to false, so a failing macOS
+    # leg fails the job. Ruleset 14748749 requires
     # "Unit Tests + Coverage (Python 3.12 on macos-latest)" with the three Linux contexts (read
     # 2026-10-29). The leg catches platform divergence: cross-platform rss_mb sampling, POSIX-only
     # assumptions, and BSD tools (macOS `base64` has no `-w0`; juniper-data#467 and #498 both met it).
+    #
+    # The Python 3.15 leg is INFORMATIONAL: phase 1 of the ecosystem's 3.15 migration (owner request,
+    # 2026-11-14) runs it so its results show, but it must block no merge. It is the only leg with
+    # ``experimental: true``, so this expression is true on it alone: a failure there leaves the
+    # job's result, which the Quality Gate reads as `needs.unit-tests.result`, unchanged, and the jobs
+    # that `needs: [unit-tests]` still run. Its context is not in the ruleset. Keep both until the
+    # owner makes 3.15 a required version (phase 3 of the migration).
     continue-on-error: ${{ matrix.experimental == true }}
     needs: [pre-commit]
     strategy:
@@ -251,6 +258,10 @@ jobs:
           - os: macos-latest
             python-version: "3.12"
             experimental: false
+          # Informational, never required: see the comment above `continue-on-error`.
+          - os: ubuntu-latest
+            python-version: "3.15"
+            experimental: true
 
     steps:
       - name: Checkout Code
@@ -348,6 +359,14 @@ jobs:
           name: unit-test-results-py${{ matrix.python-version }}
           path: reports/junit-unit.xml
           retention-days: 30
+
+      - name: "Pilot probe (TEMPORARY, removed before merge): fail the informational leg"
+        # Makes the 3.15 leg fail whatever its tests do, so this pull request's run shows what the
+        # Quality Gate reads in `needs.unit-tests.result` when only the continue-on-error leg failed.
+        if: always() && matrix.experimental == true
+        run: |
+          echo "::warning::Deliberate failure of the informational Python 3.15 leg (pilot probe)"
+          exit 1
 
   # ═══════════════════════════════════════════════════════════════════════════════════════════════
   # Build: Build sdist and wheel artifacts
