@@ -2,7 +2,7 @@
 
 ## juniper-data Test Configuration, Markers, and Fixtures
 
-**Version:** 0.4.4
+**Version:** 0.4.5
 **Status:** Active
 **Last Updated:** November 15, 2026
 **Project:** Juniper - Dataset Generation Service
@@ -42,8 +42,8 @@ Every test must have exactly one scope marker:
 | Marker | Description | Usage Count | CI Behavior |
 |--------|-------------|-------------|-------------|
 | `unit` | Unit tests for individual components | ~171 | `ci.yml` `unit-tests` runs `-m "unit and not slow"` over `tests/unit/` on every run of the workflow (pull requests, pushes to `main` / `develop`, the daily schedule, manual and `data-client-updated` dispatch runs): Python 3.12-3.14 on Ubuntu and 3.12 on macOS, plus an informational Python 3.15 leg on Ubuntu that blocks no merge |
-| `integration` | Integration tests for full workflows | ~19 | `ci.yml` `integration-tests` runs `-m "integration and not slow"` over `tests/integration/` on pull requests and on runs on `main` / `develop`. `scheduled-tests.yml` runs `-m "slow or integration"` daily |
-| `performance` | Performance and benchmarking tests | ~6 | None: no workflow selects it. Benchmarks run locally only |
+| `integration` | Integration tests for full workflows | ~19 | `ci.yml` `integration-tests` runs `-m "integration and not slow"` over `tests/integration/` on pull requests and on runs on `main` / `develop`. `scheduled-tests.yml` runs `-m "slow or integration or performance"` daily |
+| `performance` | Performance and benchmarking tests | ~6 | `scheduled-tests.yml` runs `-m "slow or integration or performance"` daily over all of `juniper_data/tests/`, on Python 3.12-3.14 plus an informational 3.15 leg. `--benchmark-disable` in `addopts` keeps timing off, so each benchmark runs its function once: a smoke run that catches breakage, not slowdowns, and gates no pull request. Timed runs are local only (`--benchmark-enable`) |
 
 A lane selects by directory and by marker, so a test without the scope marker its lane asks for, or in a directory no pull-request lane collects, runs in no lane on a pull request. See [Test Categories](TESTING_MANUAL.md#test-categories).
 
@@ -459,5 +459,5 @@ Reverting the shape-count and classification-fallback fixes is expected to fail 
 ---
 
 **Last Updated:** November 15, 2026
-**Version:** 0.4.4
+**Version:** 0.4.5
 **Maintainer:** Paul Calnon

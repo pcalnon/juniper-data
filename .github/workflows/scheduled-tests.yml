@@ -18,6 +18,10 @@
 #    unit + slow integration + long-running + benchmarks). That richer
 #    flavor is *not* generalized in this template — keep it as
 #    juniper-cascor's local override.
+#
+#    juniper-data's local override: the selector adds `performance`, so
+#    its pytest-benchmark benchmarks run here too, untimed (see the
+#    comment on the pytest step).
 #####################################################################################################################################################################################################
 
 name: Scheduled Tests
@@ -77,10 +81,15 @@ jobs:
           pip install -e ".[all]"
 
       - name: Run slow / integration tests
+        # `performance` adds the pytest-benchmark benchmarks in juniper_data/tests/performance/ as a daily smoke run.
+        # pyproject.toml's addopts pass `--benchmark-disable`, and nothing here passes `--benchmark-enable`, so each
+        # benchmarked function runs once, untimed: the lane catches a benchmark that breaks, not one that slows down.
+        # This workflow has no pull_request trigger, so it gates no pull request.
+        # juniper_data/tests/unit/test_scheduled_tests_selector.py pins this selector.
         run: |
           mkdir -p reports/junit
           python -m pytest \
-            -m "slow or integration" \
+            -m "slow or integration or performance" \
             --tb=short \
             --maxfail=10 \
             --junitxml=reports/junit/junit-slow.xml
