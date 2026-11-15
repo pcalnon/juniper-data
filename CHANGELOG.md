@@ -123,6 +123,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     leg's check read `failure`, the Quality Gate printed `Unit Tests: success` and passed, and `build`,
     `integration-tests`, `dependency-docs` and `docker-build` ran. Every real step of that leg passed on CPython
     3.15.2: 2401 passed, 14 skipped, 98.12% coverage.
+  - `scheduled-tests.yml`'s `Slow / Integration Tests` matrix gains the same informational 3.15 leg. Its job name now
+    spells out the `(<version>)` suffix GitHub used to append, so the three existing legs post the same names.
   - `requires-python`, the classifiers, the mypy and ruff targets, pre-commit and the Docker base are unchanged.
   - `docs/ci_cd/CICD_MANUAL.md`, `docs/ci_cd/CICD_REFERENCE.md` and `docs/REFERENCE.md` describe the leg.
 - **Tests pin the coverage gates, the Bandit SARIF upload, the image `Publish manifest` job, the TestPyPI install
