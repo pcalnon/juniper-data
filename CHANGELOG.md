@@ -284,7 +284,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `pypi` gate. It builds nothing: it downloads the version's files from TestPyPI, checks each against TestPyPI's JSON
     and, while the release run's artifact exists, against its `SHA256SUMS`, uploads them, and checks PyPI's JSON. If
     that fails, within 30 days of the release run, "Re-run failed jobs" on it; after that, cut a new patch version.
-    Never "Re-run all jobs".
+    Never "Re-run all jobs". A dispatch runs the workflow file at its tag, so a tag cut before this change has no
+    republish dispatch.
   - **`notify-consumers` is unchanged** and still runs only after the `pypi` job of a release run. A republish
     dispatch skips it, because it needs `pypi` and sends the release's tag; `docs/ci_cd/CICD_MANUAL.md` gives the
     `gh workflow run notify-consumers.yml` command that re-sends it.
@@ -292,12 +293,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     names `Publish to TestPyPI` and `Publish to PyPI` (juniper-ml's release-train ceremony tells the publish jobs apart
     by them), the build commands, the install check, and `publish-image.yml`. A build failure now fails
     `Build and Validate` rather than `Publish to TestPyPI`.
-  - **Pins**: the new `juniper_data/tests/unit/test_publish_one_artifact.py` (66 cases), ported from
-    juniper-cascor's. The static cases pin the wiring, what the workflow kept, and each template step and the republish
-    job to juniper-cascor's by digest. The rehearsals run each template step's own Python, extracted from
-    `publish.yml`, against a stand-in index and GitHub API on 127.0.0.1. 14 mutations of the workflow, applied
-    one at a time, each fail it. `test_testpypi_install_verify.py` and `test_notify_consumers_dispatch.py` pass
-    unchanged.
+  - **Pins**: the new `juniper_data/tests/unit/test_publish_one_artifact.py` (67 cases), ported from
+    juniper-cascor's. The static cases pin the wiring, each job's exact steps in order, what the workflow kept, and
+    each template step and the republish job, by digest, to juniper-cascor's `publish.yml` at `675884888f5a`. That is
+    a snapshot: a template change in juniper-cascor must be re-ported here and the digests updated with it. The
+    rehearsals run each template step's own Python, extracted from `publish.yml`, against a stand-in index and GitHub
+    API on 127.0.0.1. 17 mutations of the workflow, applied one at a time, each fail it.
+    `test_notify_consumers_dispatch.py` passes unchanged. `test_testpypi_install_verify.py` passes too, and gains a
+    comment on its tag-without-`v` case: the build's guard now keeps such a tag from a release run's install check,
+    and the case stays because it pins the step's own `${VERSION#v}`, which strips at most one `v` and needs none.
   - Docs: `docs/ci_cd/CICD_MANUAL.md` (0.4.9) § One artifact, checked against TestPyPI and § Recovering a release that
     did not reach PyPI; `docs/ci_cd/CICD_REFERENCE.md` (0.4.8), `docs/REFERENCE.md` (0.4.12),
     `docs/ci_cd/CICD_QUICK_START.md` (0.4.6) and `docs/DEVELOPER_CHEATSHEET.md` (0.4.8).

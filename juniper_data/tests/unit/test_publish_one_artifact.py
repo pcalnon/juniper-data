@@ -16,12 +16,13 @@ they read only ``PUBLISH_PACKAGE`` and ``PUBLISH_DIST_DIR`` from the workflow ``
 runner's own variables. ``notify-consumers`` still runs only after the PyPI job of a release run.
 
 The static cases pin the wiring: one build, in a job without an environment or ``id-token``; the job chain and the two
-job names juniper-ml's release-train ceremony reads; per-job permissions; the reuse step first in the build job and
-guarding every later step; each upload preceded by the dist check; TestPyPI's JSON checked after the TestPyPI upload
-and again before the PyPI one, and PyPI's after; no ``skip-existing``; an artifact that outlives the 30-day ``pypi``
-gate; the republish job's trigger, gate, steps and name; the triggers, the build's tag guard and what the workflow
-kept; and every template step equal to juniper-cascor's. The rehearsals run each template step's own Python, extracted
-from ``publish.yml``, in a scratch workspace, against a stand-in index and a stand-in GitHub API on 127.0.0.1.
+job names juniper-ml's release-train ceremony reads; per-job permissions; each job's exact steps, in order; the reuse
+step first in the build job and guarding every later step; each upload preceded by the dist check; TestPyPI's JSON
+checked after the TestPyPI upload and again before the PyPI one, and PyPI's after; no ``skip-existing``; an artifact
+that outlives the 30-day ``pypi`` gate; the republish job's trigger, gate, steps and name; the triggers, the build's
+tag guard and what the workflow kept; and every template step and the republish job equal to juniper-cascor's
+``publish.yml`` at 675884888f5a, the snapshot this port copied. The rehearsals run each template step's own Python,
+extracted from ``publish.yml``, in a scratch workspace, against a stand-in index and a stand-in GitHub API on 127.0.0.1.
 """
 
 from __future__ import annotations
@@ -75,9 +76,23 @@ FETCH_ORIGINAL = "Download the release run's artifact"
 FETCH = "Download TestPyPI's files and verify them"
 INSTALL_CHECK = "Verify TestPyPI install"
 INDEX_CHECKS = {TESTPYPI_AFTER: "https://test.pypi.org", TESTPYPI_BEFORE: "https://test.pypi.org", PYPI_AFTER: "https://pypi.org"}
-#: sha256 of ``json.dumps(<parsed step>, sort_keys=True)`` for each template step, and of the whole republish job, as
-#: juniper-cascor's publish.yml (the template's source) carries them at main 675884888f5a, after #763 and #767. A port
-#: copies them verbatim, so these move only when the template does, and then in every port at once.
+#: workflow -> job -> its steps, in order: each step's name, or for an unnamed step the action it uses without its ref
+#: (a Dependabot bump of a pin keeps the list). A step added, dropped or moved fails whatever it runs: a rebuild slipped
+#: in before an upload need not use a command BUILD_COMMAND knows, and no other case notices a missing setup-python.
+STEPS = {
+    "publish.yml": {
+        "build": [REUSE, "actions/checkout", "actions/setup-python", "Install build tools", "Build package", "Check package", RECORD, UPLOAD],
+        "testpypi": ["actions/checkout", "actions/setup-python", DOWNLOAD, VERIFY_DIST, "Publish to TestPyPI", TESTPYPI_AFTER, INSTALL_CHECK],
+        "pypi": [DOWNLOAD, VERIFY_DIST, TESTPYPI_BEFORE, "Publish to PyPI", PYPI_AFTER],
+        REPUBLISH: [FIND, FETCH_ORIGINAL, FETCH, VERIFY_DIST, "Publish to PyPI", PYPI_AFTER],
+    },
+}
+#: The juniper-cascor commit whose publish.yml this port copied: main after #763 and #767.
+TEMPLATE_COMMIT = "675884888f5a"
+#: sha256 of ``json.dumps(<parsed step>, sort_keys=True)`` for each template step, and of the whole republish job, in
+#: juniper-cascor's publish.yml at TEMPLATE_COMMIT. They are a snapshot: a template change in juniper-cascor does not
+#: reach this file by itself. Re-port it here and update these digests with it. A Dependabot bump of an action pinned
+#: inside a template step changes a digest too; take it from juniper-cascor's template rather than bump it here alone.
 TEMPLATE_SHA256 = {
     REUSE: "2c141c4f84715aa7b9fac417232107920cac12e5eb7d6fc90e370cb0137c299c",
     RECORD: "3248631341796f842a49d1ae5ff001f7130c040f8b7ddf71adb2d02919ed3b6e",
@@ -111,7 +126,9 @@ TEMPLATE_ENV = {
     "GITHUB_WORKFLOW_REF",
 }
 PUBLISH_ACTION = "pypa/gh-action-pypi-publish@"
-BUILD_COMMAND = re.compile(r"\bpython3?\s+-m\s+build\b|\bpip3?\s+wheel\b|\buv\s+build\b|\bsetup\.py\s+(?:sdist|bdist_wheel)\b")
+#: The front ends that build an sdist or a wheel: build's module and console script, pip, uv, setup.py, and the build
+#: commands of hatch, poetry, pdm and flit. STEPS pins every step regardless; this keeps a build out of the other jobs.
+BUILD_COMMAND = re.compile(r"\bpython3?\s+-m\s+build\b|\bpyproject-build\b|\bpip3?\s+wheel\b|\buv\s+build\b|\bsetup\.py\s+(?:sdist|bdist_wheel)\b|\b(?:hatch|poetry|pdm|flit)\s+build\b")
 #: GitHub lets a deployment wait this many days for its reviewer: the PyPI job may start that late, and needs the artifact.
 GATE_APPROVAL_DAYS = 30
 ARTIFACT = "${{ env.PUBLISH_PACKAGE }}-dist"
@@ -138,6 +155,11 @@ def _workflow(name: str) -> dict:
 
 def _names(job: dict) -> list[str]:
     return [str(s.get("name") or s.get("uses") or "") for s in job.get("steps") or []]
+
+
+def _step_ids(job: dict) -> list[str]:
+    """Each step's name, or for an unnamed step the action it uses without its ref, as STEPS lists them."""
+    return [str(s.get("name") or str(s.get("uses") or "").split("@", 1)[0]) for s in job.get("steps") or []]
 
 
 def _index(job: dict, name: str) -> int:
@@ -306,6 +328,12 @@ class TestWiring:
         assert _environment(jobs[test_id]) == "testpypi"
         assert _environment(jobs[prod_id]) == "pypi"
 
+    def test_each_job_runs_exactly_these_steps_in_this_order(self, workflow):
+        # The order cases below allow other steps between the ones they name, so a step added anywhere -- a rebuild
+        # before an upload, say -- or one dropped, such as the TestPyPI job's setup-python, is caught only here.
+        jobs = _workflow(workflow)["jobs"]
+        assert {job_id: _step_ids(job) for job_id, job in jobs.items() if job.get("steps")} == STEPS[workflow]
+
     def test_only_the_jobs_that_upload_hold_id_token_write(self, workflow):
         wf = _workflow(workflow)
         jobs = wf["jobs"]
@@ -468,15 +496,17 @@ class TestTemplate:
         assert {kind: len(runs) for kind, runs in copies.items()} == {REUSE: 1, RECORD: 1, VERIFY_DIST: 3, "index": 4, FIND: 1, FETCH: 1}
         assert {kind: len(set(runs)) for kind, runs in copies.items()} == {REUSE: 1, RECORD: 1, VERIFY_DIST: 1, "index": 1, FIND: 1, FETCH: 1}
 
-    def test_the_template_steps_and_the_republish_job_are_juniper_cascors(self):
-        """Each copy of a template step, and the republish job, equals juniper-cascor's publish.yml, the template's source.
+    def test_the_template_steps_and_the_republish_job_equal_juniper_cascor_at_675884888f5a(self):
+        """Each copy of a template step, and the republish job, equals juniper-cascor's publish.yml at TEMPLATE_COMMIT.
 
         A port has one publisher, so comparing its copies with each other cannot catch the template drifting as a whole.
-        When juniper-cascor changes the template, copy the changed steps verbatim and take the new digests from there.
+        This pins a snapshot, not the template's current state: when juniper-cascor changes the template, re-port the
+        changed steps here verbatim and take the new digests (and TEMPLATE_COMMIT) from that commit.
         """
+        assert TEMPLATE_COMMIT == "675884888f5a", "this case's name names the snapshot: rename it with TEMPLATE_COMMIT"
         for workflow in PUBLISHERS:
             jobs = _workflow(workflow)["jobs"]
-            assert _digest(jobs[REPUBLISH]) == TEMPLATE_SHA256[REPUBLISH], f"{workflow}: the republish job is not juniper-cascor's"
+            assert _digest(jobs[REPUBLISH]) == TEMPLATE_SHA256[REPUBLISH], f"{workflow}: the republish job is not juniper-cascor's at {TEMPLATE_COMMIT}"
             seen: list[str] = []
             for job_id, job in jobs.items():
                 if job_id == REPUBLISH:
@@ -484,7 +514,7 @@ class TestTemplate:
                 for step in job.get("steps") or []:
                     name = step.get("name")
                     if name in TEMPLATE_SHA256:
-                        assert _digest(step) == TEMPLATE_SHA256[name], f"{workflow}: {job_id}'s {name!r} is not juniper-cascor's template step"
+                        assert _digest(step) == TEMPLATE_SHA256[name], f"{workflow}: {job_id}'s {name!r} is not juniper-cascor's template step at {TEMPLATE_COMMIT}"
                         seen.append(name)
             # The build job's reuse, record and upload steps; each publish job's download and dist check; the three JSON
             # checks. The republish job's own copies are inside its digest.
