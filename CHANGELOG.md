@@ -609,6 +609,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Docs: `docs/ci_cd/CICD_MANUAL.md` § Gitleaks ruleset (the event table, what each event does with a merge commit's
     own changes, **Pull requests** and its force-push limit, the self-test, three new troubleshooting entries) and
     `docs/ci_cd/CICD_REFERENCE.md` § Gitleaks engine, its `GITHUB_TOKEN` row and the artifact-retention rows.
+- **The Gitleaks test now pins what keeps a leak failing the required `Security Scans` check.** Nothing in
+  `juniper_data/tests/unit/test_gitleaks_config.py` did. Each of twelve one-line edits of `ci.yml` left the file green
+  in both of its lanes, the unit lane and the self-test with the real engine: `continue-on-error` on the job, on
+  `Install Gitleaks (pull request)` or on `Run Gitleaks over the pull request`; a job-level `if:`; the job renamed; the
+  self-test's command with `|| true` or with `-k "not real_engine"`; the digest check with `|| true`, or against a hash
+  of the downloaded file itself; the report upload without `if: always()`, or with its path narrowed to
+  `bandit.sarif`; and a `git` filter that deletes every line holding the word `remerge`, not only git's notes. They
+  are the twelve that the review of juniper-data-client#260, the first port of the pull-request scan, found its first
+  tests left alive; here they were re-run against `main`'s `ci.yml` before this change.
+  - **Pins**, in the existing cases (still 35 tests): the job's name, and no job-level `if` or `continue-on-error`;
+    no `continue-on-error` on the install, the scan or the self-test; the self-test's whole command and its one
+    condition, `github.event_name != 'repository_dispatch'`; the digest line, whole; the report upload under
+    `if: always()`, with `path: reports/security/`, after the scan. The stand-in engine's merge line now holds the
+    word `remerge`, and has to reach the engine. `ci.yml` is unchanged.
+  - `util/ad-hoc/2026-11-08_verify_gitleaks_pr_scan_tests_are_not_vacuous.py` gains those twelve edits and three
+    more (`continue-on-error` on the self-test, a self-test condition that also skips `pull_request`, and the upload
+    moved ahead of the scan), 29 in all, and a `--backup` option; the tests catch each.
+  - Docs: `docs/ci_cd/CICD_MANUAL.md` § Gitleaks ruleset (**Pull requests** and **Self-test**).
 
 ## [0.17.1] - 2026-10-10
 
