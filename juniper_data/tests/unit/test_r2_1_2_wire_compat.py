@@ -20,6 +20,12 @@ from fastapi.testclient import TestClient
 from juniper_data.api.app import create_app
 from juniper_data.api.settings import Settings
 
+# CI's unit lane runs ``pytest -m "unit and not slow" juniper_data/tests/unit`` with ``--strict-markers``
+# and no auto-marking conftest, so an UNMARKED test here is silently DESELECTED -- collected, green
+# locally, and never run in CI. Every test of this module was. The mark is on the module, not on the
+# class, so a class added later cannot repeat it.
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture
 def healthy_client():

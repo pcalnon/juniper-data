@@ -836,11 +836,13 @@ def _create_spiral(client: TestClient, seed: int) -> str:
 class TestBatchEndpoints:
     """Cover the batch endpoints' error/edge branches in the unit lane.
 
-    ``juniper_data/tests/api/test_batch_operations.py`` exercises these routes,
-    but it lives under ``tests/api`` (``@pytest.mark.api``) which the CI
-    ``unit and not slow`` + ``juniper_data/tests/unit`` scope does not collect,
-    so the batch error paths were invisible to the per-file coverage gate. These
-    unit tests use the in-memory-store TestClient (no external services).
+    Written while ``test_batch_operations.py`` sat in ``juniper_data/tests/api/``
+    (``@pytest.mark.api``), which the CI ``unit and not slow`` +
+    ``juniper_data/tests/unit`` scope does not collect, so the batch error paths
+    were invisible to the per-file coverage gate. That module now sits in
+    ``juniper_data/tests/unit/`` with the ``unit`` mark and runs in this lane as
+    well. These tests still cover the error/edge branches with the
+    in-memory-store TestClient (no external services).
     """
 
     def test_batch_create_partial_success_on_http_error(self, client: TestClient) -> None:

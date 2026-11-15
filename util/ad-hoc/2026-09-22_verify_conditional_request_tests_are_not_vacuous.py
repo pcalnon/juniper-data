@@ -178,7 +178,7 @@ ARTIFACT_412 = "            if outcome == status.HTTP_412_PRECONDITION_FAILED:\n
 # ---- Round 3 (M32-M44): the defects round-3 validation of juniper-data#428 found ----------------
 LOCAL_FS = REPO / "juniper_data/storage/local_fs.py"
 STAR = "TestStarTakesOnlySpacesAndTabs"
-BATCH_API = "juniper_data/tests/api/test_batch_operations.py::TestBatchUpdateTags"
+BATCH_API = "juniper_data/tests/unit/test_batch_operations.py::TestBatchUpdateTags"
 
 # The two places ``*`` is recognised (M8a skips the first; M39 and M40 widen what it strips).
 STAR_OR_LIST = '    return field.strip(_OWS) == "*" or _ENTITY_TAG_LIST.fullmatch(field) is not None\n'

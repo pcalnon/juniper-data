@@ -30,6 +30,12 @@ from juniper_data.storage.hf_store import HuggingFaceDatasetStore
 from juniper_data.storage.local_fs import LocalFSDatasetStore
 from juniper_data.storage.memory import InMemoryDatasetStore
 
+# CI's unit lane runs ``pytest -m "unit and not slow" juniper_data/tests/unit`` with ``--strict-markers``
+# and no auto-marking conftest, so an UNMARKED class here is silently DESELECTED -- collected, green
+# locally, and never run in CI. ``TestCacheAgainstRealStores`` (17 tests) was. The mark is on the
+# module, not on each class, so a class added later cannot repeat it.
+pytestmark = pytest.mark.unit
+
 
 def _make_meta(dataset_id: str = "ds_1", **overrides) -> DatasetMeta:
     """Build a minimal DatasetMeta for cache tests."""
@@ -94,7 +100,6 @@ class _CountingStore(DatasetStore):
         return list(self._metas)
 
 
-@pytest.mark.unit
 class TestMetadataCache:
     def test_first_call_hits_underlying_list_all_metadata(self):
         store = _CountingStore([_make_meta("a"), _make_meta("b")])
@@ -192,7 +197,6 @@ class TestMetadataCache:
         assert store.list_all_metadata_calls == 1, "get_stats should reuse the warm cache"
 
 
-@pytest.mark.unit
 class TestMetadataCacheConcurrency:
     """Sanity check that the cache lock prevents tears under concurrent reads.
     The cache is a small dict — full concurrency-stress is overkill; this

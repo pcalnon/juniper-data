@@ -1,8 +1,8 @@
 # Juniper Data Reference
 
-**Version:** 0.4.9
+**Version:** 0.4.10
 **Status:** Active
-**Last Updated:** November 14, 2026
+**Last Updated:** November 15, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -1144,7 +1144,6 @@ juniper-data/
 │       ├── unit/                   # Unit tests (30+ files)
 │       ├── integration/            # Integration tests (5 files)
 │       ├── performance/            # Benchmarks via pytest-benchmark (41 tests)
-│       ├── api/                    # API-specific tests
 │       └── fixtures/               # Golden dataset fixtures (NPZ + metadata)
 ├── docs/                           # User and developer documentation
 │   ├── QUICK_START.md              # 5-minute setup guide
@@ -2709,6 +2708,6 @@ git worktree prune
 
 ---
 
-**Last Updated:** November 14, 2026
-**Version:** 0.4.9
+**Last Updated:** November 15, 2026
+**Version:** 0.4.10
 **Maintainer:** Paul Calnon

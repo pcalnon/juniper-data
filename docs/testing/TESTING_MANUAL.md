@@ -2,9 +2,9 @@
 
 ## Comprehensive Testing Guide for juniper-data
 
-**Version:** 0.4.3
+**Version:** 0.4.4
 **Status:** Active
-**Last Updated:** September 5, 2026
+**Last Updated:** November 15, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -58,7 +58,7 @@ Key characteristics:
 - **80% aggregate / 90% per file / 95% per sub-module** coverage enforcement in CI (per file and per sub-module on statement coverage)
 - **60-second default timeout** per test (signal-based)
 - **Golden datasets** for reproducible generator validation
-- **Benchmarks disabled by default** to keep CI fast
+- **Benchmarks disabled by default** (`--benchmark-disable` in `addopts`); no CI lane runs `tests/performance/`
 
 ---
 
@@ -93,9 +93,11 @@ juniper_data/tests/
 
 | Category | Directory | Purpose | Timeout | CI Behavior |
 |----------|-----------|---------|---------|-------------|
-| **Unit** | `tests/unit/` | Isolated component validation | 60s | Every push, all Python versions |
-| **Integration** | `tests/integration/` | Cross-component workflows | 120s | PRs and main/develop only |
-| **Performance** | `tests/performance/` | Throughput benchmarks | 60s | Benchmarks disabled by default |
+| **Unit** | `tests/unit/` | Isolated component validation | 60s | `ci.yml` `unit-tests` runs `-m "unit and not slow"` over this directory on every run of the workflow (pull requests, pushes to `main` / `develop`, the daily schedule, manual and `data-client-updated` dispatch runs): Python 3.12-3.14 on Ubuntu and 3.12 on macOS, plus an informational Python 3.15 leg on Ubuntu that blocks no merge |
+| **Integration** | `tests/integration/` | Cross-component workflows | 120s | `ci.yml` `integration-tests` runs `-m "integration and not slow"` over this directory on pull requests and on runs on `main` / `develop`. `scheduled-tests.yml` runs `-m "slow or integration"` daily |
+| **Performance** | `tests/performance/` | Throughput benchmarks | 60s | None: no workflow runs them (see [Performance Benchmarks](#performance-benchmarks)) |
+
+A lane selects by directory **and** by marker. `pyproject.toml` sets `--strict-markers`, and no `conftest.py` marks a test by its directory. So a test in `tests/unit/` without the `unit` mark, or in `tests/integration/` without the `integration` mark, is collected and then deselected: it passes locally and runs on no pull request. The two pull-request lanes collect only their own directory. The two scheduled lanes (`ci.yml` `slow-tests`, `-m "slow"`; `scheduled-tests.yml`, `-m "slow or integration"`) collect all of `juniper_data/tests/`. A test file in any other directory therefore runs on no pull request, whatever its marks, and a test that carries none of `unit`, `integration` and `slow` runs in no lane at all. `ci.yml`'s `security` job also runs `tests/unit/test_gitleaks_config.py` by path.
 
 ### Test File Inventory
 
@@ -379,7 +381,9 @@ Source files excluded from coverage:
 
 ## Performance Benchmarks
 
-Benchmarks use `pytest-benchmark` and are **disabled by default** to keep test runs fast.
+Benchmarks use `pytest-benchmark` and are **disabled by default** to keep test runs fast. With timing disabled, each benchmark still runs its function once as a plain test.
+
+No CI workflow runs them. The pull-request lanes collect only `tests/unit/` and `tests/integration/`, and the scheduled lanes select `slow` and `integration`, which the benchmark classes (marked `performance`) do not carry. Run them locally:
 
 ```bash
 # Run benchmarks with timing
@@ -411,7 +415,7 @@ Benchmark tests are in:
 
 ### Marker Requirements
 
-Every test function or class **must** have at least one scope marker (`unit`, `integration`, or `performance`). Additional component markers are recommended:
+Every test function or class **must** have at least one scope marker (`unit`, `integration`, or `performance`). The scope marker and the directory decide the CI lane ([Test Categories](#test-categories)): a test with no scope marker runs on no pull request. A module-level `pytestmark = pytest.mark.unit` (or `integration`) marks every class in the module, including one added later. Additional component markers are recommended:
 
 ```python
 import pytest

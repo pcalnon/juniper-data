@@ -7,6 +7,12 @@ import pytest
 
 from juniper_data.storage.local_fs import LocalFSDatasetStore, _validate_dataset_id
 
+# CI's unit lane runs ``pytest -m "unit and not slow" juniper_data/tests/unit`` with ``--strict-markers``
+# and no auto-marking conftest, so an UNMARKED test here is silently DESELECTED -- collected, green
+# locally, and never run in CI. Every test of this module was. The mark is on the module, not on each
+# class, so a class added later cannot repeat it.
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture
 def temp_store():
