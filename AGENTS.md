@@ -194,7 +194,7 @@ Naming conventions, layer-scoped constants, formatting rules and docstring style
 
 - `tests/unit/` -- Unit tests for individual components (30+ files)
 - `tests/integration/` -- Integration tests for full workflows (5 files)
-- `tests/performance/` -- Generator and storage benchmarks via pytest-benchmark (41 tests; no CI lane runs them)
+- `tests/performance/` -- Generator and storage benchmarks via pytest-benchmark (41 tests; the daily `scheduled-tests.yml` lane runs them untimed, as a smoke run)
 - `tests/fixtures/` -- Golden dataset fixtures (NPZ archives + metadata JSON)
 - `conftest.py` -- Shared fixtures (default/custom SpiralParams, generated datasets, sample arrays)
 
