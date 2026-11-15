@@ -2,7 +2,7 @@
 
 ## Comprehensive CI/CD Pipeline Guide for juniper-data
 
-**Version:** 0.4.8
+**Version:** 0.4.9
 **Status:** Active
 **Last Updated:** November 15, 2026
 **Project:** Juniper - Dataset Generation Service
@@ -74,7 +74,7 @@ Outside the Quality Gate, with no dependencies:
 | Workflow              | Push to main/develop | Push to feature/fix | Pull Requests | Schedule            | Release | Manual |
 |-----------------------|----------------------|---------------------|---------------|---------------------|---------|--------|
 | `ci.yml`              | Yes                  | No (removed 2026-08-13) | Yes       | Daily 6 AM UTC      | No      | Yes    |
-| `publish.yml`         | No                   | No                  | No            | No                  | Yes     | No     |
+| `publish.yml`         | No                   | No                  | No            | No                  | Yes     | Republish only, from a release tag |
 | `notify-consumers.yml` | No                  | No                  | No            | No                  | via `publish.yml` | Yes |
 | `lockfile-update.yml` | No                   | `dependabot/pip/**` by `dependabot[bot]` | `pyproject.toml` paths, same repo, not `release/**` | No | No | No |
 | `codeql.yml`          | Yes                  | No                  | Yes (to main) | Weekly Mon 6 AM UTC | No      | No     |
@@ -329,13 +329,21 @@ Build completion notification summary.
 
 ### publish.yml -- PyPI Publishing
 
-Two-stage publishing triggered by GitHub Release creation.
+Triggered by a published GitHub Release whose tag starts with `v`. The package is built once, and TestPyPI and then production PyPI publish that one artifact, each upload checked by sha256: see [One artifact, checked against TestPyPI](#one-artifact-checked-against-testpypi). A `workflow_dispatch` from a release tag only republishes TestPyPI's files: see [Recovering a release that did not reach PyPI](#recovering-a-release-that-did-not-reach-pypi).
+
+#### Stage 0: Build and Validate
+
+1. On a re-run attempt, `Reuse an earlier attempt's artifact` finds this run's `juniper-data-dist` and skips every later step, so a re-run never rebuilds
+2. Build package with `python -m build` and validate with `twine check dist/*`
+3. `Record SHA256SUMS`, then `Upload dist artifacts`: `dist/` and `SHA256SUMS` as one artifact, `juniper-data-dist`, kept 90 days (the `pypi` gate may wait 30)
+
+No environment and no `id-token`, so the build cannot mint a publishing token. Its guard, `startsWith(github.event.release.tag_name, 'v')`, gates the whole pipeline: every juniper-data release tag is `v<version>`, and a dispatch has no release tag, so it builds nothing.
 
 #### Stage 1: TestPyPI
 
-1. Build package with `python -m build`
-2. Validate with `twine check dist/*`
-3. Publish to TestPyPI via `pypa/gh-action-pypi-publish` (OIDC trusted publishing)
+1. Download `juniper-data-dist` and check `dist/` against `SHA256SUMS`: exactly the recorded files, with their sha256
+2. Publish to TestPyPI via `pypa/gh-action-pypi-publish` (OIDC trusted publishing), with no `skip-existing`
+3. `Verify TestPyPI serves exactly these files`: TestPyPI's JSON for the version must list exactly those files with those sha256. A file not listed yet is index lag, polled up to 20 times 15 seconds apart; a file listed with another sha256, or one this run did not build, fails at once
 4. Wait 30 seconds for index sync
 5. Install from TestPyPI only (`--index-url https://test.pypi.org/simple/`, `--no-deps`, `juniper-data==<version>` with one leading `v` stripped from the tag) and print the installed version from its metadata. The print does not compare that version with the tag; the pip pin does. `import juniper_data` would fail a good publish, because `dotenv` is imported at import time and `--no-deps` does not install it. A second index does not fetch dependencies under `--no-deps`; it only widens which `juniper-data` pip will accept. A non-zero `pip` or `python` fails the step. See [TestPyPI install check](../REFERENCE.md#testpypi-install-check).
 
@@ -343,13 +351,43 @@ Two-stage publishing triggered by GitHub Release creation.
 
 #### Stage 2: Production PyPI
 
-Builds and checks the package again, then publishes to production PyPI. There is no install check.
+Downloads the same `juniper-data-dist`, checks it against `SHA256SUMS`, checks TestPyPI's JSON again (`Verify TestPyPI still serves exactly these files`), publishes to production PyPI, then checks PyPI's JSON (`Verify PyPI serves exactly these files`). It checks out and builds nothing. There is no install check.
 
 **Environment**: `pypi` (5-minute wait timer + required reviewer approval)
 
-Both stages use SHA-pinned actions. Neither sets the publish action's `attestations` input, so the pinned `pypa/gh-action-pypi-publish` (v1.14.3) uses its default, `true`: under Trusted Publishing each upload carries PEP 740 attestations. Only the TestPyPI install check reads the version from the release tag (with a leading `v` stripped); the build takes it from `pyproject.toml`.
+Both stages use SHA-pinned actions. Neither sets the publish action's `attestations` input, so the pinned `pypa/gh-action-pypi-publish` (v1.14.3) uses its default, `true`: under Trusted Publishing each upload carries PEP 740 attestations. Only the TestPyPI install check reads the version from the release tag (with a leading `v` stripped); the build takes it from `pyproject.toml`, and the sha256 checks from the file names in `SHA256SUMS`.
 
-The `notify-consumers` job runs only after `pypi` succeeds. A failed notification does not unpublish the release. See the next section.
+The `notify-consumers` job runs only after `pypi` succeeds, so a republish dispatch never runs it. A failed notification does not unpublish the release. See the next section.
+
+#### One artifact, checked against TestPyPI
+
+Until 2026-11-15 the `testpypi` and `pypi` jobs each ran `python -m build`, so PyPI served a second build of every release: the 0.17.1 wheel is `cce2c167…` on PyPI and `3b8f1a84…` on TestPyPI, 0.17.0's `680c37b5…` against `2842d5b1…`, and 0.16.0's `8560d60c…` against `ead4708d…`; their sdists differ too. The owner's directive (2026-11-15): "deploy to pypi should send the same artifact that was already sent to testpypi. an identical hash check, of the artifacts after testpypi deploy and prior to pypi deploy, might also be helpful here to prevent this from slipping through the cracks again."
+
+Now both publish jobs upload the build job's artifact, and each checks it against `SHA256SUMS` first. TestPyPI's JSON must list exactly those files and sha256 after the TestPyPI upload, before the install check, and again before the PyPI upload; PyPI's JSON must list them after the PyPI upload. An index never takes a second file under a name it already holds, so TestPyPI's record witnesses what the install check tested. Only the jobs that upload hold `id-token: write`: the workflow grants nothing (`permissions: {}`), `Build and Validate` holds `contents: read` and `actions: read`, `Publish to TestPyPI` `contents: read` and `id-token: write`, `Publish to PyPI` `id-token: write`, the republish job `actions: read` and `id-token: write`, and `notify-consumers` nothing.
+
+The steps marked `One-artifact publish template`, and the whole `republish` job, are juniper-cascor's `publish.yml` copied verbatim (juniper-cascor#763 and #767). They read nothing from this repository but the workflow `env` values `PUBLISH_PACKAGE` (`juniper-data`) and `PUBLISH_DIST_DIR` (`dist`), each JSON check's `INDEX_URL`, and the runner's own variables. `juniper_data/tests/unit/test_publish_one_artifact.py` pins the wiring, pins each template step to juniper-cascor's by digest, and rehearses each step's own Python. The contract in full: juniper-cascor's [MANUAL § One Artifact, Checked Against TestPyPI](https://github.com/pcalnon/juniper-cascor/blob/main/docs/ci_cd/MANUAL.md#one-artifact-checked-against-testpypi).
+
+#### Recovering a release that did not reach PyPI
+
+The owner's ladder (ruling of 2026-11-15), in this order. Every rung publishes the files TestPyPI took, or nothing:
+
+1. **Republish TestPyPI's files.** Dispatch `publish.yml` from the release tag:
+
+   ```bash
+   gh workflow run publish.yml --repo pcalnon/juniper-data --ref v<version> -f republish_from_testpypi=true
+   ```
+
+   Only `Republish the tested files (dispatch only)` runs, behind the same `pypi` gate (a fresh approval, then the 5-minute timer). It builds nothing: it downloads the version's files from TestPyPI, checks each file's bytes against TestPyPI's JSON and, while the release run's artifact exists (90 days), against its `SHA256SUMS`, uploads them, and checks PyPI's JSON. It works only from a tag whose `publish.yml` carries the job, so not from a tag cut before this change.
+2. **If that fails, within 30 days of the release run: "Re-run failed jobs"** on the release run. The re-run reuses the run's artifact and waits at the gate again. GitHub refuses a re-run after 30 days.
+3. **Otherwise, cut a new patch version.**
+
+**Never "Re-run all jobs"** on a publish run, nor `gh run rerun <id>` without `--failed`. download-artifact takes the newest artifact of a name, so a re-run build became the file every later job uploaded: juniper-ml's run 38045867684 published a rebuild of juniper-ci-tools 0.9.1 that way. The build job's reuse step now skips such a rebuild, but a tag cut before this change lacks it. The ladder in full: juniper-cascor's [MANUAL § Recovering a Release That Did Not Reach PyPI](https://github.com/pcalnon/juniper-cascor/blob/main/docs/ci_cd/MANUAL.md#recovering-a-release-that-did-not-reach-pypi).
+
+**A republish does not notify consumers.** `notify-consumers` needs the `pypi` job, which a dispatch skips, and sends the release event's tag, which a dispatch lacks. Once the republish run's `Verify PyPI serves exactly these files` passes, re-send from the same tag, so the payload's `sha` is the tag's commit, as a release run's would be:
+
+```bash
+gh workflow run notify-consumers.yml --repo pcalnon/juniper-data --ref v<version> -f version=<version>
+```
 
 ---
 
@@ -564,8 +602,8 @@ The Quality Gate is not the whole merge requirement. The `main` ruleset also req
 
 1. **Create a GitHub Release** with a tag matching the version (e.g., `v0.4.2`)
 2. `publish.yml` triggers automatically
-3. **TestPyPI stage**: Build, verify, publish, install-test (no environment wait; the job sleeps 30 seconds before the install check)
-4. **PyPI stage**: Same process, requires manual reviewer approval
+3. **Build, then TestPyPI stage**: `Build and Validate` builds once and uploads `juniper-data-dist` with its `SHA256SUMS`; the TestPyPI job checks the artifact, publishes it, requires TestPyPI's JSON to list exactly those sha256, then install-tests (no environment wait; the job sleeps 30 seconds before the install check)
+4. **PyPI stage**: requires manual reviewer approval, then publishes the same artifact after checking TestPyPI's JSON again, and checks PyPI's JSON. Nothing is rebuilt. If it never succeeds, follow [Recovering a release that did not reach PyPI](#recovering-a-release-that-did-not-reach-pypi)
 5. Approve the PyPI deployment via GitHub environment approval or `gh api`
 6. **Notify consumers**: after PyPI succeeds, `notify-consumers.yml` dispatches `juniper-data-published` and waits until the consumer starts a run. A red notify job means the package is already on PyPI. The `pypi` job is the publish verdict.
 7. The same release event starts `publish-image.yml` when the tag starts with `v`. That workflow is independent: PyPI success does not prove the image serves or that its tag matches the package. See [publish-image.yml](#publish-imageyml----container-image).
@@ -611,6 +649,8 @@ uv pip compile pyproject.toml --extra api --extra observability --extra mnist --
 **`@claude` on a pull request stops with `was updated after the trigger`**: The head commit's push time is at or after the mention. The tracking comment is that error. Push the commit you want, mention `@claude` again, and leave the branch still until the job checks out. `Could not determine when <sha> was pushed` means the newest activity on the head branch did not end at that SHA. See [Open pull request checkout](CICD_REFERENCE.md#open-pull-request-checkout).
 
 **TestPyPI publish fails**: Check that the release tag matches the version in `pyproject.toml`. Version is extracted by stripping one leading `v` from the tag. The install check uses only `https://test.pypi.org/simple/` and `--no-deps`. Do not add a second index. The following Python line prints installed metadata; it does not compare it with the tag, and `import juniper_data` is the wrong check (`dotenv` is not installed). See [TestPyPI install check](../REFERENCE.md#testpypi-install-check).
+
+**A publish sha256 check fails**: `Verify the dist against SHA256SUMS` means the downloaded `dist/` holds a file the build did not record, or misses or alters one: re-run the failed jobs, and if it fails again do not publish that artifact. `Verify TestPyPI serves exactly these files` or `Verify PyPI serves exactly these files` failing at once means the index lists a file this run did not build, or one with another sha256, usually an earlier upload of the same version: do not publish this version from this run (when the TestPyPI check failed, nothing reached PyPI). A JSON check that gives up after 20 attempts is index lag (19 sleeps of 15 seconds, plus up to 20 request timeouts of 30 seconds): use **Re-run failed jobs**, since an index accepts a re-upload of identical files. See [Recovering a release that did not reach PyPI](#recovering-a-release-that-did-not-reach-pypi).
 
 **Image merge job: `manifest list references` vs `verified build digests`**: The arch digest is an OCI index when provenance attestations are on, and the published list names the linux image inside it. The job resolves each pushed digest to that image before it compares, so this error means the list does not name exactly the images the build jobs verified: one is missing, or another is listed. See [Publish manifest gates](../REFERENCE.md#publish-manifest-gates).
 

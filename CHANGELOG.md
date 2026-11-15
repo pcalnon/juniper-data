@@ -253,6 +253,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **PyPI now receives the files TestPyPI took: `publish.yml` builds once, and the run checks every upload by sha256
+  against TestPyPI** (the owner's directive of 2026-11-15: "deploy to pypi should send the same artifact that was
+  already sent to testpypi. an identical hash check, of the artifacts after testpypi deploy and prior to pypi deploy,
+  might also be helpful here to prevent this from slipping through the cracks again."). The `testpypi` and `pypi` jobs
+  each ran `python -m build`, so PyPI served a second build of every release: the 0.17.1 wheel is `cce2c167…` on PyPI
+  and `3b8f1a84…` on TestPyPI, 0.17.0's `680c37b5…` against `2842d5b1…`, and 0.16.0's `8560d60c…` against
+  `ead4708d…`, and each of those sdists differs too (both indexes' JSON, read on 2026-11-15). A port of
+  juniper-cascor#763 and #767, whose template steps it copies verbatim.
+  - **Build once.** A new job, `Build and Validate`, runs the commands both publish jobs ran (`pip install build
+    twine`, `python -m build`, `twine check dist/*`) once, records `SHA256SUMS`, and uploads `dist/` and `SHA256SUMS`
+    as one artifact, `juniper-data-dist`, kept 90 days so it outlives the `pypi` gate (at most 30 days) and the 30-day
+    re-run window. Its guard, `startsWith(github.event.release.tag_name, 'v')`, matches all 15 juniper-data release
+    tags and the guard `publish-image.yml` applies to the same release event; a dispatch has no release tag, so it
+    builds nothing. On a re-run attempt its first step, `Reuse an earlier attempt's artifact`, finds the run's
+    artifact and skips every later step: download-artifact takes the newest artifact of a name, so a rebuild would
+    become the file PyPI receives.
+  - **TestPyPI.** `Publish to TestPyPI` checks the downloaded files against `SHA256SUMS`, uploads them, and requires
+    TestPyPI's JSON for the version to list exactly those files with those sha256. It polls up to 20 times, 15 s
+    apart, while a file is missing, and fails at once on another sha256 or a file the run did not build. The install
+    check follows, unchanged.
+  - **PyPI.** `Publish to PyPI` keeps its `pypi` environment and gate and no longer checks out or builds anything. It
+    checks the same artifact against `SHA256SUMS`, checks TestPyPI's JSON again, uploads, and checks PyPI's JSON.
+  - **Only the jobs that upload hold `id-token: write`.** The workflow-level grant becomes `permissions: {}`.
+    `Build and Validate` gets `contents: read` and `actions: read`, `Publish to TestPyPI` `contents: read` and
+    `id-token: write`, and `Publish to PyPI` `id-token: write`, so the build, which runs the build backend, can mint no
+    OIDC token.
+  - **Recovery, in the owner's order (ruling of 2026-11-15).** A `workflow_dispatch` from the release tag with
+    `republish_from_testpypi` runs only the new job `Republish the tested files (dispatch only)`, behind the same
+    `pypi` gate. It builds nothing: it downloads the version's files from TestPyPI, checks each against TestPyPI's JSON
+    and, while the release run's artifact exists, against its `SHA256SUMS`, uploads them, and checks PyPI's JSON. If
+    that fails, within 30 days of the release run, "Re-run failed jobs" on it; after that, cut a new patch version.
+    Never "Re-run all jobs".
+  - **`notify-consumers` is unchanged** and still runs only after the `pypi` job of a release run. A republish
+    dispatch skips it, because it needs `pypi` and sends the release's tag; `docs/ci_cd/CICD_MANUAL.md` gives the
+    `gh workflow run notify-consumers.yml` command that re-sends it.
+  - Unchanged too: the `release: published` trigger (no `push: tags`), the `testpypi` and `pypi` environments, the job
+    names `Publish to TestPyPI` and `Publish to PyPI` (juniper-ml's release-train ceremony tells the publish jobs apart
+    by them), the build commands, the install check, and `publish-image.yml`. A build failure now fails
+    `Build and Validate` rather than `Publish to TestPyPI`.
+  - **Pins**: the new `juniper_data/tests/unit/test_publish_one_artifact.py` (66 cases), ported from
+    juniper-cascor's. The static cases pin the wiring, what the workflow kept, and each template step and the republish
+    job to juniper-cascor's by digest. The rehearsals run each template step's own Python, extracted from
+    `publish.yml`, against a stand-in index and GitHub API on 127.0.0.1. 14 mutations of the workflow, applied
+    one at a time, each fail it. `test_testpypi_install_verify.py` and `test_notify_consumers_dispatch.py` pass
+    unchanged.
+  - Docs: `docs/ci_cd/CICD_MANUAL.md` (0.4.9) § One artifact, checked against TestPyPI and § Recovering a release that
+    did not reach PyPI; `docs/ci_cd/CICD_REFERENCE.md` (0.4.8), `docs/REFERENCE.md` (0.4.12),
+    `docs/ci_cd/CICD_QUICK_START.md` (0.4.6) and `docs/DEVELOPER_CHEATSHEET.md` (0.4.8).
+
 - **A failing informational Python 3.15 leg no longer shows as a failed check** (the owner's report of 2026-11-15:
   the 3.15 tests "are supposed to produce an informational message without affecting the ability of code to commit,
   push, PR, or merge"). juniper-data#538 measured the gap here: with its 3.15 leg failed on purpose (run
