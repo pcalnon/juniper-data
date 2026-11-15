@@ -14,6 +14,12 @@ from juniper_data.api.routes import datasets
 from juniper_data.api.settings import Settings
 from juniper_data.storage.memory import InMemoryDatasetStore
 
+# CI's unit lane runs ``pytest -m "unit and not slow" juniper_data/tests/unit`` with ``--strict-markers``
+# and no auto-marking conftest, so an UNMARKED class here is silently DESELECTED -- collected, green
+# locally, and never run in CI. ``TestErrorSurfaceContract`` (9 tests) was. The mark is on the
+# module, not on each class, so a class added later cannot repeat it.
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture
 def test_settings() -> Settings:
@@ -33,7 +39,6 @@ def memory_store() -> InMemoryDatasetStore:
     return InMemoryDatasetStore()
 
 
-@pytest.mark.unit
 class TestCreateApp:
     """Tests for the create_app factory function."""
 
@@ -119,7 +124,6 @@ def cors_auth_settings() -> Settings:
     )
 
 
-@pytest.mark.unit
 class TestCorsPreflight:
     """CORS must execute OUTSIDE SecurityMiddleware.
 
@@ -201,7 +205,6 @@ class TestCorsPreflight:
         assert response.headers.get("access-control-allow-origin") == "http://localhost:3000"
 
 
-@pytest.mark.unit
 class TestExceptionHandlers:
     """Tests for custom exception handlers."""
 
@@ -263,7 +266,6 @@ class TestExceptionHandlers:
         assert response.json()["detail"] == "Internal server error"
 
 
-@pytest.mark.unit
 class TestLifespan:
     """Tests for the lifespan context manager."""
 
@@ -327,7 +329,6 @@ class TestLifespan:
                         )
 
 
-@pytest.mark.unit
 class TestGetAppFactory:
     """Tests for the cached get_app() factory (CLN-JD-03)."""
 

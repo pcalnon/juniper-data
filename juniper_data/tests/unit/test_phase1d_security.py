@@ -19,6 +19,12 @@ from juniper_data.api.observability import (
 )
 from juniper_data.api.security import RateLimiter
 
+# CI's unit lane runs ``pytest -m "unit and not slow" juniper_data/tests/unit`` with ``--strict-markers``
+# and no auto-marking conftest, so an UNMARKED test here is silently DESELECTED -- collected, green
+# locally, and never run in CI. Every test of this module was. The mark is on the module, not on each
+# class, so a class added later cannot repeat it.
+pytestmark = pytest.mark.unit
+
 # =============================================================================
 # SEC-02: rate limiter must evict stale entries via TTLCache (DoS guard)
 # =============================================================================

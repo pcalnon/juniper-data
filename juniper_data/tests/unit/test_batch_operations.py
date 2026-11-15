@@ -19,6 +19,13 @@ from juniper_data.api.routes import datasets
 from juniper_data.api.settings import Settings
 from juniper_data.storage.memory import InMemoryDatasetStore
 
+# CI's unit lane runs ``pytest -m "unit and not slow" juniper_data/tests/unit`` with ``--strict-markers``
+# and no auto-marking conftest. This module sat in ``juniper_data/tests/api/``, a directory no
+# pull-request lane collects, and carried ``api`` marks at most, which no lane selects: all of its
+# tests were green locally and never run in CI. It now sits in the directory the unit lane collects,
+# with the ``unit`` mark on the module, so a class added later cannot repeat it.
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture
 def test_settings() -> Settings:

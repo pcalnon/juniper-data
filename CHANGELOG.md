@@ -298,6 +298,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     still passed (all 2,271 selected; 2,264 passed, 7 skipped locally): only the 44 caught any of the three.
   - Not changed here: 178 more tests in 9 other files run in no CI lane (an unmarked class or module, or a
     class marked only `api` or `performance`, which no lane selects). They are reported for a follow-up.
+- **137 more tests ran in no CI lane; each now runs in the unit lane or the integration lane** (the owner's ruling
+  of 2026-11-12 in juniper-ml's Cursor flood-4 arc, which that record's next update adds to §8 of
+  `notes/JUNIPER_2026-11-06_JUNIPER-ECOSYSTEM_CURSOR-FLOOD-4-DISPOSITION.md`; the method is juniper-data#529's). A
+  lane selects by directory and by marker, `pyproject.toml` sets `--strict-markers`, and no conftest marks a test by
+  its directory, so these tests were collected, deselected and never run in CI; only a local `pytest` ran them.
+  - 96 in five `juniper_data/tests/unit/` modules lacked the `unit` mark: all of `test_phase1d_security.py` (35),
+    `test_local_fs_path_traversal.py` (28) and `test_r2_1_2_wire_compat.py` (7), plus `TestCacheAgainstRealStores`
+    in `test_metadata_cache.py` (17) and `TestErrorSurfaceContract` in `test_api_app.py` (9). Each module now sets
+    `pytestmark = pytest.mark.unit`, so a class added later cannot repeat the gap, and the seven class decorators
+    that makes redundant are gone.
+  - 29 sat in `juniper_data/tests/api/test_batch_operations.py`, a directory no pull-request lane collects (its
+    classes carried `api` marks at most, which no lane selects). The module is now
+    `juniper_data/tests/unit/test_batch_operations.py` with the `unit` mark. It needs nothing the unit lane lacks: a
+    `TestClient` over an in-memory store, like `test_api_routes.py` beside it. The `tests/api/` package, then empty,
+    is removed, and `TestBatchEndpoints`' docstring in `test_api_routes.py`, which described the gap, is corrected.
+  - 12 in `juniper_data/tests/integration/test_security_integration.py` lacked the `integration` mark. The module
+    now sets `pytestmark = pytest.mark.integration`, so the integration lane and `scheduled-tests.yml` run it.
+  - Selection, collected on main `3cf8867c`: the unit lane takes 2,540 tests (was 2,415), the integration lane 74
+    (was 62) and `scheduled-tests.yml` 89 (was 77). Each of the 137 added was selected by no lane before. No lane
+    loses a test, and no test body changed.
+  - All 137 passed as they stood on main. They pass in their lanes on Python 3.12 and 3.14, and in 20 repeated
+    runs on each; one sleeps 1.05 s. The unit lane's coverage gates do not move (one more line of
+    `storage/local_fs.py` is covered). For each of the seven modules, a one-line break of the code it pins fails
+    at least one of its newly run tests: `/metrics` mounted without its trusted-IP wrapper, `_validate_dataset_id`
+    without its `..` check, `LocalFSDatasetStore.save` without its cache invalidation, the app's
+    `RequestValidationError` handler left unregistered, a renamed readiness dependency key, `SecurityMiddleware`
+    exempting no path, and batch-create answering 201 after creating nothing. With the break in place, the first
+    four pass the unit lane and the integration lane as main selected them: only the newly run tests see them.
+  - Still in no lane: the 41 benchmarks in `juniper_data/tests/performance/` (marked `performance`, which no
+    workflow selects). `docs/testing/TESTING_MANUAL.md` and `docs/testing/TESTING_REFERENCE.md` gave "Benchmarks
+    disabled by default" as their CI behaviour; both now say that no workflow runs them, as does `AGENTS.md`, and
+    the manual states the directory-and-marker rule. `docs/REFERENCE.md` and `AGENTS.md` no longer list
+    `tests/api/`.
 - **The lockfile regen can no longer commit an empty `requirements.lock`**
   (`.github/workflows/lockfile-update.yml`). The GraphQL payload was built with
   `--arg contents "$(base64 -w0 requirements.lock)"`. A failure inside a command substitution that
