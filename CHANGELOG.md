@@ -253,6 +253,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A failing informational Python 3.15 leg no longer shows as a failed check** (the owner's report of 2026-11-15:
+  the 3.15 tests "are supposed to produce an informational message without affecting the ability of code to commit,
+  push, PR, or merge"). juniper-data#538 measured the gap here: with its 3.15 leg failed on purpose (run
+  43655144734), the Quality Gate passed but the leg's own check read `failure`. A pull request with such a leg shows
+  a red X and "Some checks were not successful", its merge state reads `UNSTABLE`, and `gh pr checks` and any tool
+  that reads every check call it failing. The 3.15 unit leg passes on `main` today, so none shows red yet.
+  - Every step of `ci.yml`'s `unit-tests` and of `scheduled-tests.yml`'s `slow-or-integration-tests` now carries an
+    `id` and `continue-on-error: ${{ matrix.experimental == true }}`, so on the 3.15 leg a failing step neither stops
+    the job nor turns its check red. A last step, `Report the informational Python 3.15 result`
+    (`if: always() && matrix.experimental == true`), reports each failed step as a `::warning` annotation and as a
+    table in the job summary, and emits a `::notice` when every step passed. The blocking legs are unchanged: the
+    expression is false on them. The Quality Gate and its `needs:` are untouched.
+  - Measured on juniper-ml#2578 (head `91591864`): its `Regression Tests (Python 3.15)` check concluded `success`
+    while two of its steps failed, and carried the warning annotation naming them.
+  - Applied by juniper-ml's `util/ad-hoc/2026-11-15_py315_informational_green_legs.py` (juniper-ml#2578), a textual
+    edit checked by re-parsing the workflow: the same steps in the same order plus the report step, and no other job
+    changed.
+
 - **`scripts/check_module_coverage.py` no longer prints `PASS: All N modules >= 85.0%` right after listing modules
   below 85%.** The per-module threshold only warns, so when any module was warned the closing line now reads
   `PASS: aggregate >= 80.0%; K of N modules below 85.0% (warned above, not enforced)`. Exit codes are unchanged.
