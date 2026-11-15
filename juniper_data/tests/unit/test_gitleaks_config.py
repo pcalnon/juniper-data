@@ -35,6 +35,12 @@ hold, under the merge's SHA and the file's own path even when the conflict note 
 it has to pass a clean range whose BASE commit holds a token and a clean merge of the base branch
 whose side holds one.
 
+The static cases also pin what keeps a leak failing the required ``Security Scans`` check: the job's
+name, and no job-level ``if`` or ``continue-on-error``; no ``continue-on-error`` on the install, the
+scan or the self-test; the self-test's whole command and its one condition (it skips
+``repository_dispatch``, where the action does not run either); the whole digest line; and the
+report upload, after the scan, under ``if: always()``, of ``reports/security/``.
+
 The conda cases pin the AND-scoped ``generic-api-key`` allowlist for conda build strings (the
 recurring class: every conda-env refresh rewrites those lines under a commit no ``.gitleaksignore``
 entry can name in advance). A build string in a conda file is allowlisted; the same line in any
@@ -76,9 +82,16 @@ CONDA_TOKEN_FILE = "conf/conda_environment_ci.yaml"
 NON_CONDA_FILE = "notes/conda_packages.md"
 INSTALL_STEP = "Install Gitleaks (pull request)"
 PR_SCAN_STEP = "Run Gitleaks over the pull request (Secrets Detection)"
+UPLOAD_STEP = "Upload Security Reports"
 ON_PULL_REQUEST = "github.event_name == 'pull_request'"
+#: The self-test step's one condition: the action exits on repository_dispatch, so it is skipped there and no binary is on PATH.
+NOT_ON_DISPATCH = "github.event_name != 'repository_dispatch'"
+#: The self-test step's whole command: an `|| true`, a -k or a --deselect after it would let the real-engine cases fail or never run.
+SELF_TEST_COMMAND = "python -m pytest juniper_data/tests/unit/test_gitleaks_config.py -v"
 #: The digest the pull-request install checks: the linux_x64 line of the v8.24.3 release's gitleaks_8.24.3_checksums.txt.
 ENGINE_LINUX_X64_SHA256 = "9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c"
+#: The install step's digest line, whole: the pinned digest against the downloaded file, and nothing after it.
+DIGEST_CHECK = 'echo "${GITLEAKS_SHA256}  ${RUNNER_TEMP}/${asset}" | sha256sum --check --strict'
 #: gitleaks-action v3.0.0's own argv (src/gitleaks.js Scan()) with the report under reports/security/; --log-opts follows.
 PR_SCAN_ARGV = ["detect", "--redact", "-v", "--exit-code=2", "--report-format=sarif", "--report-path=reports/security/gitleaks.sarif", "--log-level=debug"]
 #: Where the action's first API page ends: GitHub's default per_page for GET /repos/{owner}/{repo}/pulls/{n}/commits.
@@ -172,12 +185,21 @@ def test_every_ignore_entry_sits_under_a_class_comment() -> None:
 
 
 def test_ci_pins_the_engine_and_requires_the_real_engine_run() -> None:
-    steps = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["jobs"]["security"]["steps"]
+    job = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["jobs"]["security"]
+    steps = job["steps"]
     action = next(i for i, s in enumerate(steps) if str(s.get("uses", "")).startswith("gitleaks/gitleaks-action@"))
     assert str(steps[action].get("env", {}).get("GITLEAKS_VERSION")) == ENGINE_VERSION
     runs = [s for s in steps[action + 1 :] if THIS_FILE in str(s.get("run", ""))]
     assert runs, f"no Security Scans step after the gitleaks action runs {THIS_FILE}"
     assert all(str(s.get("env", {}).get("GITLEAKS_PARITY_REQUIRED")) == "1" for s in runs), "the real-engine run must set GITLEAKS_PARITY_REQUIRED=1"
+    # On every other event one of the two paths has put the binary on PATH, so the run skips repository_dispatch alone,
+    # and a failure in it must fail the job.
+    assert all(s.get("if") == NOT_ON_DISPATCH and "continue-on-error" not in s for s in runs), "the real-engine run must skip repository_dispatch only, and block"
+    assert [str(s["run"]).strip() for s in runs] == [SELF_TEST_COMMAND], "the real-engine run must be this command and nothing more"
+    # `Security Scans` is a required check under that name. A job-level `if` reports a skipped job as passed, and a
+    # job-level continue-on-error lets a failed scan pass the run.
+    assert job.get("name") == "Security Scans"
+    assert "if" not in job and "continue-on-error" not in job, "the job must run on every event, and its failure must fail the run"
 
 
 def _workflow() -> dict:
@@ -214,12 +236,13 @@ def test_a_pull_request_installs_the_same_engine_checked_by_digest() -> None:
     steps = _security_steps()
     install = steps[_index(steps, INSTALL_STEP)]
     assert install.get("if") == ON_PULL_REQUEST
+    assert "continue-on-error" not in install
     env = install.get("env", {})
     assert str(env.get("GITLEAKS_VERSION")) == ENGINE_VERSION, "the pull-request engine must be the version the action runs on every other event"
     assert str(env.get("GITLEAKS_SHA256")) == ENGINE_LINUX_X64_SHA256, "a version bump moves the digest too: copy the linux_x64 line of the release's checksums file"
     run = str(install["run"])
     assert "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/" in run
-    assert "sha256sum --check --strict" in run, "the tarball must be checked against the pinned digest"
+    assert DIGEST_CHECK in [line.strip() for line in run.splitlines()], "the tarball must be checked against the pinned digest, and a mismatch must stop the step"
     assert run.index("sha256sum --check") < run.index("tar -xzf"), "the digest check must come before the unpack"
     assert '>> "${GITHUB_PATH}"' in run, "the pull-request scan and the self-test find the binary on PATH"
     assert not re.search(r"\|\s*(?:ba|z)?sh\b", run), "a download is never piped into a shell"
@@ -229,6 +252,7 @@ def test_the_pull_request_scan_reads_its_range_from_the_event() -> None:
     steps = _security_steps()
     scan = steps[_index(steps, PR_SCAN_STEP)]
     assert scan.get("if") == ON_PULL_REQUEST
+    assert "continue-on-error" not in scan, "a leak must fail the job"
     assert scan.get("env") == {
         "BASE_SHA": "${{ github.event.pull_request.base.sha }}",
         "HEAD_SHA": "${{ github.event.pull_request.head.sha }}",
@@ -240,6 +264,10 @@ def test_the_pull_request_scan_reads_its_range_from_the_event() -> None:
     self_test = next(i for i, s in enumerate(steps) if THIS_FILE in str(s.get("run", "")))
     order = [_action_index(steps), _index(steps, INSTALL_STEP), _index(steps, PR_SCAN_STEP), self_test]
     assert order == sorted(order), "the action, then the install, then the scan, then the self-test that needs the binary"
+    # The scan writes its report and then fails on a leak: the upload has to run anyway, and take the report's directory.
+    upload = steps[_index(steps, UPLOAD_STEP)]
+    assert upload.get("if") == "always()" and upload.get("with", {}).get("path") == "reports/security/", "a failed scan must still upload its report"
+    assert _index(steps, UPLOAD_STEP) > _index(steps, PR_SCAN_STEP)
 
 
 def test_the_security_checkout_fetches_every_commit() -> None:
@@ -556,7 +584,8 @@ def test_the_scan_step_gives_the_engine_a_git_without_remerge_notes(tmp_path: Pa
     # gitleaks 8.24.3 runs `git log -p -U0 <--log-opts>` through the git on its PATH. The step puts a git there that
     # deletes --remerge-diff's `remerge ...` notes and nothing else: the rest of the log reaches the engine unchanged, and
     # so does git's exit status, which gitleaks reads from `git ls-remote --get-url` (128 here: the repository has no remote).
-    repo, base, _, head = _merge_whose_conflict_note_says_commit(tmp_path, "conflicted-path", "resolved=1\n")
+    # The merge's own line holds the word remerge, so a filter that is not anchored to the notes' prefix deletes it too.
+    repo, base, _, head = _merge_whose_conflict_note_says_commit(tmp_path, "conflicted-path", "resolved=1  # never remerge by hand\n")
     plain = _git(repo, "log", "-p", "-U0", "--remerge-diff", f"{base}..{head}").splitlines()
     assert any(line.startswith("remerge CONFLICT") for line in plain), "this git wrote no remerge note, so the case below would pin nothing"
     _git(repo, "ls-remote", "--quiet", "--get-url", ok=(128,))
@@ -564,7 +593,7 @@ def test_the_scan_step_gives_the_engine_a_git_without_remerge_notes(tmp_path: Pa
     res = _run_scan_step(tmp_path, repo, bindir, base, head, "3")
     assert res.returncode == 0, res.stdout + res.stderr
     engine_saw = seen.read_text(encoding="utf-8").splitlines()
-    assert "+resolved=1" in engine_saw, "the merge commit's own change must still reach the engine"
+    assert "+resolved=1  # never remerge by hand" in engine_saw, "the merge commit's own change must still reach the engine, the word remerge in it included"
     assert engine_saw == [line for line in plain if not line.startswith("remerge ")]
     assert remote_status.read_text(encoding="utf-8").strip() == "128", "the engine's git must exit as git does"
 

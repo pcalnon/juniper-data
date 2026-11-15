@@ -31,12 +31,37 @@ go red one at a time, and the tests that must stay green, then restores ci.yml a
     no git filter       the engine reads git's `remerge ...` notes again: a merge's finding can lose its commit
     filter status       the filter exits with sed's status, not git's: gitleaks misreads a repository with no remote
 
+The fifteen after them undo what keeps a failure BLOCKING, so that a leak fails the required `Security Scans` check.
+Twelve of them are the mutants that juniper-data-client#260's review found its port's first tests left alive; each of
+the twelve also left every test here green until the static cases pinned what it undoes:
+
+    job tolerated       continue-on-error on the security job
+    job conditional     a job-level if: the whole job skips Dependabot's pull requests
+    job renamed         the job's name, which is the required check's, changes
+    install tolerated   continue-on-error on the pull-request install
+    scan tolerated      continue-on-error on the pull-request scan: a leak no longer fails the job
+    self-test tolerated continue-on-error on the self-test
+    self-test skips PRs the self-test's condition also skips pull_request, where the install put the binary
+    self-test swallowed its command ends in `|| true`
+    self-test narrowed  its command deselects the real-engine cases with -k
+    digest swallowed    the digest check ends in `|| true`
+    self-hash           the tarball is checked against a digest computed from itself, not the pinned one
+    report lost         the report upload drops `if: always()`, so a failed scan uploads nothing
+    report left out     the upload takes Bandit's file only
+    report early        the upload runs before the scan has written its report
+    filter unanchored   the filter deletes every line that holds the word remerge, not only git's notes
+
 The real-engine cases need a gitleaks 8.24.3 binary: set GITLEAKS_BIN. GITLEAKS_PARITY_REQUIRED=1 is forced, so a
 missing binary turns the baseline red instead of skipping (a skip would score as a pass).
 
 Run from the repo root::
 
-    GITLEAKS_BIN=<gitleaks 8.24.3> /opt/miniforge3/envs/JuniperData/bin/python util/ad-hoc/2026-11-08_verify_gitleaks_pr_scan_tests_are_not_vacuous.py --basetemp <dir>
+    GITLEAKS_BIN=<gitleaks 8.24.3> /opt/miniforge3/envs/JuniperData/bin/python util/ad-hoc/2026-11-08_verify_gitleaks_pr_scan_tests_are_not_vacuous.py --basetemp <dir> --backup <dir>
+
+It edits ci.yml in place, so run nothing else that reads the workflow while it runs, and pass --backup when the
+tree is uncommitted: ci.yml is restored in a `finally`, which an interrupt (SIGINT) runs and a kill does not. With
+--backup it keeps a pristine copy of ci.yml, and it refuses to start when a copy left by an earlier run differs from
+ci.yml, which is what a run killed mid-mutation leaves behind. Stale bytecode of the test file is deleted first.
 
 Exit 0 when the baseline is green, every mutation is caught by every test listed for it, no listed survivor goes
 red, and every restore is exact; exit 1 otherwise.
@@ -72,9 +97,18 @@ WARN = T + "test_the_scan_step_warns_when_the_range_and_the_pull_request_disagre
 OCTOPUS = T + "test_the_scan_step_refuses_an_octopus_merge"
 NOTES = T + "test_the_scan_step_gives_the_engine_a_git_without_remerge_notes"
 MERGE_KEEPS = [T + f"test_real_engine_scan_step_keeps_a_merge_findings_commit_and_path[{w}]" for w in ("conflicted-path", "parent-subject")]
+ENGINE_PIN = T + "test_ci_pins_the_engine_and_requires_the_real_engine_run"
 
 RANGE = '          range="${BASE_SHA}..${HEAD_SHA}"'
 LOG_OPTS = '"--log-opts=--remerge-diff ${range}"'
+ON_PR = "        if: github.event_name == 'pull_request'\n"
+JOB_HEAD = "  security:\n    name: Security Scans\n    runs-on: ubuntu-latest\n    needs: [pre-commit]\n"
+SELF_TEST_IF = "        if: github.event_name != 'repository_dispatch'\n        env:\n          GITLEAKS_PARITY_REQUIRED:"
+PARITY_ENV = '        env:\n          GITLEAKS_PARITY_REQUIRED: "1"\n'
+SELF_TEST_RUN = "        run: python -m pytest juniper_data/tests/unit/test_gitleaks_config.py -v\n"
+SHA_CHECK = '          echo "${GITLEAKS_SHA256}  ${RUNNER_TEMP}/${asset}" | sha256sum --check --strict\n'
+UPLOAD_NAME = "      - name: Upload Security Reports\n"
+PR_SCAN_NAME = "      - name: Run Gitleaks over the pull request (Secrets Detection)\n"
 
 
 @dataclass
@@ -102,6 +136,27 @@ MUTATIONS = [
     Mutation("octopus passes: the octopus-merge refusal no longer stops the step", [('replace it with two-parent merges"\n            exit 1\n', 'replace it with two-parent merges"\n')], [OCTOPUS], [ARGV, MERGE, *MERGE_OWN, NOTES]),
     Mutation("no git filter: the engine reads git's remerge notes again", [('REAL_GIT="${real_git}" PATH="${filter}:${PATH}" gitleaks detect', "gitleaks detect")], [NOTES, *MERGE_KEEPS], [ARGV, OCTOPUS, *MERGE_OWN, CLEAN_MERGE]),
     Mutation("filter status: the filter exits with sed's status, not git's", [("          #!/usr/bin/env bash\n          set -o pipefail\n", "          #!/usr/bin/env bash\n")], [NOTES], [ARGV, OCTOPUS, *MERGE_KEEPS]),
+    # --- what keeps a failure blocking: the job, the two pull-request steps, the self-test, the report upload, the filter's anchor ---
+    Mutation("job tolerated: a failed security job no longer fails the run", [(JOB_HEAD, JOB_HEAD + "    continue-on-error: true\n")], [ENGINE_PIN], [EVENT_RANGE, DIGEST]),
+    Mutation("job conditional: the whole security job skips Dependabot's pull requests", [(JOB_HEAD, JOB_HEAD + "    if: github.actor != 'dependabot[bot]'\n")], [ENGINE_PIN], [EVENT_RANGE, DIGEST]),
+    Mutation("job renamed: the required check's name is gone", [("    name: Security Scans\n", "    name: Security\n")], [ENGINE_PIN], [EVENT_RANGE, DIGEST]),
+    Mutation("install tolerated: a failed install no longer fails the job", [(ON_PR + "        env:\n          GITLEAKS_VERSION:", ON_PR + "        continue-on-error: true\n        env:\n          GITLEAKS_VERSION:")], [DIGEST], [EVENT_RANGE]),
+    Mutation("scan tolerated: a leak no longer fails the job", [(ON_PR + "        env:\n          BASE_SHA:", ON_PR + "        continue-on-error: true\n        env:\n          BASE_SHA:")], [EVENT_RANGE], [DIGEST, ARGV]),
+    Mutation("self-test tolerated: its failure no longer fails the job", [(PARITY_ENV, "        continue-on-error: true\n" + PARITY_ENV)], [ENGINE_PIN], [EVENT_RANGE]),
+    Mutation("self-test skips PRs: the real-engine run no longer runs where the install put the binary", [(SELF_TEST_IF, SELF_TEST_IF.replace("'repository_dispatch'", "'repository_dispatch' && github.event_name != 'pull_request'"))], [ENGINE_PIN], [EVENT_RANGE, ACTION_SKIPS_PR]),
+    Mutation("self-test swallowed: its own shell drops a failure", [(SELF_TEST_RUN, SELF_TEST_RUN.replace(" -v\n", " -v || true\n"))], [ENGINE_PIN], [EVENT_RANGE, DIGEST]),
+    Mutation("self-test narrowed: -k deselects the real-engine cases", [(SELF_TEST_RUN, SELF_TEST_RUN.replace(" -v\n", ' -v -k "not real_engine"\n'))], [ENGINE_PIN], [EVENT_RANGE, DIGEST]),
+    Mutation("digest swallowed: a mismatch no longer stops the install", [(SHA_CHECK, SHA_CHECK.replace("--strict\n", "--strict || true\n"))], [DIGEST], [EVENT_RANGE]),
+    Mutation("self-hash: the tarball is checked against its own digest, not the pinned one", [(SHA_CHECK, '          echo "$(sha256sum "${RUNNER_TEMP}/${asset}" | cut -d " " -f 1)  ${RUNNER_TEMP}/${asset}" | sha256sum --check --strict\n')], [DIGEST], [EVENT_RANGE]),
+    Mutation("report lost: the upload no longer runs after a failed scan", [("        if: always()\n        with:\n          name: security-reports\n", "        with:\n          name: security-reports\n")], [EVENT_RANGE], [DIGEST, ENGINE_PIN]),
+    Mutation("report left out: the upload takes Bandit's file only", [("          name: security-reports\n          path: reports/security/\n", "          name: security-reports\n          path: reports/security/bandit.sarif\n")], [EVENT_RANGE], [DIGEST, ENGINE_PIN]),
+    Mutation(
+        "report early: the upload runs before the scan has written its report",
+        [(UPLOAD_NAME, "      - name: Upload Security Reports (late)\n"), (PR_SCAN_NAME, UPLOAD_NAME + "        uses: actions/upload-artifact@v7\n        if: always()\n        with:\n          name: security-reports\n          path: reports/security/\n\n" + PR_SCAN_NAME)],
+        [EVENT_RANGE],
+        [DIGEST, ENGINE_PIN],
+    ),
+    Mutation("filter unanchored: every line that holds the word remerge is deleted, not only git's notes", [("sed -e '/^remerge /d'", "sed -e '/remerge/d'")], [NOTES], [ARGV, OCTOPUS, *MERGE_KEEPS]),
 ]
 
 
@@ -130,14 +185,38 @@ def apply(original: str, edits: list[tuple[str, str]]) -> str:
     return text
 
 
+def keep_pristine_copy(backup: Path, original: str) -> None:
+    """Keep a pristine copy of ci.yml in ``backup``, after checking the copy an earlier run left there.
+
+    A copy that differs from ci.yml means an earlier run was killed between a mutation and its restore, or ci.yml was
+    edited since: either way a person has to choose, so the run stops before it touches anything.
+    """
+    copy = backup / "ci.yml"
+    if copy.is_file() and copy.read_text(encoding="utf-8") != original:
+        raise SystemExit(f"FATAL: ci.yml differs from the pristine copy an earlier run left at {copy}.\n  If that run died mid-mutation, restore it:  cp {copy} {CI}\n  If you have edited ci.yml since, delete the copy and run again.")
+    backup.mkdir(parents=True, exist_ok=True)
+    copy.write_text(original, encoding="utf-8")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--basetemp", help="pytest --basetemp for every run (default: pytest's own, under TMPDIR)")
+    ap.add_argument("--backup", type=Path, help="keep a pristine copy of ci.yml here; a copy from an earlier run that differs from ci.yml stops the run")
     args = ap.parse_args()
     if not os.environ.get("GITLEAKS_BIN"):
         print("GITLEAKS_BIN is unset: the real-engine cases cannot run, so the baseline would be red")
         return 1
     original = CI.read_text(encoding="utf-8")
+    # Every mutation is checked against the unmutated file before anything runs, so a stale pattern stops the run here.
+    for mutation in MUTATIONS:
+        apply(original, mutation.edits)
+    if args.backup:
+        keep_pristine_copy(args.backup.resolve(), original)
+    if args.basetemp:
+        # pytest creates the directory it is given, but not that directory's parent.
+        Path(args.basetemp).resolve().parent.mkdir(parents=True, exist_ok=True)
+    for stale in (REPO / "juniper_data" / "tests" / "unit" / "__pycache__").glob("test_gitleaks_config*.pyc"):
+        stale.unlink()
     failures: list[str] = []
     every = sorted({n for m in MUTATIONS for n in m.must_fail + m.must_still_pass})
 
