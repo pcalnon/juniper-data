@@ -245,7 +245,9 @@ jobs:
     # 2026-11-14) runs it so its results show, but it must block no merge. It is the only leg with
     # ``experimental: true``, so this expression is true on it alone: a failure there leaves the
     # job's result, which the Quality Gate reads as `needs.unit-tests.result`, unchanged, and the jobs
-    # that `needs: [unit-tests]` still run. Its context is not in the ruleset. Keep both until the
+    # that `needs: [unit-tests]` still run. Measured on juniper-data#538 (run 43655144734): with the
+    # 3.15 leg failed on purpose, the gate printed "Unit Tests: success" and build, integration-tests,
+    # dependency-docs and docker-build ran. Its context is not in the ruleset. Keep both until the
     # owner makes 3.15 a required version (phase 3 of the migration).
     continue-on-error: ${{ matrix.experimental == true }}
     needs: [pre-commit]
@@ -359,14 +361,6 @@ jobs:
           name: unit-test-results-py${{ matrix.python-version }}
           path: reports/junit-unit.xml
           retention-days: 30
-
-      - name: "Pilot probe (TEMPORARY, removed before merge): fail the informational leg"
-        # Makes the 3.15 leg fail whatever its tests do, so this pull request's run shows what the
-        # Quality Gate reads in `needs.unit-tests.result` when only the continue-on-error leg failed.
-        if: always() && matrix.experimental == true
-        run: |
-          echo "::warning::Deliberate failure of the informational Python 3.15 leg (pilot probe)"
-          exit 1
 
   # ═══════════════════════════════════════════════════════════════════════════════════════════════
   # Build: Build sdist and wheel artifacts

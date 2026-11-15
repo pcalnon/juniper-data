@@ -119,6 +119,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `experimental: true`. The job's existing `continue-on-error: ${{ matrix.experimental == true }}` applies to that
     leg alone, so a red 3.15 leg leaves `needs.unit-tests.result`, the Quality Gate and the jobs that
     `needs: [unit-tests]` unchanged. The context is not in ruleset 14748749.
+  - Measured on juniper-data#538 (run 43655144734), with the 3.15 leg failed on purpose by a temporary last step: the
+    leg's check read `failure`, the Quality Gate printed `Unit Tests: success` and passed, and `build`,
+    `integration-tests`, `dependency-docs` and `docker-build` ran. Every real step of that leg passed on CPython
+    3.15.2: 2401 passed, 14 skipped, 98.12% coverage.
   - `requires-python`, the classifiers, the mypy and ruff targets, pre-commit and the Docker base are unchanged.
   - `docs/ci_cd/CICD_MANUAL.md`, `docs/ci_cd/CICD_REFERENCE.md` and `docs/REFERENCE.md` describe the leg.
 - **Tests pin the coverage gates, the Bandit SARIF upload, the image `Publish manifest` job, the TestPyPI install
