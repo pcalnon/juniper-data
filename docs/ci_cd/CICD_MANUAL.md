@@ -2,9 +2,9 @@
 
 ## Comprehensive CI/CD Pipeline Guide for juniper-data
 
-**Version:** 0.4.6
+**Version:** 0.4.7
 **Status:** Active
-**Last Updated:** November 12, 2026
+**Last Updated:** November 14, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -43,7 +43,7 @@ juniper-data uses a multi-layer CI/CD strategy:
 
 - **Pre-commit hooks**: Local code quality enforcement (ruff, mypy, bandit, yamllint, shellcheck)
 - **Pre-push hooks**: Coverage check (fails below 80% aggregate; lists modules below 85% without failing)
-- **GitHub Actions CI**: Automated testing across Python 3.12/3.13/3.14 on Ubuntu and 3.12 on macOS, coverage gates (80% aggregate, 90% statement coverage per file, 95% pooled per sub-module), security scanning, build verification, documentation validation
+- **GitHub Actions CI**: Automated testing across Python 3.12/3.13/3.14 on Ubuntu and 3.12 on macOS (plus an informational Python 3.15 leg on Ubuntu that reports but never blocks), coverage gates (80% aggregate, 90% statement coverage per file, 95% pooled per sub-module), security scanning, build verification, documentation validation
 - **GitHub Actions publishing**: Two-stage PyPI publishing (TestPyPI then production PyPI), then a consumer dispatch that waits for a run to start
 - **Dependabot**: Automated dependency updates with lockfile synchronization
 - **CodeQL**: Weekly semantic code analysis
@@ -140,7 +140,7 @@ The job calls those console scripts. `scripts/check_doc_links.py`, `util/test_wo
 
 #### Job: `unit-tests`
 
-Core test execution with coverage enforcement across Python 3.12, 3.13, and 3.14 on Ubuntu, and 3.12 on macOS. All four legs are required contexts; none is allowed to fail.
+Core test execution with coverage enforcement across Python 3.12, 3.13, and 3.14 on Ubuntu, and 3.12 on macOS. All four legs are required contexts; none is allowed to fail. A fifth leg, Python 3.15 on Ubuntu, is informational (phase 1 of the Python 3.15 migration): it runs the same steps, but its `include` entry sets `experimental: true`, so the job-level `continue-on-error: ${{ matrix.experimental == true }}` lets it fail without failing the job, and no ruleset requires its context.
 
 - **Depends on**: `pre-commit`
 - **Markers**: `-m "unit and not slow"`
@@ -580,7 +580,7 @@ See [PyPI Publishing Procedure](../../../juniper-ml/notes/JUNIPER_2026-06-18_JUN
 
 **Ruff modifies files on commit**: This is by design. Ruff auto-fixes lint violations and reformats code. Stage the changes and commit again.
 
-**CI fails but local passes**: Check Python version matrix. CI tests on 3.12, 3.13, and 3.14. Ensure your local environment matches.
+**CI fails but local passes**: Check Python version matrix. CI tests on 3.12, 3.13, and 3.14, plus an informational 3.15 leg whose failure blocks nothing. Ensure your local environment matches.
 
 **Lockfile check fails**: The committed pins no longer satisfy `pyproject.toml`. Refresh with the same extras the workflow uses:
 

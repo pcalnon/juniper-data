@@ -112,6 +112,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **CI runs the unit tests on Python 3.15 as well, as an informational leg that blocks nothing.** Phase 1 of the
+  ecosystem's Python 3.15 migration (the owner's request of 2026-11-14): 3.15 results are reported, and no merge,
+  commit or deployment waits on them.
+  - `unit-tests` gains `Unit Tests + Coverage (Python 3.15 on ubuntu-latest)`, an `include` entry with
+    `experimental: true`. The job's existing `continue-on-error: ${{ matrix.experimental == true }}` applies to that
+    leg alone, so a red 3.15 leg leaves `needs.unit-tests.result`, the Quality Gate and the jobs that
+    `needs: [unit-tests]` unchanged. The context is not in ruleset 14748749.
+  - Measured on juniper-data#538 (run 43655144734), with the 3.15 leg failed on purpose by a temporary last step: the
+    leg's check read `failure`, the Quality Gate printed `Unit Tests: success` and passed, and `build`,
+    `integration-tests`, `dependency-docs` and `docker-build` ran. Every real step of that leg passed on CPython
+    3.15.2: 2401 passed, 14 skipped, 98.12% coverage.
+  - `scheduled-tests.yml`'s `Slow / Integration Tests` matrix gains the same informational 3.15 leg. Its job name now
+    spells out the `(<version>)` suffix GitHub used to append, so the three existing legs post the same names.
+  - `requires-python`, the classifiers, the mypy and ruff targets, pre-commit and the Docker base are unchanged.
+  - `docs/ci_cd/CICD_MANUAL.md`, `docs/ci_cd/CICD_REFERENCE.md` and `docs/REFERENCE.md` describe the leg.
 - **Tests pin the coverage gates, the Bandit SARIF upload, the image `Publish manifest` job, the TestPyPI install
   check and the failed-auth throttle.** Five Cursor fleet drafts (juniper-data#512, #513, #514, #516, #517) from
   juniper-ml's 2026-11-06 flood-4 census, carried as one change on `main` at `28078558`.
