@@ -9,7 +9,7 @@ from juniper_data.api.settings import Settings
 from juniper_data.storage import InMemoryDatasetStore
 
 # CI's integration lane runs ``pytest -m "integration and not slow" juniper_data/tests/integration`` and
-# the scheduled lane ``pytest -m "slow or integration"``, with ``--strict-markers`` and no auto-marking
+# the scheduled lane ``pytest -m "slow or integration or performance"``, with ``--strict-markers`` and no auto-marking
 # conftest, so an UNMARKED test here is silently DESELECTED -- collected, green locally, and never run
 # in CI. Every test of this module was. The mark is on the module, not on each class, so a class added
 # later cannot repeat it.

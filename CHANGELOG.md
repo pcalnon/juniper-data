@@ -127,6 +127,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     spells out the `(<version>)` suffix GitHub used to append, so the three existing legs post the same names.
   - `requires-python`, the classifiers, the mypy and ruff targets, pre-commit and the Docker base are unchanged.
   - `docs/ci_cd/CICD_MANUAL.md`, `docs/ci_cd/CICD_REFERENCE.md` and `docs/REFERENCE.md` describe the leg.
+- **The daily `Scheduled Tests` workflow also runs the 41 benchmarks, untimed, as a smoke run.** The owner's ruling
+  of 2026-11-14: `scheduled-tests.yml`'s selector `-m "slow or integration"` becomes
+  `-m "slow or integration or performance"`, so the pytest-benchmark benchmarks in `juniper_data/tests/performance/`
+  (marked `performance`, which no workflow selected) run on each of its daily legs: 3.12, 3.13, 3.14 and the
+  informational 3.15 leg. The lane now collects 130 tests (was 89): the 41 are added and none is lost.
+  - Timing stays off. `pyproject.toml`'s addopts pass `--benchmark-disable` and the workflow passes no
+    `--benchmark-enable`, so pytest-benchmark calls each benchmarked function once and records no statistics. The lane
+    catches a benchmark that breaks, not one that slows down.
+  - It gates no pull request: the workflow runs only on its schedule and on manual dispatch, and no ruleset requires
+    its contexts. A failure on the 3.15 leg fails neither its job nor the run (`continue-on-error`).
+  - Measured with the step's own command in fresh virtual environments holding the `[all]` dependencies (pytest
+    9.2.0, pytest-benchmark 5.3.1): 130 passed, the 41 included, on CPython 3.14.4, 3.12.16 and 3.15.2. The 41 took
+    about 0.2 s of test time there, and the lane's wall time moved by less than its run-to-run spread, because the
+    lane already imports every test module before it deselects any. Run on their own, they took 2.2 s (3.14) and
+    1.4 s (3.12).
+  - `juniper_data/tests/unit/test_scheduled_tests_selector.py` (new, 4 tests, in the unit lane) pins the selector,
+    the untimed run, the default shell and the two triggers. Seven mutants of the workflow and of the addopts each
+    fail it.
+  - `AGENTS.md`, `docs/testing/TESTING_MANUAL.md` and `docs/testing/TESTING_REFERENCE.md` said that no workflow runs
+    the benchmarks; they now say that this lane runs them, untimed. `docs/REFERENCE.md`'s Scheduled Tests row, the two
+    testing documents and a comment in `juniper_data/tests/integration/test_security_integration.py` quote the new
+    selector.
 - **Tests pin the coverage gates, the Bandit SARIF upload, the image `Publish manifest` job, the TestPyPI install
   check and the failed-auth throttle.** Five Cursor fleet drafts (juniper-data#512, #513, #514, #516, #517) from
   juniper-ml's 2026-11-06 flood-4 census, carried as one change on `main` at `28078558`.
