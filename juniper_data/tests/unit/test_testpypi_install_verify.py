@@ -138,6 +138,9 @@ def test_production_publish_waits_on_a_verify_step_that_can_fail() -> None:
     ("tag", "version"),
     [
         ("v0.17.1", "0.17.1"),
+        # No release run reaches this step with a tag that lacks the `v`: since 2026-11-15 publish.yml's build job runs
+        # only for startsWith(tag, 'v'), and every later job needs it. The case stays because it pins the step's own
+        # `${VERSION#v}`, which strips at most one `v` and needs none, should the guard or the tag convention change.
         ("0.17.1", "0.17.1"),
         ("v1.2.3-rc.1", "1.2.3-rc.1"),
     ],

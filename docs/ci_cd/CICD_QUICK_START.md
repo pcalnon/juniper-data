@@ -2,9 +2,9 @@
 
 ## Run juniper-data CI Checks Locally in 5 Minutes
 
-**Version:** 0.4.5
+**Version:** 0.4.6
 **Status:** Active
-**Last Updated:** November 12, 2026
+**Last Updated:** November 15, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -147,6 +147,8 @@ juniper-lint-agents-md-header
 
 **Release publish is red after PyPI succeeded**: `notify-consumers.yml` did not see a consumer run. GitHub's dispatch `204` is not delivery. The listener must declare `repository_dispatch: types: [juniper-data-published]` and must not set `run-name:`. Re-send with `workflow_dispatch`; do not republish. See [Consumer release notification](../REFERENCE.md#consumer-release-notification).
 
+**A release did not reach PyPI**: dispatch `publish.yml` from the release tag with `-f republish_from_testpypi=true`. It copies TestPyPI's files to PyPI behind the same approval and builds nothing. A dispatch runs the workflow file at its tag, so a tag cut before this change (2026-11-15) has no republish dispatch. If that fails, within 30 days of the release run use **Re-run failed jobs** on it (never "Re-run all jobs"); otherwise cut a new patch version. A republish does not notify consumers. See [Recovering a release that did not reach PyPI](CICD_MANUAL.md#recovering-a-release-that-did-not-reach-pypi).
+
 **`@claude` in a pull-request title does nothing**: Comment on the PR, or put `@claude` in a submitted review body. The workflow does not subscribe to `pull_request`, so a title or body there never schedules it. The workflow `if` is a case-insensitive substring test, and the action then requires the phrase at a word boundary. A green log line `No trigger found, skipping remaining steps` means the job started and the action declined. See [claude.yml](CICD_MANUAL.md#claudeyml----claude-code).
 
 **`@claude` on a pull request fails with `was updated after the trigger`**: The head branch moved at or after the comment or submitted review. Mention `@claude` again once the commit you want is the tip, and leave the branch still while the job checks out. See [claude.yml](CICD_MANUAL.md#claudeyml----claude-code).
@@ -161,6 +163,6 @@ juniper-lint-agents-md-header
 
 ---
 
-**Last Updated:** November 12, 2026
-**Version:** 0.4.5
+**Last Updated:** November 15, 2026
+**Version:** 0.4.6
 **Status:** Active

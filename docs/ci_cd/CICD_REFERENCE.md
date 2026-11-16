@@ -2,9 +2,9 @@
 
 ## juniper-data CI/CD Jobs, Hooks, and Configuration
 
-**Version:** 0.4.7
+**Version:** 0.4.8
 **Status:** Active
-**Last Updated:** November 14, 2026
+**Last Updated:** November 15, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -32,7 +32,7 @@
 | File | Purpose | Trigger |
 |------|---------|---------|
 | `.github/workflows/ci.yml` | Main CI pipeline (v0.4.0) | Push, PR, schedule, dispatch |
-| `.github/workflows/publish.yml` | PyPI publishing | GitHub Release published |
+| `.github/workflows/publish.yml` | PyPI publishing: one build, uploaded to TestPyPI then PyPI and checked by sha256 against each | GitHub Release published; `workflow_dispatch` from a release tag (republish only) |
 | `.github/workflows/notify-consumers.yml` | Tell PyPI consumers a release is installable, then wait for a run | `workflow_call` from `publish.yml` after PyPI; `workflow_dispatch` to re-send |
 | `.github/workflows/lockfile-update.yml` | Lockfile auto-update (v0.1.0) | Push to `dependabot/pip/**` by `dependabot[bot]`; `pull_request` when `pyproject.toml` changes (same repo, not `release/**`) |
 | `.github/workflows/codeql.yml` | Code quality analysis (v1.0.0) | Push to main/develop, PRs, weekly |
@@ -121,9 +121,11 @@ Read from `anthropics/claude-code-action` v1.0.265 (`6d5ae526d25ce88daa2200be073
 
 | Job | Depends On | Environment | Purpose |
 |-----|-----------|-------------|---------|
-| `testpypi` | -- | `testpypi` | Publish to TestPyPI, then install `juniper-data==<version>` from `https://test.pypi.org/simple/` only (`--no-deps`). The next line prints installed metadata; it does not compare it with the tag. See [TestPyPI install check](../REFERENCE.md#testpypi-install-check) |
-| `pypi` | testpypi | `pypi` | Publish to production PyPI |
-| `notify-consumers` | pypi | -- (`permissions: {}`) | Call `notify-consumers.yml` with the release tag |
+| `build` | -- | -- | `Build and Validate`: build once (`python -m build`, `twine check`), record `SHA256SUMS`, upload `dist/` and `SHA256SUMS` as `juniper-data-dist` (kept 90 days). Runs only for a release tag starting with `v`, so a dispatch builds nothing; a re-run attempt reuses the run's artifact |
+| `testpypi` | build | `testpypi` | Check the artifact against `SHA256SUMS`, publish it to TestPyPI, require TestPyPI's JSON to list exactly those sha256, then install `juniper-data==<version>` from `https://test.pypi.org/simple/` only (`--no-deps`). The next line prints installed metadata; it does not compare it with the tag. See [TestPyPI install check](../REFERENCE.md#testpypi-install-check) |
+| `pypi` | testpypi | `pypi` | Publish the same artifact to production PyPI: check it against `SHA256SUMS`, check TestPyPI's JSON again, upload, check PyPI's JSON. Builds nothing |
+| `notify-consumers` | pypi | -- (`permissions: {}`) | Call `notify-consumers.yml` with the release tag. A republish dispatch skips it |
+| `republish` | -- (dispatch only) | `pypi` | `Republish the tested files (dispatch only)`: on a `workflow_dispatch` from a release tag with `republish_from_testpypi`, copy TestPyPI's files for the version to PyPI, then check PyPI's JSON. Builds nothing. See [Recovering a release that did not reach PyPI](CICD_MANUAL.md#recovering-a-release-that-did-not-reach-pypi) |
 
 ### Consumer release notification
 
@@ -273,15 +275,15 @@ From `pyproject.toml`:
 
 ## GitHub Actions Pinned Versions
 
-Every third-party action is pinned to a full commit SHA, with its release in a `# vX.Y.Z` comment on the `uses:` line. `agents-md-touch-up.yml` was the one exception, checking out with the `actions/checkout@v7.0.1` tag, until 2026-11-01. The table was re-derived on 2026-10-29 from all 14 files in `.github/workflows/` at `95ce8190`, and each SHA is the commit its commented tag resolves to (`gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`). Three rows changed after that derivation: `actions/checkout` gained `agents-md-touch-up.yml` on 2026-11-01 (juniper-data#503), `actions/setup-python` moved to v7.1.0 (`6d4fd22b20465ccc0f7354476588e8df7c9ca0e0`) in the seven workflows that use it (juniper-data#507), and `anthropics/claude-code-action` moved to v1.0.265 (`6d5ae526d25ce88daa2200be073e1a373167f064`, juniper-data#508). On 2026-11-07 every row was re-checked against the same 14 files at `28078558`, and the other rows are unchanged since 2026-10-29. `publish.yml` also calls `./.github/workflows/notify-consumers.yml`, a reusable workflow in this repository, which takes no pin. `notify-consumers.yml`, `pr-base-branch-guard.yml` and `pr-budget-alarm.yml` use no action.
+Every third-party action is pinned to a full commit SHA, with its release in a `# vX.Y.Z` comment on the `uses:` line. `agents-md-touch-up.yml` was the one exception, checking out with the `actions/checkout@v7.0.1` tag, until 2026-11-01. The table was re-derived on 2026-10-29 from all 14 files in `.github/workflows/` at `95ce8190`, and each SHA is the commit its commented tag resolves to (`gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`). Three rows changed after that derivation: `actions/checkout` gained `agents-md-touch-up.yml` on 2026-11-01 (juniper-data#503), `actions/setup-python` moved to v7.1.0 (`6d4fd22b20465ccc0f7354476588e8df7c9ca0e0`) in the seven workflows that use it (juniper-data#507), and `anthropics/claude-code-action` moved to v1.0.265 (`6d5ae526d25ce88daa2200be073e1a373167f064`, juniper-data#508). On 2026-11-07 every row was re-checked against the same 14 files at `28078558`, and the other rows are unchanged since 2026-10-29. `publish.yml` also calls `./.github/workflows/notify-consumers.yml`, a reusable workflow in this repository, which takes no pin. `notify-consumers.yml`, `pr-base-branch-guard.yml` and `pr-budget-alarm.yml` use no action. On 2026-11-15 `publish.yml` began using `actions/upload-artifact` and `actions/download-artifact`, at the pins those rows already held (the one-artifact publish).
 
 | Action | Version | SHA | Used in |
 |--------|---------|-----|---------|
 | `actions/checkout` | v7.0.1 | `3d3c42e5aac5ba805825da76410c181273ba90b1` | `agents-md-touch-up.yml`, `ci.yml`, `claude.yml`, `codeql.yml`, `lockfile-update.yml`, `main-verify.yml`, `publish-image.yml`, `publish.yml`, `scheduled-tests.yml`, `security-scan.yml`, `sequence-safety.yml` |
 | `actions/setup-python` | v7.1.0 | `6d4fd22b20465ccc0f7354476588e8df7c9ca0e0` | `ci.yml`, `lockfile-update.yml`, `main-verify.yml`, `publish.yml`, `scheduled-tests.yml`, `security-scan.yml`, `sequence-safety.yml` |
 | `actions/cache` | v6.1.0 | `55cc8345863c7cc4c66a329aec7e433d2d1c52a9` | `ci.yml` |
-| `actions/upload-artifact` | v7.0.2 | `cf430e030ddbb5b0abf93d22962f4752f3646cd9` | `ci.yml`, `main-verify.yml`, `publish-image.yml`, `scheduled-tests.yml`, `security-scan.yml`, `sequence-safety.yml` |
-| `actions/download-artifact` | v8.0.2 | `9000827ccba6bdab643e8b6fd33ac0654aef8333` | `publish-image.yml` |
+| `actions/upload-artifact` | v7.0.2 | `cf430e030ddbb5b0abf93d22962f4752f3646cd9` | `ci.yml`, `main-verify.yml`, `publish-image.yml`, `publish.yml`, `scheduled-tests.yml`, `security-scan.yml`, `sequence-safety.yml` |
+| `actions/download-artifact` | v8.0.2 | `9000827ccba6bdab643e8b6fd33ac0654aef8333` | `publish-image.yml`, `publish.yml` |
 | `codecov/codecov-action` | v7.1.1 | `303a32d7a59b442fa8d48b6a1cc6825c09c847a5` | `ci.yml` |
 | `gitleaks/gitleaks-action` | v3.0.0 | `e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e` | `ci.yml` |
 | `github/codeql-action/*` (`init`, `autobuild`, `analyze`, `upload-sarif`) | v4.39.1 | `9b3254085494b55a0f7c4c2b3d2d52cc712ce370` | `codeql.yml`; `upload-sarif` in `ci.yml` |
@@ -327,7 +329,7 @@ A pull request skips the action, whose `pull_request` path never scans past a pu
 | Workflow | Default | Additional |
 |----------|---------|-----------|
 | ci.yml | `contents: read` | `security-events: write` (security job) |
-| publish.yml | -- | `id-token: write` (OIDC) |
+| publish.yml | `{}` | Per job: `build` `contents: read`, `actions: read`; `testpypi` `contents: read`, `id-token: write` (OIDC); `pypi` `id-token: write`; `republish` `actions: read`, `id-token: write`; `notify-consumers` `{}` |
 | lockfile-update.yml | -- | `contents: write` |
 | codeql.yml | -- | `actions: read`, `contents: read`, `security-events: write` |
 | claude.yml | -- | job: `contents: write`, `pull-requests: write`, `issues: write`, `id-token: write`, `actions: read` |
@@ -339,9 +341,9 @@ A pull request skips the action, whose `pull_request` path never scans past a pu
 | Environment | Wait Timer | Reviewer Required | Deployments From | Purpose |
 |-------------|-----------|-------------------|------------------|---------|
 | `testpypi` | None | No | Tags `v*`, `rc*`, `hf*`, `juniper-*-v*`, `juniper-*-rc*`, `juniper-*-hf*` | TestPyPI publishing |
-| `pypi` | 5 minutes | Yes (the owner) | The same six tag patterns | Production PyPI publishing |
+| `pypi` | 5 minutes | Yes (the owner) | The same six tag patterns | Production PyPI publishing: the `pypi` job, and the `republish` job on its dispatch from a release tag |
 
-Read on 2026-10-29 with `gh api repos/pcalnon/juniper-data/environments` and each environment's `deployment-branch-policies`. `testpypi`'s only protection rule is the tag policy: no timer and no approval hold the TestPyPI job once a release whose tag matches is published. The one wait in that job is the `sleep 30` in `publish.yml` before the install check, for index lag. The repository also has `copilot` and `dockerhub` environments; no workflow here names either.
+Read on 2026-10-29 with `gh api repos/pcalnon/juniper-data/environments` and each environment's `deployment-branch-policies`. `testpypi`'s only protection rule is the tag policy: no timer and no approval hold the TestPyPI job once a release whose tag matches is published. The waits in that job are for index lag: `Verify TestPyPI serves exactly these files` polls TestPyPI's JSON (up to 20 times, 15 seconds apart), then `publish.yml` sleeps 30 seconds before the install check. The repository also has `copilot` and `dockerhub` environments; no workflow here names either.
 
 ---
 
@@ -418,6 +420,6 @@ The `dependency-docs` job runs that command after `conda-incubator/setup-minicon
 
 ---
 
-**Last Updated:** November 14, 2026
-**Version:** 0.4.7
+**Last Updated:** November 15, 2026
+**Version:** 0.4.8
 **Maintainer:** Paul Calnon
