@@ -8,7 +8,7 @@ Sub-Project: ad-hoc tooling
 Author: Paul Calnon
 Created: 2026-09-15
 Status: ad-hoc — one-off (applied to the juniper-data worktree named below)
-Retire when: RETAINED — ad-hoc scripts are kept as provenance of record (owner policy 2026-08-25)
+Retire when: RETAINED — ad-hoc scripts are kept as provenance of record (Overtoad policy 2026-08-25)
 Related: juniper-data#395 (which introduced it); register rows APD-DATA-043 and APD-DATA-047;
          round-39 validation lane B1, which found it
 

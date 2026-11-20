@@ -465,7 +465,7 @@ class EquitiesGenerator:
         APD-DATA-052. ``None`` -- the schema default, and what an omitted field
         means -- defers to the deployment; ``True`` opts in for this request;
         ``False`` refuses truncation for this request even where the deployment
-        enabled it. The owner ruled that refusing partial data is a CALLER
+        enabled it. The Overtoad ruled that refusing partial data is a CALLER
         right, so the old "a client cannot opt *out* of the operator's choice"
         rule is reversed, not merely relaxed. ``max_symbols`` is unaffected and
         still clamps: a caller may only move a resource bound toward MORE
@@ -505,7 +505,7 @@ class EquitiesGenerator:
     def _resolve_incomplete_policy(params: EquitiesParams, has_unrescued: bool) -> str:
         """Decide fail / accept / drop for rows that no rescue path recovered.
 
-        Two knobs, because the owner's spec needs two different shapes from one
+        Two knobs, because the Overtoad's spec needs two different shapes from one
         contract:
 
         * ``allow_truncation`` is the **gate** -- the same tri-state that governs an
@@ -515,7 +515,7 @@ class EquitiesGenerator:
           direction: a dataset silently carrying a fabricated market cap is the
           failure this area exists to prevent. Since APD-DATA-052 a request may
           also reach that outcome deliberately, by sending ``false`` where the
-          deployment opted in -- the owner's "option 3", fail the load
+          deployment opted in -- the Overtoad's "option 3", fail the load
           completely. An omitted flag (``None``) still defers to the deployment.
         * ``incomplete_rows`` says what to do once the gate is open -- ``accept``
           the affected rows or ``drop`` them. An interactive consumer maps its
@@ -1067,7 +1067,7 @@ class EquitiesGenerator:
         # None of the 3,193,942 rows in the 556 OHLCV files of the development host's download
         # cache is either (scanned 2026-10-05), so for real data this removes nothing; it exists
         # so ``drop`` can promise a finite ``cost_basis`` without depending on the provider.
-        # Applies the plan's recommended R3, pending the owner's ruling.
+        # Applies the plan's recommended R3, pending the Overtoad's ruling.
         #
         # Index-based, not ``dropna(subset=["cost_basis"])``: only rows strictly before the basis
         # session are pre-purchase. A NaN price ON the basis row is a different defect, and

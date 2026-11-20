@@ -11,7 +11,7 @@ Why a bound exists at all
 ``APD-DATA-018`` (defect register): generation runs inside the request, so an
 input large enough to outlive the client's socket timeout produces a request
 that cannot succeed no matter how long the caller waits. The remedy chosen by
-the owner (2026-09-04) is to **bound the inputs** rather than move generation
+the Overtoad (2026-09-04) is to **bound the inputs** rather than move generation
 to an async job.
 
 Two generators, two units, one contract
@@ -61,7 +61,7 @@ Why truncation must be loud
 Truncation is the failure mode these bounds were warned about: a silently-partial
 dataset is indistinguishable from a complete one to everything downstream, and
 juniper-data has no partial-data check in its API or core layers -- the same gap
-that let ``arc_agi`` persist a zero-sample dataset (data#318). So the owner's
+that let ``arc_agi`` persist a zero-sample dataset (data#318). So the Overtoad's
 decision pairs truncation with two non-optional obligations:
 
 1. **The caller must opt in.** An input over the cap is REFUSED until the caller
@@ -129,7 +129,7 @@ CSV_IMPORT_DEFAULT_MAX_BYTES: int = 128 * 1024 * 1024
 # ``util/ad-hoc/2026-09-04_measure_equities_payloads.py`` put the per-symbol cost
 # at ~2.1 s (one Yahoo chart request plus 1-2 SEC XBRL calls), so 30 s / 2.1 s
 # = 14.1. A second measurement two days earlier gave ~4.0 s/symbol, which would
-# imply ~7; the owner chose the optimistic end on 2026-09-04. Both estimates
+# imply ~7; the Overtoad chose the optimistic end on 2026-09-04. Both estimates
 # agree the previous default -- ``None``, meaning all 503 bundled S&P 500
 # constituents -- was 36x to 67x over budget.
 EQUITIES_DEFAULT_MAX_SYMBOLS: int = 14

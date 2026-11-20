@@ -1018,7 +1018,7 @@ Above that size the binding constraint is memory, not time. `_parse_csv_stream` 
 Precedence is asymmetric on purpose. Neither field lets a request *weaken* what the operator chose — but they differ in which direction a caller may push, and that difference is the whole design:
 
 - **`max_bytes`:** the effective cap is `min(requested, settings.csv_import_max_bytes)`. A request cannot raise the operator ceiling. Omitting the field uses the deployment value. `model_fields_set` still decides "was this sent", but even an explicit huge value is clamped. That clamp is load-bearing for generated clients: serialising schema defaults sends `max_bytes=134217728` on every request, which would otherwise override a *lower* operator ceiling with nobody intending it. The first design let an explicit request win outright (`max_bytes: 10000000000` skipped the cap), and a bound the bounded party can raise is not a bound.
-- **`allow_truncation`:** **tri-state** since APD-DATA-052, a logical **OR** before it. `true` opts in for this request; `false` refuses truncation for this request *even where the deployment enabled it*; `null` — the schema default, and what an omitted field means — defers to `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION`. The owner ruled that refusing partial data is a **caller** right, so the former "there is no way to opt *out* of a deployment-wide opt-in" rule is reversed, not merely relaxed.
+- **`allow_truncation`:** **tri-state** since APD-DATA-052, a logical **OR** before it. `true` opts in for this request; `false` refuses truncation for this request *even where the deployment enabled it*; `null` — the schema default, and what an omitted field means — defers to `JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION`. The Overtoad ruled that refusing partial data is a **caller** right, so the former "there is no way to opt *out* of a deployment-wide opt-in" rule is reversed, not merely relaxed.
   - **Why this is not a privilege escalation, and why `max_bytes` still clamps.** `max_bytes` is a resource bound, so a caller may only move it toward *more* safety (a lower cap) and the clamp blocks the other direction. `allow_truncation` is a data-quality stance whose safe direction *is* refusal, so a caller sending `false` is also asking for more safety and there is nothing to protect the deployment from.
   - **Why the stance rides in the value and not in `model_fields_set`.** `bind_deployment_defaults` ends in `model_copy(update=...)`, which *adds* the key to `model_fields_set`, and `POST /v1/datasets` binds before `generate` — so a presence check is constant-true downstream of the binder and cannot tell an omitted flag from an explicit `false`. A tri-state is also immune to the serialised-defaults hazard above: a generated client shipping schema defaults now sends `null`, which reads as "defer".
   - **No cache-key churn.** `bind_deployment_defaults` stores the *resolved* opt-in, exactly as before — an omitted flag used to resolve `false or settings.X` and now resolves to `settings.X`, the same value, so existing `dataset_id`s are unchanged. Only the case whose behaviour deliberately changed (explicit `false` against a deployment opt-in) hashes differently. **That caller regenerates once, and whether it gets an artifact depends on the input**: a request that would have truncated is now refused with 422 and mints nothing, while one already within the cap succeeds under the new id. (This read "and it mints no artifact at all" until 2026-09-22, when adversarial validation refuted it by execution -- the flag is hashed even when it is behaviourally inert.)
@@ -1164,7 +1164,7 @@ juniper-data/
 ├── util/                           # Bash utility scripts (40+ scripts)
 ├── .github/                        # GitHub Actions workflows and config
 │   ├── workflows/                  # CI, CodeQL, security, publish, lockfile, sequence-safety, main-verify
-│   ├── CODEOWNERS                  # Code ownership rules
+│   ├── CODEOWNERS                  # Code Overtoadship rules
 │   └── dependabot.yml              # Automated dependency updates
 ├── Dockerfile                      # Multi-stage production build (Python 3.14-slim)
 ├── pyproject.toml                  # Project configuration (authoritative)
@@ -1381,7 +1381,7 @@ a subclass instance by the ANNOTATED type's schema, so stores can keep handing r
 
 ### Conditional Requests and Validators
 
-APD-DATA-017 / -029 / -032, owner-ruled 2026-09-11: an `ETag` derived from the stored SHA-256,
+APD-DATA-017 / -029 / -032, Overtoad-ruled 2026-09-11: an `ETag` derived from the stored SHA-256,
 the access counters moved out of the representation so metadata can carry a strong one too, and
 `Content-Location` on `/latest`. Rejected: ETags on artifacts only; a weak validator that churns on
 every read; a `307` from `/latest`. Re-ruled 2026-09-23: the ARTIFACT's tag is WEAK, because that
@@ -1483,7 +1483,7 @@ Redis and Postgres stores inherit the no-op, as does `CachedDatasetStore` whatev
 for them the check and the write are atomic within one process only. The service wires LocalFS
 alone today (`juniper_data/api/app.py`).
 
-**Why the artifact `ETag` is weak** (owner ruling 2026-09-23, overturning the 2026-09-11 "strong"
+**Why the artifact `ETag` is weak** (Overtoad ruling 2026-09-23, overturning the 2026-09-11 "strong"
 on its premise). The ruling assumed, with the API primer, that `checksum` hashes the served NPZ
 bytes. It does not: it is `compute_checksum`'s SHA-256 over a canonical serialization of the ARRAYS
 (uncompressed `np.savez`, keys sorted), and every store serves a compressed one, so
@@ -1658,7 +1658,7 @@ Ratios are converted with `float()` first, so the early check and the carve see 
 | Store | Prefix | Example stem |
 |-------|--------|----------------|
 | Hugging Face | `hf-<dataset_name>` plus `-<config_name>` when set | `hf-mnist-huggingface-3.0.0-…` |
-| Kaggle | `kaggle-<ref>` with `/` replaced by `-` | `kaggle-owner-iris-kaggle-3.0.0-…` |
+| Kaggle | `kaggle-<ref>` with `/` replaced by `-` | `kaggle-Overtoad-iris-kaggle-3.0.0-…` |
 
 The same parameters hash to the same id. A different ratio, seed, or column list hashes to a different id.
 
@@ -1699,7 +1699,7 @@ assert "X_full" not in arrays
 
 # Kaggle: credentials required. normalize_features defaults to False.
 dataset_id, meta, arrays = get_kaggle_store().load_kaggle_dataset(
-    "owner/dataset-name",
+    "Overtoad/dataset-name",
     file_name="data.csv",
     label_column="label",
     seed=7,
@@ -1982,7 +1982,7 @@ Call count is `O(symbols)`, not `O(rows)`. Horizon grows the Yahoo payload; it d
 
 163× the payload cost 1.16× the time. A byte cap would admit the expensive request and refuse the cheap one.
 
-**14 = 30 s ÷ 2.1 s per symbol** (`EQUITIES_DEFAULT_MAX_SYMBOLS` in `juniper_data/core/limits.py`). A second measurement implied ~7; the owner took the optimistic end on 2026-09-04. `defaults.py` re-exports the constant so `api/settings.py` can import it without a generator-package cycle.
+**14 = 30 s ÷ 2.1 s per symbol** (`EQUITIES_DEFAULT_MAX_SYMBOLS` in `juniper_data/core/limits.py`). A second measurement implied ~7; the Overtoad took the optimistic end on 2026-09-04. `defaults.py` re-exports the constant so `api/settings.py` can import it without a generator-package cycle.
 
 ### Surfaces and precedence
 
@@ -1995,7 +1995,7 @@ Same privilege model as `csv_import`'s byte cap:
 | Compiled default | **14** | request `null`; deployment `false` |
 
 - **`max_symbols`:** omit the field (or send `None`) to inherit the deployment ceiling. That is **not** unbounded — a caller cannot raise the operator cap, including via `max_symbols=9999` or `max_symbols=None`. `Settings.equities_max_symbols` rejects non-positive values at boot (`gt=0`).
-- **`allow_truncation`:** **tri-state** since APD-DATA-052, a logical **OR** before it. `true` opts in for this request; `false` refuses truncation for this request *even where the deployment enabled it*; `null` — the schema default, and what an omitted field means — defers to `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION`. The owner ruled that refusing partial data is a **caller** right, so the former "a client cannot opt *out* of the operator's choice" rule is reversed. See the `csv_import` section above for why this is not a privilege escalation while `max_symbols` still clamps, and why the stance rides in the value rather than in `model_fields_set`.
+- **`allow_truncation`:** **tri-state** since APD-DATA-052, a logical **OR** before it. `true` opts in for this request; `false` refuses truncation for this request *even where the deployment enabled it*; `null` — the schema default, and what an omitted field means — defers to `JUNIPER_DATA_EQUITIES_ALLOW_TRUNCATION`. The Overtoad ruled that refusing partial data is a **caller** right, so the former "a client cannot opt *out* of the operator's choice" rule is reversed. See the `csv_import` section above for why this is not a privilege escalation while `max_symbols` still clamps, and why the stance rides in the value rather than in `model_fields_set`.
 - **The flag governs two gates, and `false` closes both.** `_resolve_bounds` reads it for the symbol cap; `_resolve_incomplete_policy` reads it again as the gate on unresolvable-fundamentals rows. A caller sending `false` therefore reaches the spec's **option 3** — fail the load completely — on either trigger.
 
 `_resolve_bounds` imports `get_settings` **inside the method**, not at module scope, so this generator does not join `csv_import`'s settings cycle.
@@ -2196,7 +2196,7 @@ Applies to `equities` and `equities_seq` alike: both condition rows through `Equ
 `cost_basis` is causal (APD-DATA-042): every row before the purchase session carries NaN, because no row may know a price from its own future.
 `drop` used to remove only the rows lacking shares, so a `purchase_date` after `start_date` shipped NaN `cost_basis` in an artifact the caller had asked to be complete (plan finding F-P2).
 
-This **applies the plan's recommended R3 pending the owner's ruling** (alternatives: a documented finite sentinel; dropping rows without refusing):
+This **applies the plan's recommended R3 pending the Overtoad's ruling** (alternatives: a documented finite sentinel; dropping rows without refusing):
 
 | Request under `drop` | Outcome |
 |----------------------|---------|
@@ -2222,7 +2222,7 @@ Pins: `TestCostBasisUnderDrop` in `tests/unit/test_equities_generator.py`; `test
 
 ## equities_seq Declared Regression
 
-`equities_seq` is `task_type="regression"` at `generator_version` **6.0.0** (X8, #437, owner ruling 2026-09-24). Flat `equities` stays `task_type="classification"` at **5.0.0**.
+`equities_seq` is `task_type="regression"` at `generator_version` **6.0.0** (X8, #437, Overtoad ruling 2026-09-24). Flat `equities` stays `task_type="classification"` at **5.0.0**.
 
 This is on `main` only: #437 merged after `v0.16.0` was tagged (`CHANGELOG.md` records it under `[Unreleased]`). The 0.16.0 wheel and image still serve `equities_seq` at 5.0.0 with `classification` meta, so a create against them resolves under `equities_seq-5.0.0-`.
 
@@ -2367,7 +2367,7 @@ All 14 files in `.github/workflows/`, counted on `main` at `35658ff3` (2026-10-2
 | **CI/CD Pipeline** | `ci.yml` | Push to `main` / `develop`; PR into `main` / `develop`; `repository_dispatch` `data-client-updated` (juniper-data-client's CI sends it after a push to its `main`); daily schedule (06:00 UTC); manual | Pre-commit (ruff, mypy, bandit, yamllint and more) on 3.12-3.14; unit tests with the coverage gates on Ubuntu 3.12-3.14 and macOS 3.12, plus an informational Ubuntu 3.15 leg that is not required; build; dependency docs; integration tests; Gitleaks, Bandit SARIF and pip-audit; lockfile freshness; Docker build and smoke test; Documentation Links (link check, workflow script paths, AGENTS.md version and header); async-route audit; memory budget; Quality Gate; slow tests on scheduled and manual runs. See the notes below the table | 18, plus `Bandit` from code scanning (listed below the table). `Build Notification` is not required |
 | **CodeQL Analysis** | `codeql.yml` | Push to `main` / `develop`; PR into `main`; weekly schedule (Monday 06:00 UTC) | CodeQL for Python with the `+security-and-quality` queries | `Analyze (python)`. The `CodeQL` check run that code scanning posts is not a required context; the ruleset's `code_scanning` rule covers the alerts instead |
 | **Scheduled Security Scan** | `security-scan.yml` | Weekly schedule (Monday 06:00 UTC); manual | Bandit over `juniper_data` (tests excluded): a SARIF report kept only as the `security-reports` run artifact (nothing is uploaded to code scanning), then a second pass at medium severity and confidence that fails the job on any finding; `pip-audit --strict --desc on` over a `.[all]` install. No Gitleaks. The pull-request Gitleaks, Bandit SARIF and pip-audit lane is `ci.yml`'s `Security Scans` | None |
-| **Publish to PyPI** | `publish.yml` | GitHub release `published`; manual (`workflow_dispatch` from a release tag with `republish_from_testpypi`: republish only) | `Build and Validate` builds once and records `SHA256SUMS`; TestPyPI (`testpypi` environment) takes that artifact, its JSON must list exactly those sha256, and an install check follows; then PyPI (`pypi` environment: the owner's review plus a 5-minute wait) takes the same artifact after TestPyPI's JSON is checked again, and PyPI's JSON is checked. Both by Trusted Publishing (OIDC). Then [notify consumers](#consumer-release-notification). The dispatch republishes TestPyPI's files: [Recovering a release that did not reach PyPI](ci_cd/CICD_MANUAL.md#recovering-a-release-that-did-not-reach-pypi) | None |
+| **Publish to PyPI** | `publish.yml` | GitHub release `published`; manual (`workflow_dispatch` from a release tag with `republish_from_testpypi`: republish only) | `Build and Validate` builds once and records `SHA256SUMS`; TestPyPI (`testpypi` environment) takes that artifact, its JSON must list exactly those sha256, and an install check follows; then PyPI (`pypi` environment: the Overtoad's review plus a 5-minute wait) takes the same artifact after TestPyPI's JSON is checked again, and PyPI's JSON is checked. Both by Trusted Publishing (OIDC). Then [notify consumers](#consumer-release-notification). The dispatch republishes TestPyPI's files: [Recovering a release that did not reach PyPI](ci_cd/CICD_MANUAL.md#recovering-a-release-that-did-not-reach-pypi) | None |
 | **Notify consumers of a release** | `notify-consumers.yml` | `workflow_call` from `publish.yml` after the `pypi` job; manual re-send (`workflow_dispatch`, `version` input) | `repository_dispatch` `juniper-data-published` to `juniper-recurrence`, then wait until a run starts there | None |
 | **Publish Container Image** | `publish-image.yml` | GitHub release `published` (a tag not starting with `v` skips the build); PR touching image inputs (build-only); manual (`push` input, default false) | GHCR multi-arch image (amd64 + arm64). Before any tag: CPU-only (`EXPECT_TORCH=absent`), credential scan, and the [serve-and-version gate](#image-serve-and-version-gate) | None. Its pull-request `Build linux/amd64` and `Build linux/arm64` runs are not required; the required Docker check is `ci.yml`'s `Docker Build & Smoke Test` |
 | **Update Lockfile (Dependabot)** | `lockfile-update.yml` | Push to `dependabot/pip/**` by `dependabot[bot]`; PR when `pyproject.toml` changes (same repo, head not `release/**`) | `--upgrade` compile of `requirements.lock` (`api`, `observability`, `mnist`, `equities`), committed through the GraphQL API so GitHub signs it. Conf-only grouped bumps still qualify. A Dependabot run without `CROSS_REPO_DISPATCH_TOKEN` in the Dependabot secret store skips green with a notice, and any other run without it fails | None. The required `Lockfile Freshness` is `ci.yml`'s |
@@ -2394,9 +2394,9 @@ Notes on `ci.yml`:
 - **`Documentation Links` is four commands.** `juniper-check-doc-links` (with the exclude list), then `juniper-lint-workflow-paths`, `juniper-lint-agents-md-version`, and `juniper-lint-agents-md-header` with no arguments. Pre-commit runs only the link check. The header lint checks that `**Last Updated**:` matches `YYYY-MM-DD`. Comparing that date with today, and refusing a pull request that edits `AGENTS.md` without changing the line, is `agents-md-touch-up.yml`. That workflow verifies and never commits, and it is not a required context. Contract: [Job: docs](ci_cd/CICD_MANUAL.md#job-docs).
 - **Not every required job runs on every event.** `Slow Tests` runs only on `schedule` and `workflow_dispatch`, so a pull request reports it `skipped`, and a skipped required check counts as passing. Where it runs, pytest's exit status is the job's: a failing slow test fails it, and so does a run that selects no test (pytest exit 5, with an `::error` annotation naming it), because a lane that runs nothing must not pass. The call used to end `|| echo "No slow tests found"`, which made the job unable to fail. The 2026-10-29 scheduled run selected 15 of 2,511 tests (`15 passed, 2496 deselected`). `Memory Budget` runs only on `pull_request`: its `merge_group` arm cannot fire, because this workflow declares no `merge_group` trigger. `Integration Tests` and `Docker Build & Smoke Test` run on pull requests and on runs whose ref is `main` or `develop`.
 - **The Quality Gate is one required context of 22.** Its `needs:` holds nine jobs. `Async-route audit (BUG-JD-10 class)`, `Memory Budget` and `Slow Tests` sit outside it and are required in their own right, like `Sequence Safety`.
-- **`Bandit` comes from the SARIF upload.** Code scanning posts it after it processes the SARIF that `Security Scans` uploads. On a pull request the upload step always runs and is not `continue-on-error`, so a failed upload, or a missing SARIF, turns `Security Scans` red with the cause in the step log, instead of leaving the PR waiting for a `Bandit` context that never posts (owner ruling 2026-10-30, after juniper-cascor#735). On every other event the step keeps its old tolerance: it is skipped when there is no SARIF, and a failed upload leaves the job green, so there a green `Security Scans` does not show that the upload landed. The ruleset's `code_scanning` rule covers Bandit and CodeQL alerts (alerts at `errors`, security alerts at `high_or_higher`).
+- **`Bandit` comes from the SARIF upload.** Code scanning posts it after it processes the SARIF that `Security Scans` uploads. On a pull request the upload step always runs and is not `continue-on-error`, so a failed upload, or a missing SARIF, turns `Security Scans` red with the cause in the step log, instead of leaving the PR waiting for a `Bandit` context that never posts (Overtoad ruling 2026-10-30, after juniper-cascor#735). On every other event the step keeps its old tolerance: it is skipped when there is no SARIF, and a failed upload leaves the job green, so there a green `Security Scans` does not show that the upload landed. The ruleset's `code_scanning` rule covers Bandit and CodeQL alerts (alerts at `errors`, security alerts at `high_or_higher`).
 - **A dispatch cancels a push run on `main`.** Runs of this workflow share one concurrency group per ref (`ci-${{ github.ref }}`, `cancel-in-progress: true`). A `data-client-updated` dispatch runs on `main`'s ref, so it cancels an in-flight push run there, and the dispatch run tests the same `main` commit (measured 2026-10-27 at `35658ff3` and `8499cab0`).
-- **The Codecov upload carries a token, except on runs Dependabot triggers.** The Python 3.14 leg uploads `reports/coverage.xml` with `token: ${{ secrets.CODECOV_TOKEN }}`. The owner added the `CODECOV_TOKEN` Actions secret on 2026-10-29 (22:15:30 UTC). The Dependabot secret store does not hold it, and a run that Dependabot triggers reads only that store, so its upload stays tokenless and Codecov decides whether to take it. Before the secret existed every upload was tokenless: from 2026-07-30 (the oldest log GitHub keeps) to 2026-10-27 22:51 UTC Codecov rejected each one with `Token required - not valid tokenless upload`, and from 23:47 UTC that day it accepted them, with nothing changed in this repository. `fail_ci_if_error: false` keeps the step green either way and it posts no annotation, so it gates nothing. Only the step log shows what happened: the action logs `Token set from input` when it has a token, and its wrapper logs `Token length: 0` when it does not. The job's own coverage gates do not depend on it.
+- **The Codecov upload carries a token, except on runs Dependabot triggers.** The Python 3.14 leg uploads `reports/coverage.xml` with `token: ${{ secrets.CODECOV_TOKEN }}`. The Overtoad added the `CODECOV_TOKEN` Actions secret on 2026-10-29 (22:15:30 UTC). The Dependabot secret store does not hold it, and a run that Dependabot triggers reads only that store, so its upload stays tokenless and Codecov decides whether to take it. Before the secret existed every upload was tokenless: from 2026-07-30 (the oldest log GitHub keeps) to 2026-10-27 22:51 UTC Codecov rejected each one with `Token required - not valid tokenless upload`, and from 23:47 UTC that day it accepted them, with nothing changed in this repository. `fail_ci_if_error: false` keeps the step green either way and it posts no annotation, so it gates nothing. Only the step log shows what happened: the action logs `Token set from input` when it has a token, and its wrapper logs `Token length: 0` when it does not. The job's own coverage gates do not depend on it.
 
 ### TestPyPI install check
 
@@ -2625,7 +2625,7 @@ ruleset promotion; the workflow table above kept the same stale claim until 2026
 
 **Waivers.** An `Allow-Symbol-Loss: <qualified.symbol>` or `Allow-Docs-Rewrite: <path>` commit
 trailer waives that finding. On a squash merge, carry the trailer into the squash commit message:
-that commit is what `main-verify.yml` screens on `main`. The owner labels `allow-symbol-loss` and
+that commit is what `main-verify.yml` screens on `main`. The Overtoad labels `allow-symbol-loss` and
 `docs-rewrite` pass `--advisory` to the matching screen only: its findings still print but no
 longer fail the check, so with the other screen clean the required context goes green. An
 invocation error (exit `2`) still fails it. A label is invisible on a push to `main`, so it does

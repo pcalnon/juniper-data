@@ -8,7 +8,7 @@ Author: Paul Calnon
 Created: 2026-10-26
 Status: ad-hoc — investigation
 Retire when: every Juniper suite runs clean under it, or a permanent gate replaces it
-Related: the 2026-10-26 /tmp remediation (owner directive: no file is ever written under /tmp);
+Related: the 2026-10-26 /tmp remediation (Overtoad directive: no file is ever written under /tmp);
          juniper-ml notes/JUNIPER_2026-10-26_JUNIPER-ECOSYSTEM_REPO-TMP-DIRECTORY-CONVENTION.md
 
 Why

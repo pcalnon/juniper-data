@@ -6,7 +6,7 @@ Sub-Project: ad-hoc tooling
 Author: Paul Calnon
 Created: 2026-09-15
 Status: ad-hoc -- one-off (applied to the juniper-data head-typo worktree)
-Retire when: RETAINED -- ad-hoc scripts are kept as provenance of record (owner policy 2026-08-25)
+Retire when: RETAINED -- ad-hoc scripts are kept as provenance of record (Overtoad policy 2026-08-25)
 Related: juniper-data#404; register row APD-DATA-047; round-39 round-2 validation lane A
 
 Lane A refuted two figures I wrote into the comment, the CHANGELOG and the register, and
@@ -30,7 +30,7 @@ be the strongest available argument for the pair of instruments:
    four are caught by the RELATIVE filter, and all four deliver correct maxima. The ceiling
    cannot be tightened to reach them without crossing Citigroup's genuine 2.92e10, so the two
    instruments are not redundant and the ceiling is not the one to tighten further. That bears
-   directly on the APD-DATA-047 owner decision.
+   directly on the APD-DATA-047 Overtoad decision.
 """
 
 from __future__ import annotations

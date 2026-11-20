@@ -4,7 +4,7 @@
 ``equities_seq`` emits two targets: a one-hot next-day direction (``y_*``) and a next-day close
 (``y_reg_*``). The registry's ``task_type`` has no word for "both". juniper-data declared it
 ``classification``, while juniper-canopy labelled it ``regression``, because the one model that
-trains on it -- the LMU -- reads ``y_reg_*``. The owner ruled on 2026-09-24 that juniper-data
+trains on it -- the LMU -- reads ``y_reg_*``. The Overtoad ruled on 2026-09-24 that juniper-data
 changes its label.
 
 The relabel changes what ``POST /v1/datasets`` emits and stores, and it leaves the arrays alone.

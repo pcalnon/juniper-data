@@ -11,7 +11,7 @@ Status:      ad-hoc (evidence for the rescue-ladder design)
 
 The 2026-09-04 census found 37 of 503 S&P 500 constituents returning NOTHING
 from either shares concept, so their ``total_shares`` and ``market_cap`` were
-zero-filled. The owner's direction (2026-09-05) is that a zero-fill is only
+zero-filled. The Overtoad's direction (2026-09-05) is that a zero-fill is only
 acceptable as a WARNING when the value can be rescued -- by an alternate source,
 modified parsing, or an alternate identifier -- and must otherwise take an
 explicit fail-or-continue path.

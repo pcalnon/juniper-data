@@ -55,7 +55,7 @@ def _refuse_drop_with_a_later_purchase(fundamentals_fill: str, start_date: str, 
     move the start of the series to the purchase date without saying so, which is a
     contradiction in the request rather than a gap in the data.
 
-    This applies the plan's recommended R3, pending the owner's ruling (alternatives: a
+    This applies the plan's recommended R3, pending the Overtoad's ruling (alternatives: a
     documented finite sentinel; dropping rows without refusing). Plan: juniper-ml
     ``notes/JUNIPER_2026-10-03_JUNIPER-RECURRENCE_EQUITIES-END-TO-END-AUDIT-AND-DEVELOPMENT-PLAN.md``,
     W1.8.

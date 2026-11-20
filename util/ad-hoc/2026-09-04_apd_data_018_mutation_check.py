@@ -80,7 +80,7 @@ MUTATIONS = [
         path=GENERATOR,
         old="        if not allow_truncation:\n            raise InputTooLargeError(source=f\"Source {params.file_path!r}\", unit=UNIT_BYTES, cap=cap_bytes, actual=max(stat_bytes, len(raw)), opt_in_env=\"JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION\")",
         new="        if False:\n            raise InputTooLargeError(source=f\"Source {params.file_path!r}\", unit=UNIT_BYTES, cap=cap_bytes, actual=max(stat_bytes, len(raw)), opt_in_env=\"JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION\")",
-        why="Silently truncates without an opt-in -- the exact behaviour the owner's decision forbids. Targets the READ-side refusal; the stat pre-check is a separate, cheaper arm.",
+        why="Silently truncates without an opt-in -- the exact behaviour the Overtoad's decision forbids. Targets the READ-side refusal; the stat pre-check is a separate, cheaper arm.",
     ),
     Mutation(
         name="M2-record-boundary-trim-removed",
@@ -110,10 +110,10 @@ MUTATIONS = [
         #
         # The mutation still says the same thing. `params.allow_truncation` is `None` whenever the
         # caller omitted the flag, so returning it directly is exactly "ignore the deployment
-        # opt-in for a caller who said nothing" -- the surface the owner required for CLI callers.
+        # opt-in for a caller who said nothing" -- the surface the Overtoad required for CLI callers.
         old="        allow = settings.csv_import_allow_truncation if params.allow_truncation is None else params.allow_truncation",
         new="        allow = bool(params.allow_truncation)",
-        why="Drops the env-var / .env opt-in surface the owner required for CLI callers.",
+        why="Drops the env-var / .env opt-in surface the Overtoad required for CLI callers.",
     ),
     Mutation(
         name="M4-pop-returns-empty-dict",

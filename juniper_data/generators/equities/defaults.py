@@ -30,7 +30,7 @@ EQUITIES_DEFAULT_BASIS_PRICE_FIELD: Literal["close", "adj_close"] = "close"
 #   "nan"  -> leave NaN (honest; caller must handle)
 #   "drop" -> drop rows lacking shares (restricts the series to ~2009+)
 #
-# DEFAULT CHANGED "zero" -> "nan" (2026-09-05, owner decision). A market cap of
+# DEFAULT CHANGED "zero" -> "nan" (2026-09-05, Overtoad decision). A market cap of
 # 0.0 is a value no listed company can have, and nothing downstream can tell it
 # apart from a measurement: it survives every dtype, range and NaN check, and a
 # model trained on it learns from a number that was fabricated by a fill policy.
@@ -135,7 +135,7 @@ EQUITIES_FEATURE_COLUMNS = [
     "total_shares",
     "market_cap",
     "cost_basis",
-    # ``adj_close`` was here, and is DELIBERATELY not any more (owner ruling 2026-09-09,
+    # ``adj_close`` was here, and is DELIBERATELY not any more (Overtoad ruling 2026-09-09,
     # register APD-DATA-041). It is still a perfectly good column to request explicitly; it is
     # not safe as a DEFAULT. ``yf.download(..., auto_adjust=False)`` -- which overrides
     # yfinance's own default of True, so that one argument is what creates the channel --

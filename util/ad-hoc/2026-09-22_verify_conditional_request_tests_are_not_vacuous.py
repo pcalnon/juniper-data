@@ -409,7 +409,7 @@ MUTATIONS = [
     ),
     Mutation(
         name="M18: the artifact ETag claims to be strong again",
-        why="the owner ruled W/ on 2026-09-23: the checksum covers the arrays, not the served bytes",
+        why="the Overtoad ruled W/ on 2026-09-23: the checksum covers the arrays, not the served bytes",
         edits=[(ROUTES, "    etag = weak_etag(meta.checksum) if meta is not None", "    etag = f'\"{meta.checksum}\"' if meta is not None")],
         must_fail=[node(ART, "test_etag_is_the_stored_checksum"), node(ART, "test_if_match_cannot_name_a_weak_artifact_tag_but_star_matches")],
         must_still_pass=[node(ART, "test_matching_if_none_match_answers_304_and_reads_no_artifact")],

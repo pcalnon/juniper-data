@@ -970,7 +970,7 @@ Download the dataset as an NPZ file.
   SHA-256 of these bytes**. The checksum is taken over a canonical serialization of the *arrays*
   (uncompressed, keys sorted); stores serve a compressed one, and identical arrays re-serialized
   (another numpy or zlib, another key order) can differ in bytes under the same checksum. "Same
-  content, possibly different bytes" is what a weak validator means (owner ruling 2026-09-23).
+  content, possibly different bytes" is what a weak validator means (Overtoad ruling 2026-09-23).
   `If-None-Match` compares weakly, so revalidation works; `If-Match` compares strongly, so on this
   route it can match only `*`. A dataset with no stored checksum gets no `ETag`. A truly strong
   artifact validator — each store recording the SHA-256 of the bytes it writes — is a known gap.
