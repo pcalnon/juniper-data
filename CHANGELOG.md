@@ -928,7 +928,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bytes. So `validate` matches exactly when the strings are equal. `surrogateescape` raises on
   `"\ud800"` and maps `"\xe9"` and `"\udcc3\udca9"` to the same bytes. The keys stay in a `list`,
   and juniper-ml's `tests/test_service_fork_drift.py` markers (`blank-api-key-filter`,
-  `nonshortcircuit-key-compare`) are unchanged. Owner ruling "Fix everywhere now" (2026-09-24),
+  `nonshortcircuit-key-compare`) are unchanged. The Overtoad ruling "Fix everywhere now" (2026-09-24),
   landing the same compare in juniper-service-core and juniper-cascor.
   **Sentry:** juniper-data configures Sentry only through juniper-observability's
   `configure_sentry` (`juniper_data/api/app.py`), so there is no local setting to change. It
@@ -1608,7 +1608,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **BREAKING (default): `fundamentals_fill` is now `"nan"`, was `"zero"`.** Owner decision,
+- **BREAKING (default): `fundamentals_fill` is now `"nan"`, was `"zero"`.** The Overtoad decision,
   2026-09-05.
 
   A `market_cap` of `0.0` is a value no listed company can have, and nothing downstream can tell it
@@ -1649,7 +1649,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **A fourth rescue rung: `us-gaap:CommonStockSharesIssued`, annotated as its own degraded basis.**
-  Owner decision, 2026-09-05. It rescues the three tickers no other rung reaches.
+  The Overtoad decision, 2026-09-05. It rescues the three tickers no other rung reaches.
 
   **Issued is a different quantity, not a weaker measurement of the same one** — it includes
   treasury stock, so it is ≥ shares outstanding, materially so for a company that has bought back

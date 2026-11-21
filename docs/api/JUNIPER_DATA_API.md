@@ -61,7 +61,7 @@ JuniperData is a dataset generation and management service for the Juniper ecosy
 
 3. **Backward Compatibility Guarantees** — **in force from juniper-data 1.0.** While the package
    is `0.x`, `/v1` may change incompatibly: every such change is flagged with an uppercase
-   **BREAKING** marker in `CHANGELOG.md`, the way SemVer treats a `0.y` minor. Owner ruling
+   **BREAKING** marker in `CHANGELOG.md`, the way SemVer treats a `0.y` minor. The Overtoad ruling
    2026-09-23, taken when the defect-register arc's rulings (the access counters leaving the
    metadata representation, RFC 9457 errors, 200 on dataset reuse) were found to conflict with
    the unconditional wording this section had. From 1.0 on:

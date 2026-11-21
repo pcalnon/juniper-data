@@ -664,7 +664,7 @@ jobs:
 
 #### Tasks
 
-| Task ID | Description                                               | Owner | Status |
+| Task ID | Description                                               | The Overtoad | Status |
 | ------- | --------------------------------------------------------- | ----- | ------ |
 | P1-T1   | Update Bandit command to use `--exit-zero` flag           | TBD   | ☐      |
 | P1-T2   | Update pip-audit to use `--strict` flag                   | TBD   | ☐      |
@@ -695,7 +695,7 @@ If security scans reveal many issues, temporarily use `--exit-zero` for Bandit a
 
 #### Tasks: 5.2, Phase 2
 
-| Task ID | Description                               | Owner | Status |
+| Task ID | Description                               | The Overtoad | Status |
 | ------- | ----------------------------------------- | ----- | ------ |
 | P2-T1   | Create `.github/dependabot.yml`           | TBD   | ☐      |
 | P2-T2   | Pin all GitHub Actions to commit SHAs     | TBD   | ☐      |
@@ -722,7 +722,7 @@ If security scans reveal many issues, temporarily use `--exit-zero` for Bandit a
 
 #### Tasks: 5.3, Phase 3
 
-| Task ID | Description                                  | Owner | Status |
+| Task ID | Description                                  | The Overtoad | Status |
 | ------- | -------------------------------------------- | ----- | ------ |
 | P3-T1   | Add Flake8 hook for tests with relaxed rules | TBD   | ☐      |
 | P3-T2   | Fix F401 (unused imports) in tests           | TBD   | ☐      |
@@ -754,7 +754,7 @@ If security scans reveal many issues, temporarily use `--exit-zero` for Bandit a
 
 #### Tasks: 5.4, Phase 4
 
-| Task ID | Description                                    | Owner | Status |
+| Task ID | Description                                    | The Overtoad | Status |
 | ------- | ---------------------------------------------- | ----- | ------ |
 | P4-T1   | Remove `-p no:warnings` from pytest config     | TBD   | ☐      |
 | P4-T2   | Add selective filterwarnings configuration     | TBD   | ☐      |
@@ -781,7 +781,7 @@ If security scans reveal many issues, temporarily use `--exit-zero` for Bandit a
 
 #### Tasks: 5.5, Phase 5
 
-| Task ID | Description                               | Owner | Status |
+| Task ID | Description                               | The Overtoad | Status |
 | ------- | ----------------------------------------- | ----- | ------ |
 | P5-T1   | Add Codecov/Coveralls integration         | TBD   | ☐      |
 | P5-T2   | Document slow test policy in AGENTS.md    | TBD   | ☐      |

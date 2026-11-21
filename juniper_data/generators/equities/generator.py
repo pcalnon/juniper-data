@@ -78,7 +78,7 @@ _SEC_MIN_INTERVAL = 0.12  # seconds between SEC calls
 # this factor: such jumps are XBRL filer scale typos (e.g. a cover-page value
 # entered 1e6x too large), not real splits/buybacks/issuance.
 _SHARES_OUTLIER_FACTOR = 100.0
-# Absolute plausibility floor for a share count, in shares. Owner ruling 2026-09-09
+# Absolute plausibility floor for a share count, in shares. The Overtoad ruling 2026-09-09
 # (register APD-DATA-043 / -044). A listed issuer cannot have 1,000 shares outstanding; the
 # six unusable series in the bundled universe deliver 0, 1 or 1,000. Sited deliberately
 # between those and the smallest GENUINE count in the same cache -- Berkshire's Class-A
@@ -122,7 +122,7 @@ _SHARES_ABSOLUTE_FLOOR = 100_000.0
 # early points, trading one look-ahead for a new blind spot.
 _SHARES_ABSOLUTE_CEILING = 1.0e11
 # A share count older than this is reported but marked degraded rather than silently
-# forward-filled for years. Owner ruling 2026-09-09 (register APD-DATA-039 / -045), chosen
+# forward-filled for years. The Overtoad ruling 2026-09-09 (register APD-DATA-039 / -045), chosen
 # against the measured distribution of the 485-payload cache: median last-as-of age 138 days,
 # p90 180, and the count of flagged series is flat from 270d (28) through 365d (27) to 730d
 # (24), so the exact figure is not load-bearing. Anything under ~200 days measures cache age
@@ -669,7 +669,7 @@ class EquitiesGenerator:
                 degraded[ticker] = quality
             # STALENESS IS A SEPARATE AXIS from source quality, and is checked for every ticker
             # that got a value at all -- including the point-in-time ones, which is precisely the
-            # population the old annotation called clean. Owner ruling 2026-09-09
+            # population the old annotation called clean. The Overtoad ruling 2026-09-09
             # (APD-DATA-039 / -045): report it as degraded rather than forward-filling in silence.
             #
             # Measured from ``report_date`` rather than the ``days_since_report`` COLUMN, because
@@ -1045,7 +1045,7 @@ class EquitiesGenerator:
         # session in the window) that is inert -- the basis is the first row's own close. At any
         # LATER date it is a full future-price leak: every row before the purchase carries a price
         # from its own future, and ``purchase_date`` is a plain public request field, rendered as a
-        # text input in canopy's sidebar. Owner ruling 2026-09-09 (register APD-DATA-042): make it
+        # text input in canopy's sidebar. The Overtoad ruling 2026-09-09 (register APD-DATA-042): make it
         # causal rather than deleting the feature or forbidding later purchase dates, so the leak
         # closes at EVERY purchase_date instead of only the default one.
         #
