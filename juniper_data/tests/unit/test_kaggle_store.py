@@ -115,7 +115,7 @@ class TestKaggleDatasetStoreDownload:
 
         store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
 
-        result = store.download_dataset("owner/dataset-name")
+        result = store.download_dataset("Overtoad/dataset-name")
         assert isinstance(result, Path)
         mock_api_instance.dataset_download_files.assert_called_once()
 
@@ -125,10 +125,10 @@ class TestKaggleDatasetStoreDownload:
         from juniper_data.storage.kaggle_store import KaggleDatasetStore
 
         store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
-        cached_path = tmp_path / "kaggle" / "owner_dataset-name"
+        cached_path = tmp_path / "kaggle" / "Overtoad_dataset-name"
         cached_path.mkdir(parents=True, exist_ok=True)
 
-        result = store.download_dataset("owner/dataset-name")
+        result = store.download_dataset("Overtoad/dataset-name")
         assert result == cached_path
         mock_api_instance.dataset_download_files.assert_not_called()
 
@@ -138,10 +138,10 @@ class TestKaggleDatasetStoreDownload:
         from juniper_data.storage.kaggle_store import KaggleDatasetStore
 
         store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
-        cached_path = tmp_path / "kaggle" / "owner_dataset-name"
+        cached_path = tmp_path / "kaggle" / "Overtoad_dataset-name"
         cached_path.mkdir(parents=True, exist_ok=True)
 
-        store.download_dataset("owner/dataset-name", force=True)
+        store.download_dataset("Overtoad/dataset-name", force=True)
         mock_api_instance.dataset_download_files.assert_called_once()
 
     def test_download_dataset_not_authenticated(self, mock_kaggle_module, tmp_path) -> None:
@@ -151,7 +151,7 @@ class TestKaggleDatasetStoreDownload:
         store = KaggleDatasetStore(download_path=tmp_path / "kaggle", auto_authenticate=False)
 
         with pytest.raises(RuntimeError, match="not authenticated"):
-            store.download_dataset("owner/dataset")
+            store.download_dataset("Overtoad/dataset")
 
 
 @pytest.mark.unit
@@ -166,7 +166,7 @@ class TestKaggleDatasetStoreLoadDataset:
 
         store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
 
-        dataset_dir = tmp_path / "kaggle" / "owner_iris"
+        dataset_dir = tmp_path / "kaggle" / "Overtoad_iris"
         dataset_dir.mkdir(parents=True, exist_ok=True)
         rows = [
             {"sepal_length": "5.1", "sepal_width": "3.5", "label": "0"},
@@ -177,9 +177,9 @@ class TestKaggleDatasetStoreLoadDataset:
         ]
         _write_csv(dataset_dir / "data.csv", rows)
 
-        dataset_id, meta, arrays = store.load_kaggle_dataset("owner/iris", file_name="data.csv")
+        dataset_id, meta, arrays = store.load_kaggle_dataset("Overtoad/iris", file_name="data.csv")
 
-        assert "kaggle-owner-iris" in dataset_id
+        assert "kaggle-Overtoad-iris" in dataset_id
         assert meta.generator == "kaggle"
         assert meta.n_samples == 5
         assert meta.n_features == 2
@@ -195,12 +195,12 @@ class TestKaggleDatasetStoreLoadDataset:
         from juniper_data.storage.kaggle_store import KaggleDatasetStore
 
         store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
-        dataset_dir = tmp_path / "kaggle" / "owner_three"
+        dataset_dir = tmp_path / "kaggle" / "Overtoad_three"
         dataset_dir.mkdir(parents=True, exist_ok=True)
         rows = [{"feature": str(i), "label": str(i % 2)} for i in range(20)]
         _write_csv(dataset_dir / "data.csv", rows)
 
-        _, meta, arrays = store.load_kaggle_dataset("owner/three", file_name="data.csv")
+        _, meta, arrays = store.load_kaggle_dataset("Overtoad/three", file_name="data.csv")
 
         assert (meta.n_train, meta.n_val, meta.n_test) == (16, 2, 2)
         assert [arrays[f"X_{p}"].shape[0] for p in ("train", "val", "test")] == [16, 2, 2]
@@ -213,12 +213,12 @@ class TestKaggleDatasetStoreLoadDataset:
         from juniper_data.storage.kaggle_store import KaggleDatasetStore
 
         store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
-        dataset_dir = tmp_path / "kaggle" / "owner_part"
+        dataset_dir = tmp_path / "kaggle" / "Overtoad_part"
         dataset_dir.mkdir(parents=True, exist_ok=True)
         rows = [{"feature": str(i), "label": str(i % 2)} for i in range(20)]
         _write_csv(dataset_dir / "data.csv", rows)
 
-        _, meta, arrays = store.load_kaggle_dataset("owner/part", file_name="data.csv", train_ratio=0.5, val_ratio=0.2, test_ratio=0.1)
+        _, meta, arrays = store.load_kaggle_dataset("Overtoad/part", file_name="data.csv", train_ratio=0.5, val_ratio=0.2, test_ratio=0.1)
 
         assert (meta.n_train, meta.n_val, meta.n_test) == (10, 4, 2)
         assert meta.n_samples == 16
@@ -230,27 +230,27 @@ class TestKaggleDatasetStoreLoadDataset:
         from juniper_data.storage.kaggle_store import KaggleDatasetStore
 
         store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
-        dataset_dir = tmp_path / "kaggle" / "owner_over"
+        dataset_dir = tmp_path / "kaggle" / "Overtoad_over"
         dataset_dir.mkdir(parents=True, exist_ok=True)
         rows = [{"feature": str(i), "label": str(i % 2)} for i in range(10)]
         _write_csv(dataset_dir / "data.csv", rows)
 
         with pytest.raises(ValueError, match="must be <= 1.0"):
-            store.load_kaggle_dataset("owner/over", file_name="data.csv", train_ratio=0.9)
+            store.load_kaggle_dataset("Overtoad/over", file_name="data.csv", train_ratio=0.9)
 
     def test_dataset_id_carries_version_and_params(self, mock_kaggle_module, tmp_path) -> None:
         """Same request -> same ID; a different partitioning -> a different ID."""
         from juniper_data.storage.kaggle_store import KaggleDatasetStore
 
         store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
-        dataset_dir = tmp_path / "kaggle" / "owner_ids"
+        dataset_dir = tmp_path / "kaggle" / "Overtoad_ids"
         dataset_dir.mkdir(parents=True, exist_ok=True)
         rows = [{"feature": str(i), "label": str(i % 2)} for i in range(10)]
         _write_csv(dataset_dir / "data.csv", rows)
 
-        first, _, _ = store.load_kaggle_dataset("owner/ids", file_name="data.csv", seed=3)
-        again, _, _ = store.load_kaggle_dataset("owner/ids", file_name="data.csv", seed=3)
-        other, _, _ = store.load_kaggle_dataset("owner/ids", file_name="data.csv", seed=3, train_ratio=0.7, val_ratio=0.2)
+        first, _, _ = store.load_kaggle_dataset("Overtoad/ids", file_name="data.csv", seed=3)
+        again, _, _ = store.load_kaggle_dataset("Overtoad/ids", file_name="data.csv", seed=3)
+        other, _, _ = store.load_kaggle_dataset("Overtoad/ids", file_name="data.csv", seed=3, train_ratio=0.7, val_ratio=0.2)
 
         assert first == again
         assert first != other
@@ -260,12 +260,12 @@ class TestKaggleDatasetStoreLoadDataset:
         from juniper_data.storage.kaggle_store import KaggleDatasetStore
 
         store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
-        dataset_dir = tmp_path / "kaggle" / "owner_unseeded"
+        dataset_dir = tmp_path / "kaggle" / "Overtoad_unseeded"
         dataset_dir.mkdir(parents=True, exist_ok=True)
         rows = [{"feature": str(i), "label": str(i % 2)} for i in range(10)]
         _write_csv(dataset_dir / "data.csv", rows)
 
-        ids = {store.load_kaggle_dataset("owner/unseeded", file_name="data.csv")[0] for _ in range(3)}
+        ids = {store.load_kaggle_dataset("Overtoad/unseeded", file_name="data.csv")[0] for _ in range(3)}
 
         assert len(ids) == 1
         assert store._cache_store.list_datasets() == list(ids)
@@ -275,13 +275,13 @@ class TestKaggleDatasetStoreLoadDataset:
         from juniper_data.storage.kaggle_store import KaggleDatasetStore
 
         store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
-        dataset_dir = tmp_path / "kaggle" / "owner_npseed"
+        dataset_dir = tmp_path / "kaggle" / "Overtoad_npseed"
         dataset_dir.mkdir(parents=True, exist_ok=True)
         rows = [{"feature": str(i), "label": str(i % 2)} for i in range(10)]
         _write_csv(dataset_dir / "data.csv", rows)
 
-        as_numpy, _, arrays_numpy = store.load_kaggle_dataset("owner/npseed", file_name="data.csv", seed=np.int64(3))
-        as_int, _, arrays_int = store.load_kaggle_dataset("owner/npseed", file_name="data.csv", seed=3)
+        as_numpy, _, arrays_numpy = store.load_kaggle_dataset("Overtoad/npseed", file_name="data.csv", seed=np.int64(3))
+        as_int, _, arrays_int = store.load_kaggle_dataset("Overtoad/npseed", file_name="data.csv", seed=3)
 
         assert as_numpy == as_int
         np.testing.assert_array_equal(whole(arrays_numpy, "X"), whole(arrays_int, "X"))
@@ -293,11 +293,11 @@ class TestKaggleDatasetStoreLoadDataset:
         store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
         with patch.object(store, "download_dataset") as download:
             with pytest.raises(ValueError, match="must be <= 1.0"):
-                store.load_kaggle_dataset("owner/any", file_name="data.csv", train_ratio=0.9)
+                store.load_kaggle_dataset("Overtoad/any", file_name="data.csv", train_ratio=0.9)
             # float32 0.8 / 0.1 / 0.1 sums to 1.0 only in float32; widened it over-asks. Judged
             # as the carve sees it, and so still before the fetch.
             with pytest.raises(ValueError, match="must be <= 1.0"):
-                store.load_kaggle_dataset("owner/any", file_name="data.csv", train_ratio=np.float32(0.8), val_ratio=np.float32(0.1), test_ratio=np.float32(0.1))
+                store.load_kaggle_dataset("Overtoad/any", file_name="data.csv", train_ratio=np.float32(0.8), val_ratio=np.float32(0.1), test_ratio=np.float32(0.1))
 
         download.assert_not_called()
 
@@ -306,13 +306,13 @@ class TestKaggleDatasetStoreLoadDataset:
         from juniper_data.storage.kaggle_store import KaggleDatasetStore
 
         store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
-        dataset_dir = tmp_path / "kaggle" / "owner_types"
+        dataset_dir = tmp_path / "kaggle" / "Overtoad_types"
         dataset_dir.mkdir(parents=True, exist_ok=True)
         _write_csv(dataset_dir / "data.csv", [{"a": str(i), "b": str(2 * i), "label": str(i % 2)} for i in range(10)])
 
         # Deliberately off-signature: this pins the runtime conversion of a caller's Path file name.
-        odd_id, meta, _ = store.load_kaggle_dataset("owner/types", file_name=Path("data.csv"), seed=3, feature_columns=np.array(["a", "b"]))  # type: ignore[arg-type]
-        plain_id, _, _ = store.load_kaggle_dataset("owner/types", file_name="data.csv", seed=3, feature_columns=["a", "b"])
+        odd_id, meta, _ = store.load_kaggle_dataset("Overtoad/types", file_name=Path("data.csv"), seed=3, feature_columns=np.array(["a", "b"]))  # type: ignore[arg-type]
+        plain_id, _, _ = store.load_kaggle_dataset("Overtoad/types", file_name="data.csv", seed=3, feature_columns=["a", "b"])
 
         assert odd_id == plain_id
         assert meta.params["feature_columns"] == ["a", "b"]
@@ -325,7 +325,7 @@ class TestKaggleDatasetStoreLoadDataset:
 
         store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
 
-        dataset_dir = tmp_path / "kaggle" / "owner_test"
+        dataset_dir = tmp_path / "kaggle" / "Overtoad_test"
         dataset_dir.mkdir(parents=True, exist_ok=True)
         rows = [
             {"feature": "1.0", "label": "a"},
@@ -333,7 +333,7 @@ class TestKaggleDatasetStoreLoadDataset:
         ]
         _write_csv(dataset_dir / "actual.csv", rows)
 
-        dataset_id, meta, arrays = store.load_kaggle_dataset("owner/test", file_name="missing.csv")
+        dataset_id, meta, arrays = store.load_kaggle_dataset("Overtoad/test", file_name="missing.csv")
         assert meta.n_samples == 2
 
     def test_load_file_not_found(self, mock_kaggle_module, tmp_path) -> None:
@@ -341,37 +341,37 @@ class TestKaggleDatasetStoreLoadDataset:
         from juniper_data.storage.kaggle_store import KaggleDatasetStore
 
         store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
-        dataset_dir = tmp_path / "kaggle" / "owner_test"
+        dataset_dir = tmp_path / "kaggle" / "Overtoad_test"
         dataset_dir.mkdir(parents=True, exist_ok=True)
 
         with pytest.raises(FileNotFoundError, match="not found"):
-            store.load_kaggle_dataset("owner/test", file_name="missing.csv")
+            store.load_kaggle_dataset("Overtoad/test", file_name="missing.csv")
 
     def test_load_empty_csv(self, mock_kaggle_module, tmp_path) -> None:
         """Raises ValueError when CSV is empty."""
         from juniper_data.storage.kaggle_store import KaggleDatasetStore
 
         store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
-        dataset_dir = tmp_path / "kaggle" / "owner_empty"
+        dataset_dir = tmp_path / "kaggle" / "Overtoad_empty"
         dataset_dir.mkdir(parents=True, exist_ok=True)
         empty_csv = dataset_dir / "data.csv"
         empty_csv.write_text("col1,col2,label\n")
 
         with pytest.raises(ValueError, match="No data found"):
-            store.load_kaggle_dataset("owner/empty", file_name="data.csv")
+            store.load_kaggle_dataset("Overtoad/empty", file_name="data.csv")
 
     def test_load_with_seed(self, mock_kaggle_module, tmp_path) -> None:
         """Load with seed shuffles data."""
         from juniper_data.storage.kaggle_store import KaggleDatasetStore
 
         store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
-        dataset_dir = tmp_path / "kaggle" / "owner_seed"
+        dataset_dir = tmp_path / "kaggle" / "Overtoad_seed"
         dataset_dir.mkdir(parents=True, exist_ok=True)
         rows = [{"feature": str(i), "label": str(i % 2)} for i in range(10)]
         _write_csv(dataset_dir / "data.csv", rows)
 
-        _, meta1, arrays1 = store.load_kaggle_dataset("owner/seed", file_name="data.csv", seed=42)
-        _, meta2, arrays2 = store.load_kaggle_dataset("owner/seed", file_name="data.csv", seed=42)
+        _, meta1, arrays1 = store.load_kaggle_dataset("Overtoad/seed", file_name="data.csv", seed=42)
+        _, meta2, arrays2 = store.load_kaggle_dataset("Overtoad/seed", file_name="data.csv", seed=42)
 
         np.testing.assert_array_equal(whole(arrays1, "X"), whole(arrays2, "X"))
 
@@ -380,12 +380,12 @@ class TestKaggleDatasetStoreLoadDataset:
         from juniper_data.storage.kaggle_store import KaggleDatasetStore
 
         store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
-        dataset_dir = tmp_path / "kaggle" / "owner_limit"
+        dataset_dir = tmp_path / "kaggle" / "Overtoad_limit"
         dataset_dir.mkdir(parents=True, exist_ok=True)
         rows = [{"feature": str(i), "label": str(i % 2)} for i in range(20)]
         _write_csv(dataset_dir / "data.csv", rows)
 
-        _, meta, _ = store.load_kaggle_dataset("owner/limit", file_name="data.csv", n_samples=5)
+        _, meta, _ = store.load_kaggle_dataset("Overtoad/limit", file_name="data.csv", n_samples=5)
         assert meta.n_samples == 5
 
     def test_load_without_one_hot(self, mock_kaggle_module, tmp_path) -> None:
@@ -393,12 +393,12 @@ class TestKaggleDatasetStoreLoadDataset:
         from juniper_data.storage.kaggle_store import KaggleDatasetStore
 
         store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
-        dataset_dir = tmp_path / "kaggle" / "owner_nohot"
+        dataset_dir = tmp_path / "kaggle" / "Overtoad_nohot"
         dataset_dir.mkdir(parents=True, exist_ok=True)
         rows = [{"feature": str(i), "label": str(i % 2)} for i in range(10)]
         _write_csv(dataset_dir / "data.csv", rows)
 
-        _, _, arrays = store.load_kaggle_dataset("owner/nohot", file_name="data.csv", one_hot_labels=False)
+        _, _, arrays = store.load_kaggle_dataset("Overtoad/nohot", file_name="data.csv", one_hot_labels=False)
         assert whole(arrays, "y").shape[1] == 1
 
     def test_load_with_normalization(self, mock_kaggle_module, tmp_path) -> None:
@@ -406,12 +406,12 @@ class TestKaggleDatasetStoreLoadDataset:
         from juniper_data.storage.kaggle_store import KaggleDatasetStore
 
         store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
-        dataset_dir = tmp_path / "kaggle" / "owner_norm"
+        dataset_dir = tmp_path / "kaggle" / "Overtoad_norm"
         dataset_dir.mkdir(parents=True, exist_ok=True)
         rows = [{"feature": str(i * 10), "label": str(i % 2)} for i in range(10)]
         _write_csv(dataset_dir / "data.csv", rows)
 
-        _, _, arrays = store.load_kaggle_dataset("owner/norm", file_name="data.csv", normalize_features=True)
+        _, _, arrays = store.load_kaggle_dataset("Overtoad/norm", file_name="data.csv", normalize_features=True)
 
         # Min-max is fit on train ONLY (decision 7; juniper-data#411). This asserted the WHOLE
         # dataset sat in [0, 1], true only for a fit over every row. Train is rows 0..7 (0..70),
@@ -426,11 +426,11 @@ class TestKaggleDatasetStoreLoadDataset:
         from juniper_data.storage.kaggle_store import KaggleDatasetStore
 
         store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
-        dataset_dir = tmp_path / "kaggle" / "owner_notrain"
+        dataset_dir = tmp_path / "kaggle" / "Overtoad_notrain"
         dataset_dir.mkdir(parents=True, exist_ok=True)
         _write_csv(dataset_dir / "data.csv", [{"feature": "5", "label": "0"}, {"feature": "7", "label": "1"}])
 
-        _, meta, arrays = store.load_kaggle_dataset("owner/notrain", file_name="data.csv", normalize_features=True, train_ratio=0.2, val_ratio=0.4, test_ratio=0.4)
+        _, meta, arrays = store.load_kaggle_dataset("Overtoad/notrain", file_name="data.csv", normalize_features=True, train_ratio=0.2, val_ratio=0.4, test_ratio=0.4)
 
         assert meta.n_train == 0
         np.testing.assert_array_equal(whole(arrays, "X")[:, 0], [5.0, 7.0])
@@ -440,7 +440,7 @@ class TestKaggleDatasetStoreLoadDataset:
         from juniper_data.storage.kaggle_store import KaggleDatasetStore
 
         store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
-        dataset_dir = tmp_path / "kaggle" / "owner_bad"
+        dataset_dir = tmp_path / "kaggle" / "Overtoad_bad"
         dataset_dir.mkdir(parents=True, exist_ok=True)
         rows = [
             {"feature": "abc", "label": "0"},
@@ -448,7 +448,7 @@ class TestKaggleDatasetStoreLoadDataset:
         ]
         _write_csv(dataset_dir / "data.csv", rows)
 
-        _, _, arrays = store.load_kaggle_dataset("owner/bad", file_name="data.csv")
+        _, _, arrays = store.load_kaggle_dataset("Overtoad/bad", file_name="data.csv")
         assert whole(arrays, "X")[0, 0] == 0.0
         assert whole(arrays, "X")[1, 0] == 1.5
 
@@ -457,7 +457,7 @@ class TestKaggleDatasetStoreLoadDataset:
         from juniper_data.storage.kaggle_store import KaggleDatasetStore
 
         store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
-        dataset_dir = tmp_path / "kaggle" / "owner_cols"
+        dataset_dir = tmp_path / "kaggle" / "Overtoad_cols"
         dataset_dir.mkdir(parents=True, exist_ok=True)
         rows = [
             {"a": "1", "b": "2", "c": "3", "label": "0"},
@@ -465,7 +465,7 @@ class TestKaggleDatasetStoreLoadDataset:
         ]
         _write_csv(dataset_dir / "data.csv", rows)
 
-        _, meta, arrays = store.load_kaggle_dataset("owner/cols", file_name="data.csv", feature_columns=["a", "b"])
+        _, meta, arrays = store.load_kaggle_dataset("Overtoad/cols", file_name="data.csv", feature_columns=["a", "b"])
         assert meta.n_features == 2
 
     def test_load_saves_to_cache(self, mock_kaggle_module, tmp_path) -> None:
@@ -473,12 +473,12 @@ class TestKaggleDatasetStoreLoadDataset:
         from juniper_data.storage.kaggle_store import KaggleDatasetStore
 
         store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
-        dataset_dir = tmp_path / "kaggle" / "owner_cache"
+        dataset_dir = tmp_path / "kaggle" / "Overtoad_cache"
         dataset_dir.mkdir(parents=True, exist_ok=True)
         rows = [{"feature": "1", "label": "0"}, {"feature": "2", "label": "1"}]
         _write_csv(dataset_dir / "data.csv", rows)
 
-        dataset_id, _, _ = store.load_kaggle_dataset("owner/cache", file_name="data.csv")
+        dataset_id, _, _ = store.load_kaggle_dataset("Overtoad/cache", file_name="data.csv")
         assert store._cache_store.exists(dataset_id)
 
 
@@ -529,7 +529,7 @@ class TestKaggleDatasetStoreListKaggleDatasets:
         store = KaggleDatasetStore(download_path=tmp_path / "kaggle")
 
         mock_dataset = MagicMock()
-        mock_dataset.ref = "owner/dataset"
+        mock_dataset.ref = "Overtoad/dataset"
         mock_dataset.title = "Test Dataset"
         mock_dataset.totalBytes = 1024
         mock_dataset.lastUpdated = "2026-01-01"
@@ -537,7 +537,7 @@ class TestKaggleDatasetStoreListKaggleDatasets:
 
         result = store.list_kaggle_datasets(search="test", page=2)
         assert len(result) == 1
-        assert result[0]["ref"] == "owner/dataset"
+        assert result[0]["ref"] == "Overtoad/dataset"
         mock_api_instance.dataset_list.assert_called_once_with(search="test", page=2)
 
     def test_list_kaggle_datasets_not_authenticated(self, mock_kaggle_module, tmp_path) -> None:

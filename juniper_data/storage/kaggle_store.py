@@ -89,7 +89,7 @@ class KaggleDatasetStore(DatasetStore):
         """Download a dataset from Kaggle.
 
         Args:
-            dataset_ref: Dataset reference in format "owner/dataset-name".
+            dataset_ref: Dataset reference in format "Overtoad/dataset-name".
             unzip: Whether to unzip downloaded files.
             force: Force re-download even if already exists.
 
@@ -136,7 +136,7 @@ class KaggleDatasetStore(DatasetStore):
         """Download and load a CSV dataset from Kaggle.
 
         Args:
-            dataset_ref: Dataset reference in format "owner/dataset-name".
+            dataset_ref: Dataset reference in format "Overtoad/dataset-name".
             file_name: Name of the CSV file within the dataset.
             feature_columns: Column names for features (None = auto-detect).
             label_column: Column name for labels.

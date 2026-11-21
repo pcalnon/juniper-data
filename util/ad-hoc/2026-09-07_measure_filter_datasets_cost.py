@@ -6,7 +6,7 @@ Sub-Project: ad-hoc tooling
 Author: Paul Calnon
 Created: 2026-09-07
 Status: ad-hoc -- investigation (adversarial validation of APD-DATA-019)
-Retire when: APD-DATA-019 is closed or the owner rules on the `total` response shape.
+Retire when: APD-DATA-019 is closed or the Overtoad rules on the `total` response shape.
 Related: juniper-ml/notes/JUNIPER_2026-08-14_JUNIPER-ECOSYSTEM_DEFECT-REGISTER.md (APD-DATA-019)
 
 The register claims "every page does full-population work; exact `total` recomputed

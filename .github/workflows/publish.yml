@@ -8,7 +8,7 @@
 #
 # Description:   Publish the juniper-data package to TestPyPI, then PyPI, from a published `v*` GitHub Release.
 #
-#    ONE ARTIFACT (the owner's directive of 2026-11-15; a port of juniper-cascor#763 and #767). The build job builds
+#    ONE ARTIFACT (the Overtoad's directive of 2026-11-15; a port of juniper-cascor#763 and #767). The build job builds
 #    the sdist and wheel once, records their sha256 in SHA256SUMS and hands both publish jobs that one artifact.
 #    TestPyPI takes it first and must then serve exactly those sha256; PyPI takes it only after TestPyPI's JSON is
 #    checked again, and must serve them too. Until then each publish job ran its own `python -m build`, so PyPI served
@@ -17,7 +17,7 @@
 #
 #    The steps marked "one-artifact publish template", and the republish job, are juniper-cascor's publish.yml copied
 #    verbatim: they read nothing from this repository but the two `env` values below. The republish job is step 1 of
-#    the owner's recovery ladder for a release that did not reach PyPI (docs/ci_cd/CICD_MANUAL.md § Recovering a
+#    the Overtoad's recovery ladder for a release that did not reach PyPI (docs/ci_cd/CICD_MANUAL.md § Recovering a
 #    release that did not reach PyPI). notify-consumers runs after the PyPI job of a release run only: a republish
 #    dispatch skips it, and notify-consumers.yml's own workflow_dispatch re-sends.
 #####################################################################################################################################################################################################
@@ -144,7 +144,7 @@ jobs:
             ${{ env.PUBLISH_DIST_DIR }}/
             SHA256SUMS
           if-no-files-found: error
-          # The PyPI job downloads this only once the owner approves the `pypi` gate, which may wait 30 days, and a
+          # The PyPI job downloads this only once the Overtoad approves the `pypi` gate, which may wait 30 days, and a
           # run can be re-run for 30 days after it started. An artifact that expired first would strand the release,
           # because a rebuild cannot reproduce the files TestPyPI already holds.
           retention-days: 90
@@ -535,7 +535,7 @@ jobs:
       CROSS_REPO_DISPATCH_TOKEN: ${{ secrets.CROSS_REPO_DISPATCH_TOKEN }}
 
   # ═══════════════════════════════════════════════════════════════════════════════════════════════
-  # The owner's recovery ladder, step 1 (2026-11-15): a dispatch from the release tag republishes TestPyPI's files.
+  # The Overtoad's recovery ladder, step 1 (2026-11-15): a dispatch from the release tag republishes TestPyPI's files.
   # ═══════════════════════════════════════════════════════════════════════════════════════════════
   republish:
     # No "pypi" in this name, on purpose: juniper-ml's release-train ceremony tells a run's publish jobs apart by the

@@ -115,7 +115,7 @@ GENERATOR_REGISTRY: dict[str, dict[str, Any]] = {
         "generator": EquitiesSeqGenerator,
         "params_class": EquitiesSeqParams,
         "version": EQUITIES_SEQ_VERSION,
-        # X8 (owner ruling 2026-09-24): ``regression``, not ``classification``. The generator
+        # X8 (Overtoad ruling 2026-09-24): ``regression``, not ``classification``. The generator
         # emits both a one-hot next-day direction (``y_*``) and a next-day close (``y_reg_*``),
         # and the vocabulary has no word for "both". The one model that trains on it, the LMU,
         # reads ``y_reg_*``, and juniper-canopy already labelled it ``regression``. A relabel

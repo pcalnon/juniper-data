@@ -537,7 +537,7 @@ class TestGeneratorAvailability:
         422 is deliberate: it is already on this API's surface (the app-level
         RequestValidationError handler answers 422), so the fix introduces no
         new status code -- which matters because ``APD-DATA-022``, the row that
-        would document one in ``responses={}``, is parked as an owner decision.
+        would document one in ``responses={}``, is parked as an Overtoad decision.
         """
         source = tmp_path / "big.csv"
         source.write_text("feature1,feature2,label\n" + "".join(f"{i}.0,{i + 1}.0,A\n" for i in range(40)))
@@ -707,7 +707,7 @@ class TestGeneratorAvailability:
     def test_create_dataset_truncation_survives_persist_and_stays_out_of_npz(self, client: TestClient, tmp_path: Path) -> None:
         """The annotation is permanent metadata; the artifact stays array-only.
 
-        ``persist=False`` only proves the HTTP response. The owner's obligation
+        ``persist=False`` only proves the HTTP response. The Overtoad's obligation
         is that a trainer loading the stored artifact months later -- who never
         saw this response -- still learns the data is a prefix, AND that the
         NPZ itself never grows a non-array ``truncation`` key (pop must happen

@@ -10,7 +10,7 @@ License:     MIT
 Status:      ad-hoc (one-shot measurement supporting the cap constant)
 
 ``APD-DATA-018``'s remedy is to bound the inputs so generation fits inside the
-client's ~30 s request budget. The owner's decision (2026-09-04) is a **byte**
+client's ~30 s request budget. The Overtoad's decision (2026-09-04) is a **byte**
 cap for ``csv_import``. A byte cap is only defensible if it is derived from
 measured throughput rather than picked round -- so this measures the real
 ``CsvImportGenerator`` path on synthetic CSVs of increasing size and reports

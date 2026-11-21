@@ -126,7 +126,7 @@ def external_dataset_id(prefix: str, generator: str, params: dict[str, Any]) -> 
     The recorded ``DatasetMeta.params`` keep the real ``None``.
 
     Args:
-        prefix: Human-readable stem, e.g. ``"hf-mnist"`` or ``"kaggle-owner-iris"``.
+        prefix: Human-readable stem, e.g. ``"hf-mnist"`` or ``"kaggle-Overtoad-iris"``.
         generator: The ``DatasetMeta.generator`` value, e.g. ``"huggingface"``.
         params: The parameters recorded in ``DatasetMeta.params``. Must be JSON
             serialisable -- callers pass plain ``int`` / ``float``, not numpy scalars.

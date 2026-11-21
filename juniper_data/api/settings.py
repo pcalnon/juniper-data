@@ -204,7 +204,7 @@ class Settings(BaseSettings):
     #
     # Because Settings is a pydantic-settings BaseSettings with env_prefix
     # "JUNIPER_DATA_" and an env_file, declaring the fields here gives the
-    # owner's three required opt-in surfaces at once: request parameter,
+    # Overtoad's three required opt-in surfaces at once: request parameter,
     # JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION environment variable, and the
     # matching .env / config-file entry.
     # ``gt=0`` is load-bearing, not decoration. Python's ``read(n)`` treats a
