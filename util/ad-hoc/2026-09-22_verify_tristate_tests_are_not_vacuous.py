@@ -17,7 +17,7 @@ halves fail in *opposite* directions, so one mutation cannot screen both:
 * **M1 -- revert the three resolution sites to the old logical ``or``.**
   ``None or settings.X`` still equals ``settings.X``, so the "omitted defers"
   tests stay green; only the "explicit ``false`` refuses" tests can see it.
-  This is the mutation that restores the behaviour the owner overruled.
+  This is the mutation that restores the behaviour the Overtoad overruled.
 
 * **M2 -- revert the two schemas to a plain ``bool`` defaulting to ``False``.**
   The sites keep their ``is None`` check, which a ``False`` default never
@@ -79,7 +79,7 @@ class Mutation:
 MUTATIONS = [
     Mutation(
         name="M1: three resolution sites back to the logical OR",
-        why="restores the behaviour the owner overruled -- an explicit false cannot refuse",
+        why="restores the behaviour the Overtoad overruled -- an explicit false cannot refuse",
         edits=[
             (
                 CSV_GEN,

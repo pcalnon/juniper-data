@@ -1,6 +1,6 @@
 """ETags, conditional requests and the access-counter split (APD-DATA-017 / -029 / -032).
 
-The owner rulings. 2026-09-11: an ``ETag`` derived from the stored SHA-256, and the access
+The Overtoad rulings. 2026-09-11: an ``ETag`` derived from the stored SHA-256, and the access
 counters moved OUT of the representation so the metadata body can carry a strong one;
 ``Content-Location`` on ``/latest`` naming the canonical ``/{dataset_id}``. Rejected: ETags
 on artifacts only; a weak validator that churns on every read; a 307 from ``/latest``.
@@ -562,7 +562,7 @@ class TestArtifactValidator:
         assert response.status_code == 200
         checksum = store.get_meta(dataset_id).checksum
         assert checksum
-        # WEAK (owner ruling 2026-09-23): the checksum covers the arrays, not the served bytes.
+        # WEAK (Overtoad ruling 2026-09-23): the checksum covers the arrays, not the served bytes.
         assert response.headers["etag"] == weak_etag(checksum)
         assert response.headers["cache-control"] == "private, no-cache"
         assert response.headers["content-disposition"] == f"attachment; filename={dataset_id}.npz"

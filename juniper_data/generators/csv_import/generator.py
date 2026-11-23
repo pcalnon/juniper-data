@@ -153,7 +153,7 @@ class CsvImportGenerator:
         APD-DATA-052. ``None`` -- the schema default, and what an omitted field
         means -- defers to the deployment; ``True`` opts in for this request;
         ``False`` refuses truncation for this request even where the deployment
-        enabled it. The owner ruled that refusing partial data is a CALLER
+        enabled it. The Overtoad ruled that refusing partial data is a CALLER
         right, so the old "a client cannot opt *out* of the operator's choice"
         rule is reversed, not merely relaxed.
 
