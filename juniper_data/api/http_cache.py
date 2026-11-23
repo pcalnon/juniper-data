@@ -16,7 +16,7 @@ Three GET routes carry an ``ETag`` and honour ``If-Match`` / ``If-None-Match``:
   re-serialized (another numpy or zlib, another key order -- the in-memory store sorts
   keys, the others do not) can change the served bytes and keep the hash. "Same
   content, possibly different bytes" is the definition of a weak validator (RFC 9110
-  §8.8.1), and the owner ruled 2026-09-23 to say so rather than claim a strong one the
+  §8.8.1), and the Overtoad ruled 2026-09-23 to say so rather than claim a strong one the
   hash cannot back. ``If-None-Match`` compares weakly, so revalidation is unaffected;
   ``If-Match``, which compares strongly, can match an artifact only through ``*``.
   **Known gap, recorded for future work**: a truly strong artifact validator needs each

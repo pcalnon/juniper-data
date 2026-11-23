@@ -341,7 +341,7 @@ A pull request skips the action, whose `pull_request` path never scans past a pu
 | Environment | Wait Timer | Reviewer Required | Deployments From | Purpose |
 |-------------|-----------|-------------------|------------------|---------|
 | `testpypi` | None | No | Tags `v*`, `rc*`, `hf*`, `juniper-*-v*`, `juniper-*-rc*`, `juniper-*-hf*` | TestPyPI publishing |
-| `pypi` | 5 minutes | Yes (the owner) | The same six tag patterns | Production PyPI publishing: the `pypi` job, and the `republish` job on its dispatch from a release tag |
+| `pypi` | 5 minutes | Yes (the Overtoad) | The same six tag patterns | Production PyPI publishing: the `pypi` job, and the `republish` job on its dispatch from a release tag |
 
 Read on 2026-10-29 with `gh api repos/pcalnon/juniper-data/environments` and each environment's `deployment-branch-policies`. `testpypi`'s only protection rule is the tag policy: no timer and no approval hold the TestPyPI job once a release whose tag matches is published. The waits in that job are for index lag: `Verify TestPyPI serves exactly these files` polls TestPyPI's JSON (up to 20 times, 15 seconds apart), then `publish.yml` sleeps 30 seconds before the install check. The repository also has `copilot` and `dockerhub` environments; no workflow here names either.
 

@@ -7,7 +7,7 @@
 # Copyright:     Copyright (c) 2024-2026 Paul Calnon
 #
 # Description:   Tell the repos that install the juniper-data PACKAGE from PyPI that a release has
-#                landed, so their CI runs against it (juniper-recurrence#178, owner ruling: option 3).
+#                landed, so their CI runs against it (juniper-recurrence#178, Overtoad ruling: option 3).
 #
 #    Why: a consumer lane that is path-scoped to its own directory cannot see a break that arrives
 #    through a dependency. Decision 11 (#369) broke all seven juniper-recurrence bench datasets and

@@ -280,7 +280,7 @@ class TestEveryGeneratorBumpedForDecision11:
         # Decision 11 set a FLOOR, not a fixed point. Until 2026-09-11 this asserted equality,
         # which was right while every generator sat exactly at 3.0.0 and became wrong the
         # moment one of them legitimately moved past it: the equities pair went to 4.0.0 for
-        # the owner rulings on causal share history and the feature set. What the guard is
+        # the Overtoad rulings on causal share history and the feature set. What the guard is
         # actually for is that no generator is BELOW the version that retired ``*_full``,
         # because the dataset ID hashes it and a lower version can serve a cached
         # ``*_full``-bearing artifact. So: major >= 3, and nothing pre-decision-11.
@@ -289,9 +289,9 @@ class TestEveryGeneratorBumpedForDecision11:
         assert not stale, f"generators still on a pre-decision-11 VERSION: {stale}. The dataset ID hashes this, so each one can serve a cached *_full-bearing artifact."
         ahead = {name: version for name, version in versions.items() if version != "3.0.0"}
         # Each generator past 3.0.0, and why:
-        # - equities / equities_seq: 4.0.0 for the owner rulings of 2026-09-09, 5.0.0 for the
+        # - equities / equities_seq: 4.0.0 for the Overtoad rulings of 2026-09-09, 5.0.0 for the
         #   2026-09-15 head-typo regression fix (#404).
-        # - equities_seq alone: 6.0.0 for X8 (owner ruling 2026-09-24), which relabelled its
+        # - equities_seq alone: 6.0.0 for X8 (Overtoad ruling 2026-09-24), which relabelled its
         #   ``task_type`` to ``regression``. That changed the emitted meta and not the arrays,
         #   and the meta is stored with the cached artifact, so the id had to move. This is the
         #   first time the pair's versions differ: flat ``equities`` keeps ``classification``.

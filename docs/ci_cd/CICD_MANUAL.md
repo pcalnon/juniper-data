@@ -361,7 +361,7 @@ The `notify-consumers` job runs only after `pypi` succeeds, so a republish dispa
 
 #### One artifact, checked against TestPyPI
 
-Until 2026-11-15 the `testpypi` and `pypi` jobs each ran `python -m build`, so PyPI served a second build of every release: the 0.17.1 wheel is `cce2c167…` on PyPI and `3b8f1a84…` on TestPyPI, 0.17.0's `680c37b5…` against `2842d5b1…`, and 0.16.0's `8560d60c…` against `ead4708d…`; their sdists differ too. The owner's directive (2026-11-15): "deploy to pypi should send the same artifact that was already sent to testpypi. an identical hash check, of the artifacts after testpypi deploy and prior to pypi deploy, might also be helpful here to prevent this from slipping through the cracks again."
+Until 2026-11-15 the `testpypi` and `pypi` jobs each ran `python -m build`, so PyPI served a second build of every release: the 0.17.1 wheel is `cce2c167…` on PyPI and `3b8f1a84…` on TestPyPI, 0.17.0's `680c37b5…` against `2842d5b1…`, and 0.16.0's `8560d60c…` against `ead4708d…`; their sdists differ too. The Overtoad's directive (2026-11-15): "deploy to pypi should send the same artifact that was already sent to testpypi. an identical hash check, of the artifacts after testpypi deploy and prior to pypi deploy, might also be helpful here to prevent this from slipping through the cracks again."
 
 Now both publish jobs upload the build job's artifact, and each checks it against `SHA256SUMS` first. TestPyPI's JSON must list exactly those files and sha256 after the TestPyPI upload, before the install check, and again before the PyPI upload; PyPI's JSON must list them after the PyPI upload. An index never takes a second file under a name it already holds, so TestPyPI's record witnesses what the install check tested. Only the jobs that upload hold `id-token: write`: the workflow grants nothing (`permissions: {}`), `Build and Validate` holds `contents: read` and `actions: read`, `Publish to TestPyPI` `contents: read` and `id-token: write`, `Publish to PyPI` `id-token: write`, the republish job `actions: read` and `id-token: write`, and `notify-consumers` nothing.
 
@@ -369,7 +369,7 @@ The steps marked `One-artifact publish template`, and the whole `republish` job,
 
 #### Recovering a release that did not reach PyPI
 
-The owner's ladder (ruling of 2026-11-15), in this order. Every rung publishes the files TestPyPI took, or nothing:
+The Overtoad's ladder (ruling of 2026-11-15), in this order. Every rung publishes the files TestPyPI took, or nothing:
 
 1. **Republish TestPyPI's files.** Dispatch `publish.yml` from the release tag:
 

@@ -382,7 +382,7 @@ class TestVersion:
 class TestInputByteCap:
     """APD-DATA-018: the csv_import input bound, its refusal, and its annotation.
 
-    The owner's decision (2026-09-04): cap in **bytes**; over-cap **truncates**
+    The Overtoad's decision (2026-09-04): cap in **bytes**; over-cap **truncates**
     rather than rejecting outright, but only after the caller has explicitly
     opted in, and the resulting dataset carries a **permanent** annotation.
     Every arm below pins one half of that; the refusal arm and the annotation
@@ -731,7 +731,7 @@ class TestInputByteCap:
         ``test_request_cannot_opt_out_of_deployment_allow_truncation``, which
         pinned the OR's asymmetry -- that a caller passing
         ``allow_truncation=false`` could not undo
-        ``JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION``. The owner overruled that
+        ``JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION``. The Overtoad overruled that
         design: refusing partial data is the CALLER's right (the spec's
         "option 3" -- fail the load completely), because a caller asking for
         MORE safety is not escalating privilege. It was inverted rather than

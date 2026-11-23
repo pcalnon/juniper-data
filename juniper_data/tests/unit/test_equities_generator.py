@@ -408,7 +408,7 @@ class TestEquitiesParams:
         # Fleet-wide coverage lives in `test_val_emission_guards.py` -- this guard existed
         # for exactly one of sixteen generators, which is how the decision-11 bump came to
         # be skipped for the other fifteen.
-        # 4.0.0 at the 2026-09-09 owner rulings. Two of them are breaking on their own --
+        # 4.0.0 at the 2026-09-09 Overtoad rulings. Two of them are breaking on their own --
         # the default matrix lost a column (``adj_close``, APD-DATA-041) and ``cost_basis`` is
         # absent before the purchase date instead of constant (APD-DATA-042) -- and three more
         # change values without changing shape: the as-of publication history, the absolute
@@ -785,7 +785,7 @@ class TestUniverseSymbolCap:
         assert truncation["imported"] == 14
 
     def test_explicit_false_refuses_against_a_deployment_opt_in(self) -> None:
-        """APD-DATA-052: the owner ruled refusing partial data is a CALLER right.
+        """APD-DATA-052: the Overtoad ruled refusing partial data is a CALLER right.
 
         This is the equities half of the inversion applied to
         ``test_csv_import_generator.py::test_request_can_opt_out_of_deployment_allow_truncation``.
@@ -1181,7 +1181,7 @@ class TestFreeFields:
 class TestUnresolvableFundamentals:
     """The fail / accept / drop contract for rows no rescue path could recover.
 
-    The owner's direction (2026-09-05): a zero-filled fundamental is acceptable
+    The Overtoad's direction (2026-09-05): a zero-filled fundamental is acceptable
     only as a **warning** when the value can be rescued. When it cannot, the
     caller must take an explicit path — and the default is to refuse, because a
     dataset silently carrying `market_cap = 0.0` is exactly the failure this
@@ -1620,7 +1620,7 @@ class TestCostBasisUnderDrop:
     ``cost_basis`` is causal (APD-DATA-042): every row before the purchase session carries NaN.
     ``drop`` used to remove only the rows lacking shares, so a purchase after the first session
     shipped NaN in an artifact the caller had asked to be complete. This applies the plan's
-    recommended R3, pending the owner's ruling (alternatives: a documented finite sentinel;
+    recommended R3, pending the Overtoad's ruling (alternatives: a documented finite sentinel;
     dropping rows without refusing): under ``drop`` that request is refused, and any
     pre-purchase row that still arrives is dropped exactly like a missing-share row. ``nan``
     and ``zero`` are unchanged, and ``test_nan_and_zero_still_emit_the_pre_purchase_rows`` pins
