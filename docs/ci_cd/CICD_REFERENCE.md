@@ -2,9 +2,9 @@
 
 ## juniper-data CI/CD Jobs, Hooks, and Configuration
 
-**Version:** 0.4.8
+**Version:** 0.4.9
 **Status:** Active
-**Last Updated:** November 15, 2026
+**Last Updated:** November 24, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -34,7 +34,7 @@
 | `.github/workflows/ci.yml` | Main CI pipeline (v0.4.0) | Push, PR, schedule, dispatch |
 | `.github/workflows/publish.yml` | PyPI publishing: one build, uploaded to TestPyPI then PyPI and checked by sha256 against each | GitHub Release published; `workflow_dispatch` from a release tag (republish only) |
 | `.github/workflows/notify-consumers.yml` | Tell PyPI consumers a release is installable, then wait for a run | `workflow_call` from `publish.yml` after PyPI; `workflow_dispatch` to re-send |
-| `.github/workflows/lockfile-update.yml` | Lockfile auto-update (v0.1.0) | Push to `dependabot/pip/**` by `dependabot[bot]`; `pull_request` when `pyproject.toml` changes (same repo, not `release/**`) |
+| `.github/workflows/lockfile-update.yml` | Lockfile auto-update (v0.1.1) | Push to `dependabot/pip/**` by `dependabot[bot]`; `pull_request` when `pyproject.toml` changes (same repo, not `release/**`) |
 | `.github/workflows/codeql.yml` | Code quality analysis (v1.0.0) | Push to main/develop, PRs, weekly |
 | `.github/workflows/publish-image.yml` | GHCR image (amd64 + arm64). Serve-and-version gate runs before any tag | Release `v*`, PR on image inputs (build-only), manual |
 | `.github/workflows/claude.yml` | `@claude` assistant | Issue comments, review comments, submitted reviews, issue opened/assigned |
@@ -420,6 +420,6 @@ The `dependency-docs` job runs that command after `conda-incubator/setup-minicon
 
 ---
 
-**Last Updated:** November 15, 2026
-**Version:** 0.4.8
+**Last Updated:** November 24, 2026
+**Version:** 0.4.9
 **Maintainer:** Paul Calnon

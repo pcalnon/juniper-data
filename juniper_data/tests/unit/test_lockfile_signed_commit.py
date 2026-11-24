@@ -12,6 +12,13 @@ Dependabot with no PAT is a green skip; every other actor without it
 fails closed. The freshness check compares resolved pins under ``--constraint``
 and must not treat a comment, a blank line, or a reordered header as drift.
 
+``gh api graphql`` exits 1 on a response that carries GraphQL ``errors`` and on an
+HTTP failure, after writing the body to stdout and ``gh: <message>`` to stderr
+(cli/cli ``pkg/cmd/api/api.go``, ``processResponse``). The stub fails the same way.
+Called bare under ``set -e``, that exit ended the commit step before its own
+diagnostic; the step now captures gh's status and stderr, prints the diagnostic, and
+fails, with the token's value masked in anything gh printed (juniper-canopy#814).
+
 These tests extract the workflow's own shell. ``uv`` and ``gh`` are PATH stubs.
 Nothing is published and no token is a credential. Both steps hardcode scratch
 files under ``/tmp/``; each test rewrites that prefix to its own directory, so
@@ -46,6 +53,7 @@ EXTRAS = ["api", "observability", "mnist", "equities"]
 HEADLINE = "[dependabot skip] Update requirements.lock"
 TOKEN_SENTINEL = "pat-sentinel-not-a-credential"
 RUNNER_TMP = "/tmp/"  # nosec B108 - the prefix both steps hardcode; each test rewrites it to its own directory
+STALE = 'Expected branch to point to "abc" but it did not. Pull and try again.'
 
 
 def _relocated(script: str, scratch: Path) -> str:
@@ -264,6 +272,7 @@ class TestSignedCommit:
         *,
         result_body: str = "",
         gh_rc: int = 0,
+        gh_err: str = "gh failed",
         extra_env: dict[str, str] | None = None,
         omit: tuple[str, ...] = (),
         stubs: dict[str, str] | None = None,
@@ -272,8 +281,9 @@ class TestSignedCommit:
         bin_dir.mkdir()
         argv_file = scratch.parent / "gh-argv.txt"
         stub = bin_dir / "gh"
+        # The real CLI's order: the response body on stdout, then, when it fails, its message on stderr and the exit status.
         stub.write_text(
-            '#!/usr/bin/env bash\nprintf \'%s\\n\' "$@" > "$GH_ARGV_FILE"\nif [[ "${GH_RC}" != "0" ]]; then\n  echo "gh failed" >&2\n  exit "$GH_RC"\nfi\nprintf \'%s\\n\' "$GH_RESULT_BODY"\n',
+            '#!/usr/bin/env bash\nprintf \'%s\\n\' "$@" > "$GH_ARGV_FILE"\nprintf \'%s\' "$GH_RESULT_BODY"\nif [[ "${GH_RC}" != "0" ]]; then\n  printf \'%s\\n\' "$GH_ERR" >&2\n  exit "$GH_RC"\nfi\n',
             encoding="utf-8",
         )
         stub.chmod(0o755)
@@ -290,6 +300,7 @@ class TestSignedCommit:
             BRANCH="dependabot/pip/numpy-1.2.3",
             GH_ARGV_FILE=str(argv_file),
             GH_RC=str(gh_rc),
+            GH_ERR=gh_err,
             GH_RESULT_BODY=result_body,
         )
         if extra_env:
@@ -320,7 +331,8 @@ class TestSignedCommit:
         proc, argv_text = self._run_commit(repo, scratch, result_body=body)
         combined = proc.stdout + proc.stderr
         assert proc.returncode == 0, combined
-        assert "Signed lockfile commit: https://example.test/commit/abc" in combined
+        assert proc.stdout == "Signed lockfile commit: https://example.test/commit/abc\n"
+        assert proc.stderr == ""
         assert TOKEN_SENTINEL not in combined
         assert argv_text is not None
         recorded = argv_text.splitlines()
@@ -341,6 +353,13 @@ class TestSignedCommit:
         assert "createCommitOnBranch" in payload["query"]
 
     def test_graphql_errors_are_not_a_signed_commit(self, tmp_path: Path, scratch: Path) -> None:
+        """An ``errors`` body from a ``gh`` that exits 0.
+
+        The real CLI exits 0 on one only when it finds no message to print, for example a single
+        error without a ``message`` (api.go ``parseErrorResponse`` joins the messages, and an empty
+        join is no error). The exit-1 shape is
+        ``test_a_graphql_error_that_fails_gh_prints_the_steps_diagnostic``.
+        """
         repo = _init_repo(tmp_path, "numpy==1.24.0\n")
         (repo / "requirements.lock").write_text("numpy==9.9.9\n", encoding="utf-8")
         body = '{"errors":[{"message":"expectedHeadOid mismatch"}]}'
@@ -360,6 +379,109 @@ class TestSignedCommit:
         assert argv_text is not None
         assert "api" in argv_text
         assert "Signed lockfile commit" not in combined
+
+    def test_a_graphql_error_that_fails_gh_prints_the_steps_diagnostic(self, tmp_path: Path, scratch: Path) -> None:
+        """The real CLI's shape: the ``errors`` body on stdout, ``gh: <message>`` on stderr, exit 1.
+
+        A bare ``gh api graphql`` under ``set -e`` ended the step at that exit, so the step's own
+        ``createCommitOnBranch failed`` diagnostic never printed.
+        """
+        repo = _init_repo(tmp_path, "numpy==1.24.0\n")
+        (repo / "requirements.lock").write_text("numpy==9.9.9\n", encoding="utf-8")
+        body = {"data": {"createCommitOnBranch": None}, "errors": [{"type": "STALE_DATA", "message": STALE}]}
+        proc, argv_text = self._run_commit(repo, scratch, result_body=json.dumps(body), gh_rc=1, gh_err=f"gh: {STALE}")
+        combined = proc.stdout + proc.stderr
+        assert proc.returncode == 1, combined
+        assert f"gh: {STALE}" in proc.stderr
+        assert "::error::createCommitOnBranch failed" in proc.stdout
+        assert "lockfile NOT committed" in proc.stdout
+        assert "STALE_DATA" in proc.stdout
+        assert "gh exited 1" in proc.stdout
+        assert "re-run this job" in proc.stdout
+        assert "gh api graphql failed" not in combined
+        assert "Signed lockfile commit" not in combined
+        assert TOKEN_SENTINEL not in combined
+        assert argv_text is not None
+
+    @pytest.mark.parametrize(
+        ("result_body", "gh_err", "printed", "names_the_token"),
+        [
+            ("<html>502 Bad Gateway</html>\n", "gh: HTTP 502", "empty or not JSON", False),
+            (json.dumps({"message": "Bad credentials", "status": "401"}), "gh: Bad credentials (HTTP 401)", '"Bad credentials"', True),
+            ("", "error connecting to api.github.com", "empty or not JSON", False),
+        ],
+        ids=["http-502-html", "http-401-json", "no-response"],
+    )
+    def test_an_http_failure_prints_that_the_commit_is_unknown(self, tmp_path: Path, scratch: Path, result_body: str, gh_err: str, printed: str, names_the_token: bool) -> None:
+        """No GraphQL ``errors``: the request failed at the HTTP level or before any response.
+
+        The log alone cannot show whether a commit landed (an HTTP error is not proof that the
+        mutation did not run), so the step does not say nothing was committed.
+        """
+        repo = _init_repo(tmp_path, "numpy==1.24.0\n")
+        (repo / "requirements.lock").write_text("numpy==9.9.9\n", encoding="utf-8")
+        proc, _argv = self._run_commit(repo, scratch, result_body=result_body, gh_rc=1, gh_err=gh_err)
+        combined = proc.stdout + proc.stderr
+        assert proc.returncode == 1, combined
+        assert gh_err in proc.stderr
+        assert "::error::gh api graphql failed (exit 1)" in proc.stdout
+        assert "cannot show whether the lock commit landed" in proc.stdout
+        assert printed in proc.stdout
+        assert "Check dependabot/pip/numpy-1.2.3 for the lock commit" in proc.stdout
+        assert ("CROSS_REPO_DISPATCH_TOKEN is invalid or expired" in proc.stdout) is names_the_token
+        assert "createCommitOnBranch failed" not in combined
+        assert "Signed lockfile commit" not in combined
+        assert TOKEN_SENTINEL not in combined
+
+    def test_gh_output_is_printed_with_the_token_masked(self, tmp_path: Path, scratch: Path) -> None:
+        """What gh printed reaches the log through the step's mask, never with the token's value."""
+        repo = _init_repo(tmp_path, "numpy==1.24.0\n")
+        (repo / "requirements.lock").write_text("numpy==9.9.9\n", encoding="utf-8")
+        message = f"token {TOKEN_SENTINEL} lacks access ({TOKEN_SENTINEL})"
+        body = {"errors": [{"type": "FORBIDDEN", "message": message}]}
+        proc, _argv = self._run_commit(repo, scratch, result_body=json.dumps(body), gh_rc=1, gh_err=f"gh: {message}")
+        combined = proc.stdout + proc.stderr
+        assert proc.returncode == 1, combined
+        assert TOKEN_SENTINEL not in combined
+        assert "gh: token *** lacks access (***)" in proc.stderr
+        assert "token *** lacks access (***)" in proc.stdout
+        assert "createCommitOnBranch failed" in proc.stdout
+
+    def test_an_http_failure_body_is_printed_with_the_token_masked(self, tmp_path: Path, scratch: Path) -> None:
+        """The HTTP-failure branch prints a JSON body through the same mask as gh's message."""
+        repo = _init_repo(tmp_path, "numpy==1.24.0\n")
+        (repo / "requirements.lock").write_text("numpy==9.9.9\n", encoding="utf-8")
+        body = {"message": f"bad token {TOKEN_SENTINEL}", "status": "403"}
+        proc, _argv = self._run_commit(repo, scratch, result_body=json.dumps(body), gh_rc=1, gh_err=f"gh: bad token {TOKEN_SENTINEL} (HTTP 403)")
+        combined = proc.stdout + proc.stderr
+        assert proc.returncode == 1, combined
+        assert TOKEN_SENTINEL not in combined
+        assert "gh: bad token *** (HTTP 403)" in proc.stderr
+        assert "gh api graphql failed (exit 1)" in proc.stdout
+        assert '"bad token ***"' in proc.stdout
+
+    @pytest.mark.parametrize(
+        ("gh_rc", "result_body", "printed"),
+        [
+            (4, "", "gh api graphql failed (exit 4)"),
+            (0, json.dumps({"errors": [{"type": "X"}]}), "gh exited 0"),
+        ],
+        ids=["exit-4-no-token", "exit-0-errors-without-a-message"],
+    )
+    def test_the_diagnostic_names_the_exit_status_gh_gave(self, tmp_path: Path, scratch: Path, gh_rc: int, result_body: str, printed: str) -> None:
+        """Both diagnostics report gh's own exit status, and the step exits 1 whatever that was.
+
+        gh exits 4 when it has no usable token (cli/cli ``internal/ghcmd/cmd.go``, ``exitAuth``),
+        and 0 on an ``errors`` body that carries no message.
+        """
+        repo = _init_repo(tmp_path, "numpy==1.24.0\n")
+        (repo / "requirements.lock").write_text("numpy==9.9.9\n", encoding="utf-8")
+        proc, _argv = self._run_commit(repo, scratch, result_body=result_body, gh_rc=gh_rc, gh_err="gh: set the GH_TOKEN environment variable")
+        combined = proc.stdout + proc.stderr
+        assert proc.returncode == 1, combined
+        assert printed in proc.stdout
+        assert "Signed lockfile commit" not in combined
+        assert TOKEN_SENTINEL not in combined
 
     @pytest.mark.parametrize(
         ("base64_stub", "expected"),
