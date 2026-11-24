@@ -251,7 +251,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `test_generate_skips_ticker_shorter_than_lookback`) open the gate and assert the record.
   - Applied by juniper-ml `util/ad-hoc/2026-10-19_apply_w5_7_producer_guards.py`.
 
+- **A telemetry test that runs on every FastAPI the floor admits.** In
+  `juniper_data/tests/unit/test_api_app.py`, #454's `test_create_app_disables_fastapi_native_telemetry` reads
+  `app._telemetry` and skips below FastAPI 0.142. There `telemetry=` is not a parameter, and FastAPI keeps it, as
+  given, in `app.extra`. The new `test_create_app_passes_the_telemetry_opt_out_on_every_fastapi` reads whichever the
+  installed FastAPI has, so it runs there too. It sets `FASTAPI_OTEL_AUTO_CONFIGURE=true` before building the app:
+  from 0.143 an omitted `auto_configure` takes its default from that variable, so a dropped `auto_configure` reads
+  `True`; the other four switches default to `True` anyway.
+  - Measured against 11 mutants of `create_app`'s `telemetry=` (the keyword removed, each switch dropped, each turned
+    on), under `JuniperData`'s FastAPI 0.137.0 and under 0.163.1. The new test fails on all 22 runs and passes on the
+    unmutated source. The ported test skips on 0.137.0 and passes on 0.163.1 with `auto_configure` dropped.
+
 ### Fixed
+
+- **`AGENTS.md` no longer lists `/docs`, `/openapi.json` and `/redoc` as auth-exempt.** `EXEMPT_PATHS`
+  (`juniper_data/api/constants.py`) holds the three health paths, `/metrics` and `/metrics/` (APD-DATA-024). The API
+  Documentation list no longer says the explorers can be "disabled via configuration". It now says what
+  `create_app` does: `/docs` and `/redoc` are mounted only while no API key is set, and `/openapi.json` is always
+  served, behind the key once one is set. The file is 8 characters shorter, within its memory budget.
 
 - **PyPI now receives the files TestPyPI took: `publish.yml` builds once, and the run checks every upload by sha256
   against TestPyPI** (the Overtoad's directive of 2026-11-15: "deploy to pypi should send the same artifact that was

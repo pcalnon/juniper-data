@@ -5,7 +5,7 @@
 **Author**: Paul Calnon
 **License**: MIT License
 **Version**: 0.17.1
-**Last Updated**: 2026-11-23
+**Last Updated**: 2026-11-24
 
 ---
 
@@ -268,7 +268,7 @@ Each storage backend, its configuration, and the durability guarantee it does an
 - Enabled when `JUNIPER_DATA_API_KEYS` is set (comma-separated list)
 - Validated via `X-API-Key` request header
 - Docker secrets supported via `JUNIPER_DATA_API_KEYS_FILE`
-- Exempt paths: `/v1/health*`, `/docs`, `/openapi.json`, `/redoc`
+- Exempt paths: `/v1/health*`, `/metrics` (not the docs: APD-DATA-024)
 
 ### Rate Limiting
 
@@ -301,8 +301,8 @@ Each storage backend, its configuration, and the durability guarantee it does an
 
 ### API Documentation
 
-- `/docs` (Swagger) and `/redoc` endpoints available in development
-- Conditional: can be disabled via configuration for production deployments
+- `/docs` and `/redoc` are mounted only while no API key is set
+- `/openapi.json` is always served, behind the key once one is set
 
 ### Security Scanning (CI)
 
