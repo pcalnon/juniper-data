@@ -6,7 +6,7 @@ Sub-Project: ad-hoc tooling
 Author: Paul Calnon
 Created: 2026-09-15
 Status: ad-hoc -- one-off
-Retire when: RETAINED -- ad-hoc scripts are kept as provenance of record (owner policy 2026-08-25)
+Retire when: RETAINED -- ad-hoc scripts are kept as provenance of record (Overtoad policy 2026-08-25)
 Related: juniper-data#404; round-39 round-2 validation lane B1
 
 Compares delivered MULTISETS, not maxima -- round 1 established that a maxima-only comparison

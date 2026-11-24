@@ -76,7 +76,7 @@ class TestSettings:
             assert settings.storage_path == "/env/path"
 
     def test_csv_import_bounds_are_settable_from_the_environment(self) -> None:
-        """The owner-required CLI / .env surface: JUNIPER_DATA_CSV_IMPORT_*."""
+        """The Overtoad-required CLI / .env surface: JUNIPER_DATA_CSV_IMPORT_*."""
         env = {k: v for k, v in os.environ.items() if not k.startswith("JUNIPER_DATA_")}
         env["JUNIPER_DATA_CSV_IMPORT_MAX_BYTES"] = "4096"
         env["JUNIPER_DATA_CSV_IMPORT_ALLOW_TRUNCATION"] = "true"

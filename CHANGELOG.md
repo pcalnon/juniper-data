@@ -67,7 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - A release whose tag the semver rules missed has already pushed `:latest` when the version-tag check fails it.
       `docs/REFERENCE.md` says so, in place of a "Do not" about a green merge job that applied only `:latest`,
       which that check makes impossible.
-- **`make coverage` runs CI's per-file coverage gate too, so it can now fail where it used to pass (owner ruling
+- **`make coverage` runs CI's per-file coverage gate too, so it can now fail where it used to pass (Overtoad ruling
   2026-11-01).** `util/run_coverage.bash` (0.2.0) adds `--cov-report=json:reports/coverage.json` to the unit-lane run.
   After the aggregate gate and `scripts/check_module_coverage.py`'s advisory listing, it runs
   `juniper-coverage-gap-map --coverage-json reports/coverage.json --enforce`, the `Unit Tests + Coverage` step: 90%
@@ -82,13 +82,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
       aggregate 97.82%, and `Enforcing gate: PASS  (per-file statement >= 90.0%, sub-module pooled >= 95.0%)`.
   - **Where it was found.** juniper-data#500's lane, carried in juniper-ml's flood-3 record
     (`notes/JUNIPER_2026-10-08_JUNIPER-ECOSYSTEM_CURSOR-FLOOD-3-DISPOSITION.md` §4).
-- **`agents-md-touch-up.yml` pins `actions/checkout` to a commit SHA (owner ruling 2026-11-01).** It checked out with
+- **`agents-md-touch-up.yml` pins `actions/checkout` to a commit SHA (Overtoad ruling 2026-11-01).** It checked out with
   the `v7.0.1` tag, the one exception to the SHA pins in `.github/workflows/`. It now uses
   `3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1`, the SHA that tag resolves to and the one the other workflows
   use. `docs/ci_cd/CICD_REFERENCE.md` drops the exception and lists the workflow in the pin table. The same tag pin
   stands in the other seven repositories' copies of this workflow, juniper-ml's included; this change is
   juniper-data's alone.
-- **A failed Bandit SARIF upload, or a missing SARIF, now fails `Security Scans` on a pull request (owner ruling
+- **A failed Bandit SARIF upload, or a missing SARIF, now fails `Security Scans` on a pull request (Overtoad ruling
   2026-10-30).** `.github/workflows/ci.yml`'s upload step is `continue-on-error: ${{ github.event_name != 'pull_request' }}`,
   as in juniper-cascor#735, and on a PR it runs even when bandit wrote no SARIF. The required `Bandit` check is created
   by code scanning from that upload, so before this a failed upload, or a bandit that wrote no file
@@ -103,17 +103,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/ci_cd/CICD_REFERENCE.md` name both consumers, and `test_notify_consumers_dispatch.py` pins the two-repo
   matrix. Whether `CROSS_REPO_DISPATCH_TOKEN` can dispatch into canopy is settled by a `workflow_dispatch`
   re-send for 0.17.1 once this merges.
-- **Temporary files go in the repo's gitignored `tmp/`, never `/tmp` (owner directive, 2026-10-26), and the
-  owner's rulings on it are applied.** `/tmp/` is ignored, the one test that wrote under `/tmp` uses
+- **Temporary files go in the repo's gitignored `tmp/`, never `/tmp` (Overtoad directive, 2026-10-26), and the
+  Overtoad's rulings on it are applied.** `/tmp/` is ignored, the one test that wrote under `/tmp` uses
   `tmp_path`, and `AGENTS.md` § Temporary files carries the rule and the rulings, retention included.
   `juniper-check-doc-links` passes `--exclude tmp` in the pre-commit hook and in CI, and `.dockerignore` lists
   `tmp/` (beside the `*.tmp` file suffix); nothing keeps pytest out of it, and counting scripts are to choose
-  their scope as to `tmp/` deliberately (the owner's revised ruling).
+  their scope as to `tmp/` deliberately (the Overtoad's revised ruling).
 
 ### Added
 
 - **CI runs the unit tests on Python 3.15 as well, as an informational leg that blocks nothing.** Phase 1 of the
-  ecosystem's Python 3.15 migration (the owner's request of 2026-11-14): 3.15 results are reported, and no merge,
+  ecosystem's Python 3.15 migration (the Overtoad's request of 2026-11-14): 3.15 results are reported, and no merge,
   commit or deployment waits on them.
   - `unit-tests` gains `Unit Tests + Coverage (Python 3.15 on ubuntu-latest)`, an `include` entry with
     `experimental: true`. The job's existing `continue-on-error: ${{ matrix.experimental == true }}` applies to that
@@ -127,7 +127,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     spells out the `(<version>)` suffix GitHub used to append, so the three existing legs post the same names.
   - `requires-python`, the classifiers, the mypy and ruff targets, pre-commit and the Docker base are unchanged.
   - `docs/ci_cd/CICD_MANUAL.md`, `docs/ci_cd/CICD_REFERENCE.md` and `docs/REFERENCE.md` describe the leg.
-- **The daily `Scheduled Tests` workflow also runs the 41 benchmarks, untimed, as a smoke run.** The owner's ruling
+- **The daily `Scheduled Tests` workflow also runs the 41 benchmarks, untimed, as a smoke run.** The Overtoad's ruling
   of 2026-11-14: `scheduled-tests.yml`'s selector `-m "slow or integration"` becomes
   `-m "slow or integration or performance"`, so the pytest-benchmark benchmarks in `juniper_data/tests/performance/`
   (marked `performance`, which no workflow selected) run on each of its daily legs: 3.12, 3.13, 3.14 and the
@@ -251,10 +251,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `test_generate_skips_ticker_shorter_than_lookback`) open the gate and assert the record.
   - Applied by juniper-ml `util/ad-hoc/2026-10-19_apply_w5_7_producer_guards.py`.
 
+- **A telemetry test that runs on every FastAPI the floor admits.** In
+  `juniper_data/tests/unit/test_api_app.py`, #454's `test_create_app_disables_fastapi_native_telemetry` reads
+  `app._telemetry` and skips below FastAPI 0.142. There `telemetry=` is not a parameter, and FastAPI keeps it, as
+  given, in `app.extra`. The new `test_create_app_passes_the_telemetry_opt_out_on_every_fastapi` reads whichever the
+  installed FastAPI has, so it runs there too. It sets `FASTAPI_OTEL_AUTO_CONFIGURE=true` before building the app:
+  from 0.143 an omitted `auto_configure` takes its default from that variable, so a dropped `auto_configure` reads
+  `True`; the other four switches default to `True` anyway.
+  - Measured against 11 mutants of `create_app`'s `telemetry=` (the keyword removed, each switch dropped, each turned
+    on), under `JuniperData`'s FastAPI 0.137.0 and under 0.163.1. The new test fails on all 22 runs and passes on the
+    unmutated source. The ported test skips on 0.137.0 and passes on 0.163.1 with `auto_configure` dropped.
+
 ### Fixed
 
+- **`AGENTS.md` no longer lists `/docs`, `/openapi.json` and `/redoc` as auth-exempt.** `EXEMPT_PATHS`
+  (`juniper_data/api/constants.py`) holds the three health paths, `/metrics` and `/metrics/` (APD-DATA-024). The API
+  Documentation list no longer says the explorers can be "disabled via configuration". It now says what
+  `create_app` does: `/docs` and `/redoc` are mounted only while no API key is set, and `/openapi.json` is always
+  served, behind the key once one is set. The file is 8 characters shorter, within its memory budget.
+
 - **PyPI now receives the files TestPyPI took: `publish.yml` builds once, and the run checks every upload by sha256
-  against TestPyPI** (the owner's directive of 2026-11-15: "deploy to pypi should send the same artifact that was
+  against TestPyPI** (the Overtoad's directive of 2026-11-15: "deploy to pypi should send the same artifact that was
   already sent to testpypi. an identical hash check, of the artifacts after testpypi deploy and prior to pypi deploy,
   might also be helpful here to prevent this from slipping through the cracks again."). The `testpypi` and `pypi` jobs
   each ran `python -m build`, so PyPI served a second build of every release: the 0.17.1 wheel is `cce2c167…` on PyPI
@@ -279,7 +296,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `Build and Validate` gets `contents: read` and `actions: read`, `Publish to TestPyPI` `contents: read` and
     `id-token: write`, and `Publish to PyPI` `id-token: write`, so the build, which runs the build backend, can mint no
     OIDC token.
-  - **Recovery, in the owner's order (ruling of 2026-11-15).** A `workflow_dispatch` from the release tag with
+  - **Recovery, in the Overtoad's order (ruling of 2026-11-15).** A `workflow_dispatch` from the release tag with
     `republish_from_testpypi` runs only the new job `Republish the tested files (dispatch only)`, behind the same
     `pypi` gate. It builds nothing: it downloads the version's files from TestPyPI, checks each against TestPyPI's JSON
     and, while the release run's artifact exists, against its `SHA256SUMS`, uploads them, and checks PyPI's JSON. If
@@ -306,7 +323,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     did not reach PyPI; `docs/ci_cd/CICD_REFERENCE.md` (0.4.8), `docs/REFERENCE.md` (0.4.12),
     `docs/ci_cd/CICD_QUICK_START.md` (0.4.6) and `docs/DEVELOPER_CHEATSHEET.md` (0.4.8).
 
-- **A failing informational Python 3.15 leg no longer shows as a failed check** (the owner's report of 2026-11-15:
+- **A failing informational Python 3.15 leg no longer shows as a failed check** (the Overtoad's report of 2026-11-15:
   the 3.15 tests "are supposed to produce an informational message without affecting the ability of code to commit,
   push, PR, or merge"). juniper-data#538 measured the gap here: with its 3.15 leg failed on purpose (run
   43655144734), the Quality Gate passed but the leg's own check read `failure`. A pull request with such a leg shows
@@ -329,7 +346,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `PASS: aggregate >= 80.0%; K of N modules below 85.0% (warned above, not enforced)`. Exit codes are unchanged.
   Left over from juniper-data#500.
 - **A rate-limited or throttled caller is told to wait until the window actually rolls over: `Retry-After` and
-  `X-RateLimit-Reset` round up and are never 0 (the owner's flood-4 round-2 ruling, "Both in round 2").**
+  `X-RateLimit-Reset` round up and are never 0 (the Overtoad's flood-4 round-2 ruling, "Both in round 2").**
   `juniper_data/api/security.py`:
   - `RateLimiter.check` returned `int(window - elapsed)` on the rejected and the allowed path, with no floor. A
     sub-second remainder became `0`, so the 429 in the last second of every window said `Retry-After: 0`, telling the
@@ -373,7 +390,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `docs/ci_cd/CICD_MANUAL.md` § Quality Gate and § Job: `required-checks` say the same. The
     latter also listed `dependency-docs` and `security` as success-only and omitted `docker-build`.
 - **44 of `test_security.py`'s 116 tests never ran in CI; the module is now marked `unit`**
-  (`juniper_data/tests/unit/test_security.py`; the owner's ruling 17 of 2026-11-09 in juniper-ml's Cursor flood-4
+  (`juniper_data/tests/unit/test_security.py`; the Overtoad's ruling 17 of 2026-11-09 in juniper-ml's Cursor flood-4
   arc, which that record's next update adds to §8 of
   `notes/JUNIPER_2026-11-06_JUNIPER-ECOSYSTEM_CURSOR-FLOOD-4-DISPOSITION.md`). CI's unit lane runs
   `pytest -m "unit and not slow" juniper_data/tests/unit` and no conftest auto-marks, so the four classes that
@@ -391,7 +408,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     still passed (all 2,271 selected; 2,264 passed, 7 skipped locally): only the 44 caught any of the three.
   - Not changed here: 178 more tests in 9 other files run in no CI lane (an unmarked class or module, or a
     class marked only `api` or `performance`, which no lane selects). They are reported for a follow-up.
-- **137 more tests ran in no CI lane; each now runs in the unit lane or the integration lane** (the owner's ruling
+- **137 more tests ran in no CI lane; each now runs in the unit lane or the integration lane** (the Overtoad's ruling
   of 2026-11-12 in juniper-ml's Cursor flood-4 arc, which that record's next update adds to §8 of
   `notes/JUNIPER_2026-11-06_JUNIPER-ECOSYSTEM_CURSOR-FLOOD-4-DISPOSITION.md`; the method is juniper-data#529's). A
   lane selects by directory and by marker, `pyproject.toml` sets `--strict-markers`, and no conftest marks a test by
@@ -442,6 +459,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     failing `gh`, a missing target) still reach their path. Without it,
     `test_graphql_errors_are_not_a_signed_commit` and `test_a_failing_gh_is_not_a_signed_commit`
     failed on that leg. Linux always runs the real `base64`.
+- **The lockfile regen's own failure message never printed: a GraphQL error ended the step at the `gh` line**
+  (`.github/workflows/lockfile-update.yml`, banner 0.1.1, which `docs/ci_cd/CICD_REFERENCE.md` 0.4.9's workflow table now gives). `gh api graphql` exits 1, not 0, on a response that
+  carries GraphQL `errors` (it writes the body to stdout and `gh: <message>` to stderr; cli/cli
+  `pkg/cmd/api/api.go`, `processResponse`), and on an HTTP failure. Called bare under `set -euo pipefail`, that
+  exit ended the commit step before its `.errors` check, so
+  `createCommitOnBranch failed — lockfile NOT committed:` was unreachable and a failing run would have logged only gh's line.
+  The step now captures gh's exit status and stderr, prints gh's message with the `CROSS_REPO_DISPATCH_TOKEN`
+  value masked, and fails with its own diagnostic: the GraphQL `errors`, gh's exit status and what to do, or,
+  when the response carries no `errors`, `gh api graphql failed` and the branch to check, because that log
+  cannot show whether the commit landed. A successful run prints what it printed before. A port of
+  juniper-canopy#814, under the Overtoad's ruling 26 (2026-11-12) of the Cursor flood-4 evaluation.
+  - Pins: the stub `gh` in `juniper_data/tests/unit/test_lockfile_signed_commit.py` now fails as the real CLI
+    does (the body on stdout, then its message on stderr, then the exit status). Five new tests (eight cases) pin
+    both diagnostics, the mask and gh's exit status; all eight fail against the old step, where the 31 existing
+    cases pass. The compare-and-swap case also pins a successful run's exact stdout and empty stderr.
 - **Docs and workflow comments that described behaviour the code does not have** (same record,
   §4):
   - `docs/DEVELOPER_CHEATSHEET.md` linked `../AGENTS.md#adding-new-generators`. The section moved to
@@ -491,7 +523,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `fail_ci_if_error: false` keeps the step green either way and it posts no annotation, so it gates
   nothing. `docs/ci_cd/CICD_MANUAL.md` § Job: `unit-tests` and `docs/ci_cd/CICD_REFERENCE.md`
   § Secrets Reference described the secret as in use; both now say it is not set. The workflow is
-  unchanged: only the owner can add the secret, or remove the step.
+  unchanged: only the Overtoad can add the secret, or remove the step.
 - **The required `Slow Tests` job can fail, and the CI claims juniper-data#499's lane found stale now
   say what the workflows do** (juniper-ml
   `notes/JUNIPER_2026-10-08_JUNIPER-ECOSYSTEM_CURSOR-FLOOD-3-DISPOSITION.md` §4: the row of stale
@@ -531,7 +563,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     continue-on-error mode for a soak. juniper-data#63 ended the soak on 2026-05-01, and ruleset
     `14748749` requires the leg. `pr-base-branch-guard.yml` said `ci.yml` carries a `merge_group`
     trigger. It does not, and the guard is the only workflow here that declares one. Comments only.
-  - **Codecov (owner ruling, 2026-10-29).** The owner added the `CODECOV_TOKEN` Actions secret on
+  - **Codecov (Overtoad ruling, 2026-10-29).** The Overtoad added the `CODECOV_TOKEN` Actions secret on
     2026-10-29 (22:15:30 UTC), so the upload juniper-data#499 documented as tokenless now carries a
     token. The Dependabot secret store does not hold it, so a run that Dependabot triggers still
     uploads without one. `docs/REFERENCE.md`, `docs/ci_cd/CICD_MANUAL.md` and
@@ -602,7 +634,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     after pip-audit, with `GITLEAKS_PARITY_REQUIRED=1`, which turns a missing binary into a failure.
 - **A pull request's Gitleaks scan now covers every commit in its `base..head` range; gitleaks-action stopped at the
   30th, and dropped what merges brought in (juniper-ml's Cursor flood-4
-  record, `notes/JUNIPER_2026-11-06_JUNIPER-ECOSYSTEM_CURSOR-FLOOD-4-DISPOSITION.md` §4, the juniper-data row; owner ruling
+  record, `notes/JUNIPER_2026-11-06_JUNIPER-ECOSYSTEM_CURSOR-FLOOD-4-DISPOSITION.md` §4, the juniper-data row; Overtoad ruling
   "Fix now", 2026-11-08).** gitleaks-action v3.0.0 lists a pull
   request's commits with one unpaginated `GET /repos/{owner}/{repo}/pulls/{pull_number}/commits`, which returns 30
   per page by default, oldest first, and at most 250 in all. It then scans
@@ -755,11 +787,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `huggingface-hub`, `peewee`, `platformdirs`, `python-dotenv`, `pytz`, `soupsieve`). The wheel's declared requirements are
   unchanged; this is the image.
 - **`equities_seq` is declared `regression`, not `classification`, and its `generator_version`
-  is 6.0.0** (X8, owner ruling 2026-09-24). The generator emits two targets: a one-hot next-day
+  is 6.0.0** (X8, Overtoad ruling 2026-09-24). The generator emits two targets: a one-hot next-day
   direction (`y_*`) and a next-day close (`y_reg_*`). `task_type` has no word for "both".
   - The one model that trains on it, juniper-recurrence's LMU, reads `y_reg_*` by key, and
     juniper-canopy already labelled it `regression`. So the two vocabularies disagreed, and the
-    owner ruled that juniper-data changes its label.
+    Overtoad ruled that juniper-data changes its label.
   - **What changes:** `POST /v1/datasets` dispatches meta on the registry's `task_type`, so an
     `equities_seq` artifact's `n_classes` and `class_distribution` are now `null`. The arrays,
     the checksum and every other meta field are unchanged.
@@ -779,7 +811,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     records the reason for the 6.0.0 bump.
   - *Moved here from `[0.16.0]`: #437 merged at 09:14Z on 2026-09-24, after `v0.16.0` was tagged at `39d1cab2`, so 0.16.0 does not carry it.*
 - **Under `fundamentals_fill="drop"`, a `purchase_date` after `start_date` is refused** (W1.8,
-  F-P2). This applies the plan's recommended R3 pending the owner's ruling (alternatives: a
+  F-P2). This applies the plan's recommended R3 pending the Overtoad's ruling (alternatives: a
   documented finite sentinel; dropping rows without refusing).
   - **Before:** `cost_basis` is NaN on every row before the purchase session (APD-DATA-042), and
     `drop` removed only the rows lacking shares, so such a request minted a non-finite
@@ -897,7 +929,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - the workflow-table row, now marked **Required** and linked to a new section, Sequence Safety
     (required check), with the ruleset query, the Quality Gate distinction, and the waivers. The
     `Allow-Symbol-Loss:` / `Allow-Docs-Rewrite:` commit trailers are what the post-merge
-    `main-verify.yml` honours. The owner labels `allow-symbol-loss` / `docs-rewrite` demote the
+    `main-verify.yml` honours. The Overtoad labels `allow-symbol-loss` / `docs-rewrite` demote the
     matching per-PR screen to WARN-only and do not reach the post-merge net;
   - the Main Verify row, which called that net advisory. It runs after the merge, so it is not a
     PR status check and cannot block the merge; a finding turns its run red and upserts a tracking
@@ -928,7 +960,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bytes. So `validate` matches exactly when the strings are equal. `surrogateescape` raises on
   `"\ud800"` and maps `"\xe9"` and `"\udcc3\udca9"` to the same bytes. The keys stay in a `list`,
   and juniper-ml's `tests/test_service_fork_drift.py` markers (`blank-api-key-filter`,
-  `nonshortcircuit-key-compare`) are unchanged. Owner ruling "Fix everywhere now" (2026-09-24),
+  `nonshortcircuit-key-compare`) are unchanged. The Overtoad ruling "Fix everywhere now" (2026-09-24),
   landing the same compare in juniper-service-core and juniper-cascor.
   **Sentry:** juniper-data configures Sentry only through juniper-observability's
   `configure_sentry` (`juniper_data/api/app.py`), so there is no local setting to change. It
@@ -951,7 +983,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **A release now notifies the repos that install juniper-data from PyPI**
   (`.github/workflows/notify-consumers.yml`, new; `publish.yml` gains a `notify-consumers` job
-  after `pypi`). This is juniper-recurrence#178, and the owner picked cross-repo dispatch. A
+  after `pypi`). This is juniper-recurrence#178, and the Overtoad picked cross-repo dispatch. A
   consumer lane scoped to its own paths can't see a break that arrives through this package:
   decision 11 (#369) broke all seven juniper-recurrence bench datasets, and that lane reported
   success for 15 days. Once the PyPI job succeeds, the new job fires `repository_dispatch`
@@ -964,7 +996,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   already accepted the release**, so the `pypi` job, not the run, is the publish verdict.
 
 - **The container image can generate `equities` and `equities_seq` datasets** (#421). This was
-  an owner decision on 2026-09-22. `requirements.lock` was compiled with
+  an Overtoad decision on 2026-09-22. `requirements.lock` was compiled with
   `--extra api --extra observability --extra mnist` only. pandas reached the image through the
   mnist chain, but yfinance never did, so `EQUITIES_DEPS_AVAILABLE` was `False` and every
   `equities` / `equities_seq` request raised `ImportError(install_hint())`. The image built,
@@ -989,11 +1021,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from source. **Generating equities data makes outbound calls to Yahoo Finance and SEC EDGAR
   from the container.** Published images pick this up at the next release.
 
-- **`ETag`s and conditional requests on the three single-dataset reads** (APD-DATA-017, owner
+- **`ETag`s and conditional requests on the three single-dataset reads** (APD-DATA-017, Overtoad
   rulings 2026-09-11 and 2026-09-23). `GET /v1/datasets/{dataset_id}` and `GET /v1/datasets/latest`
   carry a STRONG tag, the SHA-256 of the exact response body; `GET /v1/datasets/{dataset_id}/artifact`
   carries a WEAK one, `W/"<checksum>"` -- the 2026-09-11 ruling asked for strong on the premise that
-  the stored checksum hashes the served bytes, and it does not (see below), so the owner re-ruled. Preconditions follow RFC 9110 §13.2.2: `If-Match` first, compared strongly, a failure
+  the stored checksum hashes the served bytes, and it does not (see below), so the Overtoad re-ruled. Preconditions follow RFC 9110 §13.2.2: `If-Match` first, compared strongly, a failure
   answering `412 Precondition Failed`; then `If-None-Match` (a list, possibly over several header
   lines; `*`; `W/` tags compared weakly), a match answering `304 Not Modified` with no body. A field
   that is not a well-formed entity-tag list, or is longer than 8192 characters, is malformed: on a
@@ -1056,7 +1088,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Cache-Control` and `Content-Location` response headers and their 304 / 412 responses. No
   generated client exists in the ecosystem; one generated from the old schema would see its model
   renamed.
-- **The API versioning policy is amended for 0.x** (owner ruling 2026-09-23;
+- **The API versioning policy is amended for 0.x** (Overtoad ruling 2026-09-23;
   `docs/api/JUNIPER_DATA_API.md` § API Versioning Strategy). It promised never to remove a response
   field within a major version, which this release does, as the defect-register rulings for this
   arc do knowingly. While juniper-data is `0.x`, `/v1` may change incompatibly, and every such
@@ -1074,7 +1106,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   entry deliberately left these two adapters out of decision 11. They cut **two** ways with no
   `X_val`, wrote the retired pair and stamped `generator_version="1.0.0"`, below the 3.0.0
   floor. The generator floor guard could not see them, because it enumerates
-  `juniper_data.generators` only. The owner ruled on 2026-09-22 to conform them. What changed:
+  `juniper_data.generators` only. The Overtoad ruled on 2026-09-22 to conform them. What changed:
   - `load_hf_dataset` / `load_kaggle_dataset` return exactly `X_train`, `y_train`, `X_val`,
     `y_val`, `X_test`, `y_test`. They carve like the other real-data sources (`mnist`,
     `csv_import`, `arc_agi`), through `resolve_partition_counts` + `split_three_way`, with
@@ -1218,7 +1250,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to `csv_import`, `equities` and `equities_seq` (which inherits `EquitiesParams`).
 
   **This REVERSES a deliberate, documented, test-pinned rule.** "A client cannot opt *out* of the
-  operator's choice" was the design until the owner ruled on 2026-09-09 that refusing partial data
+  operator's choice" was the design until the Overtoad ruled on 2026-09-09 that refusing partial data
   is a **caller** right — the partial-data contract's "option 3", fail the load completely. The
   three `or settings.*` sites became
   `settings.X if params.allow_truncation is None else params.allow_truncation`:
@@ -1402,7 +1434,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `prompts/thread-handoff_automated-prompts/HANDOFF_2026-09-08_container-registry-rollout-wave-2-opened-and-the-cuda-class-in-three-shapes.md`.
 
 - **BREAKING (contract): `equities` and `equities_seq` go to `generator_version` 4.0.0, and the
-  share history they serve is now causal.** Six owner rulings taken 2026-09-09, shipped together
+  share history they serve is now causal.** Six Overtoad rulings taken 2026-09-09, shipped together
   because each changes artifact content and the version is hashed into `dataset_id` -- which is the
   only thing stopping a cached artifact of the old shape from answering a request made against the
   new one. Every `equities` / `equities_seq` dataset ID changes once.
@@ -1608,7 +1640,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **BREAKING (default): `fundamentals_fill` is now `"nan"`, was `"zero"`.** Owner decision,
+- **BREAKING (default): `fundamentals_fill` is now `"nan"`, was `"zero"`.** The Overtoad decision,
   2026-09-05.
 
   A `market_cap` of `0.0` is a value no listed company can have, and nothing downstream can tell it
@@ -1649,7 +1681,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **A fourth rescue rung: `us-gaap:CommonStockSharesIssued`, annotated as its own degraded basis.**
-  Owner decision, 2026-09-05. It rescues the three tickers no other rung reaches.
+  The Overtoad decision, 2026-09-05. It rescues the three tickers no other rung reaches.
 
   **Issued is a different quantity, not a weaker measurement of the same one** — it includes
   treasury stock, so it is ≥ shares outstanding, materially so for a company that has bought back
@@ -2151,7 +2183,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Chunk size is `ARTIFACT_STREAM_CHUNK_SIZE` (1 MiB).
 
   **Out of scope, deliberately:** the `ETag` / conditional-GET half of the same primer passage
-  belongs to `APD-DATA-017`, which is part of the owner-routed REST group and is not touched here.
+  belongs to `APD-DATA-017`, which is part of the Overtoad-routed REST group and is not touched here.
   The `application/octet-stream` half was already fixed — `BINARY_MEDIA_TYPE` is `application/zip`
   and owns every call site.
 
@@ -2270,7 +2302,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **SEC-F01 boot-time auth-posture self-check (HO-2 class)**: the API lifespan now calls `enforce_auth_posture(settings.api_keys, require_auth=False, service_name="juniper-data")` from the new `juniper-service-core>=0.5.0,<0.6.0` dependency (`[api]` extra). An empty/blank `JUNIPER_DATA_API_KEYS` secret now produces a loud "running OPEN" WARNING at startup instead of silently serving unauthenticated behind a healthy health check. Escape hatch: `JUNIPER_SKIP_AUTH_POSTURE_CHECK=1`. A `JUNIPER_DATA_REQUIRE_AUTH` fail-closed flag is proposed as the owner-approved follow-up.
+- **SEC-F01 boot-time auth-posture self-check (HO-2 class)**: the API lifespan now calls `enforce_auth_posture(settings.api_keys, require_auth=False, service_name="juniper-data")` from the new `juniper-service-core>=0.5.0,<0.6.0` dependency (`[api]` extra). An empty/blank `JUNIPER_DATA_API_KEYS` secret now produces a loud "running OPEN" WARNING at startup instead of silently serving unauthenticated behind a healthy health check. Escape hatch: `JUNIPER_SKIP_AUTH_POSTURE_CHECK=1`. A `JUNIPER_DATA_REQUIRE_AUTH` fail-closed flag is proposed as the Overtoad-approved follow-up.
 - **SEC-F01 fail-closed flag `JUNIPER_DATA_REQUIRE_AUTH`** (`settings.require_auth`, default `false`): when `true`, the boot-time auth-posture check REFUSES startup (CRITICAL + `AuthPostureError`) if no real API key is configured, instead of only warning — the intended posture wherever secrets are provisioned (the composed juniper-deploy stack). The lifespan now passes `require_auth=settings.require_auth`.
 
 ## [0.10.0] - 2026-07-17
