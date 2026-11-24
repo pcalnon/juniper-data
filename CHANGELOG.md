@@ -459,6 +459,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     failing `gh`, a missing target) still reach their path. Without it,
     `test_graphql_errors_are_not_a_signed_commit` and `test_a_failing_gh_is_not_a_signed_commit`
     failed on that leg. Linux always runs the real `base64`.
+- **The lockfile regen's own failure message never printed: a GraphQL error ended the step at the `gh` line**
+  (`.github/workflows/lockfile-update.yml`, banner 0.1.1, which `docs/ci_cd/CICD_REFERENCE.md` 0.4.9's workflow table now gives). `gh api graphql` exits 1, not 0, on a response that
+  carries GraphQL `errors` (it writes the body to stdout and `gh: <message>` to stderr; cli/cli
+  `pkg/cmd/api/api.go`, `processResponse`), and on an HTTP failure. Called bare under `set -euo pipefail`, that
+  exit ended the commit step before its `.errors` check, so
+  `createCommitOnBranch failed — lockfile NOT committed:` was unreachable and a failing run would have logged only gh's line.
+  The step now captures gh's exit status and stderr, prints gh's message with the `CROSS_REPO_DISPATCH_TOKEN`
+  value masked, and fails with its own diagnostic: the GraphQL `errors`, gh's exit status and what to do, or,
+  when the response carries no `errors`, `gh api graphql failed` and the branch to check, because that log
+  cannot show whether the commit landed. A successful run prints what it printed before. A port of
+  juniper-canopy#814, under the Overtoad's ruling 26 (2026-11-12) of the Cursor flood-4 evaluation.
+  - Pins: the stub `gh` in `juniper_data/tests/unit/test_lockfile_signed_commit.py` now fails as the real CLI
+    does (the body on stdout, then its message on stderr, then the exit status). Five new tests (eight cases) pin
+    both diagnostics, the mask and gh's exit status; all eight fail against the old step, where the 31 existing
+    cases pass. The compare-and-swap case also pins a successful run's exact stdout and empty stderr.
 - **Docs and workflow comments that described behaviour the code does not have** (same record,
   §4):
   - `docs/DEVELOPER_CHEATSHEET.md` linked `../AGENTS.md#adding-new-generators`. The section moved to
