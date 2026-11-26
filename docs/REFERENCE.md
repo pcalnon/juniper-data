@@ -1,8 +1,8 @@
 # Juniper Data Reference
 
-**Version:** 0.4.12
+**Version:** 0.4.13
 **Status:** Active
-**Last Updated:** November 15, 2026
+**Last Updated:** November 26, 2026
 **Project:** Juniper Data - Dataset Generation Service
 
 ---
@@ -2367,7 +2367,7 @@ All 14 files in `.github/workflows/`, counted on `main` at `35658ff3` (2026-10-2
 | **CI/CD Pipeline** | `ci.yml` | Push to `main` / `develop`; PR into `main` / `develop`; `repository_dispatch` `data-client-updated` (juniper-data-client's CI sends it after a push to its `main`); daily schedule (06:00 UTC); manual | Pre-commit (ruff, mypy, bandit, yamllint and more) on 3.12-3.14; unit tests with the coverage gates on Ubuntu 3.12-3.14 and macOS 3.12, plus an informational Ubuntu 3.15 leg that is not required; build; dependency docs; integration tests; Gitleaks, Bandit SARIF and pip-audit; lockfile freshness; Docker build and smoke test; Documentation Links (link check, workflow script paths, AGENTS.md version and header); async-route audit; memory budget; Quality Gate; slow tests on scheduled and manual runs. See the notes below the table | 18, plus `Bandit` from code scanning (listed below the table). `Build Notification` is not required |
 | **CodeQL Analysis** | `codeql.yml` | Push to `main` / `develop`; PR into `main`; weekly schedule (Monday 06:00 UTC) | CodeQL for Python with the `+security-and-quality` queries | `Analyze (python)`. The `CodeQL` check run that code scanning posts is not a required context; the ruleset's `code_scanning` rule covers the alerts instead |
 | **Scheduled Security Scan** | `security-scan.yml` | Weekly schedule (Monday 06:00 UTC); manual | Bandit over `juniper_data` (tests excluded): a SARIF report kept only as the `security-reports` run artifact (nothing is uploaded to code scanning), then a second pass at medium severity and confidence that fails the job on any finding; `pip-audit --strict --desc on` over a `.[all]` install. No Gitleaks. The pull-request Gitleaks, Bandit SARIF and pip-audit lane is `ci.yml`'s `Security Scans` | None |
-| **Publish to PyPI** | `publish.yml` | GitHub release `published`; manual (`workflow_dispatch` from a release tag with `republish_from_testpypi`: republish only) | `Build and Validate` builds once and records `SHA256SUMS`; TestPyPI (`testpypi` environment) takes that artifact, its JSON must list exactly those sha256, and an install check follows; then PyPI (`pypi` environment: the Overtoad's review plus a 5-minute wait) takes the same artifact after TestPyPI's JSON is checked again, and PyPI's JSON is checked. Both by Trusted Publishing (OIDC). Then [notify consumers](#consumer-release-notification). The dispatch republishes TestPyPI's files: [Recovering a release that did not reach PyPI](ci_cd/CICD_MANUAL.md#recovering-a-release-that-did-not-reach-pypi) | None |
+| **Publish to PyPI** | `publish.yml` | GitHub release `published`; manual (`workflow_dispatch` from a release tag with `republish_from_testpypi`: republish only) | `Build and Validate` builds once and records `SHA256SUMS`; TestPyPI (`testpypi` environment) takes that artifact, its JSON must list exactly those sha256, and an install check follows, in a job of its own that cannot mint a credential; then PyPI (`pypi` environment: the Overtoad's review plus a 5-minute wait) takes the same artifact after TestPyPI's JSON is checked again, and PyPI's JSON is checked. Both by Trusted Publishing (OIDC). Then [notify consumers](#consumer-release-notification). The dispatch republishes TestPyPI's files, once the release run passed both TestPyPI jobs: [Recovering a release that did not reach PyPI](ci_cd/CICD_MANUAL.md#recovering-a-release-that-did-not-reach-pypi) | None |
 | **Notify consumers of a release** | `notify-consumers.yml` | `workflow_call` from `publish.yml` after the `pypi` job; manual re-send (`workflow_dispatch`, `version` input) | `repository_dispatch` `juniper-data-published` to `juniper-recurrence`, then wait until a run starts there | None |
 | **Publish Container Image** | `publish-image.yml` | GitHub release `published` (a tag not starting with `v` skips the build); PR touching image inputs (build-only); manual (`push` input, default false) | GHCR multi-arch image (amd64 + arm64). Before any tag: CPU-only (`EXPECT_TORCH=absent`), credential scan, and the [serve-and-version gate](#image-serve-and-version-gate) | None. Its pull-request `Build linux/amd64` and `Build linux/arm64` runs are not required; the required Docker check is `ci.yml`'s `Docker Build & Smoke Test` |
 | **Update Lockfile (Dependabot)** | `lockfile-update.yml` | Push to `dependabot/pip/**` by `dependabot[bot]`; PR when `pyproject.toml` changes (same repo, head not `release/**`) | `--upgrade` compile of `requirements.lock` (`api`, `observability`, `mnist`, `equities`), committed through the GraphQL API so GitHub signs it. Conf-only grouped bumps still qualify. A Dependabot run without `CROSS_REPO_DISPATCH_TOKEN` in the Dependabot secret store skips green with a notice, and any other run without it fails | None. The required `Lockfile Freshness` is `ci.yml`'s |
@@ -2400,19 +2400,30 @@ Notes on `ci.yml`:
 
 ### TestPyPI install check
 
-`publish.yml`'s `testpypi` job ends with `Verify TestPyPI install`, after `Verify TestPyPI serves exactly these files` has matched TestPyPI's files to the sha256 the build recorded. The production `pypi` job waits on that job. The step names no `shell:` and no `continue-on-error`.
+`publish.yml`'s `verify-testpypi-install` job, `Verify the TestPyPI install`, runs `Verify TestPyPI install` after the `testpypi` job, whose `Verify TestPyPI serves exactly these files` has matched TestPyPI's files to the sha256 the build recorded (ruling 2 of 2026-11-16). The job holds `contents: read` alone, with no environment and no `id-token`, so nothing it installs or runs can mint a credential, and it checks nothing out. The production `pypi` job needs both jobs. The step names no `shell:` and no `continue-on-error`.
 
-The release tag is stripped of one leading `v`, then:
+The step reads the release tag through its `env`, `RELEASE_TAG`, so no expression is pasted into the script, and strips one leading `v`. It runs from `$RUNNER_TEMP`, outside any checkout: `python -c` puts its working directory first on `sys.path`, and this repository's root holds `juniper_data/`. Its commands, the pip line joined and the retry's message left out (the workflow is the source; `juniper_data/tests/unit/test_publish_one_artifact.py` pins it line by line):
 
 ```bash
+cd "${RUNNER_TEMP}"
+VERSION="${RELEASE_TAG#v}"
 sleep 30
-pip install --no-deps --index-url https://test.pypi.org/simple/ juniper-data==${VERSION}
-python -c "import importlib.metadata as m; print('TestPyPI OK: v' + m.version('juniper-data'))"
+for attempt in 1 2 3 4 5; do
+  if pip install --no-deps --index-url https://test.pypi.org/simple/ "juniper-data==${VERSION}"; then
+    break
+  fi
+  if [ "${attempt}" -eq 5 ]; then
+    echo "::error::juniper-data ${VERSION} is not installable from TestPyPI after 5 tries (index lag?): Re-run failed jobs; a real failure repeats"
+    exit 1
+  fi
+  sleep 10
+done
+python -c "import importlib.metadata as m, importlib.util as u; spec = u.find_spec('juniper_data'); origin = spec.origin if spec else None; print('TestPyPI install', m.version('juniper-data'), 'package at', origin); raise SystemExit(0 if origin else 'the installed wheel holds no juniper_data package')"
 ```
 
-`sleep 30` is the wait for TestPyPI index lag. The pip requirement is what selects the released version. The Python line only reads the installed distribution's metadata and prints it. It does not compare that string with the tag. `import juniper_data` would fail a good publish: `juniper_data/__init__.py` imports `dotenv` at import time (`python-dotenv`), and `--no-deps` does not install it.
+`sleep 30` is the wait for TestPyPI index lag, and the five tries cover TestPyPI's simple index lagging behind its JSON. The pip requirement is what selects the released version. The Python line reads the installed distribution's metadata and prints it, and `importlib.util.find_spec` locates `juniper_data` without running it: the step fails, through `SystemExit` (which `PYTHONOPTIMIZE` keeps, where it would strip an `assert`), unless the package is found with an origin, so a wheel that holds the metadata alone, or a bare directory, fails. It does not compare the version with the tag. `import juniper_data` would fail a good publish: `juniper_data/__init__.py` imports `dotenv` at import time (`python-dotenv`), and `--no-deps` does not install it.
 
-The index is `https://test.pypi.org/simple/` only. There is no `--extra-index-url` and no production-PyPI fallback. With `--no-deps` a second index fetches no dependencies. It only widens which `juniper-data` pip will accept, including a different project of the same name. A non-zero `pip` or `python` fails the step, so `pypi` does not start. A `|| true` on either command, or `continue-on-error` on the step, would let production publish after a verify that did not succeed.
+The index is `https://test.pypi.org/simple/` only. There is no `--extra-index-url` and no production-PyPI fallback. With `--no-deps` a second index fetches no dependencies. It only widens which `juniper-data` pip will accept, including a different project of the same name. A `pip` that fails five times, or a non-zero `python`, fails the step, so `pypi` does not start. A `|| true` on either command, or `continue-on-error` on the step, would let production publish after a verify that did not succeed.
 
 The `pypi` job builds nothing: it publishes the build job's artifact, the files this check installed from, after checking TestPyPI's JSON again ([One artifact, checked against TestPyPI](ci_cd/CICD_MANUAL.md#one-artifact-checked-against-testpypi)). It does not install the package.
 
@@ -2708,6 +2719,6 @@ git worktree prune
 
 ---
 
-**Last Updated:** November 15, 2026
-**Version:** 0.4.12
+**Last Updated:** November 26, 2026
+**Version:** 0.4.13
 **Maintainer:** Paul Calnon

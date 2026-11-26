@@ -2,9 +2,9 @@
 
 ## juniper-data CI/CD Jobs, Hooks, and Configuration
 
-**Version:** 0.4.9
+**Version:** 0.4.10
 **Status:** Active
-**Last Updated:** November 24, 2026
+**Last Updated:** November 26, 2026
 **Project:** Juniper - Dataset Generation Service
 
 ---
@@ -122,10 +122,11 @@ Read from `anthropics/claude-code-action` v1.0.265 (`6d5ae526d25ce88daa2200be073
 | Job | Depends On | Environment | Purpose |
 |-----|-----------|-------------|---------|
 | `build` | -- | -- | `Build and Validate`: build once (`python -m build`, `twine check`), record `SHA256SUMS`, upload `dist/` and `SHA256SUMS` as `juniper-data-dist` (kept 90 days). Runs only for a release tag starting with `v`, so a dispatch builds nothing; a re-run attempt reuses the run's artifact |
-| `testpypi` | build | `testpypi` | Check the artifact against `SHA256SUMS`, publish it to TestPyPI, require TestPyPI's JSON to list exactly those sha256, then install `juniper-data==<version>` from `https://test.pypi.org/simple/` only (`--no-deps`). The next line prints installed metadata; it does not compare it with the tag. See [TestPyPI install check](../REFERENCE.md#testpypi-install-check) |
-| `pypi` | testpypi | `pypi` | Publish the same artifact to production PyPI: check it against `SHA256SUMS`, check TestPyPI's JSON again, upload, check PyPI's JSON. Builds nothing |
+| `testpypi` | build | `testpypi` | Check the artifact against `SHA256SUMS`, publish it to TestPyPI, require TestPyPI's JSON to list exactly those sha256. Holds `id-token: write` alone: it checks nothing out and runs no install check |
+| `verify-testpypi-install` | testpypi | -- (`contents: read` alone) | `Verify the TestPyPI install` (ruling 2 of 2026-11-16): from `$RUNNER_TEMP`, outside any checkout, install `juniper-data==<version>` from `https://test.pypi.org/simple/` only (`--no-deps`; up to 5 tries, 10 s apart, then an error naming index lag), print the installed metadata and find the package with `importlib.util.find_spec`, failing unless it is found with an origin. It does not compare the version with the tag. No `id-token`, so nothing it runs can mint a credential. See [TestPyPI install check](../REFERENCE.md#testpypi-install-check) |
+| `pypi` | testpypi, verify-testpypi-install | `pypi` | Publish the same artifact to production PyPI: check it against `SHA256SUMS`, check TestPyPI's JSON again, upload, check PyPI's JSON. Builds nothing |
 | `notify-consumers` | pypi | -- (`permissions: {}`) | Call `notify-consumers.yml` with the release tag. A republish dispatch skips it |
-| `republish` | -- (dispatch only) | `pypi` | `Republish the tested files (dispatch only)`: on a `workflow_dispatch` from a release tag with `republish_from_testpypi`, copy TestPyPI's files for the version to PyPI, then check PyPI's JSON. Builds nothing. See [Recovering a release that did not reach PyPI](CICD_MANUAL.md#recovering-a-release-that-did-not-reach-pypi) |
+| `republish` | -- (dispatch only) | `pypi` | `Republish the tested files (dispatch only)`: on a `workflow_dispatch` from a release tag with `republish_from_testpypi`, copy TestPyPI's files for the version to PyPI, then check PyPI's JSON, and only once the tag's newest release run passed both TestPyPI jobs in their latest attempt (ruling 1 of 2026-11-16). Builds nothing. See [Recovering a release that did not reach PyPI](CICD_MANUAL.md#recovering-a-release-that-did-not-reach-pypi) |
 
 ### Consumer release notification
 
@@ -329,7 +330,7 @@ A pull request skips the action, whose `pull_request` path never scans past a pu
 | Workflow | Default | Additional |
 |----------|---------|-----------|
 | ci.yml | `contents: read` | `security-events: write` (security job) |
-| publish.yml | `{}` | Per job: `build` `contents: read`, `actions: read`; `testpypi` `contents: read`, `id-token: write` (OIDC); `pypi` `id-token: write`; `republish` `actions: read`, `id-token: write`; `notify-consumers` `{}` |
+| publish.yml | `{}` | Per job: `build` `contents: read`, `actions: read`; `testpypi` `id-token: write` (OIDC); `verify-testpypi-install` `contents: read`; `pypi` `id-token: write`; `republish` `actions: read`, `id-token: write`; `notify-consumers` `{}` |
 | lockfile-update.yml | -- | `contents: write` |
 | codeql.yml | -- | `actions: read`, `contents: read`, `security-events: write` |
 | claude.yml | -- | job: `contents: write`, `pull-requests: write`, `issues: write`, `id-token: write`, `actions: read` |
@@ -420,6 +421,6 @@ The `dependency-docs` job runs that command after `conda-incubator/setup-minicon
 
 ---
 
-**Last Updated:** November 24, 2026
-**Version:** 0.4.9
+**Last Updated:** November 26, 2026
+**Version:** 0.4.10
 **Maintainer:** Paul Calnon
