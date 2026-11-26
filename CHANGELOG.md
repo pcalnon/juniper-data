@@ -265,8 +265,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **The republish job copies nothing a release run did not pass, and the install check can mint no credential**
-  (rulings 1 and 2 of 2026-11-16; the port of juniper-cascor#777, the one-artifact template's sweep, to the entry
-  below, template verbatim).
+  (rulings 1 and 2 of 2026-11-16; the port of juniper-cascor#777, the one-artifact template's sweep, to
+  juniper-data#543's entry below, template verbatim).
   - **The install check has a job of its own** (ruling 2). `Verify the TestPyPI install` needs `Publish to TestPyPI`,
     and `Publish to PyPI` needs both. It installs the package TestPyPI serves, so it holds `contents: read` alone: no
     environment and no `id-token`. Until now the check ran in the TestPyPI job, so pip and the check ran with that

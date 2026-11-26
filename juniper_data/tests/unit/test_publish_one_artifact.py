@@ -352,13 +352,6 @@ def _environment(job: dict) -> str:
     return str(env.get("name") if isinstance(env, dict) else env)
 
 
-def _cancels(group) -> bool:
-    """Whether a workflow's ``concurrency`` value cancels a run in progress. A group named alone, or one without
-    ``cancel-in-progress``, never does: it holds a newer run pending, and cancels only an older pending run, which has
-    run nothing yet."""
-    return isinstance(group, dict) and group.get("cancel-in-progress", False) is not False
-
-
 def _assert_no_checkout_between(job: dict, start: int, end: int) -> None:
     """A checkout empties the workspace, so one between the download and the last template step would lose the files."""
     between = [str(s.get("uses") or "") for s in job["steps"][start:end]]
@@ -615,7 +608,7 @@ class TestWiring:
         assert jobs["build"]["permissions"] == {"contents": "read", "actions": "read"}
         # The job that can mint runs the template steps and the upload alone: it checks out nothing and installs nothing.
         assert jobs[PUBLISHERS[workflow][2]]["permissions"] == {"id-token": "write"}
-        # The install check runs the package TestPyPI serves: it may read the repository, and nothing more.
+        # The install check installs the package TestPyPI serves and inspects it: it may read the repository, and nothing more.
         assert jobs[INSTALL]["permissions"] == {"contents": "read"}
         assert jobs[PUBLISHERS[workflow][3]]["permissions"] == prod
         assert jobs[REPUBLISH]["permissions"] == {"actions": "read", "id-token": "write"}
@@ -781,7 +774,7 @@ class TestInstallCheckJob:
         step = _step(job, INSTALL_STEPS[workflow])
         assert "working-directory" not in step
         commands = [line.strip() for line in step["run"].splitlines() if line.strip() and not line.strip().startswith("#")]
-        # `python -c` puts its working directory first on sys.path, and this repository's root holds juniper_cascor_client/:
+        # `python -c` puts its working directory first on sys.path, and this repository's root holds juniper_data/:
         # a check run inside a checkout could pass without the wheel. So the first command leaves for the runner's
         # temporary directory, and no command moves elsewhere.
         assert commands[0] == 'cd "${RUNNER_TEMP}"'
@@ -938,7 +931,6 @@ class TestUnchanged:
         assert set(wf["on"]) == {"release", "workflow_dispatch"}
         assert wf["on"]["release"] == {"types": ["published"]}
         assert "concurrency" not in wf
-        assert not _cancels(wf.get("concurrency"))
 
     def test_publish_yml_builds_with_the_commands_it_used_before(self):
         build = _workflow("publish.yml")["jobs"]["build"]
@@ -1261,7 +1253,7 @@ class TestIndexCheck:
         assert "after 3 attempts" in proc.stdout
         assert len(server.paths()) == 3
 
-    @pytest.mark.parametrize("extra", ["juniper_data_client-9.9.9-py3-none-any.whl", "juniper_data-9.9.8.tar.gz", "juniper_data-9.9.9.zip"], ids=["another-package", "another-version", "not-a-distribution"])
+    @pytest.mark.parametrize("extra", [f"{OTHER_DIST_NAME}-9.9.9-py3-none-any.whl", "juniper_data-9.9.8.tar.gz", "juniper_data-9.9.9.zip"], ids=["another-package", "another-version", "not-a-distribution"])
     def test_it_refuses_a_sha256sums_it_cannot_vouch_for_before_asking_the_index(self, workspace, tmp_path, stand, extra):
         script = self._ready(workspace, tmp_path)
         with (workspace / "SHA256SUMS").open("a", encoding="utf-8") as sums:
@@ -1636,7 +1628,7 @@ class TestFetchTestPyPIFiles:
 
     @pytest.mark.parametrize(
         "listed",
-        [{}, {**SERVED, "juniper_data_client-9.9.9-py3-none-any.whl": "d" * 64}, {**SERVED, "juniper_data-9.9.8.tar.gz": "d" * 64}],
+        [{}, {**SERVED, f"{OTHER_DIST_NAME}-9.9.9-py3-none-any.whl": "d" * 64}, {**SERVED, "juniper_data-9.9.8.tar.gz": "d" * 64}],
         ids=["no-files", "another-package", "another-version"],
     )
     def test_an_index_listing_it_cannot_vouch_for_is_refused(self, tmp_path, stand, listed):
